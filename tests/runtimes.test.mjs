@@ -202,6 +202,9 @@ test('FastClient/PATH branches with mismatched major must not poison jdk-21', as
   const pathJavaName = process.platform === 'win32' ? 'java.exe' : 'java';
   const fakePathJava = path.join(pathDir, pathJavaName);
   fs.writeFileSync(fakePathJava, 'fake-path');
+  // `which java` (POSIX) only resolves executables; `where java` (Windows) matches
+  // by name. Without the exec bit this probe silently falls through on Linux/macOS.
+  fs.chmodSync(fakePathJava, 0o755);
   const originalPath = process.env.PATH || '';
   process.env.PATH = pathDir + path.delimiter + originalPath;
 

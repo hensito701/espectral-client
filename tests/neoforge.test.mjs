@@ -269,7 +269,7 @@ test('buildArgv: neoforge launch (module path, fml args, substituted placeholder
   assert.ok(text.includes('cpw.mods.bootstraplauncher.BootstrapLauncher'));
   // module path flag + substituted separators
   assert.ok(text.includes(' -p '));
-  assert.ok(text.includes('bootstraplauncher-2.0.2.jar;'), 'classpath_separator substituted');
+  assert.ok(text.includes(`bootstraplauncher-2.0.2.jar${path.delimiter}`), 'classpath_separator substituted');
   // -DlibraryDirectory points at the real libraries dir
   assert.ok(text.includes('-DlibraryDirectory='), 'library_directory substituted');
   assert.ok(!text.includes('${'), 'no unresolved placeholders');
@@ -281,7 +281,7 @@ test('buildArgv: neoforge launch (module path, fml args, substituted placeholder
   assert.ok(text.includes('--gameDir G:/instance'));
   assert.ok(text.includes('--assetIndex 17'));
   // classpath flag present (parent template + explicit -cp, same value)
-  assert.ok(text.includes('-cp C:/libs/a.jar;C:/libs/b.jar'));
+  assert.ok(text.includes(`-cp C:/libs/a.jar${path.delimiter}C:/libs/b.jar`));
   // no AOT flags on JDK 21
   assert.ok(!text.includes('-XX:AOTCache'));
 });
