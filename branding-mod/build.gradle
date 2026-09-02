@@ -1,0 +1,30 @@
+// Espectral Menu — thin root build. mc12111 (remap) and mc262 (non-remap) share ../src/main/java.
+
+subprojects {
+    group = 'es.spectral'
+    version = '1.3.0'
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = rootProject.ext.releaseOf(project)
+    }
+
+    // Deferred: the sourceSets/processResources extensions only exist once
+    // the subproject's Loom/java plugin has applied — eager evaluation here
+    // fails with "Could not find method sourceSets()" on Gradle 9.x.
+    afterEvaluate {
+        sourceSets {
+            main {
+                java.srcDirs = [rootProject.file('src/main/java'), 'src/main/java']
+                resources.srcDirs = [rootProject.file('src/main/resources'), 'src/main/resources']
+            }
+        }
+
+        processResources {
+            inputs.property 'version', project.version
+            filesMatching('fabric.mod.json') { expand 'version': project.version }
+        }
+    }
+}
+
+ext.releaseOf = { Project p -> p.name == 'mc262' ? 25 : 21 }

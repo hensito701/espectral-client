@@ -1,0 +1,17 @@
+{
+  "mod_id": "espectral-menu",
+  "mod_name": "Espectral Menu",
+  "mod_version": "1.3.0",
+  "mods": {
+    "1.21.11": {
+      "filename": "espectral-menu-1.21.11-1.3.0.jar",
+      "sha1": "c3d0dd7d4a23b548d4b8f8cd9fceb5d0a6c1baea",
+      "size": 27476
+    },
+    "26.2": {
+      "filename": "espectral-menu-26.2-1.3.0.jar",
+      "sha1": "d338b00ec5fd8333fae65da141bc28131ecbf252",
+      "size": 28400
+    }
+  }
+}

@@ -1,0 +1,12 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version '1.17.19'
+}
+
+base { archivesName = 'espectral-menu-1.21.11' }
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.11'
+    mappings loom.officialMojangMappings()
+    modImplementation 'net.fabricmc:fabric-loader:0.19.3'
+}

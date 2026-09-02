@@ -1,0 +1,285 @@
+/* ==========================================================================
+   Espectral Horizon Glass — Design Token System
+   Theme switching: <html data-theme="dark|light"> (Dark default)
+   ========================================================================== */
+
+/* --- Self-hosted fonts (public/fonts/*.woff2) --- */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/press-start-2p-400.woff2') format('woff2');
+}
+
+/* ==========================================================================
+   DARK THEME (Default)
+   Deep near-black blue-green with emerald accents & radiant glass
+   ========================================================================== */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Surfaces & Glass */
+  --bg: #060a14;
+  --bg-rgb: 6, 10, 20;
+  --surface: rgba(16, 22, 42, 0.65);
+  --surface-solid: #0d1222;
+  --surface-up: rgba(25, 32, 64, 0.55);
+  --surface-up-solid: #161e36;
+  --card-bg: rgba(13, 18, 34, 0.75);
+  --card-bg-soft: rgba(20, 28, 52, 0.5);
+  --chrome-bg: rgba(6, 10, 20, 0.88);
+  --topbar-bg: rgba(8, 13, 26, 0.82);
+  --rail-bg: rgba(10, 15, 30, 0.6);
+  --log-bg: #080c18;
+  --backdrop: rgba(3, 6, 14, 0.78);
+
+  /* Dynamic Ambient Lighting Stops (Default Emerald/Cyan) */
+  --ambient-1: rgba(16, 185, 129, 0.12);
+  --ambient-2: rgba(6, 182, 212, 0.08);
+
+  /* Typography */
+  --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-body: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono-retro: 'Press Start 2P', ui-monospace, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Text Hierarchy */
+  --text: #e8ecf4;
+  --text-inverse: #060a14;
+  --muted: #9fb0cc;
+  --muted-strong: #c3d2ec;
+  --text-muted: var(--muted);
+  --text-muted-strong: var(--muted-strong);
+  /* Text Scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+  --text-hero: clamp(2rem, 1.5rem + 1.8vw, 3rem);
+
+  --leading-none: 1;
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-body: 1.6;
+
+  /* Brand & Accent Palette */
+  --accent: #10b981;
+  --accent-rgb: 16, 185, 129;
+  --accent-ink: #059669;
+  --accent-gold: #ffd700;
+  --accent-gold-rgb: 255, 215, 0;
+  --accent-alt: #f59e0b;
+  --accent-alt-rgb: 245, 158, 11;
+  --accent-cyan: #06b6d4;
+  --accent-cyan-rgb: 6, 182, 212;
+  --accent-purple: #a855f7;
+  --accent-purple-rgb: 168, 85, 247;
+  --accent-red: #ef4444;
+  --accent-red-rgb: 239, 68, 68;
+  --accent-green: #22c55e;
+  --accent-green-rgb: 34, 197, 94;
+
+  /* Deterministic Loader Gradients */
+  --loader-vanilla: linear-gradient(135deg, #10b981, #059669);
+  --loader-fabric: linear-gradient(135deg, #06b6d4, #3b82f6);
+  --loader-neoforge: linear-gradient(135deg, #f97316, #ef4444);
+  --loader-quilt: linear-gradient(135deg, #a855f7, #ec4899);
+
+  /* Game Modes */
+  --mode-uhc: #10b981;
+  --mode-hg: #ef4444;
+  --mode-towers: #06b6d4;
+  --mode-smp: #a855f7;
+  --mode-torneo: #f97316;
+
+  /* Borders & Glassmorphism */
+  --border: rgba(40, 58, 96, 0.45);
+  --border-solid: #1f2b48;
+  --border-focus: rgba(16, 185, 129, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.13);
+  --glass-glow: 0 8px 32px rgba(16, 185, 129, 0.15);
+  --glass-blur: 16px;
+  --glass-blur-strong: 24px;
+  --saturate: 1.2;
+  --saturate-strong: 1.35;
+
+  /* Shadows & Glows */
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --focus-ring-color: var(--accent);
+  --focus-ring-offset: 2px;
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --glow-play: 0 0 28px rgba(16, 185, 129, 0.4);
+  --docs-glow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  --hover-border: rgba(16, 185, 129, 0.4);
+
+  /* Shape & Radii */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.25rem;
+  --radius-tile: 1rem;
+  --radius-pill: 9999px;
+
+  /* Spacing Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Motion Curves & Durations */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-med: 260ms;
+  --dur-slow: 450ms;
+  --transition-fast: var(--dur-fast) var(--ease-out-expo);
+  --transition-med: var(--dur-med) var(--ease-out-expo);
+  --transition-slow: var(--dur-slow) var(--ease-out-expo);
+
+  /* Z-Index Hierarchy Contract */
+  --z-ambient: 0;
+  --z-page: 10;
+  --z-pip: 20;
+  --z-popover: 30;
+  --z-modal: 40;
+  --z-palette: 50;
+  --z-toast: 60;
+
+  /* Shell Layout Dimensions */
+  --topbar-height: 64px;
+  --statusbar-height: 28px;
+  --pip-drawer-height-collapsed: 36px;
+  --pip-drawer-height-expanded: 260px;
+  --sidebar-width: 220px;
+  --max-width: 72rem;
+  --content-max: 82rem;
+
+  /* Scrollbar Styling Tokens */
+  --scrollbar-track: rgba(6, 10, 20, 0.4);
+  --scrollbar-thumb: rgba(159, 176, 204, 0.3);
+  --scrollbar-thumb-hover: rgba(159, 176, 204, 0.55);
+}
+
+/* ==========================================================================
+   LIGHT THEME
+   Warm porcelain / sunlit quartz with high-contrast emerald & copper accents
+   ========================================================================== */
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* Surfaces & Glass (Rich Warm Sand / Sunlit Quartz) */
+  --bg: #f4f6fb;
+  --bg-rgb: 244, 246, 251;
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-solid: #ffffff;
+  --surface-up: rgba(238, 242, 250, 0.9);
+  --surface-up-solid: #e6ebf5;
+  --card-bg: rgba(255, 255, 255, 0.85);
+  --card-bg-soft: rgba(240, 244, 252, 0.7);
+  --chrome-bg: rgba(244, 246, 251, 0.92);
+  --topbar-bg: rgba(244, 246, 251, 0.88);
+  --rail-bg: rgba(235, 240, 250, 0.75);
+  --log-bg: #e9eef7;
+  --backdrop: rgba(15, 23, 42, 0.55);
+
+  /* Dynamic Ambient Lighting Stops (Light Mode Tint) */
+  --ambient-1: rgba(16, 185, 129, 0.08);
+  --ambient-2: rgba(6, 182, 212, 0.06);
+
+  /* Text Colors */
+  --text: #121829;
+  --text-inverse: #ffffff;
+  --muted: #33415c;
+  --muted-strong: #1f2937;
+  --text-muted: var(--muted);
+  --text-muted-strong: var(--muted-strong);
+
+  /* Brand & Accent Palette (High Contrast) */
+  --accent: #059669;
+  --accent-rgb: 5, 150, 105;
+  --accent-ink: #047857;
+  --accent-gold: #b45309;
+  --accent-gold-rgb: 180, 83, 9;
+  --accent-alt: #d97706;
+  --accent-alt-rgb: 217, 119, 6;
+  --accent-cyan: #0891b2;
+  --accent-cyan-rgb: 8, 145, 178;
+  --accent-purple: #7e22ce;
+  --accent-purple-rgb: 126, 34, 206;
+  --accent-red: #dc2626;
+  --accent-red-rgb: 220, 38, 38;
+  --accent-green: #16a34a;
+  --accent-green-rgb: 22, 163, 74;
+
+  /* Borders & Shadows */
+  --border: rgba(190, 204, 226, 0.65);
+  --border-solid: #cfd8e8;
+  --border-focus: rgba(5, 150, 105, 0.8);
+  --glass-border: rgba(18, 24, 41, 0.14);
+  --glass-glow: 0 8px 32px rgba(5, 150, 105, 0.12);
+  --shadow-sm: 0 2px 8px rgba(18, 24, 41, 0.09);
+  --shadow-md: 0 8px 24px rgba(18, 24, 41, 0.12);
+  --shadow-lg: 0 16px 40px rgba(18, 24, 41, 0.18);
+  --shadow-card: 0 4px 20px rgba(18, 24, 41, 0.08), 0 1px 3px rgba(18, 24, 41, 0.05);
+  --shadow-focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --focus-ring-color: var(--accent);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --glow-play: 0 0 24px rgba(5, 150, 105, 0.25);
+  --docs-glow: 0 12px 40px rgba(18, 24, 41, 0.06);
+  --hover-border: rgba(5, 150, 105, 0.4);
+
+  /* Scrollbar Styling Tokens */
+  --scrollbar-track: rgba(220, 226, 238, 0.4);
+  --scrollbar-thumb: rgba(51, 65, 92, 0.35);
+  --scrollbar-thumb-hover: rgba(51, 65, 92, 0.6);
+}

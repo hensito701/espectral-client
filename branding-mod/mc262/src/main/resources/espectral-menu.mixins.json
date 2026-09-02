@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "es.spectral.menu.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "TitleScreenInitMixin",
+    "MinecraftMixin",
+    "CameraFovMixin",
+    "ClientShutdownWatchdogMixin",
+    "OptionsAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

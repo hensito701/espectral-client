@@ -1,0 +1,72 @@
+# Secrets / credentials — never commit
+config.json
+credentials.json
+*.pem
+.env
+.env.*
+.keys/
+
+# Runtime data (resolver cache, instances, downloaded runtimes, AOT caches)
+data/
+cache/
+instances/
+gamedir/
+*.part
+
+# Build output
+node_modules/
+src/ui/dist/
+src-tauri/target/
+build/
+dist-update/
+.gradle/
+branding-mod/.gradle/
+branding-mod/**/build/
+
+# Logs and scratch files
+logs/
+*.log
+*.out
+*.tmp
+.DS_Store
+
+# Images are ignored by default; the app's own brand assets are whitelisted
+*.png
+!src/ui/public/favicon.png
+!assets/site/favicon.png
+!assets/site/logo_circle.png
+!assets/site/apple-touch-icon.png
+!branding-mod/src/main/resources/assets/espectral-menu/textures/gui/logo.png
+
+# Local editor / tool state
+.commandcode/
+.claude/
+.freebuff/
+.zcode/
+
+# Local-only development material (kept on disk, never published)
+AGENTS.md
+V1-0-0-PLAN.md
+REVIEW_*.md
+report*.md
+predicciones.html
+harness/
+deploy/
+services/
+docs/HANDOVER-*.md
+docs/PROGRESS-*.md
+docs/PHASE-*.md
+docs/AUDIT-*.md
+docs/BENCH-*.md
+docs/RELEASE.md
+docs/build-agent-reports.json
+docs/design-v01-spec.json
+docs/research-r*.json
+docs/data-layout.md
+docs/engine-server.md
+docs/launch-contract.md
+scripts/publish-release.mjs
+scripts/golden-diff.mjs
+tests/bootlab2.test.mjs
+*.mrpack
+!tests/fixtures/*.mrpack

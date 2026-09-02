@@ -1,0 +1,30 @@
+# Normalize line endings — CRLF warnings on Windows commits are cosmetic
+# (per HANDOVER §12.9) but this makes the tree canonical LF.
+* text=auto
+
+# Explicit text files: always LF in the repo
+*.mjs text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.svelte text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.ps1 text eol=lf
+*.psm1 text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+
+# Line-ending-sensitive artifacts
+*.jar binary
+*.zip binary
+*.png binary
+*.ico binary
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.aot binary
+*.bin binary

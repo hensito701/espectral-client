@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "espectral-menu",
+  "version": "${version}",
+  "name": "Espectral Menu",
+  "description": "Espectral-branded main menu replacement (client-only, minimalist).",
+  "authors": [
+    "Espectral"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "mixins": [
+    "espectral-menu.mixins.json"
+  ],
+  "entrypoints": {
+    "client": [
+      "es.spectral.menu.EspectralClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.2",
+    "java": ">=25"
+  }
+}

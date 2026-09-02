@@ -1,0 +1,11 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url 'https://maven.fabricmc.net/' }
+    }
+}
+
+rootProject.name = 'espectral-menu'
+
+include 'mc12111'
+include 'mc262'
