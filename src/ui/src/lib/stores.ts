@@ -9,7 +9,7 @@ import {
   subscribeEvents,
 } from './api';
 import type { HealthInfo, InstanceSummary, LiveLaunch, ServerStatus, VersionManifest } from './types';
-import { startEngine } from './tauri';
+import { startEngine, suppressEngineRestart } from './tauri';
 import { theme } from './theme.svelte';
 import { t } from './i18n.svelte';
 import { pushToast } from './toast.svelte';
@@ -120,7 +120,11 @@ export const health = createPollingStore<HealthInfo | null>(null, getHealth, {
   // skips when a healthy engine already answers. Without this, an engine that
   // dies or fails to boot leaves the app permanently offline ("failed to
   // fetch everywhere") until a manual relaunch.
-  onError: () => void startEngine(),
+  onError: () => {
+    // Updater-owned shutdown (update installing): respawning here would
+    // re-lock node.exe and fail the NSIS install — stay down until relaunch.
+    if (!suppressEngineRestart) void startEngine();
+  },
 });
 health.start();
 

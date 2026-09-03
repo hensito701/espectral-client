@@ -27,6 +27,17 @@ const MAX_TRANSIENT_STREAK = TRANSIENT_BACKOFF_SECONDS.length;
 export async function register(app) {
   app.get('/api/health', async () => ({ ok: true, version: VERSION }));
 
+  // POST /api/shutdown -> { ok: true } — the in-app updater calls this before
+  // running the NSIS installer. The engine runs on the bundled node.exe, and
+  // an engine that outlives the app keeps node.exe locked, failing the update
+  // with "Error opening file for writing". Exits on a short delay so the
+  // response flushes first. Running games are independent OS processes and
+  // are NOT touched (same as an engine restart).
+  app.post('/api/shutdown', async () => {
+    setTimeout(() => process.exit(0), 250);
+    return { ok: true };
+  });
+
   // Opens a folder in the OS file manager. The path must resolve inside the
   // engine data dir (instances live under <dataDir>/instances) — an arbitrary
   // absolute path would let a compromised UI open any directory.

@@ -11,6 +11,15 @@ import { API_BASE } from './api';
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
+/**
+ * Set while the in-app updater owns the engine lifecycle (shutdown → install):
+ * polling stores must NOT self-heal respawn the engine or node.exe stays
+ * locked and the NSIS installer fails with "Error opening file for writing".
+ */
+export let suppressEngineRestart: boolean = false;
+export function setSuppressEngineRestart(v: boolean): void {
+  suppressEngineRestart = v;
+}
 
 /** Ask the Rust shell to start the engine child process, then wait until the
  *  engine answers /api/health (bounded retry) so the UI's first fetch lands. */

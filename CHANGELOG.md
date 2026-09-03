@@ -2,6 +2,21 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.8] - 2026-09-03
+
+### Fixed
+- **One-click updates failed with "Error opening file for writing … node.exe".**
+  Two defects combined: the updater ran the NSIS installer twice
+  (`downloadAndInstall()` already installs, then `install()` ran it again over
+  the same files), and the engine — which runs on the bundled `node.exe` — was
+  still alive when the installer tried to replace that file. The update now
+  downloads once, shuts the engine down via a new `POST /api/shutdown`
+  (running games are untouched), waits for the file lock to release, runs the
+  installer exactly once, and relaunches. The health store's engine self-heal
+  is suppressed during the install so it can't respawn `node.exe` mid-write;
+  if the install fails, the app restarts the engine instead of staying offline.
+
+
 ## [1.3.7] - 2026-09-03
 
 ### Fixed
@@ -22,6 +37,8 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   request), with SIGTERM on other platforms. Force-kill is still never used —
   the cache is only written on a normal exit.
 
+
+## [Unreleased]
 
 ### Added
 - **Boot-time JVM flags.** Every launch on Java 21+ now runs with `-XX:-UsePerfData` and

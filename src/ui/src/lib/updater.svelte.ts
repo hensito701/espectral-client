@@ -8,7 +8,8 @@
 // breaks the plain-browser dev flow (`npm run ui` in a browser tab), so they
 // are loaded lazily behind isTauri() — a genuine runtime-selected platform
 // module, the sanctioned exception to static-import policy.
-import { isTauri } from './tauri';
+import { setSuppressEngineRestart, startEngine } from './tauri';
+import { shutdownEngine, API_BASE } from './api';
 
 /* ==========================================================================
    Updater — Tauri auto-update bridge (desktop shell only).
@@ -79,16 +80,27 @@ export function startUpdatePolling() {
 /**
  * Download + install the pending update, then relaunch the app.
  * Resolves when the relaunch is scheduled (the process exits shortly after).
+ *
+ * Two hard-won rules live here:
+ * 1. Exactly ONE installer run: download() then install(). The old code called
+ *    downloadAndInstall() (which already installs) followed by install(),
+ *    launching the NSIS installer twice over the same files — the second run
+ *    fails with "Error opening file for writing".
+ * 2. The engine is DOWN before NSIS writes: it runs on the bundled node.exe,
+ *    and any live engine keeps that file locked with the same error. The
+ *    health store's self-heal is suppressed meanwhile so it can't respawn it.
  */
 export async function installUpdate() {
   if (!updateObj || !isTauri()) return;
   try {
+    // Dynamic: the process plugin invokes Tauri commands at module init and
+    // only exists inside the desktop shell (see header note).
     const proc = await import('@tauri-apps/plugin-process');
     updateState.status = 'downloading';
     updateState.progress = 0;
     let total = 0;
     let received = 0;
-    await updateObj.downloadAndInstall((event) => {
+    await updateObj.download((event) => {
       if (event.event === 'Started') {
         total = event.data.contentLength ?? 0;
       } else if (event.event === 'Progress') {
@@ -99,13 +111,49 @@ export async function installUpdate() {
       }
     });
     updateState.status = 'installing';
-    // The NSIS installer runs its silent update; the process plugin restarts
-    // the app afterwards.
+    setSuppressEngineRestart(true);
+    try {
+      await shutdownEngine();
+    } catch {
+      // Engine already dead — nothing locked.
+    }
+    await waitForEngineExit(API_BASE, 15_000);
+    // Single installer run; the process plugin restarts the app afterwards.
     await updateObj.install();
     updateState.status = 'ready';
     await proc.relaunch();
   } catch (e) {
+    // Install failed: hand lifecycle back (restart the engine we stopped) so
+    // the app isn't left permanently offline.
+    setSuppressEngineRestart(false);
+    try {
+      await startEngine();
+    } catch {
+      // Self-heal stays on; the next health failure retries.
+    }
     updateState.status = updateObj ? 'available' : 'idle';
     updateState.error = e instanceof Error ? e.message : String(e);
+  }
+}
+
+/**
+ * Resolve when the engine stops answering /api/health (connection refused =
+ * process gone = node.exe unlocked) or when the timeout elapses — NSIS shows
+ * its own retry dialog past that point rather than failing silently.
+ */
+async function waitForEngineExit(apiBase, timeoutMs) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 1500);
+      await fetch(`${apiBase}/api/health`, { signal: ctrl.signal });
+      clearTimeout(timer);
+    } catch {
+      return;
+    }
+    const { promise, resolve } = Promise.withResolvers();
+    setTimeout(resolve, 250);
+    await promise;
   }
 }

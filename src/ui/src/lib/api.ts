@@ -155,6 +155,7 @@ const R = {
   stopInstance: (n: string) => ['POST', `/api/instances/${enc(n)}/stop`] as const,
   launchLog: (k: string, c: number) => ['GET', `/api/launch/${enc(k)}/log?cursor=${c}`] as const,
   launchStats: (l: number) => ['GET', `/api/stats/launches?limit=${l}`] as const,
+  shutdown: ['POST', '/api/shutdown'] as const,
   launches: ['GET', '/api/launches'] as const,
 } as const;
 
@@ -235,6 +236,7 @@ export const launchInstance = (
   request<LaunchReply | DryRunResult>(R.launch(name)[1], 'POST', options, TIMEOUT_MS.launch);
 export const stopInstance = (name: string): Promise<{ ok: true; instance: string }> =>
   post(R.stopInstance(name)[1]);
+export const shutdownEngine = (): Promise<{ ok: true }> => post(R.shutdown[1]);
 export const getLaunchLog = (key: string, cursor = 0): Promise<LogChunk> => get(R.launchLog(key, cursor)[1]);
 export const getLaunchStats = (limit = 1): Promise<{ launches: LaunchStat[] }> => get(R.launchStats(limit)[1]);
 export const getLaunches = async (): Promise<LiveLaunch[]> => (await get<{ launches: LiveLaunch[] }>(R.launches[1])).launches;
