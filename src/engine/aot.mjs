@@ -285,18 +285,31 @@ export async function evictOldAotCaches(currentKey) {
   }
 }
 
-/** Send WM_CLOSE to the process's main window (graceful close path). */
+/** Ask the OS to close the game's windows gracefully (WM_CLOSE / SIGTERM).
+ * The caller still waits out the full cache dump via waitForExit; this only
+ * issues the request. NEVER force-kills: the AOT cache is written on normal
+ * JVM exit only.
+ *
+ * win32 uses `taskkill /PID` WITHOUT /F, which sends WM_CLOSE to EVERY
+ * top-level window of the process. The previous implementation,
+ * `(Get-Process -Id $pid).CloseMainWindow()`, targets only the detected "main
+ * window" — verified live 2026-09-03: the training JVM reports
+ * MainWindowHandle 0 (its console is hidden; the GLFW game window is not the
+ * process main window), so the close was a guaranteed no-op, the 10-minute
+ * exit wait expired doing nothing, and the trainer stayed open forever as a
+ * duplicate game window next to the one being played.
+ */
 function closeWindowGracefully(pid) {
   return new Promise((resolve) => {
     try {
-      const ps = spawn(
-        'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-Command',
-          `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).CloseMainWindow() | Out-Null`],
-        { windowsHide: true, stdio: 'ignore' }
-      );
-      ps.on('error', () => resolve(false));
-      ps.on('exit', () => resolve(true));
+      if (process.platform === 'win32') {
+        const tk = spawn('taskkill', ['/PID', String(pid)], { windowsHide: true, stdio: 'ignore' });
+        tk.on('error', () => resolve(false));
+        tk.on('exit', (code) => resolve(code === 0));
+      } else {
+        process.kill(pid, 'SIGTERM');
+        resolve(true);
+      }
     } catch {
       resolve(false);
     }
@@ -400,7 +413,19 @@ function formatResolveError(err) {
  * Returns { key, ok, cache_size_bytes?, proof?, error? }.
  * Emits train-progress / train-done events (contract).
  */
-export async function trainInstance(instance, { key = null, onProgress, force = false } = {}) {
+export async function trainInstance(instance, { key = null, onProgress, force = false, isBlocked = null } = {}) {
+  // The trainer is a second full game boot sharing the instance's gameDir —
+  // spawning it under a live game opens a duplicate Minecraft window (both on
+  // the same latest.log/natives). When the caller reports the instance busy
+  // (relaunch during the resolve phase), abort BEFORE spawning: the new game's
+  // own exit re-queues, so the cache still converges with one window at a time.
+  // Checked twice: here (skip the minutes-long resolve) and right before
+  // spawn (close the relaunch-during-resolve race).
+  const blockedPayload = () => ({
+    key,
+    ok: false,
+    error: 'superseded: instance relaunched while training resolved; will retry after that game exits',
+  });
   // H3: respect the opt-in flag. Auto-train (creation / first launch) only runs
   // when the instance opts in; the explicit POST /train route passes force:true
   // so a user who clicks "train" always gets it.
@@ -429,7 +454,7 @@ export async function trainInstance(instance, { key = null, onProgress, force = 
     }
     return tagged;
   };
-
+  if (typeof isBlocked === 'function' && isBlocked()) return done(blockedPayload());
   let resolved = null;
   let lastError = null;
   const maxAttempts = 3; // 1 initial attempt + 2 retries
@@ -475,6 +500,9 @@ export async function trainInstance(instance, { key = null, onProgress, force = 
   fs.mkdirSync(path.join(gameDir, 'logs'), { recursive: true });
   const logFile = path.join(gameDir, 'logs', 'latest.log');
 
+  // Second isBlocked check: a relaunch during the minutes-long resolve must
+  // not produce a trainer under the new live game.
+  if (typeof isBlocked === 'function' && isBlocked()) return done(blockedPayload());
   progress('spawn', `train JVM (${resolved.java.build}) -> ${cacheFile}`);
   const argv = buildArgv(instance, resolved); // mode 'train' -> -XX:AOTCacheOutput
 

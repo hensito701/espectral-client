@@ -14,6 +14,7 @@ import {
   isCacheStale,
   cacheDirFor,
   metaPathFor,
+  trainInstance,
 } from '../src/engine/aot.mjs';
 
 function sha256Hex(s) {
@@ -368,4 +369,19 @@ test('isCacheStale: fresh meta stamp is valid, drifted or stampless meta is stal
     fs.rmSync(metaPathFor(key));
     assert.equal(isCacheStale(key, [jar]), true, 'missing meta is stale');
   });
+});
+
+test('trainInstance aborts before resolve when isBlocked (no second game under a live one)', async () => {
+  // The trainer shares the instance gameDir: spawning it while the game runs
+  // opens the duplicate-Minecraft bug. isBlocked lets the launch route veto.
+  const r = await trainInstance({ name: 'busy-inst' }, { isBlocked: () => true });
+  assert.equal(r.ok, false);
+  assert.equal(r.instance, 'busy-inst');
+  assert.match(r.error, /superseded/);
+});
+
+test('trainInstance without isBlocked still honors the opt-in flag', async () => {
+  const r = await trainInstance({ name: 'optout-inst', aot_auto_train: false }, {});
+  assert.equal(r.ok, false);
+  assert.equal(r.skipped, true);
 });

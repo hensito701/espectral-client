@@ -224,7 +224,7 @@ export const getInstanceOptions = (name: string): Promise<OptionsPair[]> => get(
 export const importInstanceOptions = (name: string, source: string): Promise<{ copied: boolean; count: number; options: OptionsPair[] }> =>
   post(R.instanceOptionsImport(name)[1], { source });
 export const getAotStatus = (name: string): Promise<AotStatus> => get(R.aot(name)[1]);
-export const trainAot = (name: string): Promise<{ key: string }> => post(R.train(name)[1]);
+export const trainAot = (name: string): Promise<{ key: string; deferred?: boolean }> => post(R.train(name)[1]);
 export const getInstanceClient = (name: string): Promise<ClientInfo> => get(R.client(name)[1]);
 export const patchInstanceClient = (name: string, clientPatch: ClientPatch): Promise<ClientInfo> =>
   patch(R.clientPatch(name)[1], clientPatch);

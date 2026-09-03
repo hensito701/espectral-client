@@ -2,7 +2,26 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.3.7] - 2026-09-03
+
+### Fixed
+- **Booting an instance opened two Minecraft windows instead of one.** When the
+  game reached the main menu, the engine spawned the AOT trainer immediately —
+  a second full game in the same game directory, alongside the one being
+  played (double RAM, both writing the same log). Auto-training now waits until
+  you close the game, then trains alone, matching what the settings screen
+  already promised ("after closing the game"). A manual "train now" click while
+  the game runs defers the same way instead of opening a second window, and a
+  relaunch during training aborts the trainer spawn (the new session's exit
+  re-queues it).
+- **The trainer window never closed itself and stayed on as a second instance.**
+  The graceful-close step targeted the process "main window", but the training
+  game reports no main window, so the close was a guaranteed no-op and the
+  10-minute exit wait expired doing nothing. It now asks Windows to close every
+  window of the game process (`taskkill` without force, i.e. a polite close
+  request), with SIGTERM on other platforms. Force-kill is still never used —
+  the cache is only written on a normal exit.
+
 
 ### Added
 - **Boot-time JVM flags.** Every launch on Java 21+ now runs with `-XX:-UsePerfData` and

@@ -203,7 +203,14 @@ function bufferView(key, cursor) {
 /** Background auto-train (fire-and-forget; emits its own train-* events). */
 function autoTrain(instance, estimateKey, force = false) {
   aot
-    .queueTrainInstance(instance, { key: estimateKey, force })
+    .queueTrainInstance(instance, {
+      key: estimateKey,
+      force,
+      // The trainer shares the instance's gameDir: never spawn it under a
+      // live game (relaunch during the resolve phase opens a duplicate
+      // Minecraft window). The relaunch's own exit re-queues instead.
+      isBlocked: () => activeInstances.has(instance.name),
+    })
     .catch((e) => {
       try {
         routeEmit('train-done', { instance: instance.name, key: estimateKey, ok: false, error: e.message });
@@ -499,10 +506,14 @@ export async function register(app) {
             // AOT auto-train on first launch — and on a cache the JVM refused
             // (classpath identity drifted): without this a stale cache is never
             // replaced and every boot silently loses the AOT win.
+            // Deferred until this game EXITS: the trainer is a second full game
+            // boot in the SAME gameDir — spawning it here opens a duplicate
+            // Minecraft window alongside the one being played (2× heap, both
+            // writing latest.log/natives). Record the need; onExit retrains.
             const autoTrainOn = instance.aot_auto_train ?? loadConfig().aot_auto_train ?? false;
             const needsCache = !resolved.aotCacheExists || resolved.aotCacheStale === true;
-            if (autoTrainOn && needsCache && resolved.aotAvailable) {
-              autoTrain(instance, resolved.aotKey);
+            if (buf && autoTrainOn && needsCache && resolved.aotAvailable) {
+              buf.needsAutoTrain = true;
             }
           },
           onExit: ({ code, signal, marker, error }) => {
@@ -566,6 +577,13 @@ export async function register(app) {
               boot_ms: bootMs,
               phases,
             });
+            // Deferred auto-train (see onMarker): the gameDir is free now, so
+            // the trainer boots alone — one window at a time. queueTrainInstance
+            // dedupes against an explicit POST /train running concurrently.
+            if (buf?.needsAutoTrain === true) {
+              buf.needsAutoTrain = false;
+              autoTrain(instance, resolved.aotKey);
+            }
           },
         });
         if (spawned?.child && spawned.child.exitCode === null && spawned.child.signalCode === null) {
@@ -636,13 +654,22 @@ export async function register(app) {
     return { ok: true, instance: name };
   });
 
-  // POST /api/instances/:name/train -> { key } (background)
+  // POST /api/instances/:name/train -> { key, deferred? } (background)
   app.post('/api/instances/:name/train', async (req, res, params) => {
     const instance = await instances.getInstance(params.name);
     if (instance.loader === 'neoforge') {
       throw httpError(400, 'AOT_UNAVAILABLE', 'AOT unavailable on NeoForge (requires JDK 25)');
     }
     const key = await aot.instanceKey(instance);
+    if (activeInstances.has(params.name)) {
+      // A trainer is a second full game in the same gameDir — never run it
+      // under the live game (duplicate window). Defer: the launch's onExit
+      // picks this flag up and trains once the gameDir is free.
+      const proc = runningProcesses.get(params.name);
+      const buf = proc ? buffers.get(proc.key) : null;
+      if (buf) buf.needsAutoTrain = true;
+      return { key, deferred: true };
+    }
     // Background — the response carries the key estimate; train-done carries
     // the authoritative key (same in the common case).
     autoTrain(instance, key, true); // explicit user action — always trains
