@@ -61,17 +61,31 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Espectral Client ${{ github.ref_name }}'
           releaseDraft: true
+      # A zipped copy of the installer, attached beside the bare .exe: some
+      # browsers and middleboxes block or mangle unsigned .exe downloads while
+      # a .zip passes through, and the versioned name can never be confused
+      # with a stale setup.exe sitting in Downloads.
+      - name: Zip installer + attach to draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*setup.exe | Select-Object -First 1
+          $zip = "src-tauri/target/release/bundle/nsis/EspectralClient-${{ github.ref_name }}-x64-setup.zip"
+          Compress-Archive -Path $exe.FullName -DestinationPath $zip -Force
+          gh release upload "${{ github.ref_name }}" $zip --clobber
 
-      # SLSA build provenance over the signed installer and its updater
-      # signature, both produced under src-tauri/target/release/bundle/nsis/
-      # because tauri.conf.json sets createUpdaterArtifacts + pubkey and the
-      # build step above feeds TAURI_SIGNING_PRIVATE_KEY.
-      - name: Attest NSIS installer provenance
+
+      # SLSA build provenance over the signed installer, its updater
+      # signature, and the zipped copy — all under
+      # src-tauri/target/release/bundle/nsis/.
+      - name: Attest installer provenance
         uses: actions/attest-build-provenance@v4.2.2
         with:
           subject-path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/nsis/*.exe.sig
+            src-tauri/target/release/bundle/nsis/*.zip
 
       # Document verification on the draft release. Download-host publish
       # stays manual (scripts/publish-release.mjs) — no publish steps here.
