@@ -327,8 +327,124 @@ fn start_engine(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Evergreen WebView2 runtime presence guard (Windows only).
+///
+/// Without the runtime the Tauri window renders as a permanent blank frame
+/// with no error surface (seen in the wild after a failed bootstrapper
+/// install). The installer's `embedBootstrapper` mode covers the normal path;
+/// this is the backstop: read the EdgeUpdate Clients `pv` value before the
+/// builder creates any window, and if absent show a native dialog offering
+/// the evergreen installer instead of the blank window. Never returns when
+/// the runtime is missing (exits the process after the dialog).
+#[cfg(windows)]
+fn webview2_version() -> Option<String> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+    use windows_sys::Win32::System::Registry::{
+        HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, REG_SZ,
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW,
+    };
+    // Client GUID of the evergreen WebView2 runtime (EdgeUpdate Clients key).
+    const CLIENT: &str =
+        "Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
+    fn wide(s: &str) -> Vec<u16> {
+        OsStr::new(s).encode_wide().chain([0]).collect()
+    }
+    let subkey = wide(&format!("SOFTWARE\\{CLIENT}"));
+    let value = wide("pv");
+    // Both hives (per-machine / per-user) × both registry views (64/32-bit):
+    // the runtime may be registered in any of the four slots.
+    for hive in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
+        for view in [0, KEY_WOW64_32KEY] {
+            let mut key: HKEY = 0;
+            let status = unsafe {
+                RegOpenKeyExW(hive, subkey.as_ptr(), 0, KEY_READ | view, &mut key)
+            };
+            if status != ERROR_SUCCESS {
+                continue;
+            }
+            let mut kind: u32 = 0;
+            let mut buf = [0u16; 64];
+            let mut len = (buf.len() * 2) as u32;
+            let status = unsafe {
+                RegQueryValueExW(
+                    key,
+                    value.as_ptr(),
+                    std::ptr::null_mut(),
+                    &mut kind,
+                    buf.as_mut_ptr() as *mut u8,
+                    &mut len,
+                )
+            };
+            unsafe { RegCloseKey(key) };
+            if status == ERROR_SUCCESS && kind == REG_SZ {
+                let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+                let v = String::from_utf16_lossy(&buf[..end]);
+                if !v.trim().is_empty() {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Native Yes/No dialog for a missing WebView2 runtime. Yes opens the
+/// evergreen installer in the default browser; either way the process exits
+/// (there is no window to show without the runtime).
+#[cfg(windows)]
+fn webview2_missing_dialog() -> ! {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        IDYES, MB_ICONWARNING, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO, MessageBoxW,
+        SW_SHOWNORMAL,
+    };
+    fn wide(s: &str) -> Vec<u16> {
+        OsStr::new(s).encode_wide().chain([0]).collect()
+    }
+    let text = wide(
+        "Espectral Client necesita Microsoft Edge WebView2 para mostrar su ventana \
+         y no está instalado en este equipo.\n\n\
+         ¿Descargarlo ahora? Se abrirá el instalador oficial de Microsoft.",
+    );
+    let caption = wide("Espectral Client — falta WebView2");
+    let pressed = unsafe {
+        MessageBoxW(
+            0,
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_YESNO | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND,
+        )
+    };
+    if pressed == IDYES as i32 {
+        let op = wide("open");
+        let url = wide("https://go.microsoft.com/fwlink/p/?LinkId=2124703");
+        unsafe {
+            ShellExecuteW(
+                0,
+                op.as_ptr(),
+                url.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            );
+        }
+    }
+    std::process::exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Backstop for a missing WebView2 runtime: without it the window would be
+    // a permanent blank frame, so refuse to boot into that state — the guard
+    // shows an actionable dialog and exits when the runtime is absent.
+    #[cfg(windows)]
+    if webview2_version().is_none() {
+        webview2_missing_dialog();
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_app, args, _cwd| {
             // A second launch focuses the existing window; forward any .mrpack

@@ -2,6 +2,17 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.10] - 2026-09-03
+
+### Fixed
+- **Blank window on machines without the WebView2 runtime.** Two layers: the
+  NSIS installer now embeds the WebView2 bootstrapper (`embedBootstrapper`)
+  instead of downloading it silently at install time, so a failed download
+  fails visibly instead of shipping a runtimeless app. As a backstop, the
+  shell checks the EdgeUpdate Clients registry key at startup and — if the
+  runtime is absent — shows a native dialog offering the official evergreen
+  installer instead of booting into a permanent blank frame.
+
 ## [1.3.9] - 2026-09-03
 
 ### Fixed
