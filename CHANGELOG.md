@@ -2,6 +2,16 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.9] - 2026-09-03
+
+### Fixed
+- **Fresh 1.3.8 installs opened to a blank dark window.** The rewritten updater
+  module called `isTauri()` without importing it, so the whole UI bundle threw
+  during startup and nothing mounted. The file carries `// @ts-nocheck` (the
+  Svelte 5 `.svelte.ts` parser can't take TS annotations), which is why the
+  type-check stayed green. Fixed with the missing import; the packaged bundle
+  is now boot-verified in a real browser before release.
+
 ## [1.3.8] - 2026-09-03
 
 ### Fixed

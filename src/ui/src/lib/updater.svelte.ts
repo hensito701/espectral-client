@@ -8,7 +8,7 @@
 // breaks the plain-browser dev flow (`npm run ui` in a browser tab), so they
 // are loaded lazily behind isTauri() — a genuine runtime-selected platform
 // module, the sanctioned exception to static-import policy.
-import { setSuppressEngineRestart, startEngine } from './tauri';
+import { isTauri, setSuppressEngineRestart, startEngine } from './tauri';
 import { shutdownEngine, API_BASE } from './api';
 
 /* ==========================================================================
