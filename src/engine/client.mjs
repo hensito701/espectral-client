@@ -13,18 +13,19 @@
  *   - Atomic writes: temp file + rename in the same directory.
  *   - `features[id]` is an OBJECT `{ enabled, ...extra }`, never a bare
  *     boolean. PATCH shallow-merges per feature id.
- *   - Managed features (fullbright/nofog) are third-party jars toggled by
- *     rename (mods.mjs setModEnabled); owned features (zoom, macros) are
- *     persisted only — the mod applies them live.
- *   - Reconcile failures NEVER throw: they surface as entries in the
- *     PATCH response `errors` array. Structural patch problems DO throw
- *     httpError(400, ...).
+ *   - All features are OWNED and native: the in-game mod applies them live
+ *     (fullbright drives gamma, nofog removes fog, zoom eases FOV, macros
+ *     run keybind sequences). No third-party jars, no restart.
+ *   - Legacy Gamma Utils / Clear Fog jars, if still installed, are inert
+ *     leftovers — reconcile is a no-op returning []. PATCH responses still
+ *     carry an additive `errors` array (empty when clean) so the UI can
+ *     surface per-feature warnings without reverting the persisted intent.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import * as resolver from './resolver.mjs';
 import { getInstance } from './instances.mjs';
-import { setModEnabled, PINS_QOL_BY_VERSION } from './mods.mjs';
+import { PINS_QOL_BY_VERSION } from './mods.mjs';
 import { httpError } from './error.mjs';
 
 /**
@@ -33,17 +34,20 @@ import { httpError } from './error.mjs';
  * the UI renders names/descriptions without hardcoding them.
  */
 export const REGISTRY = [
-  { id: 'fullbright', name: 'Fullbright', description: 'Gamma Utils mod — maximum brightness everywhere.', kind: 'managed', defaultEnabled: true },
-  { id: 'nofog', name: 'No Fog', description: 'Clear Fog mod — removes distance fog.', kind: 'managed', defaultEnabled: false },
-  { id: 'zoom', name: 'Zoom', description: 'Built-in hold-to-zoom on C — smooth FOV ease, applied live.', kind: 'owned', defaultEnabled: true, keybind: 'key.keyboard.c' },
+  { id: 'fullbright', name: 'Fullbright', description: 'Built-in fullbright — gamma driven live by the mod. No jars, no restart.', kind: 'owned', defaultEnabled: true },
+  { id: 'nofog', name: 'No Fog', description: 'Built-in no-fog — fog removed live by the mod (Overworld, Nether, End). No jars, no restart.', kind: 'owned', defaultEnabled: false },
+  { id: 'zoom', name: 'Zoom', description: 'Built-in hold-to-zoom on Z — smooth FOV ease, applied live.', kind: 'owned', defaultEnabled: true, keybind: 'key.keyboard.z' },
   { id: 'macros', name: 'Macros', description: 'Keybind macros — run chat/command sequences.', kind: 'owned', defaultEnabled: true },
+  { id: 'potionstatus', name: 'Potion Status', description: 'On-screen list of active potion effects with durations.', kind: 'owned', defaultEnabled: false },
+  { id: 'coords', name: 'Coords Display', description: 'On-screen XYZ coordinates and facing direction.', kind: 'owned', defaultEnabled: false },
+  { id: 'healthstatus', name: 'Health Display', description: 'Numeric health and absorption readout on screen.', kind: 'owned', defaultEnabled: false },
+  { id: 'armorstatus', name: 'Armor Status', description: 'On-screen armor durability for each equipped piece.', kind: 'owned', defaultEnabled: false },
+  { id: 'fpsping', name: 'FPS / Ping', description: 'On-screen frames-per-second and server latency.', kind: 'owned', defaultEnabled: false },
+  { id: 'lowfire', name: 'Low Fire', description: 'Lowers the burning fire overlay so it blocks less of the view.', kind: 'owned', defaultEnabled: false },
+  { id: 'clearwater', name: 'Clear Water', description: 'Removes the underwater overlay and water fog for clear vision.', kind: 'owned', defaultEnabled: false },
+  { id: 'chatheads', name: 'Chat Heads', description: 'Shows each player head next to their name in chat.', kind: 'owned', defaultEnabled: false },
+  { id: 'skin3d', name: '3D Skin Layers', description: 'Renders skin outer layers (hat, jacket, sleeves) as real 3D voxels.', kind: 'owned', defaultEnabled: false },
 ];
-
-/** Managed feature id -> pinned QoL jar base name (mods.mjs slugs). */
-const MANAGED_SLUGS = {
-  fullbright: 'gamma-utils',
-  nofog: 'clear-fog',
-};
 
 /** Default feature state objects — merged under whatever the file holds. */
 export const FEATURE_DEFAULTS = {
@@ -51,6 +55,15 @@ export const FEATURE_DEFAULTS = {
   nofog: { enabled: false, radius: null },
   zoom: { enabled: true, fov: 30.0, smooth: true },
   macros: { enabled: true },
+  potionstatus: { enabled: false },
+  coords: { enabled: false },
+  healthstatus: { enabled: false },
+  armorstatus: { enabled: false },
+  fpsping: { enabled: false },
+  lowfire: { enabled: false },
+  clearwater: { enabled: false },
+  chatheads: { enabled: false },
+  skin3d: { enabled: false },
 };
 
 // --- macro validation limits (Contract A) ---------------------------------
@@ -136,8 +149,8 @@ function writeConfigAtomic(instanceName, obj) {
 }
 
 /**
- * `supported` = fabric loader AND version in the pinned QoL set — the only
- * combinations where the managed jars exist to reconcile.
+ * `supported` = fabric loader AND version in the pinned QoL set — the
+ * versions where the native client suite runs.
  */
 export function isSupported(instance) {
   return instance.loader === 'fabric'
@@ -257,27 +270,14 @@ function validatePatch(patch) {
 }
 
 /**
- * Reconcile managed-feature jars against the config: enabled -> `.jar`,
- * disabled -> `.jar.disabled` (mods.mjs setModEnabled rename). Runs only
- * on supported instances; unsupported ones skip silently. Failures are
- * collected into `errors` — NEVER thrown — so one missing jar can't sink
- * the whole PATCH. The config flag persists either way: it records user
- * intent and applies once the jar is (re)installed.
+ * Legacy no-op: fullbright/nofog used to be third-party jars toggled by
+ * rename (mods.mjs setModEnabled). Both are native owned features now, so
+ * there is nothing to reconcile — leftover gamma-utils/clear-fog jars are
+ * simply inert. Always returns [] (kept so PATCH keeps its additive
+ * `errors` shape for future per-feature warnings).
  */
-async function reconcileManagedJars(instanceName, instance, features) {
-  const errors = [];
-  if (!isSupported(instance)) return errors;
-  for (const entry of REGISTRY) {
-    if (entry.kind !== 'managed') continue;
-    const slug = MANAGED_SLUGS[entry.id];
-    const enabled = features[entry.id]?.enabled ?? entry.defaultEnabled;
-    try {
-      await setModEnabled(instanceName, slug, enabled);
-    } catch (e) {
-      errors.push({ feature: entry.id, message: e.message ?? String(e) });
-    }
-  }
-  return errors;
+async function reconcileManagedJars() {
+  return [];
 }
 
 /**
@@ -286,8 +286,9 @@ async function reconcileManagedJars(instanceName, instance, features) {
  * Body: `{ features?, macros? }` — both optional. `features` shallow-
  * merges per feature id into the RAW file (unknown ids and extra keys
  * preserved); `macros` replaces the array wholesale after validation.
- * Unknown top-level fields in the file survive. After the write, managed
- * jars are reconciled (supported instances only).
+ * Unknown top-level fields in the file survive. Reconcile is a legacy
+ * no-op (always []); the config flags record user intent and the native
+ * mod applies them live.
  *
  * Response: the same ClientInfo as GET plus an always-present additive
  * `errors: Array<{ feature, message }>` (empty when clean).
@@ -313,7 +314,7 @@ export async function patchClientConfig(instanceName, patch) {
   writeConfigAtomic(instanceName, raw);
 
   const config = loadClientConfig(instanceName);
-  const errors = await reconcileManagedJars(instanceName, instance, config.features);
+  const errors = await reconcileManagedJars();
   return {
     config,
     registry: REGISTRY,

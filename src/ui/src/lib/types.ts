@@ -68,6 +68,8 @@ export interface Account {
   token_kind: AccountTokenKind;
   created_at: string;
   last_used: string;
+  avatar_color: number | null;
+  has_avatar: boolean;
 }
 
 export interface MsDeviceFlow {
@@ -103,6 +105,9 @@ export interface InstanceSummary {
   aot_cache_exists: boolean;
   imported_from: string | null;
   created_at: string;
+  hue: number | null;
+  game_dir: string | null;
+  has_icon: boolean;
 }
 
 export interface ModEntry {
@@ -268,10 +273,16 @@ export interface ClientRegistryEntry {
   keybind?: string;
 }
 
+export interface ClientReconcileError {
+  feature: string;
+  message: string;
+}
+
 export interface ClientInfo {
   config: ClientConfig;
   registry: ClientRegistryEntry[];
   supported: boolean;
+  errors?: ClientReconcileError[];
 }
 
 /** PATCH /api/instances/:name/client — every field optional, merge semantics. */
@@ -313,6 +324,8 @@ export interface CreateInstanceRequest {
   import_from?: string;
   /** Field name matches the REST contract verbatim (merge optionsLC.json into options.txt). */
   merge_optionslc?: boolean;
+  hue?: number | null;
+  game_dir?: string | null;
 }
 
 export interface InstancePatch {
@@ -320,6 +333,8 @@ export interface InstancePatch {
   enabled_mods?: string[];
   jdk_path_override?: string;
   aot_auto_train?: boolean;
+  hue?: number | null;
+  game_dir?: string | null;
 }
 
 export interface LogChunk {

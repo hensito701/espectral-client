@@ -55,6 +55,35 @@ public final class EspectralClientScreen extends Screen {
             this.addRenderableWidget(toggleBtn);
             y += 28;
         }
+        // Compact read-only macro list so dead keybinds are diagnosable in-game.
+        y += 4;
+        this.addRenderableWidget(new StringWidget(centerX - 180, y, 360, 14,
+                Component.literal("§6Macros §7(solo lectura)"), this.font));
+        y += 14;
+        java.util.List<ClientConfig.MacroConfig> macros = ClientConfig.getInstance().getMacros();
+        if (macros.isEmpty()) {
+            this.addRenderableWidget(new StringWidget(centerX - 180, y, 360, 12,
+                    Component.literal("§8Sin macros configurados"), this.font));
+            y += 12;
+        } else {
+            int shown = 0;
+            for (ClientConfig.MacroConfig macro : macros) {
+                if (shown >= 8) break;
+                boolean valid = MacroEngine.getGlfwKeyCode(macro.keybind) > 0;
+                String line = valid
+                        ? "§7• " + macro.name + " §8[" + macro.keybind + "]"
+                        : "§c• " + macro.name + " §c[TECLA INVALIDA: " + macro.keybind + "]";
+                this.addRenderableWidget(new StringWidget(centerX - 180, y, 360, 12,
+                        Component.literal(line), this.font));
+                y += 12;
+                shown++;
+            }
+            if (macros.size() > shown) {
+                this.addRenderableWidget(new StringWidget(centerX - 180, y, 360, 12,
+                        Component.literal("§8… +" + (macros.size() - shown) + " más"), this.font));
+                y += 12;
+            }
+        }
 
         // Bottom action buttons: Done / Reload
         int bottomY = Math.min(this.height - 35, y + 16);

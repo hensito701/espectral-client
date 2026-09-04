@@ -61,6 +61,31 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Espectral Client ${{ github.ref_name }}'
           releaseDraft: true
+      # SignPath Foundation (free OSS signing) — enable after approval.
+      # Fill vars/secrets from the SignPath portal, then uncomment the three
+      # steps below. Unsigned build stays above; everything below consumes the
+      # SIGNED artifact. See https://docs.signpath.io/trusted-build-systems/github
+      # - name: Upload unsigned installer
+      #   id: upload-unsigned
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: unsigned-installer
+      #     path: src-tauri/target/release/bundle/nsis/*setup.exe
+      # - name: Submit signing request
+      #   uses: signpath/github-action-submit-signing-request@v2
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      #     organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+      #     project-slug: 'espectral-client'
+      #     signing-policy-slug: 'release-signing'
+      #     github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+      #     wait-for-completion: true
+      #     output-artifact-directory: 'signed-installer'
+      # - name: Replace with signed installer
+      #   shell: pwsh
+      #   run: |
+      #     $signed = Get-ChildItem signed-installer -Recurse -Filter *setup.exe | Select-Object -First 1
+      #     Copy-Item $signed.FullName (Get-ChildItem src-tauri/target/release/bundle/nsis/*setup.exe | Select-Object -First 1).FullName -Force
       # A zipped copy of the installer, attached beside the bare .exe: some
       # browsers and middleboxes block or mangle unsigned .exe downloads while
       # a .zip passes through, and the versioned name can never be confused

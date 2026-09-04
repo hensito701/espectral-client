@@ -11,10 +11,58 @@
  * alongside the AppConfig document.
  */
 import crypto from 'node:crypto';
-import { loadConfig, saveConfig } from './config.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { dataDir, loadConfig, saveConfig } from './config.mjs';
 import { httpError } from './error.mjs';
 
 const USERNAME_RE = /^[A-Za-z0-9_]{1,16}$/;
+
+/** Avatar color is an integer on the 0-359 wheel, or null when unset. */
+export function isValidAvatarColor(c) {
+  return Number.isInteger(c) && c >= 0 && c <= 359;
+}
+
+/** Circular distance between two hues on the 0-359 wheel. */
+function hueDistance(a, b) {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
+
+/**
+ * Random avatar color >= 30 degrees (circular) from every color in use.
+ * 50 tries, then accept anything.
+ */
+function pickAvatarColor(accounts) {
+  const taken = (Array.isArray(accounts) ? accounts : [])
+    .map((a) => a?.avatar_color)
+    .filter(isValidAvatarColor);
+  for (let i = 0; i < 50; i += 1) {
+    const h = Math.floor(Math.random() * 360);
+    if (taken.every((t) => hueDistance(h, t) >= 30)) return h;
+  }
+  return Math.floor(Math.random() * 360);
+}
+
+/** Avatar images live at <dataDir>/avatars/<uuid>.png. */
+export function avatarsDir() {
+  return path.join(dataDir(), 'avatars');
+}
+
+export function avatarPathForUuid(uuid) {
+  return path.join(avatarsDir(), `${uuid}.png`);
+}
+
+/** True when the account has an avatar image on disk. Never throws. */
+export function hasAvatar(a) {
+  try {
+    const uuid = typeof a === 'string' ? a : a?.uuid;
+    if (typeof uuid !== 'string' || uuid.length === 0) return false;
+    return fs.existsSync(avatarPathForUuid(uuid));
+  } catch {
+    return false;
+  }
+}
 
 export function isValidUsername(username) {
   return typeof username === 'string' && USERNAME_RE.test(username);
@@ -39,11 +87,14 @@ export function listAccounts() {
  * token_kind, last_used, created_at) plus the lunar badge for the UI.
  */
 export function publicAccount(a) {
-  if (a.token_kind !== 'msa' || !a.microsoft || typeof a.microsoft !== 'object') {
-    const { microsoft, ...rest } = a;
-    return rest;
-  }
-  return { ...a, microsoft: { lunar: a.microsoft.lunar === true } };
+  const base =
+    a.token_kind !== 'msa' || !a.microsoft || typeof a.microsoft !== 'object'
+      ? (() => {
+          const { microsoft, ...rest } = a;
+          return rest;
+        })()
+      : { ...a, microsoft: { lunar: a.microsoft.lunar === true } };
+  return { ...base, avatar_color: a.avatar_color ?? null, has_avatar: hasAvatar(a) };
 }
 
 export function getAccount(username) {
@@ -68,11 +119,11 @@ export function createAccount(username) {
     username,
     uuid: offlineUuid(username),
     token_kind: 'offline',
+    avatar_color: pickAvatarColor(cfg.accounts),
     created_at: now,
     last_used: now,
   };
   cfg.accounts.push(account);
-  cfg.active_username = username;
   saveConfig({ accounts: cfg.accounts, active_username: username });
   return account;
 }
@@ -90,6 +141,9 @@ export function upsertMsaAccount(ms) {
     username: ms.username,
     uuid: ms.uuid,
     token_kind: 'msa',
+    avatar_color: isValidAvatarColor(existing?.avatar_color)
+      ? existing.avatar_color
+      : pickAvatarColor(cfg.accounts),
     microsoft: {
       refresh_token: ms.refreshToken,
       // access token cached in memory only — NOT persisted (see msauth.mjs)
@@ -128,6 +182,9 @@ export function upsertLunarAccount(lr) {
     username: lr.username,
     uuid: lr.uuid,
     token_kind: 'msa',
+    avatar_color: isValidAvatarColor(existing?.avatar_color)
+      ? existing.avatar_color
+      : pickAvatarColor(cfg.accounts),
     microsoft: {
       refresh_token: lr.refreshToken,
       lunar: true,
@@ -158,9 +215,10 @@ export function deleteMsaAccount(username) {
   if (idx === -1) {
     throw httpError(404, 'NOT_FOUND', `Microsoft account '${username}' does not exist`);
   }
-  cfg.accounts.splice(idx, 1);
+  const [removed] = cfg.accounts.splice(idx, 1);
   if (cfg.active_username === username) cfg.active_username = null;
   saveConfig({ accounts: cfg.accounts, active_username: cfg.active_username });
+  if (removed?.uuid) removeAvatarFile(removed.uuid);
   return { deleted: username };
 }
 
@@ -182,8 +240,76 @@ export function deleteAccount(username) {
   if (idx === -1) {
     throw httpError(404, 'NOT_FOUND', `account '${username}' does not exist`);
   }
-  cfg.accounts.splice(idx, 1);
+
+  const [removed] = cfg.accounts.splice(idx, 1);
   if (cfg.active_username === username) cfg.active_username = null;
   saveConfig({ accounts: cfg.accounts, active_username: cfg.active_username });
+  if (removed?.uuid) removeAvatarFile(removed.uuid);
   return { deleted: username };
+}
+
+// ---------------------------------------------------------------------------
+// Avatar color + image (<dataDir>/avatars/<uuid>.png)
+// ---------------------------------------------------------------------------
+
+/** Set an account's avatar color (int 0-359 | null to clear). 404 when missing. */
+export function setAvatarColor(username, color) {
+  if (color !== null && !isValidAvatarColor(color)) {
+    throw httpError(400, 'BAD_AVATAR_COLOR', 'avatar_color must be an integer between 0 and 359 or null');
+  }
+  const cfg = loadConfig();
+  const account = cfg.accounts.find((a) => a.username === username);
+  if (!account) {
+    throw httpError(404, 'NOT_FOUND', `account '${username}' does not exist`);
+  }
+  account.avatar_color = color;
+  saveConfig({ accounts: cfg.accounts });
+  return publicAccount(account);
+}
+
+/** Avatar image path for an account (by username). 404 when missing. */
+export function avatarPathFor(username) {
+  const account = getAccount(username);
+  if (!account) {
+    throw httpError(404, 'NOT_FOUND', `account '${username}' does not exist`);
+  }
+  return avatarPathForUuid(account.uuid);
+}
+
+/** Read an account avatar (PNG bytes). 404 when the account or image is missing. */
+export async function readAccountAvatar(username) {
+  const p = avatarPathFor(username); // 404 when missing
+  try {
+    return await fs.promises.readFile(p);
+  } catch {
+    throw httpError(404, 'NOT_FOUND', `account '${username}' has no avatar`);
+  }
+}
+
+/** Store an account avatar (validated PNG bytes; mkdir -p the avatars dir). */
+export async function writeAccountAvatar(username, buffer) {
+  const p = avatarPathFor(username); // 404 when missing
+  await fs.promises.mkdir(avatarsDir(), { recursive: true });
+  await fs.promises.writeFile(p, buffer);
+  return { ok: true, has_avatar: true };
+}
+
+/** Remove an account avatar (missing file is a no-op). */
+export async function removeAccountAvatar(username) {
+  const p = avatarPathFor(username); // 404 when missing
+  try {
+    await fs.promises.unlink(p);
+  } catch {
+    /* already absent */
+  }
+  return { ok: true, has_avatar: false };
+}
+
+/** Best-effort avatar file cleanup when an account goes away. */
+function removeAvatarFile(uuid) {
+  try {
+    fs.rmSync(avatarPathForUuid(uuid), { force: true });
+  } catch {
+    /* ignore */
+  }
 }

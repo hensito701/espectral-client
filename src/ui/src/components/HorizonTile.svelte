@@ -18,6 +18,7 @@
 -->
 <script lang="ts">
   import type { InstanceSummary } from '../lib/types';
+  import { iconUrl } from '../lib/api';
   import LoaderBadge from './LoaderBadge.svelte';
   import Badge from './Badge.svelte';
   import { memLabel } from '../lib/format';
@@ -51,6 +52,16 @@
   let mouseX = $state(0);
   let mouseY = $state(0);
   let isHovered = $state(false);
+  let iconFailed = $state(false);
+
+  // Reset the icon fallback when switching instances
+  $effect(() => {
+    void instance.name;
+    iconFailed = false;
+  });
+
+  const showIcon = $derived(Boolean(instance.has_icon) && !iconFailed);
+  const iconSrc = $derived(showIcon ? iconUrl(instance.name) : null);
 
   const normalizedLoader = $derived(
     ((instance.loader || 'vanilla') as string).toLowerCase().trim(),
@@ -95,6 +106,24 @@
     }
   });
 
+  // Custom hue (set in the hub config tab) overrides the loader palette.
+  const customHue = $derived(
+    typeof instance.hue === 'number' && Number.isFinite(instance.hue)
+      ? ((Math.round(instance.hue) % 360) + 360) % 360
+      : null,
+  );
+
+  const bannerGradient = $derived(
+    customHue !== null
+      ? `linear-gradient(135deg, hsl(${customHue}, 45%, 8%) 0%, hsl(${customHue}, 60%, 20%) 45%, hsl(${customHue}, 70%, 30%) 80%, hsl(${(customHue + 30) % 360}, 80%, 45%) 100%)`
+      : loaderMeta.gradient,
+  );
+  const bannerMesh = $derived(
+    customHue !== null
+      ? `radial-gradient(circle at 80% 20%, hsla(${customHue}, 80%, 55%, 0.6), transparent 70%)`
+      : loaderMeta.mesh,
+  );
+  const tileHue = $derived(customHue ?? loaderMeta.hue);
   const memoryDisplay = $derived(memLabel(instance.memory_mb || 3072));
   const monogramLetter = $derived(
     (instance.name || 'M').trim().charAt(0).toUpperCase(),
@@ -161,7 +190,7 @@
   class:horizon-tile--selected={selected}
   class:horizon-tile--focused={focused}
   class:horizon-tile--running={running}
-  style="--tile-hue: {loaderMeta.hue}; --tile-accent: {loaderMeta.accent}; --tile-accent-rgb: {loaderMeta.accentRgb};"
+  style="--tile-hue: {tileHue}; --tile-accent: {loaderMeta.accent}; --tile-accent-rgb: {loaderMeta.accentRgb};"
   tabindex="0"
   role="button"
   aria-pressed={selected}
@@ -178,9 +207,20 @@
   <div class="horizon-tile__inner" style="transform: {parallaxTransform};">
     <!-- Background Art Canvas -->
     <div class="horizon-tile__banner">
-      <div class="horizon-tile__gradient" style="background: {loaderMeta.gradient};"></div>
-      <div class="horizon-tile__mesh" style="background: {loaderMeta.mesh};"></div>
-      
+      <div class="horizon-tile__gradient" style="background: {bannerGradient};"></div>
+      <div class="horizon-tile__mesh" style="background: {bannerMesh};"></div>
+
+      {#if iconSrc}
+        <img
+          class="horizon-tile__icon"
+          src={iconSrc}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          onerror={() => { iconFailed = true; }}
+        />
+      {/if}
+
       <!-- Subtle Decorative Grid Lines -->
       <div class="horizon-tile__grid" style="transform: {bgParallax};"></div>
 
@@ -327,6 +367,14 @@
   .horizon-tile__mesh {
     position: absolute;
     inset: 0;
+    opacity: 0.9;
+  }
+  .horizon-tile__icon {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     opacity: 0.9;
   }
 

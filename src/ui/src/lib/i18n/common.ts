@@ -91,10 +91,6 @@ export const es: Dict = {
   'telemetry.aotTraining': 'Entrenando AOT…',
   'telemetry.dryRun': 'Simular arranque',
 
-  // --- Density Toggle ---
-  'density.compact': 'Modo compacto',
-  'density.spacious': 'Modo espacioso',
-  'density.toggle': 'Alternar densidad de vista',
 
   // --- Global Hotkeys ---
   'hotkey.command': 'Comandos',
@@ -102,7 +98,6 @@ export const es: Dict = {
   'hotkey.logs': 'Logs',
   'hotkey.back': 'Volver',
   'hotkey.play': 'Jugar',
-  'hotkey.density': 'Densidad',
   'hotkey.close': 'Cerrar',
 
   // --- Migrated from Legacy ---
@@ -125,8 +120,8 @@ export const es: Dict = {
   'time.unit.year.one': 'año',
   'time.unit.year.other': 'años',
   'toast.mrpackAlready': 'El modpack "{name}" ya existe',
-  'toast.mrpackError': 'No se pudo instalar el modpack: {error}',
-  'toast.mrpackInstalled': 'Modpack "{name}" instalado',
+  'toast.mrpackError': 'No se pudo importar el modpack: {error}',
+  'toast.mrpackInstalled': 'Modpack "{name}" importado',
 };
 
 export const en: Dict = {
@@ -215,10 +210,6 @@ export const en: Dict = {
   'telemetry.aotTraining': 'Training AOT…',
   'telemetry.dryRun': 'Simulate launch',
 
-  // --- Density Toggle ---
-  'density.compact': 'Compact mode',
-  'density.spacious': 'Spacious mode',
-  'density.toggle': 'Toggle view density',
 
   // --- Global Hotkeys ---
   'hotkey.command': 'Commands',
@@ -226,7 +217,6 @@ export const en: Dict = {
   'hotkey.logs': 'Logs',
   'hotkey.back': 'Back',
   'hotkey.play': 'Play',
-  'hotkey.density': 'Density',
   'hotkey.close': 'Close',
 
   // --- Migrated from Legacy ---
@@ -249,6 +239,6 @@ export const en: Dict = {
   'time.unit.year.one': 'year',
   'time.unit.year.other': 'years',
   'toast.mrpackAlready': 'Modpack "{name}" already exists',
-  'toast.mrpackError': 'Could not install the modpack: {error}',
-  'toast.mrpackInstalled': 'Modpack "{name}" installed',
+  'toast.mrpackError': 'Could not import the modpack: {error}',
+  'toast.mrpackInstalled': 'Modpack "{name}" imported',
 };

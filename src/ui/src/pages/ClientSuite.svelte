@@ -131,12 +131,22 @@
     return st ? st.enabled : defaultEnabled;
   }
 
-  // Contract B: Merge patch responses gracefully
+  // Contract B: Merge patch responses gracefully (never revert the switch:
+  // the server persisted intent — errors are warnings, toasted by callers).
   function absorbPatch(resp: ClientInfo): void {
     if (Array.isArray(resp.registry)) {
       info = resp;
     } else if (info && resp.config) {
-      info = { ...info, config: resp.config };
+      info = { ...info, config: resp.config, errors: resp.errors };
+    }
+  }
+
+  function warnOrOk(resp: ClientInfo, okText: string): void {
+    const ids = (resp.errors ?? []).map((e) => e.feature);
+    if (ids.length > 0) {
+      pushToast({ kind: 'info', text: t('client.savedWithWarnings', { features: ids.join(', ') }) });
+    } else {
+      pushToast({ kind: 'ok', text: okText });
     }
   }
 
@@ -150,10 +160,10 @@
         features: { [feat.id]: { enabled: next } },
       });
       absorbPatch(result);
-      pushToast({
-        kind: 'ok',
-        text: `${feat.name} ${next ? t('mods.enabled') || 'activado' : t('mods.disabled') || 'desactivado'}`,
-      });
+      warnOrOk(
+        result,
+        `${feat.name} ${next ? t('mods.enabled') || 'activado' : t('mods.disabled') || 'desactivado'}`
+      );
     } catch (e) {
       patchError = e instanceof Error ? e.message : String(e);
       pushToast({
@@ -219,6 +229,78 @@
     savedMsg = '';
   }
 
+  // Keybind capture: translate window.event.code into a MacroEngine-valid string.
+  // Verified against MacroEngine.getGlfwKeyCode/getGlfwKeyFromName — every
+  // string produced here resolves to a real GLFW key code.
+  let capturingKeybind = $state(false);
+
+  function codeToKeybind(code: string): string | null {
+    if (code.startsWith('Key') && code.length === 4) return code.slice(3).toLowerCase();
+    if (code.startsWith('Digit') && code.length === 6) {
+      const d = code.slice(5);
+      if (d >= '0' && d <= '9') return d;
+      return null;
+    }
+    if (code.startsWith('Numpad') && code.length === 7) {
+      const d = code.slice(6);
+      if (d >= '0' && d <= '9') return `numpad.${d}`;
+    }
+    if (code.startsWith('F')) {
+      const n = Number(code.slice(1));
+      if (Number.isInteger(n) && n >= 1 && n <= 15) return `f${n}`;
+    }
+    switch (code) {
+      case 'NumpadAdd': return 'numpad.add';
+      case 'NumpadSubtract': return 'numpad.subtract';
+      case 'NumpadMultiply': return 'numpad.multiply';
+      case 'NumpadDivide': return 'numpad.divide';
+      case 'NumpadEnter': return 'numpad.enter';
+      case 'NumpadDecimal': return 'numpad.decimal';
+      case 'Space': return 'space';
+      case 'Enter': return 'enter';
+      case 'Tab': return 'tab';
+      case 'Backspace': return 'backspace';
+      case 'ShiftLeft': return 'shift';
+      case 'ShiftRight': return 'right.shift';
+      case 'ControlLeft': return 'control';
+      case 'ControlRight': return 'right.control';
+      case 'AltLeft': return 'alt';
+      case 'AltRight': return 'right.alt';
+      case 'Minus': return 'minus';
+      case 'Equal': return 'equals';
+      case 'BracketLeft': return 'lbracket';
+      case 'BracketRight': return 'rbracket';
+      case 'Semicolon': return 'semicolon';
+      case 'Quote': return 'apostrophe';
+      case 'Comma': return 'comma';
+      case 'Period': return 'period';
+      case 'Slash': return 'slash';
+      case 'Backslash': return 'backslash';
+      case 'Backquote': return 'grave';
+      default: return null;
+    }
+  }
+
+  function handleKeybindCapture(e: KeyboardEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const target = e.currentTarget as HTMLInputElement | null;
+    if (e.code === 'Escape') {
+      // Abort capture WITHOUT assigning.
+      capturingKeybind = false;
+      target?.blur();
+      return;
+    }
+    const mapped = codeToKeybind(e.code);
+    if (mapped === null) return; // Unknown key: stay armed.
+    if (activeMacro) {
+      activeMacro.keybind = mapped;
+      markDirty();
+    }
+    capturingKeybind = false;
+    target?.blur();
+  }
+
   const macrosValid = $derived(
     macros.length <= MAX_MACROS &&
       new Set(macros.map((m) => m.id)).size === macros.length &&
@@ -249,7 +331,7 @@
       }
       macrosDirty = false;
       savedMsg = t('client.saved');
-      pushToast({ kind: 'ok', text: t('client.saved') });
+      warnOrOk(result, t('client.saved'));
     } catch (e) {
       macroError = e instanceof Error ? e.message : String(e);
       pushToast({ kind: 'err', text: macroError });
@@ -521,10 +603,15 @@
                       <input
                         type="text"
                         class="macro-input font-mono"
-                        placeholder={t('client.keybindPlaceholder')}
-                        bind:value={activeMacro.keybind}
+                        class:capturing={capturingKeybind}
+                        placeholder={capturingKeybind ? t('client.keybindCapture') : t('client.keybindPlaceholder')}
+                        value={activeMacro.keybind}
+                        readonly
                         maxlength={MAX_KEYBIND}
-                        oninput={markDirty}
+                        onfocus={() => (capturingKeybind = true)}
+                        onblur={() => (capturingKeybind = false)}
+                        onclick={() => (capturingKeybind = true)}
+                        onkeydown={handleKeybindCapture}
                       />
                     </Field>
                   </div>
@@ -562,32 +649,34 @@
                   <div class="actions-list">
                     {#each activeMacro.actions as action, ai}
                       <div class="action-row glass-panel">
-                        <span class="action-index font-pixel text-xs">{ai + 1}</span>
-                        <select
-                          class="action-type-select"
-                          bind:value={action.type}
-                          onchange={markDirty}
-                        >
-                          <option value="chat">{t('client.actionChat')}</option>
-                          <option value="command">{t('client.actionCommand')}</option>
-                        </select>
+                        <div class="action-row__top">
+                          <span class="action-index font-pixel text-xs">{ai + 1}</span>
+                          <select
+                            class="action-type-select"
+                            bind:value={action.type}
+                            onchange={markDirty}
+                          >
+                            <option value="chat">{t('client.actionChat')}</option>
+                            <option value="command">{t('client.actionCommand')}</option>
+                          </select>
+                          <button
+                            type="button"
+                            class="action-remove-btn"
+                            onclick={() => removeAction(activeMacro, ai)}
+                            disabled={activeMacro.actions.length <= 1}
+                            title={t('client.remove')}
+                          >
+                            ×
+                          </button>
+                        </div>
                         <input
                           type="text"
-                          class="action-text-input"
-                          placeholder={t('client.actionPlaceholder')}
+                          class="action-text-input action-text-input--full"
+                          placeholder={action.type === 'command' ? t('client.actionCommandPlaceholder') : t('client.actionChatPlaceholder')}
                           bind:value={action.text}
                           maxlength={MAX_ACTION_TEXT}
                           oninput={markDirty}
                         />
-                        <button
-                          type="button"
-                          class="action-remove-btn"
-                          onclick={() => removeAction(activeMacro, ai)}
-                          disabled={activeMacro.actions.length <= 1}
-                          title={t('client.remove')}
-                        >
-                          ×
-                        </button>
                       </div>
                     {/each}
                   </div>
@@ -632,9 +721,9 @@
     flex-direction: column;
     gap: var(--space-4, 1rem);
     width: 100%;
-    max-width: 1360px;
+    max-width: var(--content-max, 82rem);
     margin: 0 auto;
-    padding-bottom: var(--space-8, 2rem);
+    padding: var(--space-6, 24px) var(--space-6, 24px) var(--space-12, 48px);
   }
 
   /* Header */
@@ -1022,6 +1111,12 @@
     outline: none;
   }
 
+  .macro-input.capturing {
+    border-color: var(--accent-cyan, #22d3ee);
+    box-shadow: 0 0 0 1px var(--accent-cyan, #22d3ee);
+    cursor: pointer;
+  }
+
   /* Actions Sequence */
   .actions-sequence-deck {
     display: flex;
@@ -1053,9 +1148,16 @@
 
   .action-row {
     display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .action-row__top {
+    display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.4rem 0.6rem;
   }
 
   .action-index {
@@ -1086,6 +1188,12 @@
   .action-text-input:focus {
     border-color: var(--accent-purple, #a855f7);
     outline: none;
+  }
+
+  .action-text-input--full {
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.6rem 0.75rem;
   }
 
   .action-remove-btn {

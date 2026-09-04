@@ -34,8 +34,9 @@ treat that figure as one data point, not a promise.
 
 `branding-mod/` is a small Fabric mod, built from this repo, that provides a title-screen hook, an
 in-game toggle menu, and a versioned config file shared with the launcher
-(`<instance>/config/espectral-client.json`). It also manages a few third-party quality-of-life jars
-(Ok Zoomer, Gamma Utils, Clear Fog) by enabling or disabling them for the next launch.
+(`<instance>/config/espectral-client.json`). Zoom, fullbright and nofog are built into the mod and
+apply live — no third-party jars, no restart. (Gamma Utils / Clear Fog jars left from older
+versions are inert leftovers; the QoL preset stays installable but is no longer required.)
 
 It is deliberately small and still early — the launcher is the mature half of this project.
 

@@ -51,12 +51,15 @@ export const PINS_BY_VERSION = Object.freeze({
 export const PINS = PINS_BY_VERSION['1.21.11'];
 
 /**
- * QoL bundle pins (fullbright / nofog) per pinned version. Researched
+ * QoL bundle pins (gamma-utils / clear-fog) per pinned version. Researched
  * 2026-08-10 against the Modrinth API (project + best version per game
  * version). Kept separate from the performance pins so the two bundles stay
  * independently installable (a 7-pin test depends on the performance set).
- * Zoom is NOT in this bundle anymore: it ships native inside espectral-menu
- * (ZoomEngine, hold C) — installing Ok Zoomer alongside would double-bind C.
+ * LEGACY-OPTIONAL: fullbright and nofog are native owned features now
+ * (gamma driven live / fog removed live by the mod — no jars, no restart),
+ * so these pins are still installable but no longer required; leftover jars
+ * are inert. Zoom ships native inside espectral-menu (ZoomEngine, hold Z) —
+ * installing Ok Zoomer alongside would double-bind Z.
  */
 export const PINS_QOL_BY_VERSION = Object.freeze({
   '1.21.11': Object.freeze([
@@ -269,7 +272,7 @@ const PERFORMANCE_PROJECTS = Object.freeze([
   { slug: 'fabric-api', project_id: 'P7dR8mSH' },
 ]);
 
-/** The two canonical QoL projects (fullbright / nofog — zoom is native). */
+/** Legacy-optional QoL projects (native fullbright/nofog supersede them — zoom is native). Still installable, no longer required. */
 const QOL_PROJECTS = Object.freeze([
   { slug: 'gamma-utils', project_id: 'wdLuzzEP' },
   { slug: 'clear-fog', project_id: '46n24c6r' },
@@ -761,15 +764,16 @@ export async function installedModFilenames(instanceName) {
 // ---------------------------------------------------------------------------
 // Modrinth search: browse mods by query for a target game version
 // ---------------------------------------------------------------------------
-export async function searchModrinth(query, gameVersion, loader = 'fabric', instanceName = null) {
+export async function searchModrinth(query, gameVersion, loader = 'fabric', instanceName = null, opts = {}) {
+  const offset = Math.max(0, Number(opts?.offset) || 0);
+  const facets = [[ 'project_type:mod' ]];
+  if (loader) facets.push([ 'loaders:' + loader ]);
+  if (gameVersion) facets.push([ `versions:${gameVersion}` ]);
   const params = new URLSearchParams({
-    query,
-    facets: JSON.stringify([
-      ['project_type:mod'],
-      ['loaders:' + loader],
-      [`versions:${gameVersion}`],
-    ]),
+    query: query ?? '',
+    facets: JSON.stringify(facets),
     limit: '12',
+    offset: String(offset),
     index: 'downloads',
   });
   let data;
@@ -801,7 +805,12 @@ export async function searchModrinth(query, gameVersion, loader = 'fabric', inst
       );
     }
   }
-  return { results };
+  return {
+    results,
+    total: typeof data?.total_hits === 'number' ? data.total_hits : results.length,
+    offset,
+    limit: 12,
+  };
 }
 
 // ---------------------------------------------------------------------------

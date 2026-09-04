@@ -6,10 +6,8 @@
  *     loader_version: string|null, modpack: string|null,
  *     modpack_version: string|null, memory_mb, mods: [], imported_from,
  *     jdk_path_override, aot_auto_train, created_at, updated_at,
+ *     hue: int 0-359|null, game_dir: absolute-path|null,
  *     merge_optionslc? }
- *   loader_version is REQUIRED when loader === 'neoforge'; the other fields
- *   default to null. Pre-existing instances without them stay valid (undefined
- *   reads back as null).
  *
  * Game dir layout: mods/ natives/ logs/ saves/ config/ cache/ options.txt,
  * servers.dat.
@@ -57,6 +55,67 @@ export function instanceJsonPath(name) {
 
 export function isValidName(name) {
   return typeof name === 'string' && NAME_RE.test(name);
+}
+
+// ---------------------------------------------------------------------------
+// Personalization: hue + custom game_dir + icon
+// ---------------------------------------------------------------------------
+
+/** Hue is an integer on the 0-359 wheel, or null when unset. */
+export function isValidHue(h) {
+  return Number.isInteger(h) && h >= 0 && h <= 359;
+}
+
+/** Circular distance between two hues on the 0-359 wheel. */
+export function hueDistance(a, b) {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
+
+/**
+ * Random hue >= 30 degrees (circular distance) from every hue in `existing`.
+ * 50 tries, then accept anything (a full wheel cannot always satisfy spacing).
+ */
+export function pickDistinctHue(existing = []) {
+  const taken = (Array.isArray(existing) ? existing : []).filter(isValidHue);
+  for (let i = 0; i < 50; i += 1) {
+    const h = Math.floor(Math.random() * 360);
+    if (taken.every((t) => hueDistance(h, t) >= 30)) return h;
+  }
+  return Math.floor(Math.random() * 360);
+}
+
+/**
+ * Validate a game_dir value: undefined/null stays null (default location);
+ * a string must be absolute, else 400. Returns the stored value (null|string).
+ * mkdir -p happens in createInstance/patchInstance, not here.
+ */
+export function normalizeGameDir(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string' || !path.isAbsolute(value)) {
+    throw httpError(400, 'BAD_GAME_DIR', 'game_dir must be an absolute path or null');
+  }
+  return value;
+}
+
+/** Icon file for an instance (<instanceDir>/icon.png). */
+export function instanceIconPath(name) {
+  return path.join(instanceDir(name), 'icon.png');
+}
+
+/** Hues of all existing instances (auto-assign spacing). Never throws. */
+async function existingInstanceHues() {
+  const hues = [];
+  for (const n of await readdirSafe(instancesRoot())) {
+    if (TRASH_DIR_RE.test(n)) continue;
+    try {
+      const raw = JSON.parse(await fs.promises.readFile(instanceJsonPath(n), 'utf8'));
+      if (isValidHue(raw.hue)) hues.push(raw.hue);
+    } catch {
+      /* skip unreadable entries */
+    }
+  }
+  return hues;
 }
 
 function aotCacheDirForKey(key) {
@@ -244,7 +303,6 @@ export async function getSummary(name) {
     }
   }
 
-
   return {
     name: inst.name,
     version: inst.version,
@@ -253,6 +311,9 @@ export async function getSummary(name) {
     modpack: inst.modpack ?? null,
     modpack_version: inst.modpack_version ?? null,
     memory_mb: inst.memory_mb,
+    hue: inst.hue ?? null,
+    game_dir: inst.game_dir ?? null,
+    has_icon: existsSyncSafe(instanceIconPath(name)),
     mod_count: enabled.length + disabled.length,
     enabled_mod_count: enabled.length,
     aot_key: aotKey,
@@ -300,6 +361,8 @@ export async function createInstance(opts = {}) {
     import_from = null,
     merge_optionslc = false,
     defer_auto_train = false,
+    hue = null,
+    game_dir = null,
   } = opts;
   if (!isValidName(name)) {
     throw httpError(409, 'INVALID_NAME', 'instance name must match ^[A-Za-z0-9 ._-]{1,40}$');
@@ -328,6 +391,19 @@ export async function createInstance(opts = {}) {
   if (existsSyncSafe(instanceDir(name))) {
     throw httpError(409, 'ALREADY_EXISTS', `instance '${name}' already exists`);
   }
+  // Hue: explicit int wins (validated); absent/null auto-assigns a hue spaced
+  // >= 30 degrees from every existing instance hue.
+  let hueValue = hue;
+  if (hueValue === undefined || hueValue === null) {
+    hueValue = pickDistinctHue(await existingInstanceHues());
+  } else if (!isValidHue(hueValue)) {
+    throw httpError(400, 'BAD_HUE', 'hue must be an integer between 0 and 359 or null');
+  }
+  // Custom game dir: must be absolute when present; created up front.
+  const gameDirValue = normalizeGameDir(game_dir);
+  if (gameDirValue !== null) {
+    fs.mkdirSync(gameDirValue, { recursive: true });
+  }
 
   const now = new Date().toISOString();
   const inst = {
@@ -345,6 +421,8 @@ export async function createInstance(opts = {}) {
     imported_from: import_from || null,
     jdk_path_override: jdk_path_override ?? null,
     aot_auto_train: loadConfig().aot_auto_train ?? true,
+    hue: hueValue,
+    game_dir: gameDirValue,
     created_at: now,
     updated_at: now,
   };
@@ -424,10 +502,10 @@ function trashDirName(name) {
 
 /**
  * PATCH an instance: memory_mb / jdk_path_override / aot_auto_train /
- * enabled_mods (rename *.jar <-> *.jar.disabled). Mod toggles no longer
- * invalidate the AOT key (mods are off-classpath; see aot.mjs) — the cache
- * is keyed by version|javaBuild|osArch only; mod_set_hash is still recorded
- * in meta.json for diagnostics.
+ * enabled_mods (rename *.jar <-> *.jar.disabled) + hue / game_dir (null
+ * clears either). Mod toggles no longer invalidate the AOT key (mods are
+ * off-classpath; see aot.mjs) — the cache is keyed by version|javaBuild|osArch
+ * only; mod_set_hash is still recorded in meta.json for diagnostics.
  */
 export async function patchInstance(name, patch = {}) {
   const inst = await getInstance(name);
@@ -445,12 +523,55 @@ export async function patchInstance(name, patch = {}) {
     inst.jdk_path_override = patch.jdk_path_override;
   }
   if (patch.aot_auto_train !== undefined) inst.aot_auto_train = !!patch.aot_auto_train;
+  if (patch.hue !== undefined) {
+    if (patch.hue !== null && !isValidHue(patch.hue)) {
+      throw httpError(400, 'BAD_HUE', 'hue must be an integer between 0 and 359 or null');
+    }
+    inst.hue = patch.hue;
+  }
+  if (patch.game_dir !== undefined) {
+    const next = normalizeGameDir(patch.game_dir);
+    if (next !== null) fs.mkdirSync(next, { recursive: true });
+    inst.game_dir = next;
+  }
   if (Array.isArray(patch.enabled_mods)) {
     await applyEnabledMods(inst, patch.enabled_mods);
   }
   inst.updated_at = new Date().toISOString();
   writeJson(instanceJsonPath(name), inst);
   return getSummary(name);
+}
+
+// ---------------------------------------------------------------------------
+// Instance icon (<instanceDir>/icon.png) — PNG bytes validated at the route.
+// ---------------------------------------------------------------------------
+
+/** Read an instance icon (PNG bytes). 404 when the instance or icon is missing. */
+export async function readInstanceIcon(name) {
+  await getInstance(name); // 404 when missing
+  try {
+    return await fs.promises.readFile(instanceIconPath(name));
+  } catch {
+    throw httpError(404, 'NOT_FOUND', `instance '${name}' has no icon`);
+  }
+}
+
+/** Store an instance icon (validated PNG bytes). */
+export async function writeInstanceIcon(name, buffer) {
+  await getInstance(name); // 404 when missing
+  await fs.promises.writeFile(instanceIconPath(name), buffer);
+  return { ok: true, has_icon: true };
+}
+
+/** Remove an instance icon (missing file is a no-op). */
+export async function removeInstanceIcon(name) {
+  await getInstance(name); // 404 when missing
+  try {
+    await fs.promises.unlink(instanceIconPath(name));
+  } catch {
+    /* already absent */
+  }
+  return { ok: true, has_icon: false };
 }
 
 /** Rename mod jars to match the desired enabled set (Fabric ignores non-.jar). */

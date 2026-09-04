@@ -6,7 +6,17 @@
     "TitleScreenInitMixin",
     "MinecraftMixin",
     "GameRendererFovMixin",
-    "OptionsAccessor"
+    "GuiHudMixin",
+    "ScreenEffectsMixin",
+    "WaterFogMixin",
+    "FogRendererAccessor",
+    "OptionsAccessor",
+    "ChatListenerMixin",
+    "ChatComponentMixin",
+    "DrawingBackgroundGraphicsAccessMixin",
+    "ChatDisconnectMixin",
+    "AvatarRendererMixin",
+    "TextureManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

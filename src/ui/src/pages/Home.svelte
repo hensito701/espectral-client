@@ -13,13 +13,11 @@
   import { getAccounts } from '../lib/api';
   import { renderMotd } from '../lib/motd';
   import { t } from '../lib/i18n.svelte';
-  import { pushToast } from '../lib/toast.svelte';
 
   // Components
   import HorizonRail from '../components/HorizonRail.svelte';
   import TelemetryCapsule from '../components/TelemetryCapsule.svelte';
   import ServerRadarCard from '../components/ServerRadarCard.svelte';
-  import DensityToggle from '../components/DensityToggle.svelte';
   import InstanceWizardModal from '../components/InstanceWizardModal.svelte';
   import MrpackModal from '../components/MrpackModal.svelte';
   import DryRunModal from '../components/DryRunModal.svelte';
@@ -34,10 +32,6 @@
   let wizardOpen = $state(false);
   let mrpackOpen = $state(false);
   let dryRunOpen = $state(false);
-
-  // Direct connect prompt state
-  let directConnectHost = $state('');
-  let directConnectOpen = $state(false);
 
   // Greeting by time of day
   const greetingText = $derived.by(() => {
@@ -114,16 +108,6 @@
     }
   }
 
-  function handleDirectConnect(): void {
-    const host = directConnectHost.trim();
-    if (!host) return;
-    pushToast({
-      kind: 'info',
-      text: `Dirección de servidor: ${host}`,
-    });
-    directConnectOpen = false;
-    directConnectHost = '';
-  }
 
   onMount(() => {
     void loadAccountsList();
@@ -159,7 +143,7 @@
       </p>
     </div>
 
-    <!-- Right: Active Account Chip & Density Controls -->
+    <!-- Right: Active Account Chip -->
     <div class="home-hero-header__right">
       <a href="#/account" class="home-account-chip" title={t('home.activeAccount')}>
         <MonogramTile
@@ -174,8 +158,6 @@
           </span>
         </div>
       </a>
-
-      <DensityToggle size="md" />
     </div>
   </header>
 
@@ -195,15 +177,17 @@
         size="md"
         onclick={() => (mrpackOpen = true)}
       >
-        📦 {t('home.installModpack')}
+        📦 {t('home.importModpack')}
       </Btn>
 
       <Btn
         variant="ghost"
         size="md"
-        onclick={() => (directConnectOpen = !directConnectOpen)}
+        onclick={() => {
+          window.location.hash = '#/client';
+        }}
       >
-        🌐 {t('home.directConnect')}
+        🧩 {t('home.clientSuite')}
       </Btn>
     </div>
 
@@ -220,28 +204,6 @@
       </div>
     </div>
   </section>
-
-  <!-- Direct Connect Inline Bar (Toggled) -->
-  {#if directConnectOpen}
-    <section class="home-direct-bar animate-pop-in">
-      <span class="home-direct-lbl">{t('home.directConnectPrompt')}</span>
-      <input
-        type="text"
-        class="home-direct-input"
-        placeholder="play.espectral.es"
-        bind:value={directConnectHost}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') handleDirectConnect();
-        }}
-      />
-      <Btn variant="primary" size="sm" onclick={handleDirectConnect}>
-        {t('home.directConnectTitle')}
-      </Btn>
-      <Btn variant="ghost" size="sm" onclick={() => (directConnectOpen = false)}>
-        ✕
-      </Btn>
-    </section>
-  {/if}
 
   <!-- Center Stage: PS4-Style Instance Rail -->
   <section class="home-rail-stage">
@@ -463,30 +425,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  /* --- Direct Connect Inline --- */
-  .home-direct-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3, 12px);
-    padding: var(--space-3, 12px) var(--space-4, 16px);
-    background: var(--surface-solid, #0d1222);
-    border: 1px solid var(--accent, #10b981);
-    border-radius: var(--radius-md, 0.625rem);
-    box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.4));
-  }
-
-  .home-direct-lbl {
-    font-size: var(--text-sm, 0.875rem);
-    font-weight: 600;
-    color: var(--text, #e8ecf4);
-  }
-
-  .home-direct-input {
-    flex: 1;
-    max-width: 320px;
-    font-size: var(--text-sm, 0.875rem) !important;
   }
 
   /* --- Horizon Rail Stage --- */

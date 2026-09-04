@@ -9,6 +9,7 @@
     - name: string — entity or player name for initial & hash derivation
     - src?: string — optional skin head / avatar image url
     - avatarUrl?: string — alias for src
+    - hue?: number | null — overrides the name-hash hue when set
     - size?: number (default: 48) — tile width & height in pixels
     - shape?: 'tile' | 'rounded' | 'circle' (default: 'tile')
     - class?: string (or className)
@@ -18,6 +19,7 @@
     name: string;
     src?: string;
     avatarUrl?: string;
+    hue?: number | null;
     size?: number;
     shape?: 'tile' | 'rounded' | 'circle';
     class?: string;
@@ -29,6 +31,7 @@
     name,
     src,
     avatarUrl,
+    hue = null,
     size = 48,
     shape = 'tile',
     class: extraClass = '',
@@ -41,15 +44,20 @@
   const imgSrc = $derived(src || avatarUrl);
   const letter = $derived((name || '?').trim().charAt(0).toUpperCase() || '?');
 
-  // Deterministic hue generator based on string hash
+  // Deterministic hue generator based on string hash (overridable via `hue`)
   const gradientStyles = $derived.by(() => {
-    let hash = 0;
-    const cleanName = name || 'espectral';
-    for (let i = 0; i < cleanName.length; i++) {
-      hash = (hash << 5) - hash + cleanName.charCodeAt(i);
-      hash |= 0;
+    let hue1: number;
+    if (typeof hue === 'number' && Number.isFinite(hue)) {
+      hue1 = ((Math.round(hue) % 360) + 360) % 360;
+    } else {
+      let hash = 0;
+      const cleanName = name || 'espectral';
+      for (let i = 0; i < cleanName.length; i++) {
+        hash = (hash << 5) - hash + cleanName.charCodeAt(i);
+        hash |= 0;
+      }
+      hue1 = Math.abs(hash % 360);
     }
-    const hue1 = Math.abs(hash % 360);
     const hue2 = (hue1 + 40) % 360;
 
     return {

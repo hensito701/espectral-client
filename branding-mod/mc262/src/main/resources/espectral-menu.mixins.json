@@ -7,7 +7,17 @@
     "MinecraftMixin",
     "CameraFovMixin",
     "ClientShutdownWatchdogMixin",
-    "OptionsAccessor"
+    "HudOverlayMixin",
+    "ScreenEffectsMixin",
+    "WaterFogMixin",
+    "FogRendererAccessor",
+    "OptionsAccessor",
+    "ChatListenerMixin",
+    "ChatComponentMixin",
+    "DrawingBackgroundGraphicsAccessMixin",
+    "ChatDisconnectMixin",
+    "AvatarRendererMixin",
+    "TextureManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

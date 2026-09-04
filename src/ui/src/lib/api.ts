@@ -136,7 +136,12 @@ const R = {
   importSources: ['GET', '/api/import/sources'] as const,
   importProfile: (n: string) => ['POST', `/api/instances/${enc(n)}/import`] as const,
   pickFile: ['POST', '/api/pick-file'] as const,
+  pickFolder: ['POST', '/api/pick-folder'] as const,
   importMrpack: ['POST', '/api/instances/import-mrpack'] as const,
+  instanceIcon: (n: string) => ['POST', `/api/instances/${enc(n)}/icon`] as const,
+  accountAvatar: (u: string) => ['POST', `/api/accounts/${enc(u)}/avatar`] as const,
+  accountAvatarColor: (u: string) => ['POST', `/api/accounts/${enc(u)}/avatar-color`] as const,
+  accountPatch: (u: string) => ['PATCH', `/api/accounts/${enc(u)}`] as const,
   mods: (n: string) => ['GET', `/api/instances/${enc(n)}/mods`] as const,
   modToggle: (n: string, f: string, on: boolean) => ['POST', `/api/instances/${enc(n)}/mods/${enc(f)}/${on ? 'enable' : 'disable'}`] as const,
   modsInstall: (n: string) => ['POST', `/api/instances/${enc(n)}/mods/install`] as const,
@@ -199,6 +204,123 @@ export const pickMrpackFile = (): Promise<{ path: string | null }> =>
   });
 export const importMrpack = (path: string, memoryMb?: number): Promise<{ summary: InstanceSummary; already_exists?: boolean }> =>
   post(R.importMrpack[1], { path, memory_mb: memoryMb });
+export const pickFolder = (title: string): Promise<{ path: string | null }> =>
+  post(R.pickFolder[1], { title });
+export const iconUrl = (name: string): string =>
+  `${API_BASE}/api/instances/${enc(name)}/icon`;
+export const uploadInstanceIcon = (name: string, image_base64: string): Promise<{ ok: true }> =>
+  post(R.instanceIcon(name)[1], { image_base64 });
+export const removeInstanceIcon = (name: string): Promise<{ removed: true }> =>
+  del(R.instanceIcon(name)[1]);
+export const avatarUrl = (username: string): string =>
+  `${API_BASE}/api/accounts/${enc(username)}/avatar`;
+export const uploadAccountAvatar = (username: string, image_base64: string): Promise<{ ok: true }> =>
+  post(R.accountAvatar(username)[1], { image_base64 });
+export const removeAccountAvatar = (username: string): Promise<{ removed: true }> =>
+  del(R.accountAvatar(username)[1]);
+/**
+ * Persist an account accent color. Tries the PATCH account shape first and
+ * falls back to the dedicated avatar-color POST when the engine answers
+ * 404/405 (the engine half owns the route; either shape is accepted).
+ */
+export const setAccountAvatarColor = async (
+  username: string,
+  avatar_color: number | null,
+): Promise<void> => {
+  try {
+    await patch(R.accountPatch(username)[1], { avatar_color });
+  } catch (e) {
+    const code = e instanceof ApiError ? e.code : '';
+    const msg = e instanceof Error ? e.message : String(e);
+    if (code === 'NOT_FOUND' || code === 'METHOD_NOT_ALLOWED' || /404|405/.test(msg)) {
+      await post(R.accountAvatarColor(username)[1], { avatar_color });
+      return;
+    }
+    throw e;
+  }
+};
+/**
+ * Thrown when neither createImageBitmap nor <img> can decode the file.
+ * Carries the file's type/extension label so callers can render a localized
+ * message naming the format (e.g. AVIF) instead of a bare generic failure.
+ */
+export class UnsupportedImageError extends Error {
+  readonly label: string;
+  readonly fileName: string;
+
+  constructor(file: File) {
+    const type = (file.type || '').trim();
+    const ext = /\.([A-Za-z0-9]{1,10})$/.exec(file.name.trim())?.[1]?.toLowerCase() ?? '';
+    const label = type || (ext ? `.${ext}` : 'unknown format');
+    super(`unsupported image (${label}): ${file.name} — use PNG, JPEG or WebP`);
+    this.name = 'UnsupportedImageError';
+    this.label = label;
+    this.fileName = file.name;
+  }
+}
+
+function drawToPngDataUrl(source: CanvasImageSource, width: number, height: number, maxDim: number): string {
+  const scale = Math.min(1, maxDim / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas 2d unavailable');
+  ctx.drawImage(source, 0, 0, w, h);
+  return canvas.toDataURL('image/png');
+}
+
+function loadViaObjectUrlImg(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const objUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objUrl);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objUrl);
+      reject(new UnsupportedImageError(file));
+    };
+    img.src = objUrl;
+  });
+}
+
+/**
+ * Decode any user-picked image file and return a PNG data URL (downscaled to
+ * maxDim). Tries createImageBitmap first (broader codec support than
+ * WebView2 <img>: AVIF, some WebP, …) with the object-URL <img> path as
+ * fallback. The engine only accepts PNG (decodePngImage sniffs PNG magic),
+ * so the canvas re-encode keeps that contract whatever the input format was.
+ * Final failure throws UnsupportedImageError naming the file's type/extension.
+ */
+export async function fileToPngDataUrl(file: File, maxDim = 256): Promise<string> {
+  if (typeof createImageBitmap === 'function') {
+    let bmp: ImageBitmap | null = null;
+    try {
+      bmp = await createImageBitmap(file);
+    } catch {
+      bmp = null;
+    }
+    if (bmp) {
+      try {
+        return drawToPngDataUrl(bmp, bmp.width, bmp.height, maxDim);
+      } finally {
+        bmp.close();
+      }
+    }
+  }
+  try {
+    const img = await loadViaObjectUrlImg(file);
+    return drawToPngDataUrl(img, img.naturalWidth || img.width, img.naturalHeight || img.height, maxDim);
+  } catch (err) {
+    if (err instanceof UnsupportedImageError) throw err;
+    if (err instanceof Error && err.message === 'canvas 2d unavailable') throw err;
+    throw new UnsupportedImageError(file);
+  }
+}
 export const listMods = (name: string): Promise<ModEntry[]> => get(R.mods(name)[1]);
 export const setModEnabled = (name: string, filename: string, enabled: boolean): Promise<{ filename: string; enabled: boolean }> =>
   post(R.modToggle(name, filename, enabled)[1]);

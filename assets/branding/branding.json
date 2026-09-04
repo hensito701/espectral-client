@@ -5,13 +5,13 @@
   "mods": {
     "1.21.11": {
       "filename": "espectral-menu-1.21.11-1.3.0.jar",
-      "sha1": "c3d0dd7d4a23b548d4b8f8cd9fceb5d0a6c1baea",
-      "size": 27476
+      "sha1": "ca502e35bf898faf9ce2c6500f1f7d063177d81e",
+      "size": 61423
     },
     "26.2": {
       "filename": "espectral-menu-26.2-1.3.0.jar",
-      "sha1": "d338b00ec5fd8333fae65da141bc28131ecbf252",
-      "size": 28400
+      "sha1": "b02f56b455403c312e29e67ca85196aef6c9d9c4",
+      "size": 62678
     }
   }
 }

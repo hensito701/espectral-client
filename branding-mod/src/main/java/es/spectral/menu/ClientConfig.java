@@ -78,6 +78,8 @@ public final class ClientConfig {
     private final Map<String, FeatureConfig> features = new HashMap<>();
     private final List<MacroConfig> macros = new ArrayList<>();
     private JsonObject rawRoot = new JsonObject();
+    /** Last observed config-file mtime (millis); drives throttled live reload. */
+    private long lastKnownModified = -1L;
 
     private ClientConfig() {
         initDefaults();
@@ -88,6 +90,15 @@ public final class ClientConfig {
         features.put("nofog", new FeatureConfig(true, null));
         features.put("zoom", new FeatureConfig(true, null));
         features.put("macros", new FeatureConfig(true, null));
+        features.put("potionstatus", new FeatureConfig(false, null));
+        features.put("coords", new FeatureConfig(false, null));
+        features.put("healthstatus", new FeatureConfig(false, null));
+        features.put("armorstatus", new FeatureConfig(false, null));
+        features.put("fpsping", new FeatureConfig(false, null));
+        features.put("lowfire", new FeatureConfig(false, null));
+        features.put("clearwater", new FeatureConfig(false, null));
+        features.put("chatheads", new FeatureConfig(false, null));
+        features.put("skin3d", new FeatureConfig(false, null));
     }
 
     public static Path getConfigPath() {
@@ -169,6 +180,38 @@ public final class ClientConfig {
         } catch (Exception e) {
             LOGGER.warn("Failed to parse config {}: {}; preserving memory state", path, e.getMessage());
         }
+        refreshLastModified();
+    }
+
+    /**
+     * Reloads the config file if it changed on disk since the last load/save
+     * (e.g. a launcher PATCH while the game runs). Called throttled from the
+     * client tick (~every 20 ticks). A reload right after our own screen-save
+     * just re-reads identical content, so it is harmless.
+     */
+    public synchronized void maybeReload() {
+        try {
+            Path path = getConfigPath();
+            if (!Files.exists(path)) return;
+            long current = Files.getLastModifiedTime(path).toMillis();
+            if (current != lastKnownModified) {
+                LOGGER.info("Config file changed on disk; reloading {}", path);
+                load();
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Config maybeReload check failed: {}", e.getMessage());
+        }
+    }
+
+    private void refreshLastModified() {
+        try {
+            Path path = getConfigPath();
+            if (Files.exists(path)) {
+                lastKnownModified = Files.getLastModifiedTime(path).toMillis();
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Config mtime refresh failed: {}", e.getMessage());
+        }
     }
 
     public synchronized void save() {
@@ -218,6 +261,7 @@ public final class ClientConfig {
                 Files.move(tmpPath, path, StandardCopyOption.REPLACE_EXISTING);
             }
             LOGGER.info("Persisted config to {}", path);
+            refreshLastModified();
         } catch (Exception e) {
             LOGGER.error("Failed to save config to {}: {}", path, e.getMessage());
         }

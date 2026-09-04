@@ -11,10 +11,11 @@
   import ThemeToggle from './ThemeToggle.svelte';
   import LanguageToggle from './LanguageToggle.svelte';
   import AccountPopover from './AccountPopover.svelte';
+  import MonogramTile from './MonogramTile.svelte';
   import { theme, resolveTheme } from '../lib/theme.svelte';
   import { t } from '../lib/i18n.svelte';
   import { updateState, installUpdate } from '../lib/updater.svelte';
-  import { getAccounts } from '../lib/api';
+  import { getAccounts, avatarUrl } from '../lib/api';
   import type { Account } from '../lib/types';
 
   interface Props {
@@ -210,9 +211,17 @@
         title={activeAccount ? activeAccount.username : t('nav.noAccount') || 'Sin cuenta'}
       >
         <div class="account-chip__avatar">
-          <span class="account-chip__initial">
-            {activeAccount ? activeAccount.username.charAt(0).toUpperCase() : '+'}
-          </span>
+          {#if activeAccount}
+            <MonogramTile
+              name={activeAccount.username}
+              hue={activeAccount.avatar_color ?? undefined}
+              avatarUrl={activeAccount.has_avatar ? avatarUrl(activeAccount.username) : undefined}
+              size={26}
+              shape="circle"
+            />
+          {:else}
+            <span class="account-chip__initial">+</span>
+          {/if}
           <span
             class="account-chip__dot"
             class:account-chip__dot--msa={activeAccount?.token_kind === 'msa'}

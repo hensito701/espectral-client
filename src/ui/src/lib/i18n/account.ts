@@ -75,6 +75,14 @@ export const es: Dict = {
   'vault.cardKindMsa': 'Microsoft',
   'vault.cardKindLunar': 'Lunar Client',
   'vault.switchSuccess': 'Cuenta activa cambiada a {name}',
+  'vault.avatarTitle': 'Avatar y color',
+  'vault.avatarUpload': 'Subir imagen…',
+  'vault.avatarRemove': 'Quitar imagen',
+  'vault.avatarSaved': 'Imagen de avatar actualizada',
+  'vault.avatarRemoved': 'Imagen de avatar eliminada',
+  'vault.avatarUnsupported': 'Imagen no compatible ({label}): {name} — usa PNG, JPEG o WebP',
+  'vault.colorTitle': 'Color de acento',
+  'vault.colorSaved': 'Color de acento actualizado',
 
   // Identity Forge
   'vault.addTitle': 'Forja de Identidades',
@@ -196,6 +204,14 @@ export const en: Dict = {
   'vault.cardKindMsa': 'Microsoft',
   'vault.cardKindLunar': 'Lunar Client',
   'vault.switchSuccess': 'Active account switched to {name}',
+  'vault.avatarTitle': 'Avatar & color',
+  'vault.avatarUpload': 'Upload image…',
+  'vault.avatarRemove': 'Remove image',
+  'vault.avatarSaved': 'Avatar image updated',
+  'vault.avatarRemoved': 'Avatar image removed',
+  'vault.avatarUnsupported': 'Unsupported image ({label}): {name} — use PNG, JPEG or WebP',
+  'vault.colorTitle': 'Accent color',
+  'vault.colorSaved': 'Accent color updated',
 
   // Identity Forge
   'vault.addTitle': 'Identity Forge',

@@ -5,7 +5,7 @@
  *   POST /api/instances/:name/mods/:filename/enable     -> { filename, enabled }
  *   POST /api/instances/:name/mods/:filename/disable    -> { filename, enabled }
  *   POST /api/instances/:name/mods/install { preset }   -> { queued: true }
- *   GET  /api/modrinth/search?q=&version=               -> { results }
+ *   GET  /api/modrinth/search?q=&version=&loader=&instance=&offset= -> { results, total, offset, limit }
  *   POST /api/instances/:name/mods/install-modrinth { project_id } -> { queued: true }
  * The install endpoints validate + queue immediately and run the
  * sha1-verified install in the background, streaming mod-progress SSE events
@@ -19,7 +19,6 @@ import {
   supportsBranding,
   brandingVersions,
   pinNoteForVersion,
-  PINNED_VERSION,
   searchModrinth,
   installModrinthMod,
 } from '../mods.mjs';
@@ -110,20 +109,19 @@ export async function register(app) {
     }
   });
 
-  // GET /api/modrinth/search?q=&version= -> { results }
+  // GET /api/modrinth/search?q=&version=&loader=&instance=&offset= -> { results, total, offset, limit }
+  // Empty q returns the most-downloaded mods (explore mode), always sorted by
+  // downloads with a fixed page size of 12. version/loader scope the facets
+  // only when provided.
   app.get('/api/modrinth/search', async (req, res) => {
     try {
       const q = new URL(req.url, 'http://localhost').searchParams;
       const query = (q.get('q') ?? '').trim();
-      if (!query) {
-        return app.sendJson(res, 400, {
-          error: { code: 'modrinth_search_q_required', message: 'missing search query q' },
-        });
-      }
-      const version = q.get('version') || PINNED_VERSION;
-      const loader = q.get('loader') ?? 'fabric';
+      const version = q.get('version') || null;
+      const loader = q.get('loader') || null;
       const instance = q.get('instance');
-      return await searchModrinth(query, version, loader, instance);
+      const offset = Math.max(0, Number.parseInt(q.get('offset') ?? '0', 10) || 0);
+      return await searchModrinth(query, version, loader, instance, { offset });
     } catch (err) {
       return sendError(app, res, err, 502, 'modrinth_search_failed');
     }

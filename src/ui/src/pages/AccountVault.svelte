@@ -25,6 +25,12 @@
     logoutMsAccount,
     getMsClientId,
     setMsClientId,
+    avatarUrl,
+    uploadAccountAvatar,
+    removeAccountAvatar,
+    setAccountAvatarColor,
+    fileToPngDataUrl,
+    UnsupportedImageError,
     ApiError,
   } from '../lib/api';
   import type { Account, MsDeviceFlow } from '../lib/types';
@@ -83,31 +89,114 @@
   // Inline logout confirmation state (account username being confirmed for logout)
   let confirmingLogoutUser = $state<string | null>(null);
   let loggingOut = $state<boolean>(false);
-
   // --- Advanced Azure Client ID State ---
   let showAdvancedClientId = $state<boolean>(false);
   let clientIdValue = $state<string>('');
   let loadingClientId = $state<boolean>(false);
   let savingClientId = $state<boolean>(false);
   let clientIdError = $state<string>('');
-
   // Copy helpers
   const codeCopier = useCopy(2000);
   const uriCopier = useCopy(2000);
   const uuidCopier = useCopy(2000);
+  // Avatar customization state
+  let avatarBust = $state(0);
+  let avatarBusy = $state<string | null>(null);
 
-  // --- Dynamic Ambient Lighting Shift ---
+  /** Preset accent hues offered for every account (6-8 swatches). */
+  const AVATAR_HUES = [4, 32, 48, 145, 190, 222, 265, 315];
+
+  const avatarSrc = (username: string, hasAvatar: boolean): string | undefined =>
+    hasAvatar ? `${avatarUrl(username)}${avatarBust ? `?v=${avatarBust}` : ''}` : undefined;
+  // --- Dynamic Ambient Lighting Shift (custom avatar color wins) ---
+  function accountHue(username: string | undefined): number | null {
+    const acc = accounts.find((a) => a.username === username);
+    return typeof acc?.avatar_color === 'number' ? acc.avatar_color : null;
+  }
+
   function updateAmbientForAccount(username: string | undefined): void {
     if (typeof document === 'undefined' || !username) return;
-    let hash = 0;
-    for (let i = 0; i < username.length; i++) {
-      hash = (hash << 5) - hash + username.charCodeAt(i);
-      hash |= 0;
+    const custom = accountHue(username);
+    let hue1: number;
+    if (custom !== null) {
+      hue1 = ((Math.round(custom) % 360) + 360) % 360;
+    } else {
+      let hash = 0;
+      for (let i = 0; i < username.length; i++) {
+        hash = (hash << 5) - hash + username.charCodeAt(i);
+        hash |= 0;
+      }
+      hue1 = Math.abs(hash % 360);
     }
-    const hue1 = Math.abs(hash % 360);
     const hue2 = (hue1 + 45) % 360;
     document.documentElement.style.setProperty('--ambient-1', `hsla(${hue1}, 70%, 50%, 0.14)`);
     document.documentElement.style.setProperty('--ambient-2', `hsla(${hue2}, 80%, 45%, 0.09)`);
+  }
+  async function handleAvatarColor(username: string, color: number | null): Promise<void> {
+    if (avatarBusy) return;
+    avatarBusy = username;
+    try {
+      await setAccountAvatarColor(username, color);
+      await loadAccounts(true);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('horizon:account-changed', { detail: { username } }),
+        );
+      }
+      pushToast({ kind: 'ok', text: t('vault.colorSaved') });
+    } catch (e) {
+      pushToast({ kind: 'err', text: t('vault.errorAction', { error: e instanceof Error ? e.message : String(e) }) });
+    } finally {
+      avatarBusy = null;
+    }
+  }
+
+  async function handleAvatarFile(username: string, e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file || avatarBusy) return;
+    avatarBusy = username;
+    try {
+      const dataUrl = await fileToPngDataUrl(file, 256);
+      await uploadAccountAvatar(username, dataUrl);
+      avatarBust += 1;
+      await loadAccounts(true);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('horizon:account-changed', { detail: { username } }),
+        );
+      }
+      pushToast({ kind: 'ok', text: t('vault.avatarSaved') });
+    } catch (err) {
+      const text =
+        err instanceof UnsupportedImageError
+          ? t('vault.avatarUnsupported', { label: err.label, name: err.fileName })
+          : t('vault.errorAction', { error: err instanceof Error ? err.message : String(err) });
+      pushToast({ kind: 'err', text });
+    } finally {
+      avatarBusy = null;
+      if (input) input.value = '';
+    }
+  }
+
+  async function handleRemoveAvatar(username: string): Promise<void> {
+    if (avatarBusy) return;
+    avatarBusy = username;
+    try {
+      await removeAccountAvatar(username);
+      avatarBust += 1;
+      await loadAccounts(true);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('horizon:account-changed', { detail: { username } }),
+        );
+      }
+      pushToast({ kind: 'ok', text: t('vault.avatarRemoved') });
+    } catch (err) {
+      pushToast({ kind: 'err', text: t('vault.errorAction', { error: err instanceof Error ? err.message : String(err) }) });
+    } finally {
+      avatarBusy = null;
+    }
   }
 
   // --- Account Loading & Selection ---
@@ -409,6 +498,8 @@
           <div class="pedestal-avatar-wrapper">
             <MonogramTile
               name={activeAccount?.username || '?'}
+              hue={activeAccount?.avatar_color ?? undefined}
+              avatarUrl={activeAccount && activeAccount.has_avatar ? avatarSrc(activeAccount.username, true) : undefined}
               size={104}
               shape="rounded"
               className="pedestal-avatar"
@@ -542,6 +633,8 @@
                 <div class="account-card__avatar-wrap">
                   <MonogramTile
                     name={acc.username}
+                    hue={acc.avatar_color ?? undefined}
+                    avatarUrl={acc.has_avatar ? avatarSrc(acc.username, true) : undefined}
                     size={46}
                     shape="rounded"
                   />
@@ -601,6 +694,53 @@
                     >
                       {t('vault.cardLogoutMsa')}
                     </Btn>
+                  {/if}
+                </div>
+              </div>
+
+              <!-- Avatar customization: color swatches + image -->
+              <div
+                class="account-card__avatar-edit"
+                onclick={(e) => e.stopPropagation()}
+                onkeydown={(e) => e.stopPropagation()}
+                role="presentation"
+              >
+                <span class="avatar-edit__label">{t('vault.avatarTitle')}</span>
+                <div class="avatar-edit__swatches">
+                  {#each AVATAR_HUES as sw (sw)}
+                    <button
+                      type="button"
+                      class="avatar-swatch"
+                      class:avatar-swatch--active={acc.avatar_color === sw}
+                      style="background: hsl({sw}, 70%, 50%);"
+                      title={`${sw}°`}
+                      aria-label={`${t('vault.colorTitle')}: ${sw}°`}
+                      aria-pressed={acc.avatar_color === sw}
+                      disabled={avatarBusy === acc.username}
+                      onclick={() => handleAvatarColor(acc.username, acc.avatar_color === sw ? null : sw)}
+                    ></button>
+                  {/each}
+                </div>
+                <div class="avatar-edit__actions">
+                  <label class="avatar-edit__upload">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      class="icon-file-input"
+                      onchange={(e) => handleAvatarFile(acc.username, e)}
+                      disabled={avatarBusy === acc.username}
+                    />
+                    {t('vault.avatarUpload')}
+                  </label>
+                  {#if acc.has_avatar}
+                    <button
+                      type="button"
+                      class="avatar-edit__remove"
+                      disabled={avatarBusy === acc.username}
+                      onclick={() => handleRemoveAvatar(acc.username)}
+                    >
+                      {t('vault.avatarRemove')}
+                    </button>
                   {/if}
                 </div>
               </div>
@@ -1372,6 +1512,79 @@
     display: flex;
     align-items: center;
     gap: var(--space-2, 8px);
+  }
+
+  /* Avatar customization (color swatches + image) */
+  .account-card__avatar-edit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    padding-top: var(--space-2, 8px);
+  }
+
+  .avatar-edit__label {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--text-muted, #8b9bb4);
+  }
+
+  .avatar-edit__swatches {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .avatar-swatch {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .avatar-swatch:hover {
+    transform: scale(1.12);
+  }
+
+  .avatar-swatch--active {
+    border-color: #fff;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+  }
+
+  .avatar-edit__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+  }
+
+  .avatar-edit__upload {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.7rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border, rgba(40, 58, 96, 0.45));
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .avatar-edit__upload:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .avatar-edit__remove {
+    background: none;
+    border: none;
+    color: var(--danger, #f87171);
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0.3rem 0.4rem;
+  }
+
+  .icon-file-input {
+    display: none;
   }
 
   /* Inline Logout Confirmation Overlay */

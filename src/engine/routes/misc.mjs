@@ -5,6 +5,7 @@
  */
 import * as config from '../config.mjs';
 import * as accounts from '../accounts.mjs';
+import * as instances from '../instances.mjs';
 import { httpError } from '../error.mjs';
 import { VERSION } from '../server.mjs';
 import { spawn } from 'node:child_process';
@@ -78,6 +79,93 @@ export async function register(app) {
     return { path };
   });
 
+  // POST /api/pick-folder -> { path } — native Windows folder picker (modern
+  // Vista+ Explorer-style IFileOpenDialog with FOS_PICKFOLDERS (0x20) |
+  // FOS_FORCEFILESYSTEM (0x40) via PowerShell STA + inline C# COM interop).
+  // The coclass->interface QI cast must happen inside C# (PowerShell cannot
+  // QueryInterface-cast a raw __ComObject), so the dialog runs in a small
+  // FolderDialog.Show helper; cancel (non-S_OK, no stdout) -> null.
+  // Mirrors POST /api/pick-file above.
+  app.post('/api/pick-folder', async (req, res, params, body) => {
+    const title = body && typeof body.title === 'string' ? body.title : 'Choose folder';
+    const esc = (s) => s.replace(/'/g, "''");
+    const script = [
+      "Add-Type -TypeDefinition @'",
+      'using System;',
+      'using System.Runtime.InteropServices;',
+      'namespace EspectralPicker {',
+      '[ComImport]',
+      '[Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE")]',
+      '[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]',
+      'public interface IShellItem {',
+      '[PreserveSig] int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);',
+      '[PreserveSig] int GetParent(out IShellItem ppsi);',
+      '[PreserveSig] int GetDisplayName(uint sigdnName, [MarshalAs(UnmanagedType.LPWStr)] out string ppszName);',
+      '[PreserveSig] int GetAttributes(uint sfgaoMask, out uint psfgaoAttribs);',
+      '[PreserveSig] int Compare(IShellItem psi, uint hint, out int piOrder);',
+      '[PreserveSig] int GetPropertyStore(int flags, ref Guid riid, out IntPtr ppv);',
+      '}',
+      '[ComImport]',
+      '[Guid("42F85136-DB7E-439C-85F1-E4075D135FC8")]',
+      '[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]',
+      'public interface IFileOpenDialog {',
+      '[PreserveSig] int Show(IntPtr parent);',
+      '[PreserveSig] int SetFileTypes(uint cFileTypes, IntPtr rgFilterSpec);',
+      '[PreserveSig] int SetFileTypeIndex(uint iFileType);',
+      '[PreserveSig] int GetFileTypeIndex(out uint piFileType);',
+      '[PreserveSig] int Advise(IntPtr pfde, out uint pdwCookie);',
+      '[PreserveSig] int Unadvise(uint dwCookie);',
+      '[PreserveSig] int SetOptions(uint fos);',
+      '[PreserveSig] int GetOptions(out uint pfos);',
+      '[PreserveSig] int SetDefaultFolder(IShellItem psi);',
+      '[PreserveSig] int SetFolder(IShellItem psi);',
+      '[PreserveSig] int GetFolder(out IShellItem ppsi);',
+      '[PreserveSig] int GetCurrentSelection(out IShellItem ppsi);',
+      '[PreserveSig] int SetFileName([MarshalAs(UnmanagedType.LPWStr)] string pszName);',
+      '[PreserveSig] int GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string pszName);',
+      '[PreserveSig] int SetTitle([MarshalAs(UnmanagedType.LPWStr)] string pszTitle);',
+      '[PreserveSig] int SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string pszText);',
+      '[PreserveSig] int SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string pszLabel);',
+      '[PreserveSig] int GetResult(out IShellItem ppsi);',
+      '[PreserveSig] int AddPlace(IShellItem psi, int alignment);',
+      '[PreserveSig] int SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string pszDefaultExtension);',
+      '[PreserveSig] int Close(int hr);',
+      '[PreserveSig] int SetClientGuid(ref Guid guid);',
+      '[PreserveSig] int ClearClientData();',
+      '[PreserveSig] int SetFilter(IntPtr pFilter);',
+      '}',
+      '[ComImport]',
+      '[Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]',
+      'public class FileOpenDialogRCW {',
+      '}',
+      'public static class FolderDialog {',
+      'public static string Show(string title) {',
+      'IFileOpenDialog dlg = (IFileOpenDialog)new FileOpenDialogRCW();',
+      'try {',
+      'uint opts;',
+      'dlg.GetOptions(out opts);',
+      'dlg.SetOptions(opts | 0x20 | 0x40);',
+      'if (!string.IsNullOrEmpty(title)) dlg.SetTitle(title);',
+      'if (dlg.Show(IntPtr.Zero) != 0) return null;',
+      'IShellItem item;',
+      'if (dlg.GetResult(out item) != 0 || item == null) return null;',
+      'string path;',
+      'if (item.GetDisplayName(0x80058000, out path) != 0) return null;',
+      'return path;',
+      '} finally {',
+      'Marshal.ReleaseComObject(dlg);',
+      '}',
+      '}',
+      '}',
+      '}',
+      "'@",
+      `$r = [EspectralPicker.FolderDialog]::Show('${esc(title)}')`,
+      'if ($r -ne $null -and $r -ne \'\') { Write-Output $r }',
+    ].join('\n');
+    const folderPath = await pickFile(script);
+    return { path: folderPath };
+  });
+
 
   app.get('/api/theme', async () => config.loadConfig().theme ?? 'dark');
 
@@ -134,6 +222,52 @@ export async function register(app) {
     return accounts.setActiveAccount(body && typeof body.username === 'string' ? body.username : undefined);
   });
 
+  // --- Instance icons (<instanceDir>/icon.png) ---
+
+  // POST /api/instances/:name/icon { image_base64 } -> { ok, has_icon }.
+  // image_base64 is a data: URL or raw base64 PNG (<= 500KB decoded).
+  app.post('/api/instances/:name/icon', async (req, res, params, body) => {
+    const buf = decodePngImage(body && body.image_base64);
+    return instances.writeInstanceIcon(params.name, buf);
+  });
+
+  app.delete('/api/instances/:name/icon', async (req, res, params) => {
+    return instances.removeInstanceIcon(params.name);
+  });
+
+  // GET serves raw image/png bytes (404 when absent).
+  app.get('/api/instances/:name/icon', async (req, res, params) => {
+    const buf = await instances.readInstanceIcon(params.name);
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': buf.length });
+    res.end(buf);
+    return undefined;
+  });
+
+  // --- Account avatars (<dataDir>/avatars/<uuid>.png) + avatar color ---
+
+  // POST /api/accounts/:username/avatar { image_base64 } -> { ok, has_avatar }.
+  app.post('/api/accounts/:username/avatar', async (req, res, params, body) => {
+    const buf = decodePngImage(body && body.image_base64);
+    return accounts.writeAccountAvatar(params.username, buf);
+  });
+
+  app.delete('/api/accounts/:username/avatar', async (req, res, params) => {
+    return accounts.removeAccountAvatar(params.username);
+  });
+
+  // GET serves raw image/png bytes (404 when absent).
+  app.get('/api/accounts/:username/avatar', async (req, res, params) => {
+    const buf = await accounts.readAccountAvatar(params.username);
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': buf.length });
+    res.end(buf);
+    return undefined;
+  });
+
+  // POST /api/accounts/:username/avatar-color { avatar_color } -> publicAccount.
+  app.post('/api/accounts/:username/avatar-color', async (req, res, params, body) => {
+    return accounts.setAvatarColor(params.username, body ? body.avatar_color : undefined);
+  });
+
   // --- Microsoft (MSA) login ---
 
   // GET /api/accounts/microsoft/client-id -> { client_id } (masked if set)
@@ -154,7 +288,6 @@ export async function register(app) {
     config.saveConfig({ msa_client_id: id });
     return { client_id: id };
   });
-
   // POST /api/accounts/microsoft/device-code -> { flow_id, user_code, verification_uri, ... }
   app.post('/api/accounts/microsoft/device-code', async () => {
     const msa = await import('../msauth.mjs');
@@ -218,9 +351,9 @@ export async function register(app) {
 }
 
 /**
- * Run the PowerShell OpenFileDialog script and resolve to the chosen path.
- * Empty stdout (or a canceled dialog) -> null; spawn errors and 60s timeouts
- * surface as PICK_FAILED.
+ * Run a PowerShell picker script (OpenFileDialog or IFileOpenDialog) and
+ * resolve to the chosen path. Empty stdout (or a canceled dialog) -> null;
+ * spawn errors and 60s timeouts surface as PICK_FAILED.
  */
 function pickFile(script) {
   return new Promise((resolve, reject) => {
@@ -246,6 +379,39 @@ function pickFile(script) {
       resolve(line.length > 0 ? line : null);
     });
   });
+}
+
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MAX_IMAGE_BYTES = 500 * 1024;
+
+/**
+ * Decode an icon/avatar upload: a `data:image/png;base64,…` URL or raw
+ * base64 PNG. Validates PNG magic bytes and the 500KB decoded cap.
+ * Anything else is a 400 BAD_IMAGE. Exported for tests.
+ */
+export function decodePngImage(image_base64) {
+  if (typeof image_base64 !== 'string' || image_base64.trim().length === 0) {
+    throw httpError(400, 'BAD_IMAGE', 'image_base64 is required');
+  }
+  let b64 = image_base64.trim();
+  if (b64.startsWith('data:')) {
+    const m = b64.match(/^data:image\/png;base64,(.*)$/s);
+    if (!m) throw httpError(400, 'BAD_IMAGE', 'image must be a PNG data URL or raw base64 PNG');
+    b64 = m[1];
+  }
+  let buf;
+  try {
+    buf = Buffer.from(b64, 'base64');
+  } catch {
+    throw httpError(400, 'BAD_IMAGE', 'image_base64 is not valid base64');
+  }
+  if (buf.length > MAX_IMAGE_BYTES) {
+    throw httpError(400, 'BAD_IMAGE', `image exceeds ${MAX_IMAGE_BYTES} bytes decoded`);
+  }
+  if (buf.length < 8 || !buf.subarray(0, 8).equals(PNG_MAGIC)) {
+    throw httpError(400, 'BAD_IMAGE', 'image must be a PNG');
+  }
+  return buf;
 }
 
 /** Whitelist + validate the AppConfig patch fields (engine state is off-limits). */

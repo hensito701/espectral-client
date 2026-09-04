@@ -32,14 +32,22 @@ test('REGISTRY: exports Contract A feature entries', () => {
   assert.ok(ids.includes('nofog'));
   assert.ok(ids.includes('zoom'));
   assert.ok(ids.includes('macros'));
+  for (const id of ['potionstatus', 'coords', 'healthstatus', 'armorstatus', 'fpsping', 'lowfire', 'clearwater']) {
+    assert.ok(ids.includes(id), `missing registry entry: ${id}`);
+  }
+  for (const id of ['chatheads', 'skin3d']) {
+    assert.ok(ids.includes(id), `missing registry entry: ${id}`);
+  }
 
   for (const item of REGISTRY) {
     assert.ok(typeof item.id === 'string');
     assert.ok(typeof item.name === 'string');
     assert.ok(typeof item.description === 'string');
-    assert.ok(['managed', 'owned'].includes(item.kind));
+    assert.equal(item.kind, 'owned');
     assert.ok(typeof item.defaultEnabled === 'boolean');
   }
+  const zoom = REGISTRY.find((r) => r.id === 'zoom');
+  assert.equal(zoom.keybind, 'key.keyboard.z');
 });
 
 test('FEATURE_DEFAULTS: has default feature configurations', () => {
@@ -48,6 +56,12 @@ test('FEATURE_DEFAULTS: has default feature configurations', () => {
   assert.equal(FEATURE_DEFAULTS.nofog.enabled, false);
   assert.equal(FEATURE_DEFAULTS.zoom.enabled, true);
   assert.equal(FEATURE_DEFAULTS.macros.enabled, true);
+  for (const id of ['potionstatus', 'coords', 'healthstatus', 'armorstatus', 'fpsping', 'lowfire', 'clearwater']) {
+    assert.equal(FEATURE_DEFAULTS[id].enabled, false, `${id} defaults off`);
+  }
+  for (const id of ['chatheads', 'skin3d']) {
+    assert.equal(FEATURE_DEFAULTS[id].enabled, false, `${id} defaults off`);
+  }
 });
 
 test('loadClientConfig: returns defaults when file is missing', () => {
@@ -95,10 +109,10 @@ test('patchClientConfig: updates features and macros atomically', async () => {
       },
     ],
   };
-
   const res = await patchClientConfig('test-inst', patch);
   assert.equal(res.config.features.fullbright.enabled, false);
   assert.equal(res.config.features.zoom.enabled, false);
+  assert.deepEqual(res.errors, []);
   assert.equal(res.config.macros.length, 1);
   assert.equal(res.config.macros[0].id, 'macro-1');
 

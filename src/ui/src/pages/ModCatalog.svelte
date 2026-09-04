@@ -3,19 +3,18 @@
   ModCatalog.svelte — Horizon Glass Mod Catalog & Presets Center (#/mods)
   ============================================================================
   Next-generation Minecraft mod management console featuring instance chips,
-  performance/branding/QoL preset decks, live SHA-1 verified SSE download
-  tracking, density-responsive mod inventory, and integrated Modrinth search.
+  performance preset deck, live SHA-1 verified SSE download tracking,
+  compact mod inventory, and integrated Modrinth search with explore paging.
 -->
 <script lang="ts">
-  import { instances } from '../lib/stores';
   import {
+    API_BASE,
     getConfig,
     getModsPresetInfo,
     installModrinthMod,
     installMods,
     listMods,
     openFolder,
-    searchModrinth,
     setModEnabled,
     subscribeEvents,
   } from '../lib/api';
@@ -23,7 +22,8 @@
   import { pushToast } from '../lib/toast.svelte';
   import { formatBytes } from '../lib/format';
   import { t } from '../lib/i18n.svelte';
-  import { fade, flyY } from '../lib/motion';
+  import { flyY, fade } from '../lib/motion';
+  import { instances } from '../lib/stores';
 
   // Horizon Glass UI Primitives
   import Btn from '../components/Btn.svelte';
@@ -35,7 +35,6 @@
   import GradientText from '../components/GradientText.svelte';
 
   const STORAGE_KEY_INSTANCE = 'horizon:mods-instance';
-  const STORAGE_KEY_DENSITY = 'horizon:density';
 
   // Pinned standard mod packs
   const PINNED_SET: { slug: string; requires?: string[]; requiredBy?: string[] }[] = [
@@ -48,19 +47,10 @@
     { slug: 'fabric-api' },
   ];
 
-  const QOL_SET: { slug: string }[] = [
-    { slug: 'gamma-utils' },
-    { slug: 'clear-fog' },
-  ];
-
   // State
   let targetInstance = $state(
     (typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEY_INSTANCE)) || ''
   );
-  let density = $state<'compact' | 'spacious'>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(STORAGE_KEY_DENSITY) as 'compact' | 'spacious')) || 'spacious'
-  );
-
   let activeTab = $state<'installed' | 'presets' | 'modrinth'>('installed');
   let filterStatus = $state<'all' | 'enabled' | 'disabled'>('all');
   let filterQuery = $state('');
@@ -73,25 +63,37 @@
   let installingPreset = $state(false);
   let installProgress = $state<{ filename: string; done: number; total: number } | null>(null);
 
-  // Modrinth Search State
+  // Modrinth Search State (12 per page, offset paging)
+  const SEARCH_PAGE_SIZE = 12;
   let searchQuery = $state('');
   let searchResults = $state<ModrinthProject[] | null>(null);
+  let searchTotal = $state<number | null>(null);
+  let lastBatchCount = $state(0);
   let searching = $state(false);
+  let loadingMore = $state(false);
   let searchError = $state('');
   let installingProjectId = $state<string | null>(null);
   let searchSeq = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
   // Selected Instance derivation
   const selectedInstance = $derived(
     $instances.value.find((inst) => inst.name === targetInstance) ?? null
   );
 
   const presetAvailable = $derived(presetInfo?.supported !== false);
-  const brandingAvailable = $derived(presetInfo?.branding?.supported !== false);
   const pinSlugs = new Set(PINNED_SET.map((p) => p.slug));
   const perfMissing = $derived(
     mods.filter((m) => pinSlugs.has(m.project_slug ?? '') && !m.installed)
+  );
+
+  // More pages remain when the server total isn't reached yet; without a
+  // total, a full 12-item batch implies another page may exist.
+  const searchHasMore = $derived(
+    searchResults !== null &&
+      searchResults.length > 0 &&
+      (searchTotal !== null
+        ? searchResults.length < searchTotal
+        : lastBatchCount === SEARCH_PAGE_SIZE)
   );
 
   // Filtered mods list
@@ -139,19 +141,6 @@
     }
   });
 
-  // Global density event listener
-  $effect(() => {
-    const handleDensityChange = (e: CustomEvent<{ density: 'compact' | 'spacious' }>) => {
-      if (e.detail?.density && e.detail.density !== density) {
-        density = e.detail.density;
-      }
-    };
-    window.addEventListener('horizon:density-changed', handleDensityChange as EventListener);
-    return () => {
-      window.removeEventListener('horizon:density-changed', handleDensityChange as EventListener);
-    };
-  });
-
   // Subscribe to SSE mod-progress events
   $effect(() => {
     const unsub = subscribeEvents(({ type, data }) => {
@@ -186,18 +175,6 @@
     return () => unsub();
   });
 
-  function setDensity(next: 'compact' | 'spacious') {
-    density = next;
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY_DENSITY, next);
-    }
-    if (typeof document !== 'undefined') {
-      document.documentElement.dataset.density = next;
-    }
-    window.dispatchEvent(
-      new CustomEvent('horizon:density-changed', { detail: { density: next } })
-    );
-  }
 
   async function loadMods() {
     if (!targetInstance) return;
@@ -281,31 +258,64 @@
     }, 450);
   }
 
-  async function runModrinthSearch() {
-    const q = searchQuery.trim();
-    if (!q || !selectedInstance) {
-      if (!q) searchResults = null;
-      return;
+  function enterModrinthTab() {
+    activeTab = 'modrinth';
+    if (searchResults === null && !searching) {
+      runModrinthSearch();
     }
+  }
+
+  // Text search and empty-query explore share one paged pipeline: 12 items
+  // per round-trip, scoped to the instance version/loader when available.
+  async function runModrinthSearch(opts: { append?: boolean } = {}) {
+    const append = opts.append ?? false;
+    const q = searchQuery.trim();
+    const offset = append && searchResults ? searchResults.length : 0;
 
     const seq = ++searchSeq;
-    searching = true;
-    searchError = '';
+    if (append) {
+      loadingMore = true;
+    } else {
+      searching = true;
+      searchError = '';
+    }
 
     try {
-      const loader = selectedInstance.loader === 'neoforge' ? 'neoforge' : 'fabric';
-      const resp = await searchModrinth(q, selectedInstance.version, loader, selectedInstance.name);
+      const params = new URLSearchParams();
+      params.set('q', q);
+      if (selectedInstance) {
+        params.set('version', selectedInstance.version);
+        params.set('loader', selectedInstance.loader === 'neoforge' ? 'neoforge' : 'fabric');
+        params.set('instance', selectedInstance.name);
+      }
+      params.set('offset', String(offset));
+      const res = await fetch(`${API_BASE}/api/modrinth/search?${params}`, {
+        headers: { 'x-espectral-client': '1' },
+      });
+      if (!res.ok) throw new Error(`Modrinth search failed (${res.status})`);
+      const data = (await res.json()) as {
+        results: ModrinthProject[];
+        total?: number;
+      };
       if (seq === searchSeq) {
-        searchResults = resp.results;
+        const batch = data.results ?? [];
+        lastBatchCount = batch.length;
+        searchResults = append && searchResults ? [...searchResults, ...batch] : batch;
+        searchTotal = typeof data.total === 'number' ? data.total : null;
       }
     } catch {
       if (seq === searchSeq) {
         searchError = t('mods.searchError');
-        searchResults = null;
+        if (!append) {
+          searchResults = null;
+          searchTotal = null;
+          lastBatchCount = 0;
+        }
       }
     } finally {
       if (seq === searchSeq) {
         searching = false;
+        loadingMore = false;
       }
     }
   }
@@ -373,38 +383,6 @@
     </div>
 
     <div class="catalog-header__actions">
-      <!-- Density Segmented Control -->
-      <div class="density-control" role="group" aria-label="List density">
-        <button
-          type="button"
-          class="density-btn"
-          class:active={density === 'spacious'}
-          onclick={() => setDensity('spacious')}
-          title={t('mods.densitySpacious')}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="7" rx="2" />
-            <rect x="3" y="14" width="18" height="7" rx="2" />
-          </svg>
-          <span class="density-btn__label">{t('mods.densitySpacious')}</span>
-        </button>
-        <button
-          type="button"
-          class="density-btn"
-          class:active={density === 'compact'}
-          onclick={() => setDensity('compact')}
-          title={t('mods.densityCompact')}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="5" x2="21" y2="5" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-            <line x1="3" y1="15" x2="21" y2="15" />
-            <line x1="3" y1="20" x2="21" y2="20" />
-          </svg>
-          <span class="density-btn__label">{t('mods.densityCompact')}</span>
-        </button>
-      </div>
-
       <Btn
         variant="secondary"
         size="sm"
@@ -522,7 +500,7 @@
       type="button"
       class="catalog-tab-btn"
       class:active={activeTab === 'modrinth'}
-      onclick={() => (activeTab = 'modrinth')}
+      onclick={enterModrinthTab}
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.93V17h-2v-.07A6.006 6.006 0 0 1 6.07 12H6v-2h.07A6.006 6.006 0 0 1 11 5.07V5h2v.07A6.006 6.006 0 0 1 17.93 10H18v2h-.07A6.006 6.006 0 0 1 13 16.93z" />
@@ -621,12 +599,12 @@
           {/if}
         </div>
       {:else}
-        <div class="mods-feed" class:density-compact={density === 'compact'}>
+        <div class="mods-feed density-compact">
           {#each filteredMods as mod (mod.filename)}
             {@const depBadges = depBadgesFor(mod.project_slug)}
             <div class="mod-entry glass-panel" class:mod-entry--disabled={!mod.enabled}>
               <div class="mod-entry__media">
-                <MonogramTile name={modDisplayName(mod)} size={density === 'compact' ? 32 : 42} shape="rounded" />
+                <MonogramTile name={modDisplayName(mod)} size={32} shape="rounded" />
               </div>
 
               <div class="mod-entry__info">
@@ -743,95 +721,6 @@
           {/snippet}
         </GlassCard>
 
-        <!-- Preset 2: Espectral Menu Branding -->
-        <GlassCard elevation="md">
-          <div class="preset-card-head">
-            <div class="preset-card-title-group">
-              <span class="preset-icon-badge preset-icon-badge--cyan">✨</span>
-              <div>
-                <h3 class="preset-title">{t('mods.branding')}</h3>
-                <span class="preset-subtitle font-pixel text-xs">Propio & Ligero</span>
-              </div>
-            </div>
-          </div>
-
-          <p class="preset-desc muted">
-            {t('mods.brandingDesc')}
-          </p>
-
-          {#if presetInfo?.branding?.note}
-            <div class="preset-mini-note muted font-mono text-xs">
-              {presetInfo.branding.note}
-            </div>
-          {/if}
-
-          {#snippet footerSnippet()}
-            <div class="preset-card-footer">
-              <span class="preset-target-label muted">
-                {targetInstance}
-              </span>
-              <Btn
-                variant="secondary"
-                size="md"
-                onclick={() => installPreset('branding')}
-                loading={installingPreset}
-                disabled={installingPreset || !brandingAvailable}
-              >
-                {t('mods.installBranding')}
-              </Btn>
-            </div>
-          {/snippet}
-        </GlassCard>
-
-        <!-- Preset 3: Quality of Life (QoL) -->
-        <GlassCard elevation="md">
-          <div class="preset-card-head">
-            <div class="preset-card-title-group">
-              <span class="preset-icon-badge preset-icon-badge--purple">🔮</span>
-              <div>
-                <h3 class="preset-title">{t('mods.qolTitle')}</h3>
-                <span class="preset-subtitle font-pixel text-xs">Brillo & Claridad</span>
-              </div>
-            </div>
-          </div>
-
-          {#if presetInfo?.loader === 'vanilla'}
-            <p class="preset-desc muted">
-              {t('mods.qolVanillaNote')}
-            </p>
-          {:else}
-            <p class="preset-desc muted">
-              {t('mods.qolDesc')}
-            </p>
-
-            <div class="pinned-pills">
-              {#each QOL_SET as pin}
-                {@const isInstalled = mods.some((m) => m.project_slug === pin.slug && m.installed)}
-                <div class="pinned-pill" class:installed={isInstalled}>
-                  <span class="pinned-pill__dot"></span>
-                  <span class="font-mono">{pin.slug}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
-
-          {#snippet footerSnippet()}
-            <div class="preset-card-footer">
-              <span class="preset-target-label muted">
-                {targetInstance}
-              </span>
-              <Btn
-                variant="secondary"
-                size="md"
-                onclick={() => installPreset('qol')}
-                loading={installingPreset}
-                disabled={installingPreset || !presetAvailable || presetInfo?.loader === 'vanilla'}
-              >
-                {t('mods.installQol')}
-              </Btn>
-            </div>
-          {/snippet}
-        </GlassCard>
       </div>
     </div>
   {/if}
@@ -841,7 +730,7 @@
     <div class="tab-pane" in:fade={{ duration: 120 }}>
       <div class="modrinth-search-header glass-panel">
         <div class="modrinth-chip">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="#1bd96a">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M12.252.004a11.78 11.78 0 0 0-2.5.266A12.3 12.3 0 0 0 0 12.055a12.3 12.3 0 0 0 9.752 11.785 11.78 11.78 0 0 0 2.5.266c6.8 0 12.3-5.5 12.3-12.3s-5.5-12.3-12.3-12.3zm0 2.05c5.66 0 10.25 4.59 10.25 10.25s-4.59 10.25-10.25 10.25S2 17.964 2 12.304 6.59 2.054 12.252 2.054zm-2.05 4.1v4.1H6.102v4.1h4.1v4.1h4.1v-4.1h4.1v-4.1h-4.1v-4.1z" />
           </svg>
           <span class="font-pixel text-xs">Modrinth Matrix</span>
@@ -861,9 +750,9 @@
           <Btn
             variant="primary"
             size="sm"
-            onclick={runModrinthSearch}
+            onclick={() => runModrinthSearch()}
             loading={searching}
-            disabled={!selectedInstance || searching}
+            disabled={searching}
           >
             {t('mods.search')}
           </Btn>
@@ -883,7 +772,7 @@
         </div>
       {/if}
 
-      {#if searching}
+      {#if searching && searchResults === null}
         <div class="loading-state glass-panel">
           <div class="spinner-pulse"></div>
           <p class="muted">{t('mods.searching')}</p>
@@ -893,9 +782,15 @@
           <div class="empty-state glass-panel">
             <div class="empty-state__icon">🔍</div>
             <h3>{t('mods.noResults')}</h3>
-            <p class="muted">Intenta buscar con palabras clave más generales en inglés o nombres exactos.</p>
+            <p class="muted">{t('mods.noResultsHint')}</p>
           </div>
         {:else}
+          {#if !searchQuery.trim()}
+            <div class="explore-title">
+              <span class="explore-title__dot"></span>
+              <h3>{t('mods.exploreTitle')}</h3>
+            </div>
+          {/if}
           <div class="modrinth-grid">
             {#each searchResults as project (project.project_id)}
               <div class="modrinth-card glass-panel">
@@ -936,15 +831,32 @@
               </div>
             {/each}
           </div>
+          {#if searchHasMore}
+            <div class="show-more-wrap">
+              <Btn
+                variant="secondary"
+                size="md"
+                onclick={() => runModrinthSearch({ append: true })}
+                loading={loadingMore}
+                disabled={loadingMore}
+              >
+                {t('mods.showMore')}
+              </Btn>
+            </div>
+          {/if}
         {/if}
+      {:else if searchError}
+        <!-- Failed search: banner above explains; offer retry instead of a stuck spinner -->
+        <div class="loading-state glass-panel">
+          <Btn variant="secondary" size="md" onclick={() => runModrinthSearch()}>
+            {t('mods.search')}
+          </Btn>
+        </div>
       {:else}
-        <!-- Initial Modrinth discover landing -->
-        <div class="modrinth-discover-hint glass-panel">
-          <div class="discover-spark">✨</div>
-          <h3>Explora miles de mods optimizados</h3>
-          <p class="muted">
-            Escribe en la barra superior para buscar shaders, minimapas, optimizaciones y herramientas compatibles con tu versión activa.
-          </p>
+        <!-- First paint while the explore fetch is in flight -->
+        <div class="loading-state glass-panel">
+          <div class="spinner-pulse"></div>
+          <p class="muted">{t('mods.searching')}</p>
         </div>
       {/if}
     </div>
@@ -960,9 +872,9 @@
     flex-direction: column;
     gap: var(--space-4, 1rem);
     width: 100%;
-    max-width: 1360px;
+    max-width: var(--content-max, 82rem);
     margin: 0 auto;
-    padding-bottom: var(--space-8, 2rem);
+    padding: var(--space-6, 24px) var(--space-6, 24px) var(--space-12, 48px);
   }
 
   /* Header */
@@ -1005,41 +917,6 @@
     display: flex;
     align-items: center;
     gap: var(--space-3, 0.75rem);
-  }
-
-  /* Density Switcher */
-  .density-control {
-    display: flex;
-    align-items: center;
-    background: rgba(var(--bg-rgb, 6, 10, 20), 0.6);
-    border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
-    border-radius: var(--radius-md, 0.5rem);
-    padding: 2px;
-  }
-
-  .density-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.3rem 0.6rem;
-    border-radius: var(--radius-sm, 0.375rem);
-    background: transparent;
-    border: none;
-    color: var(--muted, #8e9eb8);
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all var(--transition-fast, 0.15s);
-  }
-
-  .density-btn:hover {
-    color: var(--text, #e8ecf4);
-  }
-
-  .density-btn.active {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--accent, #10b981);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   }
 
   /* Instance Selector Strip */
@@ -1351,6 +1228,11 @@
     text-overflow: ellipsis;
   }
 
+  .mod-entry__ver {
+    /* Version strings (e.g. 1.11.2+26.2-fabric) match surrounding body text. */
+    font-size: 0.75rem;
+  }
+
   .mod-entry__slug {
     font-size: 0.6875rem;
     color: var(--muted, #8e9eb8);
@@ -1418,15 +1300,6 @@
     border: 1px solid rgba(var(--accent-rgb, 16, 185, 129), 0.3);
   }
 
-  .preset-icon-badge--cyan {
-    background: rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.15);
-    border: 1px solid rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.3);
-  }
-
-  .preset-icon-badge--purple {
-    background: rgba(var(--accent-purple-rgb, 168, 85, 247), 0.15);
-    border: 1px solid rgba(var(--accent-purple-rgb, 168, 85, 247), 0.3);
-  }
 
   .preset-title {
     font-size: 1rem;
@@ -1593,17 +1466,80 @@
     padding-top: 0.6rem;
   }
 
-  .modrinth-discover-hint {
-    padding: var(--space-8, 2rem) var(--space-4, 1rem);
-    text-align: center;
+  .explore-title {
     display: flex;
-    flex-direction: column;
     align-items: center;
     gap: 0.5rem;
+    margin-bottom: var(--space-3, 0.75rem);
   }
 
-  .discover-spark {
-    font-size: 2rem;
+  .explore-title h3 {
+    font-size: 0.9375rem;
+    font-weight: 700;
+  }
+
+  .explore-title__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent, #10b981);
+    box-shadow: 0 0 8px var(--accent, #10b981);
+  }
+
+  .show-more-wrap {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-4, 1rem) 0 var(--space-2, 0.5rem);
+  }
+
+  /* Light mode: darken this page's green accents/surfaces until legible. */
+  :global([data-theme='light']) .mod-catalog .catalog-header__tagline {
+    color: var(--accent-ink, #047857);
+  }
+
+  :global([data-theme='light']) .mod-catalog .modrinth-chip {
+    color: var(--accent-ink, #047857);
+  }
+
+  :global([data-theme='light']) .mod-catalog .modrinth-input:focus {
+    border-color: var(--accent-ink, #047857);
+    box-shadow: 0 0 12px rgba(4, 120, 87, 0.28);
+  }
+
+  :global([data-theme='light']) .mod-catalog .catalog-tab-btn.active {
+    color: var(--accent-ink, #047857);
+    background: rgba(var(--accent-rgb, 5, 150, 105), 0.14);
+  }
+
+  :global([data-theme='light']) .mod-catalog .instance-chip.selected {
+    color: #052e21;
+    background: rgba(var(--accent-rgb, 5, 150, 105), 0.16);
+    border-color: var(--accent-ink, #047857);
+  }
+
+  :global([data-theme='light']) .mod-catalog .instance-chip.selected .instance-chip__tag {
+    color: rgba(5, 46, 33, 0.72);
+  }
+
+  :global([data-theme='light']) .mod-catalog .install-progress-deck {
+    background: rgba(var(--accent-rgb, 5, 150, 105), 0.12);
+    border-color: rgba(var(--accent-rgb, 5, 150, 105), 0.45);
+  }
+
+  :global([data-theme='light']) .mod-catalog .pinned-pill.installed {
+    background: rgba(var(--accent-rgb, 5, 150, 105), 0.14);
+    border-color: rgba(var(--accent-rgb, 5, 150, 105), 0.5);
+    color: #052e21;
+  }
+
+  :global([data-theme='light']) .mod-catalog .preset-icon-badge--emerald {
+    background: rgba(var(--accent-rgb, 5, 150, 105), 0.16);
+    border-color: rgba(var(--accent-rgb, 5, 150, 105), 0.5);
+  }
+
+  :global([data-theme='light']) .mod-catalog .explore-title__dot {
+    background: var(--accent-ink, #047857);
+    box-shadow: 0 0 8px var(--accent-ink, #047857);
   }
 
   /* Universal Feedback States */

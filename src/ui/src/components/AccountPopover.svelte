@@ -6,8 +6,9 @@
      ========================================================================== */
 
   import { onMount } from 'svelte';
-  import { getAccounts, setActiveAccount, createAccount } from '../lib/api';
+  import { getAccounts, setActiveAccount, createAccount, avatarUrl } from '../lib/api';
   import type { Account } from '../lib/types';
+  import MonogramTile from './MonogramTile.svelte';
   import { t } from '../lib/i18n.svelte';
   import { timeAgo } from '../lib/format';
   import { scalePop } from '../lib/motion';
@@ -192,7 +193,13 @@
         <!-- Active Account Spotlight Card -->
         <div class="active-card">
           <div class="active-card__avatar">
-            <span class="avatar-letter">{activeAccount.username.charAt(0).toUpperCase()}</span>
+            <MonogramTile
+              name={activeAccount.username}
+              hue={activeAccount.avatar_color ?? undefined}
+              avatarUrl={activeAccount.has_avatar ? avatarUrl(activeAccount.username) : undefined}
+              size={44}
+              shape="circle"
+            />
             <span
               class="avatar-status-dot"
               class:avatar-status-dot--msa={activeAccount.token_kind === 'msa'}
@@ -243,7 +250,13 @@
                 title="{t('account.switchTo') || 'Usar'} {acc.username}"
               >
                 <div class="switch-item__avatar">
-                  {acc.username.charAt(0).toUpperCase()}
+                  <MonogramTile
+                    name={acc.username}
+                    hue={acc.avatar_color ?? undefined}
+                    avatarUrl={acc.has_avatar ? avatarUrl(acc.username) : undefined}
+                    size={32}
+                    shape="circle"
+                  />
                 </div>
                 <div class="switch-item__body">
                   <div class="switch-item__name">{acc.username}</div>

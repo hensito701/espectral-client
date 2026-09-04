@@ -14,7 +14,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { CreateInstanceRequest, ImportSource, Loader } from '../lib/types';
-  import { createInstance, getImportSources } from '../lib/api';
+  import { createInstance, getImportSources, pickFolder } from '../lib/api';
   import { versions as versionsStore, instances as instancesStore } from '../lib/stores';
   import { pushToast } from '../lib/toast.svelte';
   import { scalePop, fade } from '../lib/motion';
@@ -40,10 +40,12 @@
   let selectedLoader = $state<Loader>('fabric');
   let instanceName = $state('');
   let memoryMb = $state(4096);
+  let gameDir = $state('');
+  let wizardHue = $state(0);
   let importEnabled = $state(false);
+  let pickingFolder = $state(false);
   let importSources = $state<ImportSource[]>([]);
   let selectedSourceId = $state('');
-
   // Search & Filter State
   let searchQuery = $state('');
   let versionFilter = $state<'all' | 'release' | 'snapshot' | 'old'>('release');
@@ -114,12 +116,19 @@
     }
   }
 
+  function randomHue(): number {
+    return Math.floor(Math.random() * 360);
+  }
+
   function resetForm(): void {
     step = 1;
     selectedVersion = manifest?.latest_release || '';
     selectedLoader = 'fabric';
     instanceName = selectedVersion ? `${selectedVersion}-fabric` : '';
     memoryMb = 4096;
+    gameDir = '';
+    wizardHue = randomHue();
+    pickingFolder = false;
     importEnabled = false;
     selectedSourceId = '';
     searchQuery = '';
@@ -161,6 +170,8 @@
       memory_mb: memoryMb,
       import_from: importEnabled && selectedSourceId ? selectedSourceId : undefined,
       merge_optionslc: importEnabled && selectedSourceId ? true : undefined,
+      hue: wizardHue,
+      game_dir: gameDir.trim() ? gameDir.trim() : undefined,
     };
 
     try {
@@ -178,6 +189,19 @@
       errorMsg = e instanceof Error ? e.message : String(e);
     } finally {
       isCreating = false;
+    }
+  }
+
+  async function handlePickGameDir(): Promise<void> {
+    if (pickingFolder) return;
+    pickingFolder = true;
+    try {
+      const res = await pickFolder(t('home.wizardGameDirTitle'));
+      if (res?.path) gameDir = res.path;
+    } catch (e) {
+      errorMsg = e instanceof Error ? e.message : String(e);
+    } finally {
+      pickingFolder = false;
     }
   }
 
@@ -450,6 +474,50 @@
                   </div>
                 </div>
               </Field>
+              <!-- Game Directory (optional override) -->
+              <Field
+                label={t('home.wizardGameDirTitle')}
+                hint={t('home.wizardGameDirHint')}
+              >
+                <div class="wizard-gamedir-row">
+                  <input
+                    type="text"
+                    class="wizard-input wizard-gamedir-input"
+                    placeholder={t('home.wizardGameDirDefault')}
+                    value={gameDir}
+                    readonly
+                  />
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    loading={pickingFolder}
+                    disabled={pickingFolder}
+                    onclick={handlePickGameDir}
+                  >
+                    {t('home.wizardGameDirBrowse')}
+                  </Btn>
+                  {#if gameDir}
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      disabled={pickingFolder}
+                      onclick={() => (gameDir = '')}
+                    >
+                      {t('home.wizardGameDirClear')}
+                    </Btn>
+                  {/if}
+                </div>
+              </Field>
+
+              <!-- Auto-assigned accent hue note -->
+              <p class="wizard-hue-note">
+                <span
+                  class="wizard-hue-dot"
+                  style="background: hsl({wizardHue}, 70%, 55%);"
+                  aria-hidden="true"
+                ></span>
+                {t('home.wizardHueNote')}
+              </p>
 
               <!-- Import Settings Option -->
               <div class="wizard-import-box">
@@ -897,6 +965,34 @@
   .wizard-memory-raw {
     font-size: var(--text-xs, 0.75rem);
     color: var(--muted, #8e9eb8);
+  }
+  .wizard-gamedir-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+  }
+
+  .wizard-gamedir-input {
+    flex: 1;
+    min-width: 0;
+    text-overflow: ellipsis;
+  }
+
+  .wizard-hue-note {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--muted, #8e9eb8);
+    margin: 0;
+  }
+
+  .wizard-hue-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.25);
   }
 
   .wizard-import-box {

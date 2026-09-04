@@ -255,9 +255,9 @@
     flex-direction: column;
     gap: var(--space-6, 1.5rem);
     width: 100%;
-    max-width: 1200px;
+    max-width: var(--content-max, 82rem);
     margin: 0 auto;
-    padding-bottom: var(--space-8, 2rem);
+    padding: var(--space-6, 24px) var(--space-6, 24px) var(--space-12, 48px);
   }
 
   /* Hero Header */

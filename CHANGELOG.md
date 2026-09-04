@@ -2,6 +2,29 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+## [1.3.11] - 2026-09-04
+
+### Changed
+- **Fullbright and nofog are now native owned features.** The in-game mod drives gamma live
+  (fullbright) and removes fog live (nofog) — no Gamma Utils / Clear Fog jars, no restart.
+  Leftover third-party jars are inert; the QoL preset stays installable but is no longer required.
+- **Zoom key text fixed: Z, not C.** Hold-to-zoom was always bound to Z; the launcher registry
+  said C. It now says Z (`key.keyboard.z`).
+- **Launcher toggles reach a running game.** Client feature and macro PATCHes apply live in-game.
+- **Macro key support widened.** More keybind forms are accepted, and unrecognized keybinds
+  surface per-feature warnings instead of failing silently.
+- **Reconcile errors surfaced in the UI.** PATCH responses carry an additive `errors` array; the
+  Client Suite toasts them as warnings (listing the feature ids) instead of a blanket success
+  toast, without reverting the persisted toggle.
+- **Macro editor overhauled.** The keybind box now captures the pressed key (numpad 4 and row 4
+  are distinct: `numpad.4` vs `4`); action rows put the value in a full-width box below the
+  type selector, with per-type examples (commands need no leading `/`).
+- **Page containers unified.** Client Suite, Server Radar, and Version Armory use the same
+  centered content rule as the mod catalog, so non-maximized windows keep side margins and
+  air under the header.
+
 ## [1.3.10] - 2026-09-03
 
 ### Fixed

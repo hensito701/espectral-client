@@ -27,6 +27,12 @@
     installMods,
     getModsPresetInfo,
     openFolder,
+    pickFolder,
+    iconUrl,
+    uploadInstanceIcon,
+    removeInstanceIcon,
+    fileToPngDataUrl,
+    UnsupportedImageError,
     subscribeEvents,
   } from '../lib/api';
   import { instances, liveLaunches, launchLog, servers as networkServers } from '../lib/stores';
@@ -81,6 +87,15 @@
   let jdkOverride = $state('');
   let aotAutoTrain = $state(false);
   let savingConfig = $state(false);
+  let hue = $state<number | null>(null);
+  let savingHue = $state(false);
+  let gameDir = $state('');
+  let gameDirDefault = $state(true);
+  let savingGameDir = $state(false);
+  let pickingFolder = $state(false);
+  let iconBust = $state(0);
+  let uploadingIcon = $state(false);
+  let iconError = $state('');
   let aotStatus = $state<AotStatus | null>(null);
   let trainingAot = $state(false);
   let trainProgress = $state<{ done: number; total: number; phase?: string } | null>(null);
@@ -135,11 +150,12 @@
   const logLines = $derived(instanceLogBuffer?.lines ?? ($launchLog.lines.length > 0 ? $launchLog.lines : []));
   const isLogRunning = $derived(Boolean(instanceLogBuffer?.running || $launchLog.running));
 
-  // Dynamic ambient hue shift
+  // Dynamic ambient hue shift (custom instance hue wins over the loader palette)
   $effect(() => {
     if (typeof document !== 'undefined' && summary?.loader) {
-      const hue = LOADER_HUES[summary.loader.toLowerCase()] ?? 160;
-      document.documentElement.style.setProperty('--ambient-hue', String(hue));
+      const custom = typeof summary.hue === 'number' ? summary.hue : null;
+      const ambient = custom ?? LOADER_HUES[summary.loader.toLowerCase()] ?? 160;
+      document.documentElement.style.setProperty('--ambient-hue', String(ambient));
     }
   });
 
@@ -170,6 +186,10 @@
       aotStatus = detail.aot;
       jvm = jvmData;
       clientInfo = clientData;
+      hue = typeof detail.summary.hue === 'number' ? detail.summary.hue : null;
+      gameDir = detail.summary.game_dir ?? '';
+      gameDirDefault = !detail.summary.game_dir;
+      iconError = '';
 
       // Extract existing config values
       if ('jdk_path_override' in detail.summary) {
@@ -292,6 +312,120 @@
     } catch (e) {
       aotAutoTrain = !aotAutoTrain;
       pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  // Custom accent hue (optimistic slider, persisted on save)
+  async function handleSaveHue() {
+    if (!decodedName || savingHue || hue === null) return;
+    savingHue = true;
+    try {
+      summary = await patchInstance(decodedName, { hue });
+      await $instances.refresh();
+      pushToast({ kind: 'ok', text: t('instance.hueSaved') });
+    } catch (e) {
+      pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      savingHue = false;
+    }
+  }
+
+  // Custom game directory (null clears back to the default location)
+  async function handlePickGameDir() {
+    if (!decodedName || pickingFolder) return;
+    pickingFolder = true;
+    try {
+      const res = await pickFolder(t('instance.gameDirTitle'));
+      if (res?.path) {
+        gameDir = res.path;
+        gameDirDefault = false;
+      }
+    } catch (e) {
+      pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      pickingFolder = false;
+    }
+  }
+
+  async function handleSaveGameDir() {
+    if (!decodedName || savingGameDir) return;
+    savingGameDir = true;
+    try {
+      const trimmed = gameDir.trim();
+      summary = await patchInstance(decodedName, { game_dir: trimmed ? trimmed : null });
+      gameDir = summary.game_dir ?? '';
+      gameDirDefault = !summary.game_dir;
+      await $instances.refresh();
+      pushToast({ kind: 'ok', text: t('instance.gameDirSaved') });
+    } catch (e) {
+      pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      savingGameDir = false;
+    }
+  }
+
+  async function handleClearGameDir() {
+    if (!decodedName || savingGameDir) return;
+    savingGameDir = true;
+    try {
+      summary = await patchInstance(decodedName, { game_dir: null });
+      gameDir = '';
+      gameDirDefault = true;
+      await $instances.refresh();
+      pushToast({ kind: 'ok', text: t('instance.gameDirSaved') });
+    } catch (e) {
+      pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      savingGameDir = false;
+    }
+  }
+
+  // Instance icon upload (canvas-downscaled PNG) + removal
+  const hubIconSrc = $derived(
+    summary?.has_icon ? `${iconUrl(summary.name)}${iconBust ? `?v=${iconBust}` : ''}` : null,
+  );
+
+  async function handleIconFile(e: Event) {
+    const input = e.currentTarget as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file || !decodedName || uploadingIcon) return;
+    uploadingIcon = true;
+    iconError = '';
+    try {
+      const dataUrl = await fileToPngDataUrl(file, 256);
+      await uploadInstanceIcon(decodedName, dataUrl);
+      iconBust += 1;
+      summary = await getInstance(decodedName).then((d) => d.summary);
+      await $instances.refresh();
+      pushToast({ kind: 'ok', text: t('instance.iconSaved') });
+    } catch (err) {
+      iconError =
+        err instanceof UnsupportedImageError
+          ? t('instance.iconUnsupported', { label: err.label, name: err.fileName })
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      pushToast({ kind: 'err', text: iconError });
+    } finally {
+      uploadingIcon = false;
+      if (input) input.value = '';
+    }
+  }
+
+  async function handleRemoveIcon() {
+    if (!decodedName || uploadingIcon) return;
+    uploadingIcon = true;
+    iconError = '';
+    try {
+      await removeInstanceIcon(decodedName);
+      iconBust += 1;
+      summary = await getInstance(decodedName).then((d) => d.summary);
+      await $instances.refresh();
+      pushToast({ kind: 'ok', text: t('instance.iconRemoved') });
+    } catch (err) {
+      iconError = err instanceof Error ? err.message : String(err);
+      pushToast({ kind: 'err', text: iconError });
+    } finally {
+      uploadingIcon = false;
     }
   }
 
@@ -428,12 +562,13 @@
     }
   }
 
-  // Open Folder
+  // Open Folder — the engine jails paths under <dataDir>, and instances live
+  // in <dataDir>/instances. Sending the bare name resolved to <dataDir>/<name>
+  // which does not exist ("path does not exist: UHC").
   async function handleOpenFolder() {
     if (!decodedName) return;
     try {
-      // Open instance directory via engine api
-      await openFolder(decodedName);
+      await openFolder(`instances/${decodedName}`);
     } catch (e) {
       pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     }
@@ -714,6 +849,123 @@
                     onclick={handleSaveMemory}
                   >
                     {t('instance.saveMemory')}
+                  </Btn>
+                </div>
+              </div>
+            </GlassCard>
+
+            <!-- Appearance: accent hue + icon -->
+            <GlassCard title={t('instance.appearanceTitle')} subtitle={t('instance.appearanceHint')} elevation="md">
+              <div class="appearance-settings">
+                <Field label={t('instance.hueTitle')} hint={t('instance.hueHint')}>
+                  <div class="hue-row">
+                    <span
+                      class="hue-preview"
+                      style="background: hsl({hue ?? summary.hue ?? 160}, 70%, 50%);"
+                      aria-hidden="true"
+                    ></span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="359"
+                      step="1"
+                      value={hue ?? summary.hue ?? 160}
+                      oninput={(e) => (hue = Number((e.currentTarget as HTMLInputElement).value))}
+                      class="range-slider hue-slider"
+                      aria-label={t('instance.hueTitle')}
+                    />
+                    <span class="hue-val">{hue ?? summary.hue ?? 160}°</span>
+                  </div>
+                </Field>
+                <div class="card-action-footer">
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    loading={savingHue}
+                    disabled={savingHue || hue === null || hue === summary.hue}
+                    onclick={handleSaveHue}
+                  >
+                    {t('instance.saveHue')}
+                  </Btn>
+                </div>
+
+                <Field label={t('instance.iconTitle')} hint={t('instance.iconHint')}>
+                  <div class="icon-row">
+                    {#if hubIconSrc}
+                      <img class="icon-preview" src={hubIconSrc} alt="" />
+                    {:else}
+                      <span class="icon-preview icon-preview--empty" aria-hidden="true">🖼️</span>
+                    {/if}
+                    <label class="icon-upload-btn">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        class="icon-file-input"
+                        onchange={handleIconFile}
+                        disabled={uploadingIcon}
+                      />
+                      {uploadingIcon ? t('instance.iconUploading') : t('instance.iconUpload')}
+                    </label>
+                    {#if summary.has_icon}
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        disabled={uploadingIcon}
+                        onclick={handleRemoveIcon}
+                      >
+                        {t('instance.iconRemove')}
+                      </Btn>
+                    {/if}
+                  </div>
+                  {#if iconError}
+                    <p class="options-feedback">{iconError}</p>
+                  {/if}
+                </Field>
+              </div>
+            </GlassCard>
+
+            <!-- Game directory override -->
+            <GlassCard title={t('instance.gameDirTitle')} subtitle={t('instance.gameDirHint')} elevation="md">
+              <div class="gamedir-settings">
+                <Field label={t('instance.gameDirLabel')} hint={t('instance.gameDirFieldHint')}>
+                  <div class="import-input-row">
+                    <input
+                      type="text"
+                      bind:value={gameDir}
+                      placeholder={t('instance.gameDirDefault')}
+                      class="glass-input"
+                      readonly
+                    />
+                    <Btn
+                      variant="secondary"
+                      size="sm"
+                      loading={pickingFolder}
+                      disabled={pickingFolder}
+                      onclick={handlePickGameDir}
+                    >
+                      {t('instance.gameDirBrowse')}
+                    </Btn>
+                    {#if !gameDirDefault}
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        disabled={savingGameDir}
+                        onclick={handleClearGameDir}
+                      >
+                        {t('instance.gameDirClear')}
+                      </Btn>
+                    {/if}
+                  </div>
+                </Field>
+                <div class="card-action-footer">
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    loading={savingGameDir}
+                    disabled={savingGameDir || (gameDir || '') === (summary.game_dir || '')}
+                    onclick={handleSaveGameDir}
+                  >
+                    {t('instance.saveGameDir')}
                   </Btn>
                 </div>
               </div>
@@ -1503,6 +1755,83 @@
     display: flex;
     justify-content: flex-end;
     margin-top: 0.5rem;
+  }
+
+  /* Appearance (hue + icon) & game directory */
+  .appearance-settings,
+  .gamedir-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .hue-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .hue-preview {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
+  }
+
+  .hue-slider {
+    flex: 1;
+  }
+
+  .hue-val {
+    min-width: 3rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text, #e8ecf4);
+  }
+
+  .icon-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .icon-preview {
+    width: 48px;
+    height: 48px;
+    border-radius: 0.625rem;
+    object-fit: cover;
+    border: 1px solid var(--border, rgba(40, 58, 96, 0.45));
+  }
+
+  .icon-preview--empty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .icon-upload-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border, rgba(40, 58, 96, 0.45));
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text, #e8ecf4);
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .icon-upload-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .icon-file-input {
+    display: none;
   }
 
   /* JVM Specs */

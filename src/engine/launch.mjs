@@ -408,6 +408,48 @@ export function applyLaunchPreferences(instance, gameDir = null) {
   }
 }
 
+/**
+ * Run-dir decision for a launch.
+ * - instance.game_dir set (non-empty string): wins as gameDir (mkdir -p
+ *   unless dryRun); the per-account profiles split is skipped and natives
+ *   stay at the instance default.
+ * - Otherwise (Contract C): a non-active account gets its own
+ *   <instanceDir>/profiles/<uuid>/ for BOTH gameDir and nativesDir so
+ *   concurrent launches under different accounts don't collide on
+ *   options.txt/logs. mods/, libraries, assets, version json stay shared
+ *   (read-only at boot). Active-account launches keep the instance dir.
+ */
+export function selectGameDir(instance, launchAccount, { dryRun = false, warnings = null } = {}) {
+  const base = resolver.instanceDir(instance.name);
+  if (typeof instance.game_dir === 'string' && instance.game_dir.length > 0) {
+    if (!dryRun) {
+      try {
+        fs.mkdirSync(instance.game_dir, { recursive: true });
+      } catch (e) {
+        warnings?.push(`could not create game_dir: ${e.message}`);
+      }
+    }
+    return { gameDir: instance.game_dir, nativesDir: resolver.instanceNativesDir(instance.name) };
+  }
+  if (!launchAccount) {
+    return { gameDir: base, nativesDir: resolver.instanceNativesDir(instance.name) };
+  }
+  const activeAccount = getActiveAccount();
+  if (!activeAccount || launchAccount.uuid !== activeAccount.uuid) {
+    const profileDir = path.join(base, 'profiles', launchAccount.uuid);
+    if (!dryRun) {
+      try {
+        fs.mkdirSync(path.join(profileDir, 'logs'), { recursive: true });
+        fs.mkdirSync(path.join(profileDir, 'config'), { recursive: true });
+      } catch (e) {
+        warnings?.push(`could not create profile dir: ${e.message}`);
+      }
+    }
+    return { gameDir: profileDir, nativesDir: path.join(profileDir, 'natives') };
+  }
+  return { gameDir: base, nativesDir: resolver.instanceNativesDir(instance.name) };
+}
+
 export async function resolveLaunch(
   instance,
   { mode = 'normal', account = null, dryRun = false, forceVerify = false, onProgress = null, onPhase = null } = {}
@@ -505,27 +547,10 @@ export async function resolveLaunch(
   }
   phase('account');
 
-  // Per-account run dir (Contract C): a non-active account gets its own
-  // <instanceDir>/profiles/<uuid>/ for BOTH gameDir and nativesDir so
-  // concurrent launches under different accounts don't collide on
-  // options.txt/logs. mods/, libraries, assets, version json stay shared
-  // (read-only at boot). Active-account launches keep the instance dir.
-  let gameDir = resolver.instanceDir(instance.name);
-  let nativesDir = resolver.instanceNativesDir(instance.name);
-  const activeAccount = getActiveAccount();
-  if (!activeAccount || launchAccount.uuid !== activeAccount.uuid) {
-    const profileDir = path.join(resolver.instanceDir(instance.name), 'profiles', launchAccount.uuid);
-    gameDir = profileDir;
-    nativesDir = path.join(profileDir, 'natives');
-    if (!dryRun) {
-      try {
-        fs.mkdirSync(path.join(profileDir, 'logs'), { recursive: true });
-        fs.mkdirSync(path.join(profileDir, 'config'), { recursive: true });
-      } catch (e) {
-        warnings.push(`could not create profile dir: ${e.message}`);
-      }
-    }
-  }
+  // Run-dir decision (selectGameDir below): a custom instance.game_dir wins
+  // outright (mkdir -p, no per-account split); otherwise the per-account
+  // profiles split (Contract C) applies.
+  const { gameDir, nativesDir } = selectGameDir(instance, launchAccount, { dryRun, warnings });
 
   if (!dryRun) {
     onProgress?.('[espectral] verificando dependencias…');
