@@ -39,11 +39,74 @@ export class ImportError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// Path helpers (Windows %APPDATA% convention per contract)
+// Path helpers (Windows %APPDATA% convention per contract; POSIX uses $HOME)
 // ---------------------------------------------------------------------------
+
+function isWindows() {
+  return process.platform === 'win32'
+}
 
 function getAppData() {
   return process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
+}
+
+/**
+ * POSIX home dir ($HOME, falling back to os.homedir()). Only consulted
+ * off-Windows — getAppData() would resolve to a bogus ~/AppData/Roaming
+ * path on Linux, so no POSIX branch below ever calls it.
+ */
+function posixHome() {
+  return process.env.HOME || os.homedir()
+}
+
+/**
+ * Candidate vanilla .minecraft dirs, first hit wins.
+ * Windows: single %APPDATA%\.minecraft (unchanged).
+ * POSIX: ~/.minecraft, $XDG_DATA_HOME/.minecraft when set, plus Flatpak
+ * ~/.var/app/<id>/.minecraft and ~/.var/app/<id>/data/.minecraft installs
+ * (scanned best-effort; absent root is ignored).
+ */
+function vanillaCandidates() {
+  if (isWindows()) return [path.join(getAppData(), '.minecraft')]
+  const home = posixHome()
+  const out = [path.join(home, '.minecraft')]
+  const xdg = process.env.XDG_DATA_HOME
+  if (xdg && path.isAbsolute(xdg)) {
+    const p = path.join(xdg, '.minecraft')
+    if (!out.includes(p)) out.push(p)
+  }
+  try {
+    const flatpakRoot = path.join(home, '.var', 'app')
+    for (const e of readdirSync(flatpakRoot, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue
+      for (const p of [path.join(flatpakRoot, e.name, '.minecraft'), path.join(flatpakRoot, e.name, 'data', '.minecraft')]) {
+        if (!out.includes(p)) out.push(p)
+      }
+    }
+  } catch {
+    /* no Flatpak root — ignore */
+  }
+  return out
+}
+
+/**
+ * Candidate FastClient profiles roots.
+ * Windows: %APPDATA%\.fastclient\profiles (unchanged).
+ * POSIX: ~/.fastclient/profiles.
+ */
+function fastClientProfilesDirs() {
+  if (isWindows()) return [path.join(getAppData(), '.fastclient', 'profiles')]
+  return [path.join(posixHome(), '.fastclient', 'profiles')]
+}
+
+/**
+ * Candidate Lunar Client install roots.
+ * Windows: %APPDATA%\.lunarclient first (unchanged), then ~/.lunarclient.
+ * POSIX: ~/.lunarclient only — getAppData() is never consulted there.
+ */
+function lunarCandidates() {
+  if (isWindows()) return [path.join(getAppData(), '.lunarclient'), path.join(os.homedir(), '.lunarclient')]
+  return [path.join(posixHome(), '.lunarclient')]
 }
 
 /**
@@ -278,27 +341,39 @@ async function buildSource(id, kind, label, dir) {
 }
 
 async function makeVanillaSource() {
-  return buildSource('vanilla', 'vanilla', 'Minecraft (vanilla)', path.join(getAppData(), '.minecraft'))
+  if (isWindows()) return buildSource('vanilla', 'vanilla', 'Minecraft (vanilla)', path.join(getAppData(), '.minecraft'))
+  const candidates = vanillaCandidates()
+  for (const dir of candidates) {
+    if (existsSync(path.join(dir, 'options.txt')) || existsSync(path.join(dir, 'servers.dat'))) {
+      return buildSource('vanilla', 'vanilla', 'Minecraft (vanilla)', dir)
+    }
+  }
+  return buildSource('vanilla', 'vanilla', 'Minecraft (vanilla)', candidates[0])
 }
 
 async function makeFastClientSources() {
-  const profilesDir = path.join(getAppData(), '.fastclient', 'profiles')
-  if (!existsSync(profilesDir)) return []
   const out = []
-  const names = readdirSync(profilesDir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort()
-  for (const name of names) {
-    out.push(await buildSource(`fastclient:${name}`, 'fastclient', `FastClient · ${name}`, path.join(profilesDir, name)))
+  const seen = new Set()
+  for (const profilesDir of fastClientProfilesDirs()) {
+    if (!existsSync(profilesDir)) continue
+    const names = readdirSync(profilesDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort()
+    for (const name of names) {
+      if (seen.has(name)) continue
+      seen.add(name)
+      out.push(await buildSource(`fastclient:${name}`, 'fastclient', `FastClient · ${name}`, path.join(profilesDir, name)))
+    }
   }
   return out
 }
 
 export async function makeLunarSource() {
-  // Lunar lives under the user's home (~/.lunarclient); some docs say %APPDATA%\.lunarclient —
-  // probe both, first one with a launcher.json wins.
-  const candidates = [path.join(getAppData(), '.lunarclient'), path.join(os.homedir(), '.lunarclient')]
+  // Lunar lives under the user's home (~/.lunarclient); on Windows some docs
+  // say %APPDATA%\.lunarclient — probe both there (APPDATA first, unchanged),
+  // ~/.lunarclient only on POSIX. First dir with a launcher.json wins.
+  const candidates = lunarCandidates()
   let settingsDir = null
   for (const candidate of candidates) {
     if (existsSync(path.join(candidate, 'settings', 'launcher.json'))) {
@@ -317,8 +392,9 @@ export async function makeLunarSource() {
   const settings = (launcher && typeof launcher === 'object' && launcher.settings) || {}
   let gameDir = settings.gameDirectory
   if (typeof gameDir !== 'string' || gameDir === '') return null
-  // Relative gameDirectory (profiles.db stores '.minecraft') resolves against %APPDATA%.
-  if (!path.isAbsolute(gameDir)) gameDir = path.resolve(getAppData(), gameDir)
+  // Relative gameDirectory (profiles.db stores '.minecraft') resolves against
+  // %APPDATA% on Windows, $HOME on POSIX (getAppData() is never used there).
+  if (!path.isAbsolute(gameDir)) gameDir = path.resolve(isWindows() ? getAppData() : posixHome(), gameDir)
   // Containment: the "two-hop whitelist" (options.txt + servers.dat) is only a
   // meaningful bound if the source dir is actually the Lunar game dir. launcher.json
   // is a local file, but defense-in-depth — only accept gameDirectory that stays
@@ -349,8 +425,10 @@ export async function makeLunarSource() {
 
 /**
  * Detect import sources -> ImportSource[]:
- *   1. vanilla %APPDATA%\.minecraft
- *   2. each %APPDATA%\.fastclient\profiles\<name> (id 'fastclient:<name>')
+ *   1. vanilla %APPDATA%\.minecraft (Windows) / ~/.minecraft + Flatpak
+ *      variants (POSIX, first dir holding options.txt/servers.dat wins)
+ *   2. each %APPDATA%\.fastclient\profiles\<name> (Windows) /
+ *      ~/.fastclient/profiles/<name> (POSIX) (id 'fastclient:<name>')
  *   3. lunar (launcher.json gameDirectory + allocatedMemory, optionsLC.txt fov,
  *      mods.json toggles from the active profile)
  */

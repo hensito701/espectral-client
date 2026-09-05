@@ -13,17 +13,20 @@
  *   build/tauri-resources/engine/*        -> resources/engine/
  *   build/tauri-resources/package.json    -> resources/package.json
  *   build/tauri-resources/node_modules/*  -> resources/node_modules/
- *   build/tauri-resources/node.exe        -> resources/node.exe
+ *   build/tauri-resources/node-bin/*      -> resources/node-bin/
+ *     (node.exe on win32, node on linux — staged for the build host
+ *     platform; the Tauri shell probes node-bin/node.exe, then
+ *     node-bin/node, then the legacy top-level node.exe)
  *
- * The staged node.exe is the official Windows x64 build, pinned to a fixed
- * version, so the installed/portable app no longer needs Node on PATH. The
- * download/extract is best-effort: on failure the stage continues and the
- * Tauri shell falls back to a PATH node at runtime.
+ * The staged node binary is the official x64 build for the host platform,
+ * pinned to a fixed version, so the installed/portable app no longer needs
+ * Node on PATH. The download/extract is best-effort: on failure the stage
+ * continues and the Tauri shell falls back to a PATH node at runtime.
  *
  * Run: node scripts/stage-tauri-resources.mjs   (before `tauri build`)
  * ========================================================================== */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +39,13 @@ const STAGE = join(ROOT, 'build', 'tauri-resources');
 // engines floor itself.
 const PKG = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const NODE_VERSION = PKG.espectral?.bundledNode ?? PKG.engines.node.replace(/^>=/, '');
-const NODE_URL = `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip`;
+// Platform artifact: Windows ships the win-x64 zip (node.exe inside),
+// Linux the linux-x64 tar.xz (bin/node inside). The build host platform
+// decides — cross-OS staging is not supported.
+const NODE_URL =
+  process.platform === 'win32'
+    ? `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip`
+    : `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz`;
 // Transitive runtime closure of `extract-zip`, derived from package-lock.json
 // at run time (BFS over `dependencies`) so a dependency bump can never leave
 // this list stale. Fails loudly if the lock or any resolved package is
@@ -86,61 +95,73 @@ function dirSizeKb(dir) {
 }
 
 /**
- * Stage the bundled Windows node.exe (best-effort). A manifest recording the
- * staged version sits next to the exe; a stale or missing manifest (e.g.
- * after an engines.node bump) forces a re-download instead of silently
+ * Stage the bundled node binary for the host platform into node-bin/
+ * (best-effort): node.exe from the win-x64 zip on Windows, bin/node from
+ * the linux-x64 tar.xz on Linux (chmod 0755 — tar extraction via pipe can
+ * lose the exec bit). A manifest recording the staged version + platform
+ * sits next to the binary; a stale manifest or a manifest for the other
+ * platform (e.g. after an engines.node bump, or a shared checkout that was
+ * last staged on the other OS) forces a re-download instead of silently
  * shipping the old binary. On download/extract failure this only warns —
  * the Tauri shell's PATH fallback still resolves, so the build proceeds.
  */
 async function stageNodeExe() {
-  const dest = join(STAGE, 'node.exe');
-  const manifestPath = join(STAGE, 'node.manifest.json');
+  const binName = process.platform === 'win32' ? 'node.exe' : 'node';
+  const binDir = join(STAGE, 'node-bin');
+  const dest = join(binDir, binName);
+  const manifestPath = join(binDir, 'node.manifest.json');
   let manifest = null;
   try {
     manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   } catch {
     // missing/corrupt manifest → treat the staged copy as stale
   }
-  if (existsSync(dest) && manifest?.nodeVersion === NODE_VERSION) {
-    console.log(`[stage] node.exe v${NODE_VERSION} already staged (${statSync(dest).size} bytes) — skipping download`);
+  if (existsSync(dest) && manifest?.nodeVersion === NODE_VERSION && manifest?.platform === process.platform) {
+    console.log(`[stage] ${binName} v${NODE_VERSION} already staged (${statSync(dest).size} bytes) — skipping download`);
     return;
   }
   if (existsSync(dest)) {
-    console.log(`[stage] staged node.exe is ${manifest ? `v${manifest.nodeVersion} (want v${NODE_VERSION})` : 'unversioned'} — re-staging`);
+    console.log(`[stage] staged ${binName} is ${manifest ? `v${manifest.nodeVersion}/${manifest.platform} (want v${NODE_VERSION}/${process.platform})` : 'unversioned'} — re-staging`);
     rmSync(dest, { force: true });
   }
+  mkdirSync(binDir, { recursive: true });
   const work = mkdtempSync(join(tmpdir(), 'espectral-node-'));
   try {
-    const zip = join(work, `node-v${NODE_VERSION}-win-x64.zip`);
+    const archive = join(work, NODE_URL.split('/').pop());
     console.log(`[stage] downloading ${NODE_URL} …`);
     const res = await fetch(NODE_URL, { redirect: 'follow' });
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    writeFileSync(zip, Buffer.from(await res.arrayBuffer()));
+    writeFileSync(archive, Buffer.from(await res.arrayBuffer()));
 
-    console.log('[stage] extracting node.exe …');
-    // extract-zip 2.0.1 never settles on large zips under Node 24 on WSL/Linux
-    // (verified), while it works on Windows — use the platform's native tool
-    // on Linux and reserve extract-zip for win32.
+    console.log(`[stage] extracting ${binName} …`);
     if (process.platform === 'win32') {
+      // extract-zip 2.0.1 never settles on large zips under Node 24 on WSL/Linux
+      // (verified), while it works on Windows — use the platform's native tool
+      // on Linux and reserve extract-zip for win32.
       const extract = (await import('extract-zip')).default;
-      await extract(zip, { dir: work });
-    } else {
-      try {
-        execSync(`unzip -q -o ${JSON.stringify(zip)} -d ${JSON.stringify(work)}`, { stdio: 'ignore' });
-      } catch {
-        execSync(`python3 -m zipfile -e ${JSON.stringify(zip)} ${JSON.stringify(work)}`, { stdio: 'ignore' });
+      await extract(archive, { dir: work });
+      const exe = join(work, `node-v${NODE_VERSION}-win-x64`, 'node.exe');
+      if (!existsSync(exe)) {
+        throw new Error(`node.exe not found inside ${archive}`);
       }
+      cpSync(exe, dest);
+    } else {
+      // argv-style (no shell): tmp paths are controlled, but a $ or backtick
+      // in TMPDIR must never reach /bin/sh — same reason runtimes.mjs uses
+      // spawnSync('tar', …) for Adoptium archives.
+      execFileSync('tar', ['-xJf', archive, '-C', work], { stdio: 'ignore' });
+      const bin = join(work, `node-v${NODE_VERSION}-linux-x64`, 'bin', 'node');
+      if (!existsSync(bin)) {
+        throw new Error(`bin/node not found inside ${archive}`);
+      }
+      cpSync(bin, dest);
+      chmodSync(dest, 0o755);
     }
-    const exe = join(work, `node-v${NODE_VERSION}-win-x64`, 'node.exe');
-    if (!existsSync(exe)) {
-      throw new Error(`node.exe not found inside ${zip}`);
-    }
-    cpSync(exe, dest);
-    writeFileSync(manifestPath, `${JSON.stringify({ nodeVersion: NODE_VERSION }, null, 2)}\n`);
-    console.log(`[stage] bundled node.exe v${NODE_VERSION} (${statSync(dest).size} bytes) → ${dest}`);
+    writeFileSync(manifestPath, `${JSON.stringify({ nodeVersion: NODE_VERSION, platform: process.platform }, null, 2)}\n`);
+    console.log(`[stage] bundled ${binName} v${NODE_VERSION} (${statSync(dest).size} bytes) → ${dest}`);
   } catch (err) {
     console.warn(
-      `[stage] node.exe download/extract failed — continuing without bundled node (PATH fallback still works): ${err.message}`
+      `[stage] ${binName} download/extract failed — continuing without bundled node (PATH fallback still works): ${err.message}`
     );
   } finally {
     rmSync(work, { recursive: true, force: true });
@@ -179,7 +200,7 @@ async function stage() {
   const size = dirSizeKb(nmDst);
   console.log(`[stage] staged engine + ${REQ.length} npm pkgs (${size} KB) → ${STAGE}`);
 
-  // 4. bundled Windows node.exe (best-effort, see stageNodeExe)
+  // 4. bundled node binary for the host platform into node-bin/ (best-effort, see stageNodeExe)
   await stageNodeExe();
 
   // 5. bundled Espectral Menu jars (assets/branding -> resources/branding)

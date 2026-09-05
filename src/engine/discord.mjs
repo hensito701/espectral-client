@@ -9,9 +9,11 @@
  *   against the live client.)
  *
  * Windows: named pipe \\.\pipe\discord-ipc-0 (per-instance suffixes -1..-9).
- * macOS/Linux: unix socket $XDG_RUNTIME_DIR/discord-ipc-0 (Linux uses abstract
- * namespace; Node can address it as '@discord-ipc-0' — WSL has no such
- * socket, so presence there is a no-op and we never log noise).
+ * macOS/Linux: unix socket $XDG_RUNTIME_DIR/discord-ipc-0 (-1 as fallback).
+ * On Linux, when those filesystem sockets are absent, the abstract-namespace
+ * @discord-ipc-0 (leading NUL byte) is tried as a fallback — the desktop
+ * client binds both. WSL has neither, so presence there stays a quiet no-op
+ * and we never log noise.
  *
  * This module is best-effort by design: any failure (pipe missing, malformed
  * reply) degrades to a quiet no-op — presence is a cosmetic feature and must
@@ -115,14 +117,13 @@ async function ensureConnected() {
 function connect() {
   return new Promise((resolve) => {
     const pipe = pickPipe();
-    if (!pipe) return resolve(null);
-    let settled = false;
-    const settle = (ok) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(ok ? socket : null);
-    };
+    if (!pipe) {
+      // Linux-only fallback: the abstract namespace has no filesystem entry,
+      // so pickPipe() (fs.accessSync-based) can never find it. Windows and
+      // macOS keep their existing behavior (absent pipe -> no-op).
+      if (process.platform === 'linux') return connectAbstract(resolve);
+      return resolve(null);
+    }
     let socket2;
     try {
       socket2 = net.createConnection(pipe);
@@ -131,31 +132,60 @@ function connect() {
       socket = null;
       return resolve(null);
     }
-    const onTimeout = () => {
-      destroy('connect timeout');
-      settle(null);
-    };
-    const timer = setTimeout(onTimeout, CONNECT_TIMEOUT_MS);
-    socket2.setNoDelay(true);
-
-    socket2.once('connect', async () => {
-      const ok = await handshake();
-      settle(ok);
-    });
-    socket2.on('error', () => {
-      destroy('socket error');
-      settle(null);
-    });
-    socket2.on('close', () => {
-      if (handshakeDone) {
-        // Discord went away — clear presence state so a reconnect re-sets it.
-        handshakeDone = false;
-        if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
-      }
-      settle(null);
-    });
-    socket2.on('data', onFrame);
+    hookup(socket2, resolve);
   });
+}
+
+/**
+ * Linux abstract-namespace fallback (@discord-ipc-0, leading NUL byte).
+ * Same wiring/timeout as connect(); every failure is swallowed so presence
+ * degrades to the existing quiet no-op when Discord is absent.
+ */
+function connectAbstract(resolve) {
+  let socket2;
+  try {
+    socket2 = net.createConnection('\0discord-ipc-0');
+    socket = socket2;
+  } catch {
+    socket = null;
+    return resolve(null);
+  }
+  hookup(socket2, resolve);
+}
+
+/** Wire handshake/error/close/data handlers with a connect timeout. */
+function hookup(socket2, resolve) {
+  let settled = false;
+  const settle = (ok) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    resolve(ok ? socket : null);
+  };
+  const onTimeout = () => {
+    destroy('connect timeout');
+    settle(null);
+  };
+  const timer = setTimeout(onTimeout, CONNECT_TIMEOUT_MS);
+  socket2.setNoDelay(true);
+
+  socket2.once('connect', async () => {
+    const ok = await handshake();
+    settle(ok);
+  });
+  socket2.on('error', () => {
+    destroy('socket error');
+    settle(null);
+  });
+  socket2.on('close', () => {
+    if (handshakeDone) {
+      // Discord went away — clear presence state so a reconnect re-sets it.
+      handshakeDone = false;
+      if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    }
+    settle(null);
+  });
+  socket2.on('data', onFrame);
 }
 
 function handshake() {

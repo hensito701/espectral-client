@@ -209,15 +209,49 @@ export const patchInstance = (name: string, instancePatch: InstancePatch): Promi
 export const getImportSources = (): Promise<ImportSource[]> => get(R.importSources[1]);
 export const importProfile = (name: string, source_id: string, overwrite_policy: OverwritePolicy): Promise<ImportResult> =>
   post(R.importProfile(name)[1], { source_id, overwrite_policy });
-export const pickMrpackFile = (): Promise<{ path: string | null }> =>
-  post(R.pickFile[1], {
-    title: 'Elegir modpack (.mrpack)',
-    filter: 'Modrinth modpack (*.mrpack)|*.mrpack|Todos los archivos (*.*)|*.*',
-  });
+export const pickMrpackFile = async (): Promise<{ path: string | null }> => {
+  // Dynamic import (not static): ./dialog chain-loads the Tauri dialog plugin,
+  // which does not exist in plain-browser builds — static import would break vite.
+  // Native-first ONLY off-Windows: on Windows the engine's PowerShell STA
+  // picker is the battle-tested path and stays the default there.
+  try {
+    const { isTauri, isWindows, openMrpackDialog } = await import('./dialog');
+    if (isTauri() && !isWindows()) return { path: await openMrpackDialog() };
+  } catch {
+    // DialogUnavailable or any plugin failure: fall through to engine below.
+  }
+  try {
+    return await post<{ path: string | null }>(R.pickFile[1], {
+      title: 'Elegir modpack (.mrpack)',
+      filter: 'Modrinth modpack (*.mrpack)|*.mrpack|Todos los archivos (*.*)|*.*',
+    });
+  } catch (e) {
+    // Off-Windows the engine has no native picker (501 UNSUPPORTED_PLATFORM)
+    // and the Tauri dialog above already failed: surface as a cancel.
+    if (e instanceof ApiError && e.code === 'UNSUPPORTED_PLATFORM') return { path: null };
+    throw e;
+  }
+};
 export const importMrpack = (path: string, memoryMb?: number): Promise<{ summary: InstanceSummary; already_exists?: boolean }> =>
   post(R.importMrpack[1], { path, memory_mb: memoryMb });
-export const pickFolder = (title: string): Promise<{ path: string | null }> =>
-  post(R.pickFolder[1], { title });
+export const pickFolder = async (title: string): Promise<{ path: string | null }> => {
+  // Dynamic import (not static): see pickMrpackFile above. Native-first ONLY
+  // off-Windows; on Windows the engine folder picker stays the default.
+  try {
+    const { isTauri, isWindows, openFolderDialog } = await import('./dialog');
+    if (isTauri() && !isWindows()) return { path: await openFolderDialog(title) };
+  } catch {
+    // DialogUnavailable or any plugin failure: fall through to engine below.
+  }
+  try {
+    return await post<{ path: string | null }>(R.pickFolder[1], { title });
+  } catch (e) {
+    // Off-Windows the engine has no native picker (501 UNSUPPORTED_PLATFORM)
+    // and the Tauri dialog above already failed: surface as a cancel.
+    if (e instanceof ApiError && e.code === 'UNSUPPORTED_PLATFORM') return { path: null };
+    throw e;
+  }
+};
 export const iconUrl = (name: string): string =>
   `${API_BASE}/api/instances/${enc(name)}/icon`;
 export const uploadInstanceIcon = (name: string, image_base64: string): Promise<{ ok: true }> =>

@@ -113,7 +113,10 @@ export async function register(app) {
 
   // POST /api/pick-file -> { path } — native Windows file picker (PowerShell
   // STA + WinForms OpenFileDialog). path === null means the user canceled.
+  // Off-Windows this build has no native picker: returns 501
+  // UNSUPPORTED_PLATFORM — the UI must use the in-app (Tauri) dialog there.
   app.post('/api/pick-file', async (req, res, params, body) => {
+    if (process.platform !== 'win32') throw httpError(501, 'UNSUPPORTED_PLATFORM', 'native OS picker is Windows-only on this build — use the in-app (Tauri) dialog');
     const title = body && typeof body.title === 'string' ? body.title : 'Choose file';
     const filter = body && typeof body.filter === 'string' ? body.filter : 'All files (*.*)|*.*';
     const esc = (s) => s.replace(/'/g, "''");
@@ -136,8 +139,11 @@ export async function register(app) {
   // The coclass->interface QI cast must happen inside C# (PowerShell cannot
   // QueryInterface-cast a raw __ComObject), so the dialog runs in a small
   // FolderDialog.Show helper; cancel (non-S_OK, no stdout) -> null.
+  // Off-Windows this build has no native picker: returns 501
+  // UNSUPPORTED_PLATFORM — the UI must use the in-app (Tauri) dialog there.
   // Mirrors POST /api/pick-file above.
   app.post('/api/pick-folder', async (req, res, params, body) => {
+    if (process.platform !== 'win32') throw httpError(501, 'UNSUPPORTED_PLATFORM', 'native OS picker is Windows-only on this build — use the in-app (Tauri) dialog');
     const title = body && typeof body.title === 'string' ? body.title : 'Choose folder';
     const esc = (s) => s.replace(/'/g, "''");
     const script = [

@@ -120,8 +120,8 @@ if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && [ -f ".keys/espectral.key" ]; then
   echo "[build] updater signing: using .keys/espectral.key"
 fi
 
-echo "[build] tauri build (x86_64-pc-windows-gnu)…"
-npx tauri build --target x86_64-pc-windows-gnu
+echo "[build] tauri build (x86_64-pc-windows-gnu, nsis only — conf also lists deb for Linux builds)…"
+npx tauri build --target x86_64-pc-windows-gnu --bundles nsis
 
 echo "[build] done:"
 ls -lh src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/*.exe

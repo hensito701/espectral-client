@@ -2,6 +2,24 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Linux compatibility (.deb for Ubuntu 24.04 / Debian 12+, x86_64).**
+  Tauri shell resolves the staged `node-bin/` runtime on Linux, uses
+  `$XDG_DATA_HOME` (else `~/.local/share`) for the data dir, and reclaims a
+  stale engine port via `/proc` (socket-inode match + `cli.mjs`/node identity
+  check). The bundle targets `deb` (with `libwebkit2gtk-4.1` runtime dep;
+  release builds run on the oldest supported base for glibc compat), the
+  staging script handles the Linux `tar.xz` Node artifact, and
+  `scripts/build-linux-deb.sh` documents the native build. Engine: POSIX
+  import sources (`~/.minecraft`, Flatpak variants, `~/.lunarclient`),
+  JDK discovery skips the Windows-only FastClient path off-Windows, and
+  Discord presence tries the Linux abstract socket. File/folder picking on
+  Linux uses the native Tauri dialog from the UI (Windows keeps the
+  PowerShell picker byte-identical); the engine pick endpoints answer 501
+  `UNSUPPORTED_PLATFORM` off-Windows, which the UI surfaces as a cancel.
+
  ## [1.3.13] - 2026-09-05
 
  ### Fixed

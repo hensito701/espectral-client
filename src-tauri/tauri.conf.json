@@ -42,10 +42,21 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": [
-      "nsis"
+      "nsis",
+      "deb"
     ],
     "windows": {
       "webviewInstallMode": { "type": "embedBootstrapper" }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libayatana-appindicator3-1",
+          "librsvg2-2",
+          "libssl3"
+        ]
+      }
     },
     "icon": [
       "icons/32x32.png",
@@ -57,7 +68,7 @@
       "../build/tauri-resources/engine": "engine/",
       "../build/tauri-resources/package.json": "package.json",
       "../build/tauri-resources/node_modules": "node_modules/",
-      "../build/tauri-resources/node.exe": "node.exe",
+      "../build/tauri-resources/node-bin": "node-bin/",
       "../build/tauri-resources/branding": "branding/"
     },
     "externalBin": [],

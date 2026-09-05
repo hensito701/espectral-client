@@ -18,29 +18,35 @@ use tauri::Manager;
 struct EngineState(Mutex<Option<Child>>);
 
 /// Resolve the Node executable to spawn the engine with.
-/// Order: ESPECTRAL_NODE env → bundled node.exe (resource dir) → `node` on
-/// PATH → common Windows install dirs.
+/// Order: ESPECTRAL_NODE env → staged node-bin/node.exe → staged
+/// node-bin/node (Linux) → legacy bundled node.exe (resource dir) → `node`
+/// on PATH → common Windows install dirs (Windows only).
 fn resolve_node(app: &tauri::AppHandle) -> String {
     if let Ok(n) = std::env::var("ESPECTRAL_NODE") {
         if !n.is_empty() {
             return n;
         }
     }
-    // Bundled node.exe ships next to the engine in the resource dir (staged
-    // by scripts/stage-tauri-resources.mjs). The portable exe keeps resources
-    // beside the exe, so this probe covers both installed and portable
-    // layouts; in dev the resource dir has no node.exe and we fall through.
+    // Bundled node ships in the resource dir under node-bin/ (staged by
+    // scripts/stage-tauri-resources.mjs): node.exe on Windows, node on
+    // Linux. The portable exe keeps resources beside the exe, so this probe
+    // covers both installed and portable layouts; in dev the resource dir
+    // has no staged binary and we fall through. The bare node.exe probe is
+    // the pre-node-bin layout — kept so older staged builds still resolve.
     if let Some(res) = app.path().resource_dir().ok() {
+        let staged_exe = res.join("node-bin").join("node.exe");
+        if staged_exe.exists() {
+            return staged_exe.to_string_lossy().into_owned();
+        }
+        let staged_bin = res.join("node-bin").join("node");
+        if staged_bin.exists() {
+            return staged_bin.to_string_lossy().into_owned();
+        }
         let bundled = res.join("node.exe");
         if bundled.exists() {
             return bundled.to_string_lossy().into_owned();
         }
     }
-    let candidates = [
-        r"C:\Program Files\nodejs\node.exe",
-        r"C:\Program Files (x86)\nodejs\node.exe",
-        r"%LOCALAPPDATA%\Programs\nodejs\node.exe",
-    ];
     // Prefer `node` from PATH (Command's own lookup resolves it). Only when it
     // is NOT on PATH do the known install-dir candidates matter — previously
     // `|| c == "node"` short-circuited the loop on the first iteration, making
@@ -51,10 +57,18 @@ fn resolve_node(app: &tauri::AppHandle) -> String {
     if node_on_path {
         return "node".into();
     }
-    for c in candidates {
-        let expanded = c.replace("%LOCALAPPDATA%", &std::env::var("LOCALAPPDATA").unwrap_or_default());
-        if std::path::Path::new(&expanded).exists() {
-            return expanded;
+    #[cfg(windows)]
+    {
+        let candidates = [
+            r"C:\Program Files\nodejs\node.exe",
+            r"C:\Program Files (x86)\nodejs\node.exe",
+            r"%LOCALAPPDATA%\Programs\nodejs\node.exe",
+        ];
+        for c in candidates {
+            let expanded = c.replace("%LOCALAPPDATA%", &std::env::var("LOCALAPPDATA").unwrap_or_default());
+            if std::path::Path::new(&expanded).exists() {
+                return expanded;
+            }
         }
     }
     "node".into()
@@ -79,16 +93,41 @@ fn spawn_engine(app: &tauri::AppHandle) -> Result<Child, String> {
     } else {
         std::env::var("ESPECTRAL_ENGINE_SCRIPT").unwrap_or_else(|_| "src/engine/cli.mjs".into())
     };
-    // Data dir: portable app writes next to the exe; installed apps use the
-    // per-user local app data dir (Program Files is read-only).
+    // Data dir: ESPECTRAL_DATA_DIR wins; on Windows the per-user local app
+    // data dir (Program Files is read-only); on Linux $XDG_DATA_HOME else
+    // ~/.local/share. The dir is created when it does not exist. When no base
+    // is available (HOME and XDG_DATA_HOME both unset — no desktop session
+    // has HOME), ESPECTRAL_DATA_DIR is left unset exactly like the Windows
+    // branch does without LOCALAPPDATA, and the engine falls back to its own
+    // default data dir.
     let data_dir = std::env::var("ESPECTRAL_DATA_DIR").ok().filter(|d| !d.is_empty()).or_else(|| {
-        let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
-        if !base.is_empty() {
-            let d = std::path::Path::new(&base).join("espectral-client");
-            let _ = std::fs::create_dir_all(&d);
-            Some(d.to_string_lossy().into_owned())
-        } else {
-            None
+        #[cfg(windows)]
+        {
+            let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
+            if !base.is_empty() {
+                let d = std::path::Path::new(&base).join("espectral-client");
+                let _ = std::fs::create_dir_all(&d);
+                Some(d.to_string_lossy().into_owned())
+            } else {
+                None
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let base = std::env::var("XDG_DATA_HOME")
+                .ok()
+                .filter(|b| !b.is_empty())
+                .or_else(|| {
+                    std::env::var("HOME")
+                        .ok()
+                        .filter(|h| !h.is_empty())
+                        .map(|h| format!("{h}/.local/share"))
+                });
+            base.map(|b| {
+                let d = std::path::Path::new(&b).join("espectral-client");
+                let _ = std::fs::create_dir_all(&d);
+                d.to_string_lossy().into_owned()
+            })
         }
     });
     let port = resolve_port();
@@ -196,6 +235,64 @@ fn reclaim_engine_port(port: u16) {
             }
         }
     }
+    #[cfg(not(windows))]
+    {
+        // Linux: find the LISTEN socket on the engine port via /proc/net/tcp
+        // + tcp6 (columns: sl local_address rem_address st tx_queue rx_queue
+        // tr tm->when retrnsmt uid timeout inode — inode is index 11; the
+        // local_address column is "<hex-ip>:<hex-port>", the engine port 4199
+        // is 0x1067, other ports format the same way). Map the socket inode
+        // to a PID via /proc/<pid>/fd `socket:[<inode>]` links, then kill it
+        // ONLY when it is verifiably our engine (see is_our_engine_process).
+        // Best-effort: every failure is swallowed.
+        let want = format!(":{port:04X}");
+        let mut inodes: Vec<String> = Vec::new();
+        for table in ["tcp", "tcp6"] {
+            let Ok(text) = std::fs::read_to_string(format!("/proc/net/{table}")) else {
+                continue;
+            };
+            for line in text.lines().skip(1) {
+                let fields: Vec<&str> = line.split_whitespace().collect();
+                if fields.len() < 12 || !fields[3].eq_ignore_ascii_case("0A") {
+                    continue; // 0A = LISTEN
+                }
+                if !fields[1].to_ascii_uppercase().ends_with(&want) {
+                    continue;
+                }
+                inodes.push(fields[11].to_string());
+            }
+        }
+        if inodes.is_empty() {
+            return;
+        }
+        let Ok(procs) = std::fs::read_dir("/proc") else {
+            return;
+        };
+        for entry in procs.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Ok(pid) = name.parse::<u32>() else {
+                continue;
+            };
+            if pid == std::process::id() {
+                continue; // never kill ourselves
+            }
+            let Ok(fds) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+                continue;
+            };
+            for fd in fds.flatten() {
+                let Ok(link) = std::fs::read_link(fd.path()) else {
+                    continue;
+                };
+                let link = link.to_string_lossy().into_owned();
+                if inodes.iter().any(|i| link == format!("socket:[{i}]")) {
+                    if is_our_engine_process(pid) {
+                        let _ = Command::new("kill").arg(pid.to_string()).status();
+                    }
+                    break;
+                }
+            }
+        }
+    }
 }
 
 /// True when `pid` is verifiably one of our engine processes: a node.exe
@@ -221,6 +318,29 @@ fn is_our_engine_process(pid: u32) -> bool {
     let line = String::from_utf8_lossy(&out.stdout);
     let lower = line.to_ascii_lowercase();
     lower.starts_with("node.exe|") && lower.contains("cli.mjs")
+}
+
+/// True when `pid` is verifiably one of our engine processes: a node binary
+/// running an `engine/cli.mjs` (bundled layout) or `src/engine/cli.mjs`
+/// (dev layout) script. Reads /proc/<pid>/cmdline (NUL-separated) — already
+/// present on every Linux target, so no new dependency. Both halves must
+/// hold: a bare `cli.mjs` substring alone could match an editor or grep, so
+/// the script path must be one of ours AND argv[0] must be a node binary.
+/// Anything we cannot verify (unreadable cmdline) is reported as NOT ours:
+/// the caller then leaves it alone and the following spawn surfaces
+/// EADDRINUSE.
+#[cfg(not(windows))]
+fn is_our_engine_process(pid: u32) -> bool {
+    let Ok(bytes) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+        return false;
+    };
+    let lower = String::from_utf8_lossy(&bytes).to_ascii_lowercase();
+    if !lower.contains("engine/cli.mjs") {
+        return false;
+    }
+    let argv0 = lower.split('\0').next().unwrap_or_default();
+    let exe = argv0.rsplit('/').next().unwrap_or_default();
+    exe == "node" || exe == "nodejs"
 }
 
 /// A CLI argument worth forwarding to the engine as a modpack import: ends
@@ -461,6 +581,10 @@ pub fn run() {
         // (open with an http(s):// scope). Without this registration the
         // permission exists but the plugin:shell|open command does not.
         .plugin(tauri_plugin_shell::init())
+        // Dialog plugin: native file/folder pickers. On Linux the engine's
+        // PowerShell-based pick endpoints have no counterpart, so the UI
+        // opens these dialogs directly (see src/ui/lib/dialog.ts).
+        .plugin(tauri_plugin_dialog::init())
         // Updater: signed auto-update against the latest.json endpoint in
         // tauri.conf.json (plugins.updater). The UI drives check/download via
         // @tauri-apps/plugin-updater; process plugin provides the relaunch

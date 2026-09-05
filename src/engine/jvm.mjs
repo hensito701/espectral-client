@@ -63,8 +63,14 @@ export function __clearProbeMemo() {
 // Back-compat alias — some test scaffolds reference __probeCacheKey.
 export const __probeCacheKey = __probeMemoKey;
 
-/** A Temurin 25 bundled by FastClient, if that launcher is installed. */
+/**
+ * A Temurin 25 bundled by FastClient, if that launcher is installed.
+ * Windows-only: the bundled runtime lives under %APPDATA%\FastClient, which
+ * has no equivalent off-Windows — returns null there so discovery falls
+ * through to PATH / Adoptium.
+ */
 export function fastClientJava() {
+  if (process.platform !== 'win32') return null;
   const base = process.env.APPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming');
   return path.join(base, 'FastClient', 'runtimes', 'java-25', 'jdk-25.0.4+7', 'bin', 'java.exe');
 }
