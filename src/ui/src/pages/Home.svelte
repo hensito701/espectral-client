@@ -10,8 +10,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { instances, servers, liveLaunches } from '../lib/stores';
-  import { getAccounts } from '../lib/api';
+  import { getAccounts, avatarUrl } from '../lib/api';
   import { renderMotd } from '../lib/motd';
+  import type { Account } from '../lib/types';
   import { t } from '../lib/i18n.svelte';
 
   // Components
@@ -24,8 +25,20 @@
   import MonogramTile from '../components/MonogramTile.svelte';
   import Btn from '../components/Btn.svelte';
 
-  // Account State
+  // Account State (full objects so avatar hue/image track TopChrome)
+  let accounts = $state<Account[]>([]);
   let activeUsername = $state('');
+  // Cache-buster: avatar bytes can change under the same URL (re-upload /
+  // skin-head re-sync). Bumped on every account change so MonogramTile's
+  // imgSrc string changes and the browser refetches instead of serving
+  // stale cached bytes (same pattern as AccountVault's avatarBust).
+  let avatarBust = $state(0);
+
+  // TopChrome pattern: resolve the username to its full Account record so
+  // MonogramTile receives hue + avatarUrl, not a name-only fallback.
+  const activeAccount = $derived(
+    accounts.find((a) => a.username === activeUsername) ?? null,
+  );
 
   // Selection & Modal States
   let selectedInstanceName = $state('');
@@ -86,6 +99,7 @@
   async function loadAccountsList(): Promise<void> {
     try {
       const list = await getAccounts();
+      accounts = list;
       let preferred = '';
       try {
         preferred = localStorage.getItem('horizon:last-account') || '';
@@ -119,6 +133,7 @@
       if (detail?.username) {
         activeUsername = detail.username;
       }
+      avatarBust += 1;
       void loadAccountsList();
     };
 
@@ -147,7 +162,9 @@
     <div class="home-hero-header__right">
       <a href="#/account" class="home-account-chip" title={t('home.activeAccount')}>
         <MonogramTile
-          name={activeUsername || 'Steve'}
+          name={activeAccount?.username || activeUsername || 'Steve'}
+          hue={activeAccount?.avatar_color ?? undefined}
+          avatarUrl={activeAccount?.has_avatar ? `${avatarUrl(activeAccount.username)}${avatarBust ? `?v=${avatarBust}` : ''}` : undefined}
           size={36}
           shape="rounded"
         />

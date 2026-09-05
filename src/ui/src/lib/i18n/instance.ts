@@ -133,7 +133,7 @@ export const es: Dict = {
   'instance.perfPresetDesc': 'Instala automáticamente los mods esenciales de optimización (Sodium, Lithium, FerriteCore)',
   'instance.installPerfPreset': 'Instalar Preset de Rendimiento',
   'instance.installingPreset': 'Instalando mods…',
-  'instance.presetInstalled': 'Preset de rendimiento instalado con éxito',
+  'instance.installingFile': 'Instalando {file}…',
 
   // Danger Tab
   'instance.dangerTitle': 'Zona de Peligro',
@@ -285,7 +285,7 @@ export const en: Dict = {
   'instance.perfPresetDesc': 'Automatically installs essential optimization mods (Sodium, Lithium, FerriteCore)',
   'instance.installPerfPreset': 'Install Performance Preset',
   'instance.installingPreset': 'Installing mods…',
-  'instance.presetInstalled': 'Performance preset installed successfully',
+  'instance.installingFile': 'Installing {file}…',
 
   // Danger Tab
   'instance.dangerTitle': 'Danger Zone',

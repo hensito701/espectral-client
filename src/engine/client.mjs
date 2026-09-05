@@ -23,8 +23,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import * as resolver from './resolver.mjs';
-import { getInstance } from './instances.mjs';
+import { effectiveGameDir, getInstance } from './instances.mjs';
 import { PINS_QOL_BY_VERSION } from './mods.mjs';
 import { httpError } from './error.mjs';
 
@@ -75,8 +74,14 @@ const MAX_ACTIONS = 16;
 const MAX_ACTION_TEXT = 256;
 const ACTION_TYPES = new Set(['chat', 'command']);
 
+/**
+ * Config path follows the effective game dir: with a custom game_dir the game
+ * reads <game_dir>/config/espectral-client.json, so GET/PATCH must too.
+ * (Instance metadata — icon, instance.json — intentionally stays in the
+ * instance dir.)
+ */
 export function clientConfigPath(instanceName) {
-  return path.join(resolver.instanceDir(instanceName), 'config', 'espectral-client.json');
+  return path.join(effectiveGameDir(instanceName), 'config', 'espectral-client.json');
 }
 
 function isPlainObject(v) {

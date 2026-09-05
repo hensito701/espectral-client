@@ -190,13 +190,16 @@ async function fetchJsonRetry(url, options = {}) {
 
 /**
  * Short, token-free diagnostic of a failed auth-API response body: the
- * error/detail/path fields Mojang and Microsoft actually return. Never
+ * errorMessage/error/detail/path fields Mojang and Microsoft actually return.
+ * errorMessage comes first — Mojang's Minecraft Services errors carry the
+ * diagnosable reason there (error is just the generic short code). raw covers
+ * non-JSON rejection bodies (e.g. a bare 405 page) via parseSkinBody. Never
  * includes raw tokens — bodies at these endpoints carry error descriptors,
  * not credentials.
  */
 function bodySnippet(data) {
   if (!data || typeof data !== 'object') return '';
-  const interesting = data.error ?? data.detail ?? data.path ?? data.errorMessage;
+  const interesting = data.errorMessage ?? data.error ?? data.detail ?? data.path ?? data.raw;
   return interesting ? `: ${String(interesting).slice(0, 140)}` : '';
 }
 
@@ -677,4 +680,177 @@ export async function prewarmMsaToken() {
   } catch (e) {
     console.warn(`[msauth] prewarm error: ${e?.message ?? e}`);
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * Minecraft profile skins (Skin Atelier — vanilla parity)
+ *
+ * Pure helpers over the Mojang write API, authenticated with the Minecraft
+ * access token (Bearer), NOT the MSA token:
+ *   read   GET    /minecraft/profile -> { id, name, skins[], capes[] }
+ *   upload POST   /minecraft/profile/skins (multipart: variant + file; single PUT retry on 405)
+ *   reset  DELETE /minecraft/profile/skins/active
+ * Every helper takes an optional fetchFn (= global fetch) so tests can stub
+ * the wire without touching the network. Error mapping: 401 ->
+ * MSA_REFRESH_FAILED (the MC token is dead — caller re-runs
+ * ensureMinecraftToken, which surfaces the same code on dead refresh),
+ * 429 -> SKIN_RATE_LIMITED (carries retry_after when the server sends
+ * Retry-After), any other non-2xx -> SKIN_FETCH_FAILED (reads) or
+ * SKIN_UPLOAD_FAILED (writes) with an HTTP-status + body snippet. Messages
+ * never include the access token.
+ * ------------------------------------------------------------------------- */
+
+const MC_SKINS = `${MC_PROFILE}/skins`;
+const MC_SKINS_ACTIVE = `${MC_PROFILE}/skins/active`;
+
+/** Read a stub-or-real fetch response into a plain object (never throws). */
+async function parseSkinBody(res) {
+  try {
+    if (res && typeof res.json === 'function') {
+      const v = await res.json();
+      if (v && typeof v === 'object') return v;
+      return {};
+    }
+  } catch {
+    /* fall through to text */
+  }
+  try {
+    const text = res && typeof res.text === 'function' ? await res.text() : '';
+    if (!text) return {};
+    try {
+      const v = JSON.parse(text);
+      return v && typeof v === 'object' ? v : {};
+    } catch {
+      return { raw: String(text).slice(0, 140) };
+    }
+  } catch {
+    return {};
+  }
+}
+
+function skinOk(res) {
+  if (res && typeof res.ok === 'boolean') return res.ok;
+  const status = res?.status;
+  return Number.isInteger(status) && status >= 200 && status < 300;
+}
+
+/**
+ * Map a failed skin-API response to an httpError. op is 'fetch' (reads),
+ * 'upload', or 'reset' (writes).
+ */
+function skinErrorForStatus(op, res, data) {
+  const status = Number.isInteger(res?.status) ? res.status : 500;
+  if (status === 401) {
+    return httpError(401, 'MSA_REFRESH_FAILED', 'session expired — sign in with Microsoft again');
+  }
+  if (status === 429) {
+    const retryAfter = retryAfterSeconds(res);
+    const err = httpError(
+      429,
+      'SKIN_RATE_LIMITED',
+      retryAfter != null
+        ? `skin rate limited — retry in ${retryAfter}s`
+        : 'skin rate limited — try again later',
+    );
+    if (retryAfter != null) err.retry_after = retryAfter;
+    return err;
+  }
+  const action = op === 'fetch' ? 'fetch profile skin' : op === 'upload' ? 'upload profile skin' : 'reset profile skin';
+  const code = op === 'fetch' ? 'SKIN_FETCH_FAILED' : 'SKIN_UPLOAD_FAILED';
+  return httpError(status, code, `could not ${action} (HTTP ${status}${bodySnippet(data)})`);
+}
+
+function skinAuthHeaders(accessToken) {
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
+/**
+ * Read the Mojang profile for skin/cape state.
+ * Returns { variant: 'classic'|'slim', has_skin, cape, skinUrl, uuid, name }.
+ */
+export async function getProfileSkin(accessToken, fetchFn = fetch) {
+  let res;
+  try {
+    res = await fetchFn(MC_PROFILE, { headers: skinAuthHeaders(accessToken) });
+  } catch (err) {
+    throw httpError(502, 'SKIN_FETCH_FAILED', `could not fetch profile skin: ${err?.message ?? err}`);
+  }
+  const data = await parseSkinBody(res);
+  if (!skinOk(res)) throw skinErrorForStatus('fetch', res, data);
+  const skins = Array.isArray(data?.skins) ? data.skins : [];
+  const active = skins.find((s) => s && s.state === 'ACTIVE' && typeof s.url === 'string' && s.url.length > 0) ?? null;
+  const capes = Array.isArray(data?.capes) ? data.capes : [];
+  return {
+    variant: active && String(active.variant ?? '').toUpperCase() === 'SLIM' ? 'slim' : 'classic',
+    has_skin: !!active,
+    cape: capes.some((c) => c && c.state === 'ACTIVE'),
+    skinUrl: active ? active.url : null,
+    uuid: typeof data?.id === 'string' ? data.id : null,
+    name: typeof data?.name === 'string' ? data.name : null,
+  };
+}
+
+/**
+ * Upload a new skin: multipart { variant: CLASSIC|SLIM, file }.
+ * pngBuffer is validated PNG bytes (the route checks dims first).
+ * Mojang's gateway rings disagree on the method: historically PUT, but at
+ * least one ring answers an authenticated PUT with 405 METHOD_NOT_ALLOWED
+ * while POST succeeds (observed 2026-09-05, same token + bytes). So POST
+ * first, with a single PUT retry on 405 only — any other failure surfaces
+ * immediately. Returns the Mojang response body.
+ */
+async function sendSkinUpload(fetchFn, accessToken, bytes, mapped, method) {
+  const form = new FormData();
+  form.append('variant', mapped);
+  form.append('file', new Blob([bytes], { type: 'image/png' }), 'skin.png');
+  try {
+    return await fetchFn(MC_SKINS, {
+      method,
+      headers: skinAuthHeaders(accessToken),
+      body: form,
+    });
+  } catch (err) {
+    throw httpError(502, 'SKIN_UPLOAD_FAILED', `could not upload profile skin: ${err?.message ?? err}`);
+  }
+}
+export async function uploadProfileSkin(accessToken, pngBuffer, variant, fetchFn = fetch) {
+  const mapped = variant === 'classic' ? 'CLASSIC' : variant === 'slim' ? 'SLIM' : null;
+  if (!mapped) throw httpError(400, 'BAD_SKIN_VARIANT', 'variant must be classic|slim');
+  const bytes = Buffer.isBuffer(pngBuffer) ? pngBuffer : pngBuffer ? Buffer.from(pngBuffer) : Buffer.alloc(0);
+  if (bytes.length === 0) throw httpError(400, 'BAD_IMAGE', 'skin image is empty');
+  let res = await sendSkinUpload(fetchFn, accessToken, bytes, mapped, 'POST');
+  let data = await parseSkinBody(res);
+  if (!skinOk(res) && res?.status === 405) {
+    console.error('[msauth] uploadProfileSkin POST -> 405, retrying once with PUT');
+    res = await sendSkinUpload(fetchFn, accessToken, bytes, mapped, 'PUT');
+    data = await parseSkinBody(res);
+  }
+  if (!skinOk(res)) {
+    // server.mjs only logs >=500, so a Mojang rejection (e.g. HTTP 405)
+    // would otherwise vanish without a trace — log status + snippet here.
+    // bodySnippet carries error fields only, never the Bearer token.
+    const status = Number.isInteger(res?.status) ? res.status : 500;
+    console.error(`[msauth] uploadProfileSkin failed (HTTP ${status}${bodySnippet(data)})`);
+    throw skinErrorForStatus('upload', res, data);
+  }
+  return data;
+}
+
+/**
+ * Reset to the Steve/Alex default: DELETE .../skins/active.
+ * Returns the Mojang response body (or { reset: true } when empty).
+ */
+export async function resetProfileSkin(accessToken, fetchFn = fetch) {
+  let res;
+  try {
+    res = await fetchFn(MC_SKINS_ACTIVE, {
+      method: 'DELETE',
+      headers: skinAuthHeaders(accessToken),
+    });
+  } catch (err) {
+    throw httpError(502, 'SKIN_UPLOAD_FAILED', `could not reset profile skin: ${err?.message ?? err}`);
+  }
+  const data = await parseSkinBody(res);
+  if (!skinOk(res)) throw skinErrorForStatus('reset', res, data);
+  return data && typeof data === 'object' && Object.keys(data).length > 0 ? data : { reset: true };
 }

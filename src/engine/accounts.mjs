@@ -94,7 +94,11 @@ export function publicAccount(a) {
           return rest;
         })()
       : { ...a, microsoft: { lunar: a.microsoft.lunar === true } };
-  return { ...base, avatar_color: a.avatar_color ?? null, has_avatar: hasAvatar(a) };
+  const out = { ...base, avatar_color: a.avatar_color ?? null, has_avatar: hasAvatar(a) };
+  // avatar_auto is an engine-internal marker (auto-derived vs user-uploaded
+  // avatar) — the UI contract stays has_avatar only.
+  delete out.avatar_auto;
+  return out;
 }
 
 export function getAccount(username) {
@@ -285,12 +289,14 @@ export async function readAccountAvatar(username) {
     throw httpError(404, 'NOT_FOUND', `account '${username}' has no avatar`);
   }
 }
-
 /** Store an account avatar (validated PNG bytes; mkdir -p the avatars dir). */
 export async function writeAccountAvatar(username, buffer) {
   const p = avatarPathFor(username); // 404 when missing
   await fs.promises.mkdir(avatarsDir(), { recursive: true });
   await fs.promises.writeFile(p, buffer);
+  // A custom upload always wins: drop the skin-derived marker so later skin
+  // syncs never clobber it (syncAccountAvatarFromSkin re-sets the marker).
+  clearAvatarAutoFlag(username);
   return { ok: true, has_avatar: true };
 }
 
@@ -302,7 +308,39 @@ export async function removeAccountAvatar(username) {
   } catch {
     /* already absent */
   }
+  clearAvatarAutoFlag(username);
   return { ok: true, has_avatar: false };
+}
+
+/**
+ * Mark (or unmark) an account avatar as skin-derived. The sync helper sets
+ * the marker after storing the head; custom uploads/removals above clear it.
+ * 404 when the account is missing.
+ */
+export function setAvatarAuto(username, auto) {
+  const cfg = loadConfig();
+  const account = cfg.accounts.find((a) => a.username === username);
+  if (!account) {
+    throw httpError(404, 'NOT_FOUND', `account '${username}' does not exist`);
+  }
+  if (auto) account.avatar_auto = true;
+  else delete account.avatar_auto;
+  saveConfig({ accounts: cfg.accounts });
+  return account;
+}
+
+/** Best-effort drop of the skin-derived marker (never throws). */
+function clearAvatarAutoFlag(username) {
+  try {
+    const cfg = loadConfig();
+    const account = cfg.accounts.find((a) => a.username === username);
+    if (account && account.avatar_auto !== undefined) {
+      delete account.avatar_auto;
+      saveConfig({ accounts: cfg.accounts });
+    }
+  } catch {
+    /* marker is best-effort */
+  }
 }
 
 /** Best-effort avatar file cleanup when an account goes away. */

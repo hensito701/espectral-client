@@ -23,6 +23,8 @@ import {
   installModrinthMod,
 } from '../mods.mjs';
 import { loadInstanceMeta } from '../resolver.mjs';
+import { effectiveModsDir, getInstance } from '../instances.mjs';
+import { mkdir } from 'node:fs/promises';
 
 function sendError(app, res, err, fallbackStatus = 500, fallbackCode = 'internal_error') {
   const status = Number.isInteger(err?.status) ? err.status : fallbackStatus;
@@ -38,6 +40,20 @@ export async function register(app) {
       return await listMods(params.name);
     } catch (err) {
       return sendError(app, res, err, 500, 'mods_list_failed');
+    }
+  });
+
+  // GET /api/instances/:name/mods-dir -> { path } — the EFFECTIVE mods dir
+  // (<game_dir>/mods when a custom folder is set). Created when missing so
+  // POST /api/open-folder (which 404s on absent paths) can open it directly.
+  app.get('/api/instances/:name/mods-dir', async (req, res, params) => {
+    try {
+      const inst = await getInstance(params.name); // 404 when missing
+      const dir = effectiveModsDir(inst);
+      await mkdir(dir, { recursive: true });
+      return { path: dir };
+    } catch (err) {
+      return sendError(app, res, err, 500, 'mods_dir_failed');
     }
   });
 

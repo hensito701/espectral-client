@@ -162,7 +162,7 @@
       absorbPatch(result);
       warnOrOk(
         result,
-        `${feat.name} ${next ? t('mods.enabled') || 'activado' : t('mods.disabled') || 'desactivado'}`
+        `${t(`client.feat.${feat.id}.name`, feat.name)} ${next ? t('mods.enabled') || 'activado' : t('mods.disabled') || 'desactivado'}`
       );
     } catch (e) {
       patchError = e instanceof Error ? e.message : String(e);
@@ -479,15 +479,17 @@
             {#each info.registry as feat (feat.id)}
               {@const on = featureEnabled(feat.id, feat.defaultEnabled)}
               {@const isToggling = togglingFeatureId === feat.id}
+              {@const featName = t(`client.feat.${feat.id}.name`, feat.name)}
+              {@const featDesc = t(`client.feat.${feat.id}.desc`, feat.description)}
               <div class="feature-item glass-panel" class:feature-item--on={on}>
                 <div class="feature-item__main">
                   <div class="feature-item__top">
-                    <span class="feature-item__name">{feat.name}</span>
+                    <span class="feature-item__name">{featName}</span>
                     <Badge tone={feat.kind === 'managed' ? 'warn' : 'ok'} size="sm">
                       {feat.kind === 'managed' ? t('client.managed') : t('client.owned')}
                     </Badge>
                   </div>
-                  <p class="feature-item__desc muted">{feat.description}</p>
+                  <p class="feature-item__desc muted">{featDesc}</p>
                   <div class="feature-item__hint muted font-mono text-xs">
                     {feat.kind === 'managed' ? t('client.restartHint') : t('client.liveHint')}
                   </div>
@@ -500,10 +502,10 @@
                     class:on={on}
                     role="switch"
                     aria-checked={on}
-                    aria-label={feat.name}
+                    aria-label={featName}
                     onclick={() => toggleFeature(feat, !on)}
                     disabled={isToggling}
-                    title={feat.name}
+                    title={featName}
                   >
                     <span class="switch__thumb"></span>
                   </button>
@@ -549,7 +551,7 @@
             <div class="empty-macros glass-panel">
               <div class="empty-macros__icon">⌨</div>
               <h4>{t('client.noMacros')}</h4>
-              <p class="muted">Crea macros para lanzar comandos o mensajes con una sola pulsación de tecla.</p>
+              <p class="muted">{t('client.noMacrosHint')}</p>
               <Btn variant="primary" size="sm" onclick={addMacro}>
                 {t('client.add')}
               </Btn>

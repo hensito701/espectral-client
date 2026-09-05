@@ -98,6 +98,40 @@ export function normalizeGameDir(value) {
   return value;
 }
 
+/**
+ * Effective game dir for an instance: the user-selected `game_dir` when set
+ * (a custom absolute folder), else the default `<instanceDir>`.
+ * Game files (mods/, config/, logs/, saves/, options.txt, servers.dat) belong
+ * here — it is what the game boots with as --gameDir (see selectGameDir).
+ * Accepts a full instance object or a bare name (sync-reads instance.json,
+ * best-effort; falls back to the default dir when unreadable).
+ */
+export function effectiveGameDir(instanceOrName) {
+  if (typeof instanceOrName === 'string') {
+    try {
+      const raw = JSON.parse(fs.readFileSync(instanceJsonPath(instanceOrName), 'utf8'));
+      if (typeof raw?.game_dir === 'string' && raw.game_dir.length > 0) return raw.game_dir;
+    } catch {
+      /* unreadable meta — default dir below */
+    }
+    return instanceDir(instanceOrName);
+  }
+  const gameDir = instanceOrName?.game_dir;
+  if (typeof gameDir === 'string' && gameDir.length > 0) return gameDir;
+  return instanceDir(instanceOrName?.name);
+}
+
+/**
+ * Effective mods dir for an instance: `<game_dir>/mods` when a custom folder
+ * is set, else `<instanceDir>/mods`. The ONE helper every mods/config
+ * writer+reader must use (mods.mjs, launch -Dfabric.modsDir, mrpack,
+ * summaries/hashes, open-folder) so custom-folder instances stop leaking
+ * jars into the default profile dir.
+ */
+export function effectiveModsDir(instanceOrName) {
+  return path.join(effectiveGameDir(instanceOrName), 'mods');
+}
+
 /** Icon file for an instance (<instanceDir>/icon.png). */
 export function instanceIconPath(name) {
   return path.join(instanceDir(name), 'icon.png');
@@ -245,7 +279,7 @@ export async function listInstances() {
 const modSetHashCache = new Map(); // instanceDir -> { statKey, hash }
 
 export async function computeModSetHash(instance) {
-  const dir = typeof instance === 'string' ? instanceDir(instance) : instanceDir(instance.name);
+  const dir = effectiveGameDir(instance);
   const modsDir = path.join(dir, 'mods');
   const files = await readdirSafe(modsDir);
   const enabled = files.filter((f) => f.endsWith('.jar') && !f.endsWith('.jar.disabled'));
@@ -286,7 +320,7 @@ export async function computeModSetHash(instance) {
 /** InstanceSummary for one instance (contract shape). */
 export async function getSummary(name) {
   const inst = await getInstance(name);
-  const modsDir = path.join(instanceDir(name), 'mods');
+  const modsDir = effectiveModsDir(inst);
   const files = await readdirSafe(modsDir);
   const enabled = files.filter((f) => f.endsWith('.jar') && !f.endsWith('.jar.disabled'));
   const disabled = files.filter((f) => f.endsWith('.jar.disabled'));
@@ -428,8 +462,13 @@ export async function createInstance(opts = {}) {
   };
   if (merge_optionslc) inst.merge_optionslc = true;
 
+  // Game subdirs live where the game runs: the custom game_dir when set,
+  // else the default instance dir. instance.json/icon always stay in the
+  // instance dir (writeJson below).
+  fs.mkdirSync(instanceDir(name), { recursive: true });
+  const gameBase = gameDirValue ?? instanceDir(name);
   for (const sub of GAME_SUBDIRS) {
-    fs.mkdirSync(path.join(instanceDir(name), sub), { recursive: true });
+    fs.mkdirSync(path.join(gameBase, sub), { recursive: true });
   }
   writeJson(instanceJsonPath(name), inst);
 
@@ -576,7 +615,7 @@ export async function removeInstanceIcon(name) {
 
 /** Rename mod jars to match the desired enabled set (Fabric ignores non-.jar). */
 async function applyEnabledMods(inst, enabledMods) {
-  const modsDir = path.join(instanceDir(inst.name), 'mods');
+  const modsDir = effectiveModsDir(inst);
   const wanted = new Set(enabledMods.map((f) => String(f).replace(/\.disabled$/, '')));
   const files = await readdirSafe(modsDir);
   for (const f of files) {
@@ -621,7 +660,7 @@ async function listModsFor(inst) {
     const mods = await import('./mods.mjs');
     if (typeof mods.listMods === 'function') return await mods.listMods(inst);
   } catch { /* fall through */ }
-  const modsDir = path.join(instanceDir(inst.name), 'mods');
+  const modsDir = effectiveModsDir(inst);
   const files = await readdirSafe(modsDir);
   const out = [];
   for (const f of files) {
@@ -648,7 +687,7 @@ async function listModsFor(inst) {
 
 async function readServers(inst) {
   try {
-    const buf = await fs.promises.readFile(path.join(instanceDir(inst.name), 'servers.dat'));
+    const buf = await fs.promises.readFile(path.join(effectiveGameDir(inst), 'servers.dat'));
     return nbt.parseServersDat(buf);
   } catch {
     return [];
@@ -663,7 +702,7 @@ export async function readServersDat(name) {
 
 /** PUT /api/instances/:name/servers — write servers.dat (modern format). */
 export async function writeServers(name, servers) {
-  await getInstance(name);
+  const inst = await getInstance(name);
   if (!Array.isArray(servers)) {
     throw httpError(400, 'BAD_SERVERS', 'servers must be an array');
   }
@@ -674,7 +713,7 @@ export async function writeServers(name, servers) {
     accept_textures: !!(s && s.accept_textures),
     has_icon: !!(s && s.has_icon),
   }));
-  await fs.promises.writeFile(path.join(instanceDir(name), 'servers.dat'), nbt.writeServersDat(cleaned));
+  await fs.promises.writeFile(path.join(effectiveGameDir(inst), 'servers.dat'), nbt.writeServersDat(cleaned));
   return { count: cleaned.length };
 }
 
@@ -694,13 +733,13 @@ async function readOptionsFor(inst) {
   try {
     const imp = await import('./import.mjs');
     if (typeof imp.readOptionsTxt === 'function') {
-      const raw = await fs.promises.readFile(path.join(instanceDir(inst.name), 'options.txt'), 'utf8');
+      const raw = await fs.promises.readFile(path.join(effectiveGameDir(inst), 'options.txt'), 'utf8');
       const pairs = imp.readOptionsTxt(raw);
       return pairs.map((p) => (Array.isArray(p) ? p : [p[0], p[1]]));
     }
   } catch { /* fall through */ }
   try {
-    const raw = await fs.promises.readFile(path.join(instanceDir(inst.name), 'options.txt'), 'utf8');
+    const raw = await fs.promises.readFile(path.join(effectiveGameDir(inst), 'options.txt'), 'utf8');
     return parseOptionsTxt(raw);
   } catch {
     return [];
@@ -723,17 +762,17 @@ export async function importOptionsFromInstance(targetName, sourceName) {
     throw httpError(409, 'INVALID_NAME', 'invalid instance name');
   }
   const target = await getInstance(targetName);
-  await getInstance(sourceName);
+  const source = await getInstance(sourceName);
   if (targetName === sourceName) {
     throw httpError(409, 'SAME_INSTANCE', 'no puedes importar opciones de la misma instancia');
   }
-  const sourcePath = path.join(instanceDir(sourceName), 'options.txt');
+  const sourcePath = path.join(effectiveGameDir(source), 'options.txt');
   try {
     await fs.promises.access(sourcePath);
   } catch {
     return { copied: false, count: 0, options: await readOptionsFor(target) };
   }
-  await fs.promises.copyFile(sourcePath, path.join(instanceDir(targetName), 'options.txt'));
+  await fs.promises.copyFile(sourcePath, path.join(effectiveGameDir(target), 'options.txt'));
   const options = await readOptionsFor(target);
   return {
     copied: true,
@@ -773,12 +812,13 @@ export async function aotStatus(inst) {
 
   let proof = null;
   try {
-    const dirEntries = await readdirSafe(instanceDir(inst.name));
+    const gameBase = effectiveGameDir(inst); // AOT logs land where the game runs (cwd = gameDir)
+    const dirEntries = await readdirSafe(gameBase);
     // Sort by mtime, newest last — filename sort is lexical, so aot-10.log
     // would sort before aot-2.log and the proof would point at a stale run.
     const logs = dirEntries
       .filter((f) => /^aot-\d+\.log$/.test(f))
-      .map((f) => ({ f, m: statSafe(path.join(instanceDir(inst.name), f))?.mtimeMs ?? 0 }))
+      .map((f) => ({ f, m: statSafe(path.join(gameBase, f))?.mtimeMs ?? 0 }))
       .sort((a, b) => a.m - b.m)
       .map((x) => x.f);
     // L19b: keep the log sweep bounded — retain at most the 8 newest AOT logs
@@ -789,15 +829,15 @@ export async function aotStatus(inst) {
     const MAX_AOT_LOGS = 8;
     for (let i = 0; i < logs.length - MAX_AOT_LOGS; i++) {
       try {
-        await fs.promises.unlink(path.join(instanceDir(inst.name), logs[i]));
+        await fs.promises.unlink(path.join(gameBase, logs[i]));
       } catch { /* ignore */ }
     }
     const recent = logs.filter((f) => {
-      const m = statSafe(path.join(instanceDir(inst.name), f))?.mtimeMs ?? 0;
+      const m = statSafe(path.join(gameBase, f))?.mtimeMs ?? 0;
       return nowMs - m < 24 * HOUR;
     });
     if (recent.length > 0) {
-      const logPath = path.join(instanceDir(inst.name), recent[recent.length - 1]);
+      const logPath = path.join(gameBase, recent[recent.length - 1]);
       const content = await fs.promises.readFile(logPath, 'utf8');
       proof = {
         log_path: logPath,

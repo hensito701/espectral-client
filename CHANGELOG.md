@@ -2,7 +2,60 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+ ## [1.3.13] - 2026-09-05
+
+ ### Fixed
+ - **Performance preset progress no longer sticks on "Instalando mods...".**
+   The install endpoint queues in the background, but the UI read per-byte
+   fields the engine never sends, freezing the bar at 0/100 with a premature
+   success toast. Progress is now file-count based, the success toast fires
+   only on the terminal SSE event, foreign-instance/library/mrpack traffic no
+   longer drives the bar, and a fallback timer clears it if the event is lost.
+ - **Client Suite feature toggles translate.** All 13 feature names and
+   descriptions now have Spanish + English strings instead of hardcoded
+   English from the engine registry.
+ - **Play panel and "Cuenta Activa" track skin + color changes.** The Home
+   account chip and the Play-dock account display used name-only tiles while
+   TopChrome showed the fresh avatar. All three now render the skin-head
+   avatar with the account color and refresh on profile changes (with a
+   cache-buster so replaced bytes never show stale).
+ - **Custom-folder instances install mods/configs in their own folder.**
+   Mods, client config, `servers.dat`, `options.txt`, and game subdirs now
+   resolve under the user-selected `game_dir` instead of leaking into the
+   default profile dir, and "Abrir carpeta de mods" opens the effective
+   folder (the open-folder guardrail now allows instance game dirs).
+ - **Account popover avatars are clean circles.** The active-account card and
+   switch-row wrappers painted rounded-square backings behind the circular
+   avatar tiles (circle-on-a-rounded-square). Both wrappers are circular now,
+   matching every other avatar in the app.
+
+ ## [1.3.12] - 2026-09-05
+
+ ### Added
+ - **Skin Atelier: named skin gallery (vanilla workflow).** Save staged uploads
+   with a name, import all named skins from the vanilla launcher
+   (`launcher_custom_skins.json`, idempotent), rename / delete per card, and
+   apply any entry to the active Microsoft account with **Usar**. New
+   **Probar** button previews a gallery skin in the rotating 3D stage without
+   touching Mojang (also available for offline accounts).
+ - **Gallery cards render frozen 3D previews** instead of flat PNGs (paused,
+   still draggable; boot lazily on scroll so hidden cards never claim a WebGL
+   context). A PNG fallback with a note renders if WebGL is unavailable.
+ - **Microsoft account icons follow the skin.** The avatar auto-syncs to the
+   head of the account's Minecraft skin (face + hat layer, 64×64) on skin
+   fetch / upload / gallery apply. User-uploaded avatars are never clobbered;
+   resetting the skin drops only skin-derived avatars.
+
+ ### Fixed
+ - **Gallery "Usar" no longer dies with HTTP 405.** Mojang's gateway rings
+   disagree on the upload method: at least one ring answers an authenticated
+   `PUT /minecraft/profile/skins` with 405 METHOD_NOT_ALLOWED while POST
+   succeeds (same token, same bytes). Uploads now go POST-first with a single
+   PUT retry on 405 only. Mojang's own rejection reason is surfaced in the
+   error message and the server log instead of a bare status.
+ - **Skin viewer proportions.** The boot canvas is capped at 300px with the
+   aspect ratio locked, so CSS scaling can no longer squeeze skins thin and
+   tall. New square pause/play button pauses/resumes rotation.
 
 ## [1.3.11] - 2026-09-04
 

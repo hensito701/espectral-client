@@ -347,3 +347,20 @@ export interface HealthInfo {
   ok: boolean;
   version: string;
 }
+
+export type SkinVariant = 'classic' | 'slim';
+
+export interface SkinInfo {
+  username: string;
+  variant: SkinVariant;
+  has_skin: boolean;
+  cape: boolean;
+}
+
+export interface SkinLibraryEntry {
+  id: string;
+  name: string;
+  variant: SkinVariant;
+  created_at: string;
+  source: 'upload' | 'vanilla';
+}

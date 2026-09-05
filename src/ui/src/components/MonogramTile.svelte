@@ -42,6 +42,13 @@
   let imgFailed = $state(false);
 
   const imgSrc = $derived(src || avatarUrl);
+  // Retry the image when its source changes (e.g. avatar uploaded after a
+  // failed load, or replaced bytes under the same URL slot). Only imgSrc is
+  // read, so the error handler below cannot retrigger this effect.
+  $effect(() => {
+    void imgSrc;
+    imgFailed = false;
+  });
   const letter = $derived((name || '?').trim().charAt(0).toUpperCase() || '?');
 
   // Deterministic hue generator based on string hash (overridable via `hue`)

@@ -31,7 +31,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { dataDir, loadConfig } from './config.mjs';
-import { computeModSetHash, instanceDir } from './instances.mjs';
+import { computeModSetHash, effectiveGameDir } from './instances.mjs';
 import { getJvmInfo } from './jvm.mjs';
 import { emit } from './events.mjs';
 import { resolveLaunch, buildArgv, spawnJava } from './launch.mjs';
@@ -143,9 +143,9 @@ export async function instanceKey(instance) {
   return cacheKey(instance.version, build, process.arch);
 }
 
-/** Newest aot-<pid>.log inside the instance dir (gameDir), or null. */
+/** Newest aot-<pid>.log where the game runs (effective gameDir), or null. */
 export function latestAotProofLog(instance) {
-  const dir = instanceDir(instance.name ?? instance);
+  const dir = effectiveGameDir(instance.name ?? instance);
   let best = null;
   try {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -185,7 +185,7 @@ export function aotProof(instance) {
 export async function pruneAotProofLogs(instance) {
   const name = instance?.name ?? instance;
   if (!name || typeof name !== 'string') return;
-  const dir = instanceDir(name);
+  const dir = effectiveGameDir(name);
   let entries;
   try {
     entries = await fs.promises.readdir(dir);

@@ -27,6 +27,9 @@ import type {
   OverwritePolicy,
   ServerEntry,
   ServerStatus,
+  SkinInfo,
+  SkinLibraryEntry,
+  SkinVariant,
   Theme,
   VersionInfo,
   VersionManifest,
@@ -135,14 +138,23 @@ const R = {
   patchInstance: (n: string) => ['PATCH', `/api/instances/${enc(n)}`] as const,
   importSources: ['GET', '/api/import/sources'] as const,
   importProfile: (n: string) => ['POST', `/api/instances/${enc(n)}/import`] as const,
-  pickFile: ['POST', '/api/pick-file'] as const,
-  pickFolder: ['POST', '/api/pick-folder'] as const,
   importMrpack: ['POST', '/api/instances/import-mrpack'] as const,
   instanceIcon: (n: string) => ['POST', `/api/instances/${enc(n)}/icon`] as const,
+  pickFile: ['POST', '/api/pick-file'] as const,
+  pickFolder: ['POST', '/api/pick-folder'] as const,
   accountAvatar: (u: string) => ['POST', `/api/accounts/${enc(u)}/avatar`] as const,
+  accountSkin: (u: string) => ['GET', `/api/accounts/${enc(u)}/skin`] as const,
+  accountSkinPng: (u: string) => ['GET', `/api/accounts/${enc(u)}/skin.png`] as const,
+  accountSkinUpload: (u: string) => ['POST', `/api/accounts/${enc(u)}/skin`] as const,
+  accountSkinReset: (u: string) => ['DELETE', `/api/accounts/${enc(u)}/skin`] as const,
+  librarySkins: ['GET', '/api/skins'] as const,
+  librarySkin: (id: string) => ['PATCH', `/api/skins/${enc(id)}`] as const,
+  librarySkinApply: (id: string) => ['POST', `/api/skins/${enc(id)}/apply`] as const,
+  libraryImportVanilla: ['POST', '/api/skins/import-vanilla'] as const,
   accountAvatarColor: (u: string) => ['POST', `/api/accounts/${enc(u)}/avatar-color`] as const,
   accountPatch: (u: string) => ['PATCH', `/api/accounts/${enc(u)}`] as const,
   mods: (n: string) => ['GET', `/api/instances/${enc(n)}/mods`] as const,
+  modsDir: (n: string) => ['GET', `/api/instances/${enc(n)}/mods-dir`] as const,
   modToggle: (n: string, f: string, on: boolean) => ['POST', `/api/instances/${enc(n)}/mods/${enc(f)}/${on ? 'enable' : 'disable'}`] as const,
   modsInstall: (n: string) => ['POST', `/api/instances/${enc(n)}/mods/install`] as const,
   modsPreset: (n: string) => ['GET', `/api/instances/${enc(n)}/mods/preset`] as const,
@@ -218,6 +230,43 @@ export const uploadAccountAvatar = (username: string, image_base64: string): Pro
   post(R.accountAvatar(username)[1], { image_base64 });
 export const removeAccountAvatar = (username: string): Promise<{ removed: true }> =>
   del(R.accountAvatar(username)[1]);
+export const getAccountSkin = (username: string): Promise<SkinInfo> =>
+  get(R.accountSkin(username)[1]);
+export const skinPngUrl = (username: string): string =>
+  `${API_BASE}/api/accounts/${enc(username)}/skin.png`;
+export const uploadAccountSkin = (
+  username: string,
+  image_base64: string,
+  variant: SkinVariant,
+): Promise<{ ok: true; variant: SkinVariant }> =>
+  post(R.accountSkinUpload(username)[1], { image_base64, variant });
+export const resetAccountSkin = (username: string): Promise<{ reset: true }> =>
+  del(R.accountSkinReset(username)[1]);
+export const listLibrarySkins = async (): Promise<SkinLibraryEntry[]> =>
+  (await get<{ skins: SkinLibraryEntry[] }>(R.librarySkins[1])).skins;
+export const librarySkinPngUrl = (id: string): string =>
+  `${API_BASE}/api/skins/${enc(id)}.png`;
+export const saveLibrarySkin = (
+  name: string,
+  image_base64: string,
+  variant: SkinVariant,
+): Promise<SkinLibraryEntry> =>
+  post(R.librarySkins[1], { name, image_base64, variant });
+export const patchLibrarySkin = (
+  id: string,
+  skinPatch: { name?: string; variant?: SkinVariant },
+): Promise<SkinLibraryEntry> =>
+  patch(R.librarySkin(id)[1], skinPatch);
+export const deleteLibrarySkin = (id: string): Promise<{ removed: true }> =>
+  del(R.librarySkin(id)[1]);
+export const applyLibrarySkin = (
+  id: string,
+  username: string,
+): Promise<{ ok: true; variant: SkinVariant }> =>
+  post(R.librarySkinApply(id)[1], { username });
+export const importVanillaSkins = (): Promise<{ imported: number; skipped: number; total: number }> =>
+  post(R.libraryImportVanilla[1]);
+
 /**
  * Persist an account accent color. Tries the PATCH account shape first and
  * falls back to the dedicated avatar-color POST when the engine answers
@@ -327,6 +376,7 @@ export const setModEnabled = (name: string, filename: string, enabled: boolean):
 export const installMods = (name: string, preset: ModPreset = 'performance'): Promise<{ queued: true }> =>
   post(R.modsInstall(name)[1], { preset });
 export const getModsPresetInfo = (name: string): Promise<ModPresetInfo> => get(R.modsPreset(name)[1]);
+export const getModsDir = (name: string): Promise<{ path: string }> => get(R.modsDir(name)[1]);
 export const searchModrinth = (
   query: string,
   version: string,

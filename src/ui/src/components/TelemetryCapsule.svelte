@@ -18,6 +18,7 @@
     setActiveAccount,
     launchInstance,
     stopInstance,
+    avatarUrl,
   } from '../lib/api';
   import { launchLog, liveLaunches, instances as instancesStore } from '../lib/stores';
   import { subscribeEvents } from '../lib/sse';
@@ -44,6 +45,9 @@
 
   let accounts = $state<Account[]>([]);
   let activeUsername = $state('');
+  // Cache-buster (AccountVault pattern): avatar bytes can change under the
+  // same URL, so bump on every account change to force a refetch.
+  let avatarBust = $state(0);
   let accountMenuOpen = $state(false);
   let launchMode = $state<LaunchMode>('aot');
   let isLaunching = $state(false);
@@ -248,6 +252,7 @@
       if (detail?.username) {
         activeUsername = detail.username;
       }
+      avatarBust += 1;
       void loadAccountsList();
     };
 
@@ -293,7 +298,9 @@
         aria-expanded={accountMenuOpen}
       >
         <MonogramTile
-          name={activeUsername || 'Steve'}
+          name={activeAccount?.username || activeUsername || 'Steve'}
+          hue={activeAccount?.avatar_color ?? undefined}
+          avatarUrl={activeAccount?.has_avatar ? `${avatarUrl(activeAccount.username)}${avatarBust ? `?v=${avatarBust}` : ''}` : undefined}
           size={32}
           shape="rounded"
         />
@@ -328,7 +335,13 @@
               role="option"
               aria-selected={acc.username === activeUsername}
             >
-              <MonogramTile name={acc.username} size={24} shape="rounded" />
+              <MonogramTile
+                name={acc.username}
+                hue={acc.avatar_color ?? undefined}
+                avatarUrl={acc.has_avatar ? `${avatarUrl(acc.username)}${avatarBust ? `?v=${avatarBust}` : ''}` : undefined}
+                size={24}
+                shape="rounded"
+              />
               <span class="capsule-dropdown-name">{acc.username}</span>
               {#if acc.token_kind === 'msa'}
                 <Badge variant="accent" size="sm">MSA</Badge>

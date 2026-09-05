@@ -7,9 +7,10 @@
   compact mod inventory, and integrated Modrinth search with explore paging.
 -->
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import {
     API_BASE,
-    getConfig,
+    getModsDir,
     getModsPresetInfo,
     installModrinthMod,
     installMods,
@@ -62,6 +63,8 @@
   let presetInfo = $state<ModPresetInfo | null>(null);
   let installingPreset = $state(false);
   let installProgress = $state<{ filename: string; done: number; total: number } | null>(null);
+  // Fallback only: clears a banner whose terminal SSE event never arrives.
+  let presetFallback: ReturnType<typeof setTimeout> | null = null;
 
   // Modrinth Search State (12 per page, offset paging)
   const SEARCH_PAGE_SIZE = 12;
@@ -141,38 +144,91 @@
     }
   });
 
-  // Subscribe to SSE mod-progress events
+  // Subscribe to SSE mod-progress events. The engine emits
+  // { instance, phase, filename?, index?, total?, message? } per file
+  // (file-count progress; no per-byte done/total exists), plus a terminal
+  // preset event (index === total, no filename) or a filename-bearing final
+  // event for single-mod installs (index >= total).
   $effect(() => {
     const unsub = subscribeEvents(({ type, data }) => {
       if (type !== 'mod-progress') return;
       const payload = (data ?? {}) as Record<string, unknown>;
-      installProgress = {
-        filename: typeof payload.filename === 'string' ? payload.filename : '',
-        done: typeof payload.done === 'number' ? payload.done : 0,
-        total: typeof payload.total === 'number' ? payload.total : 0,
+      // Ignore other instances' downloads so one instance's activity never
+      // drives this banner; ignore non-preset traffic kinds (seeded libs,
+      // mrpack/neoforge/client-jar downloads share this event name).
+      if (typeof payload.instance === 'string' && payload.instance !== targetInstance) return;
+      if (typeof payload.kind === 'string') return;
+      const phase = typeof payload.phase === 'string' ? payload.phase : '';
+      const filename = typeof payload.filename === 'string' ? payload.filename : '';
+      const index = typeof payload.index === 'number' ? payload.index : null;
+      const total = typeof payload.total === 'number' ? payload.total : null;
+      const message =
+        typeof payload.message === 'string' && payload.message
+          ? payload.message
+          : typeof payload.error === 'string' && payload.error
+            ? payload.error
+            : 'Error installing preset';
+      // Terminal events can arrive twice (per-file error, then the batch
+      // error): toast + reload only on the first, when the banner was live.
+      const wasActive = installingPreset || installProgress !== null;
+      const clearTerminal = () => {
+        if (presetFallback) {
+          clearTimeout(presetFallback);
+          presetFallback = null;
+        }
+        installProgress = null;
+        installingPreset = false;
       };
-
-      if (
-        typeof payload.total === 'number' &&
-        typeof payload.done === 'number' &&
-        payload.total > 0 &&
-        payload.done >= payload.total
-      ) {
-        setTimeout(() => {
-          installProgress = null;
+      const completed = phase === 'done' && index != null && total != null && index >= total;
+      if (phase === 'error') {
+        clearTerminal();
+        if (wasActive) {
+          loadMods();
+          loadPresetInfo();
+          pushToast({ kind: 'err', text: message });
+        }
+        return;
+      }
+      if (completed) {
+        clearTerminal();
+        if (wasActive) {
           loadMods();
           loadPresetInfo();
           pushToast({
             kind: 'ok',
-            text: payload.filename
-              ? `${payload.filename} ${t('mods.installed') || 'instalado'}`
-              : t('mods.installed') || 'Mods actualizados',
+            text: filename ? `${filename} ${t('mods.installed') || 'instalado'}` : t('mods.installed') || 'Mods actualizados',
           });
-        }, 600);
+        }
+        return;
+      }
+      if (index != null && total != null && total > 0) {
+        const done = phase === 'done' ? index + 1 : Math.max(index, 0);
+        installProgress = {
+          filename,
+          done: Math.max(installProgress?.done ?? 0, Math.min(done, total)),
+          total,
+        };
+        installingPreset = true;
+        return;
+      }
+      if (filename || phase === 'start') {
+        installProgress = {
+          filename,
+          done: installProgress?.done ?? 0,
+          total: installProgress?.total ?? 0,
+        };
+        installingPreset = true;
       }
     });
 
     return () => unsub();
+  });
+
+  onDestroy(() => {
+    if (presetFallback) {
+      clearTimeout(presetFallback);
+      presetFallback = null;
+    }
   });
 
 
@@ -222,29 +278,44 @@
   }
 
   async function installPreset(preset: ModPreset = 'performance') {
-    if (!targetInstance) return;
+    if (!targetInstance || installingPreset) return;
     installingPreset = true;
     installProgress = { filename: '', done: 0, total: 0 };
     try {
+      // Returns { queued: true } immediately: completion arrives via the
+      // terminal mod-progress SSE event above. The timer below is purely a
+      // fallback that clears a banner whose terminal event never arrives.
       await installMods(targetInstance, preset);
-      pushToast({ kind: 'info', text: t('mods.queued') });
+      if (presetFallback) clearTimeout(presetFallback);
+      presetFallback = setTimeout(() => {
+        presetFallback = null;
+        if (installingPreset) {
+          installingPreset = false;
+          installProgress = null;
+          loadMods();
+          loadPresetInfo();
+        }
+      }, 90000);
     } catch (e) {
+      if (presetFallback) {
+        clearTimeout(presetFallback);
+        presetFallback = null;
+      }
       modsError = e instanceof Error ? e.message : String(e);
       installProgress = null;
+      installingPreset = false;
       pushToast({
         kind: 'err',
         text: e instanceof Error ? e.message : 'Error installing preset',
       });
-    } finally {
-      installingPreset = false;
     }
   }
 
   async function handleOpenFolder() {
     if (!targetInstance) return;
     try {
-      const config = await getConfig();
-      await openFolder(`${config.data_dir}/instances/${targetInstance}/mods`);
+      const { path } = await getModsDir(targetInstance);
+      await openFolder(path);
       pushToast({ kind: 'ok', text: t('mods.openFolderSuccess') || 'Carpeta abierta' });
     } catch {
       pushToast({ kind: 'err', text: t('mods.openFolderError') });

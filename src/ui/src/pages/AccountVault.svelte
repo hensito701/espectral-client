@@ -29,17 +29,28 @@
     uploadAccountAvatar,
     removeAccountAvatar,
     setAccountAvatarColor,
+    getAccountSkin,
+    skinPngUrl,
+    resetAccountSkin,
+    listLibrarySkins,
+    librarySkinPngUrl,
+    saveLibrarySkin,
+    patchLibrarySkin,
+    deleteLibrarySkin,
+    applyLibrarySkin,
+    importVanillaSkins,
     fileToPngDataUrl,
     UnsupportedImageError,
     ApiError,
   } from '../lib/api';
-  import type { Account, MsDeviceFlow } from '../lib/types';
+  import type { Account, MsDeviceFlow, SkinInfo, SkinLibraryEntry, SkinVariant } from '../lib/types';
   import GlassCard from '../components/GlassCard.svelte';
   import Btn from '../components/Btn.svelte';
   import Badge from '../components/Badge.svelte';
   import Field from '../components/Field.svelte';
   import GradientText from '../components/GradientText.svelte';
   import MonogramTile from '../components/MonogramTile.svelte';
+  import SkinViewer from '../components/SkinViewer.svelte';
   import { timeAgo } from '../lib/format';
   import { t } from '../lib/i18n.svelte';
   import { pushToast } from '../lib/toast.svelte';
@@ -197,6 +208,310 @@
     } finally {
       avatarBusy = null;
     }
+  }
+
+  // --- Skin Atelier state (component-local; per active account) ---
+  let skinInfo = $state<SkinInfo | null>(null);
+  let skinLoading = $state<boolean>(false);
+  let skinBusy = $state<boolean>(false);
+  let skinBust = $state(0);
+  let skinVariant = $state<SkinVariant>('classic');
+  let stagedSkin = $state<string | null>(null);
+  let stagedName = $state<string>('');
+  let confirmingSkinReset = $state<boolean>(false);
+  // Gallery (global per installation, like the vanilla launcher).
+  let gallery = $state<SkinLibraryEntry[]>([]);
+  let galleryLoading = $state<boolean>(false);
+  let galleryBust = $state(0);
+  let previewEntryId = $state<string | null>(null);
+  let skinStageEl: HTMLDivElement | null = $state(null);
+  let applyingId = $state<string | null>(null);
+  let deletingId = $state<string | null>(null);
+  let renamingId = $state<string | null>(null);
+  let confirmingDeleteId = $state<string | null>(null);
+  let renameValue = $state<string>('');
+  let importingVanilla = $state<boolean>(false);
+
+  const isOfflineActive = $derived(activeAccount !== null && activeAccount.token_kind !== 'msa');
+
+  const skinUrl = $derived<string | undefined>(
+    activeAccount && activeAccount.token_kind === 'msa' && skinInfo?.has_skin
+      ? `${skinPngUrl(activeAccount.username)}${skinBust ? `?v=${skinBust}` : ''}`
+      : undefined,
+  );
+
+  const previewEntry = $derived<SkinLibraryEntry | null>(
+    previewEntryId ? (gallery.find((g) => g.id === previewEntryId) ?? null) : null,
+  );
+
+  const previewEntryUrl = $derived<string | undefined>(
+    previewEntry ? `${librarySkinPngUrl(previewEntry.id)}${galleryBust ? `?v=${galleryBust}` : ''}` : undefined,
+  );
+
+  // Staged file wins, then the gallery preview, then the live Mojang skin.
+  const viewerUrl = $derived<string | undefined>(stagedSkin ?? previewEntryUrl ?? skinUrl);
+
+  const viewerVariant = $derived<SkinVariant>(
+    stagedSkin ? skinVariant : (previewEntry?.variant ?? skinVariant),
+  );
+
+  async function loadSkin(username: string): Promise<void> {
+    skinLoading = true;
+    try {
+      const info = await getAccountSkin(username);
+      // Race guard: only apply when still looking at the same account.
+      if (activeAccount?.username === username) {
+        skinInfo = info;
+        skinVariant = info.variant;
+      }
+    } catch (e) {
+      if (activeAccount?.username === username) skinInfo = null;
+      // Offline accounts answer 404 OFFLINE_ACCOUNT — the section renders the
+      // offline note instead, so only toast genuine failures.
+      if (!(e instanceof ApiError && e.code === 'OFFLINE_ACCOUNT')) {
+        pushToast({
+          kind: 'err',
+          text: t('vault.skin.loadError', { error: e instanceof Error ? e.message : String(e) }),
+        });
+      }
+    } finally {
+      skinLoading = false;
+    }
+  }
+
+  async function handleSkinFile(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file || skinBusy) return;
+    skinBusy = true;
+    try {
+      stagedSkin = await fileToPngDataUrl(file, 256);
+      previewEntryId = null;
+      if (!stagedName.trim()) {
+        stagedName = file.name.replace(/\.[^.]+$/, '').slice(0, 40);
+      }
+    } catch (err) {
+      pushToast({
+        kind: 'err',
+        text: t('vault.skin.loadError', { error: err instanceof Error ? err.message : String(err) }),
+      });
+    } finally {
+      skinBusy = false;
+      if (input) input.value = '';
+    }
+  }
+
+  function clearStagedSkin(): void {
+    stagedSkin = null;
+    stagedName = '';
+  }
+
+  async function loadGallery(): Promise<void> {
+    galleryLoading = true;
+    try {
+      gallery = await listLibrarySkins();
+      if (previewEntryId && !gallery.some((g) => g.id === previewEntryId)) {
+        previewEntryId = null;
+      }
+    } catch (e) {
+      pushToast({
+        kind: 'err',
+        text: t('vault.skin.loadError', { error: e instanceof Error ? e.message : String(e) }),
+      });
+    } finally {
+      galleryLoading = false;
+    }
+  }
+
+  async function handleSaveToGallery(): Promise<void> {
+    if (!stagedSkin || skinBusy) return;
+    const name = stagedName.trim() || t('vault.skin.stageNamePlaceholder');
+    skinBusy = true;
+    try {
+      const entry = await saveLibrarySkin(name, stagedSkin, skinVariant);
+      await loadGallery();
+      galleryBust += 1;
+      stagedSkin = null;
+      stagedName = '';
+      previewEntryId = entry.id;
+      pushToast({ kind: 'ok', text: t('vault.skin.gallerySaved', { name: entry.name }) });
+    } catch (err) {
+      pushToast({
+        kind: 'err',
+        text: t('vault.skin.loadError', { error: err instanceof Error ? err.message : String(err) }),
+      });
+    } finally {
+      skinBusy = false;
+    }
+  }
+
+  async function handleApplyEntry(id: string): Promise<void> {
+    const username = activeAccount?.username;
+    const entry = gallery.find((g) => g.id === id);
+    if (!username || !entry || applyingId) return;
+    applyingId = id;
+    try {
+      const res = await applyLibrarySkin(id, username);
+      skinVariant = res.variant;
+      skinBust += 1;
+      await loadSkin(username);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('horizon:account-changed', { detail: { username } }),
+        );
+      }
+      pushToast({ kind: 'ok', text: t('vault.skin.galleryApplied', { name: entry.name, username }) });
+    } catch (err) {
+      pushToast({
+        kind: 'err',
+        text: t('vault.skin.loadError', { error: err instanceof Error ? err.message : String(err) }),
+      });
+    } finally {
+      applyingId = null;
+    }
+  }
+
+  async function handleDeleteEntry(id: string): Promise<void> {
+    const entry = gallery.find((g) => g.id === id);
+    if (!entry || deletingId) return;
+    deletingId = id;
+    try {
+      await deleteLibrarySkin(id);
+      if (previewEntryId === id) previewEntryId = null;
+      await loadGallery();
+      galleryBust += 1;
+      pushToast({ kind: 'ok', text: t('vault.skin.galleryDeleted', { name: entry.name }) });
+    } catch (err) {
+      pushToast({
+        kind: 'err',
+        text: t('vault.skin.loadError', { error: err instanceof Error ? err.message : String(err) }),
+      });
+    } finally {
+      deletingId = null;
+    }
+  }
+
+  function promptDeleteEntry(id: string, e?: MouseEvent): void {
+    e?.stopPropagation?.();
+    renamingId = null;
+    deletingId = null;
+    confirmingDeleteId = id;
+  }
+
+  function cancelDeleteEntry(e?: MouseEvent): void {
+    e?.stopPropagation?.();
+    confirmingDeleteId = null;
+  }
+  // Gallery "Probar" (and card-art click): stage the entry in the main 3D
+  // preview — rotation happens there, nothing is sent to Mojang — then bring
+  // the stage into view.
+  function previewSkin(id: string): void {
+    previewEntryId = id;
+    skinStageEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function promptRenameEntry(entry: SkinLibraryEntry, e?: MouseEvent): void {
+    e?.stopPropagation?.();
+    confirmingDeleteId = null;
+    renamingId = entry.id;
+    renameValue = entry.name;
+  }
+
+  function cancelRenameEntry(e?: MouseEvent): void {
+    e?.stopPropagation?.();
+    renamingId = null;
+    renameValue = '';
+  }
+
+  async function confirmRenameEntry(id: string, e?: Event): Promise<void> {
+    e?.stopPropagation?.();
+    if (!renameValue.trim() || skinBusy) return;
+    skinBusy = true;
+    try {
+      await patchLibrarySkin(id, { name: renameValue.trim() });
+      renamingId = null;
+      renameValue = '';
+      await loadGallery();
+      galleryBust += 1;
+      pushToast({ kind: 'ok', text: t('vault.skin.galleryRenamed') });
+    } catch (err) {
+      pushToast({
+        kind: 'err',
+        text: t('vault.skin.loadError', { error: err instanceof Error ? err.message : String(err) }),
+      });
+    } finally {
+      skinBusy = false;
+    }
+  }
+
+  async function handleImportVanilla(): Promise<void> {
+    if (importingVanilla) return;
+    importingVanilla = true;
+    try {
+      const res = await importVanillaSkins();
+      await loadGallery();
+      galleryBust += 1;
+      if (res.total === 0) {
+        pushToast({ kind: 'ok', text: t('vault.skin.importVanillaNone') });
+      } else {
+        pushToast({ kind: 'ok', text: t('vault.skin.importVanillaDone', { imported: res.imported, skipped: res.skipped }) });
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'NO_VANILLA_SKINS') {
+        pushToast({ kind: 'err', text: t('vault.skin.importVanillaNone') });
+      } else {
+        pushToast({
+          kind: 'err',
+          text: t('vault.skin.loadError', { error: e instanceof Error ? e.message : String(e) }),
+        });
+      }
+    } finally {
+      importingVanilla = false;
+    }
+  }
+
+  function promptSkinReset(e?: MouseEvent): void {
+    e?.stopPropagation?.();
+    confirmingSkinReset = true;
+  }
+
+  function cancelSkinReset(e?: MouseEvent): void {
+    e?.stopPropagation?.();
+    confirmingSkinReset = false;
+  }
+
+  async function confirmSkinReset(e?: MouseEvent): Promise<void> {
+    e?.stopPropagation?.();
+    const username = activeAccount?.username;
+    if (!username || skinBusy) return;
+    skinBusy = true;
+    try {
+      await resetAccountSkin(username);
+      confirmingSkinReset = false;
+      stagedSkin = null;
+      skinBust += 1;
+      await loadSkin(username);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('horizon:account-changed', { detail: { username } }),
+        );
+      }
+      pushToast({ kind: 'ok', text: t('vault.skin.resetDone') });
+    } catch (err) {
+      pushToast({
+        kind: 'err',
+        text: t('vault.skin.loadError', { error: err instanceof Error ? err.message : String(err) }),
+      });
+    } finally {
+      skinBusy = false;
+    }
+  }
+
+  async function handleRefreshSkin(): Promise<void> {
+    const username = activeAccount?.username;
+    if (!username || skinLoading) return;
+    skinBust += 1;
+    await loadSkin(username);
   }
 
   // --- Account Loading & Selection ---
@@ -428,8 +743,28 @@
     updateAmbientForAccount(activeAccount?.username);
   });
 
+  // Reload skin metadata whenever the active identity changes. MSA only —
+  // offline accounts keep the gallery, never a request that would 404.
+  $effect(() => {
+    const username = activeAccount?.username;
+    const isMsa = activeAccount?.token_kind === 'msa';
+    stagedSkin = null;
+    stagedName = '';
+    previewEntryId = null;
+    confirmingSkinReset = false;
+    confirmingDeleteId = null;
+    renamingId = null;
+    if (username && isMsa) {
+      void loadSkin(username);
+    } else {
+      skinInfo = null;
+      skinLoading = false;
+    }
+  });
+
   onMount(() => {
     void loadAccounts();
+    void loadGallery();
   });
 
   onDestroy(() => {
@@ -583,6 +918,313 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- Skin Atelier: 3D visualizer + named skin gallery (vanilla workflow) -->
+  <section class="skin-atelier-section" aria-label="Skin Atelier">
+    <GlassCard title={t('vault.skin.title')} subtitle={t('vault.skin.subtitle')} elevation="md">
+      {#if !activeAccount}
+        <p class="skin-atelier__note">{t('vault.heroSelectPrompt')}</p>
+      {:else}
+        <div class="skin-atelier__layout">
+          <div class="skin-atelier__stage" bind:this={skinStageEl}>
+            {#if skinLoading && !skinInfo && !viewerUrl}
+              <div class="roster-loading">
+                <span class="spinner"></span>
+                <span>{t('vault.skin.viewerLoading')}</span>
+              </div>
+            {:else if viewerUrl}
+              <SkinViewer skinUrl={viewerUrl} variant={viewerVariant} height={340} />
+              {#if stagedSkin}
+                <p class="skin-atelier__note">{t('vault.skin.galleryStaged')}</p>
+              {:else if previewEntry}
+                <Badge variant="accent" size="sm">
+                  {t('vault.skin.galleryPreviewing')}: {previewEntry.name}
+                </Badge>
+              {:else if skinInfo?.cape}
+                <Badge variant="accent" size="sm">{t('vault.skin.capeBadge')}</Badge>
+              {/if}
+            {:else}
+              <p class="skin-atelier__note">{t('vault.skin.noSkin')}</p>
+            {/if}
+          </div>
+          <div class="skin-atelier__controls">
+            <label class="avatar-edit__upload">
+              <input
+                type="file"
+                accept="image/*"
+                class="icon-file-input"
+                onchange={handleSkinFile}
+                disabled={skinBusy}
+              />
+              {t('vault.skin.uploadLabel')}
+            </label>
+            {#if stagedSkin}
+              <Field label={t('vault.skin.stageNameLabel')} required={true}>
+                <input
+                  type="text"
+                  class="input text-input"
+                  bind:value={stagedName}
+                  placeholder={t('vault.skin.stageNamePlaceholder')}
+                  maxlength="40"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </Field>
+            {/if}
+            <div class="skin-atelier__variants" role="radiogroup">
+              <label class="skin-atelier__variant">
+                <input
+                  type="radio"
+                  name="skin-variant"
+                  value="classic"
+                  checked={skinVariant === 'classic'}
+                  onchange={() => (skinVariant = 'classic')}
+                  disabled={skinBusy}
+                />
+                {t('vault.skin.variantClassic')}
+              </label>
+              <label class="skin-atelier__variant">
+                <input
+                  type="radio"
+                  name="skin-variant"
+                  value="slim"
+                  checked={skinVariant === 'slim'}
+                  onchange={() => (skinVariant = 'slim')}
+                  disabled={skinBusy}
+                />
+                {t('vault.skin.variantSlim')}
+              </label>
+            </div>
+            <div class="skin-atelier__actions">
+              {#if stagedSkin}
+                <Btn
+                  variant="primary"
+                  size="sm"
+                  loading={skinBusy}
+                  disabled={!stagedName.trim()}
+                  onclick={() => void handleSaveToGallery()}
+                >
+                  {t('vault.skin.saveToGallery')}
+                </Btn>
+                <Btn variant="ghost" size="sm" disabled={skinBusy} onclick={() => clearStagedSkin()}>
+                  {t('vault.cardLogoutCancel')}
+                </Btn>
+              {/if}
+              {#if !isOfflineActive}
+                {#if !confirmingSkinReset}
+                  <Btn
+                    variant="danger"
+                    size="sm"
+                    disabled={skinBusy || !skinInfo?.has_skin}
+                    onclick={(e) => promptSkinReset(e)}
+                  >
+                    {t('vault.skin.reset')}
+                  </Btn>
+                {:else}
+                  <div class="inline-confirm__actions">
+                    <Btn
+                      variant="danger"
+                      size="sm"
+                      loading={skinBusy}
+                      onclick={(e) => void confirmSkinReset(e)}
+                    >
+                      {t('vault.skin.reset')}
+                    </Btn>
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      disabled={skinBusy}
+                      onclick={(e) => cancelSkinReset(e)}
+                    >
+                      {t('vault.cardLogoutCancel')}
+                    </Btn>
+                  </div>
+                {/if}
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  disabled={skinLoading || skinBusy}
+                  onclick={() => void handleRefreshSkin()}
+                >
+                  {t('vault.skin.refresh')}
+                </Btn>
+              {:else}
+                <p class="skin-atelier__hint">{t('vault.skin.offlineCantApply')}</p>
+              {/if}
+            </div>
+            <div class="skin-atelier__editor">
+              <a
+                class="btn btn--ghost btn--sm skin-atelier__editor-link"
+                href="https://minecraft.novaskin.me/"
+                target="_blank"
+                rel="noopener"
+              >
+                <span aria-hidden="true">🎨</span>
+                {t('vault.skin.editorLink')}
+              </a>
+              <p class="skin-atelier__hint">{t('vault.skin.editorHint')}</p>
+            </div>
+          </div>
+        </div>
+        <!-- Gallery -->
+        <div class="skin-gallery">
+          <div class="skin-gallery__head">
+            <div class="skin-gallery__title-group">
+              <h3 class="skin-gallery__title">{t('vault.skin.galleryTitle')}</h3>
+              <Badge variant="neutral" size="sm">{gallery.length}</Badge>
+            </div>
+            <div class="skin-gallery__head-actions">
+              <Btn
+                variant="ghost"
+                size="sm"
+                loading={importingVanilla}
+                disabled={galleryLoading}
+                onclick={() => void handleImportVanilla()}
+              >
+                {t('vault.skin.importVanilla')}
+              </Btn>
+              <Btn
+                variant="ghost"
+                size="sm"
+                disabled={galleryLoading || skinBusy}
+                onclick={() => void loadGallery()}
+              >
+                {t('vault.skin.refresh')}
+              </Btn>
+            </div>
+          </div>
+          {#if galleryLoading && gallery.length === 0}
+            <div class="roster-loading">
+              <span class="spinner"></span>
+              <span>{t('vault.skin.viewerLoading')}</span>
+            </div>
+          {:else if gallery.length === 0}
+            <p class="skin-atelier__note">{t('vault.skin.galleryEmpty')}</p>
+          {:else}
+            <div class="skin-gallery__grid">
+              {#each gallery as entry (entry.id)}
+                <div
+                  class="skin-card"
+                  class:skin-card--previewing={previewEntryId === entry.id}
+                >
+                  <!-- Frozen 3D render (still user-draggable). A div, not a button:
+                       SkinViewer owns a spin-toggle button and buttons cannot nest. -->
+                  <div
+                    class="skin-card__art"
+                    role="button"
+                    tabindex="0"
+                    onclick={() => previewSkin(entry.id)}
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        previewSkin(entry.id);
+                      }
+                    }}
+                    title={t('vault.skin.galleryPreview')}
+                    aria-label={`${t('vault.skin.galleryPreview')}: ${entry.name}`}
+                  >
+                    <SkinViewer
+                      skinUrl={`${librarySkinPngUrl(entry.id)}${galleryBust ? `?v=${galleryBust}` : ''}`}
+                      variant={entry.variant}
+                      height={120}
+                      autoplay={false}
+                      lazy
+                    />
+                  </div>
+                  <div class="skin-card__body">
+                    {#if renamingId === entry.id}
+                      <form
+                        class="skin-card__rename"
+                        onsubmit={(e) => {
+                          e.preventDefault();
+                          void confirmRenameEntry(entry.id, e);
+                        }}
+                      >
+                        <input
+                          type="text"
+                          class="input text-input"
+                          bind:value={renameValue}
+                          maxlength="40"
+                          autocomplete="off"
+                          spellcheck="false"
+                        />
+                        <div class="skin-card__row">
+                          <Btn variant="primary" size="sm" type="submit" disabled={!renameValue.trim() || skinBusy}>
+                            {t('vault.skin.galleryRenameSave')}
+                          </Btn>
+                          <Btn variant="ghost" size="sm" onclick={(e) => cancelRenameEntry(e)}>
+                            {t('vault.cardLogoutCancel')}
+                          </Btn>
+                        </div>
+                      </form>
+                    {:else}
+                      <p class="skin-card__name" title={entry.name}>{entry.name}</p>
+                      <p class="skin-card__meta">
+                        {entry.variant === 'slim' ? t('vault.skin.variantSlim') : t('vault.skin.variantClassic')}
+                      </p>
+                    {/if}
+                    {#if renamingId !== entry.id}
+                      <div class="skin-card__row">
+                        {#if !isOfflineActive}
+                          <Btn
+                            variant="primary"
+                            size="sm"
+                            loading={applyingId === entry.id}
+                            disabled={applyingId !== null || skinBusy}
+                            onclick={() => void handleApplyEntry(entry.id)}
+                          >
+                            {applyingId === entry.id ? t('vault.skin.galleryApplying') : t('vault.skin.galleryUse')}
+                          </Btn>
+                        {/if}
+                        <Btn
+                          variant="secondary"
+                          size="sm"
+                          disabled={skinBusy}
+                          onclick={() => previewSkin(entry.id)}
+                        >
+                          {t('vault.skin.galleryTry')}
+                        </Btn>
+                        <Btn
+                          variant="ghost"
+                          size="sm"
+                          disabled={skinBusy}
+                          onclick={(e) => promptRenameEntry(entry, e)}
+                        >
+                          {t('vault.skin.galleryRename')}
+                        </Btn>
+                        {#if confirmingDeleteId === entry.id}
+                          <Btn
+                            variant="danger"
+                            size="sm"
+                            loading={deletingId === entry.id}
+                            onclick={() => void handleDeleteEntry(entry.id)}
+                          >
+                            {t('vault.skin.galleryDelete')}
+                          </Btn>
+                          <Btn variant="ghost" size="sm" onclick={(e) => cancelDeleteEntry(e)}>
+                            {t('vault.cardLogoutCancel')}
+                          </Btn>
+                        {:else}
+                          <Btn
+                            variant="ghost"
+                            size="sm"
+                            disabled={skinBusy}
+                            onclick={(e) => promptDeleteEntry(entry.id, e)}
+                          >
+                            {t('vault.skin.galleryDelete')}
+                          </Btn>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </GlassCard>
   </section>
 
   <!-- Main Split Workbench: Directory on Left, Identity Forge on Right -->
@@ -1971,5 +2613,207 @@
 
   .text-ok {
     color: var(--accent, #10b981);
+  }
+
+  /* --- Skin Atelier --- */
+  .skin-atelier-section {
+    margin-top: var(--space-4, 16px);
+  }
+
+  .skin-atelier__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+    gap: var(--space-4, 16px);
+    align-items: start;
+  }
+
+  @media (max-width: 720px) {
+    .skin-atelier__layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .skin-atelier__stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    min-height: 200px;
+    justify-content: center;
+  }
+
+  .skin-atelier__note {
+    margin: 0;
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--text-muted, #8b9bb4);
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  .skin-atelier__controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3, 12px);
+  }
+
+  .skin-atelier__variants {
+    display: flex;
+    gap: var(--space-3, 12px);
+  }
+
+  .skin-atelier__variant {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1, 4px);
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--text, #f1f5f9);
+    cursor: pointer;
+  }
+
+  .skin-atelier__variant input {
+    accent-color: var(--accent, #10b981);
+  }
+
+  .skin-atelier__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2, 8px);
+  }
+
+  .skin-atelier__editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 4px);
+    align-items: flex-start;
+  }
+
+  .skin-atelier__editor-link {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1, 4px);
+  }
+
+  .skin-atelier__hint {
+    margin: 0;
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--text-muted, #8b9bb4);
+    line-height: 1.4;
+  }
+
+  .skin-gallery {
+    margin-top: var(--space-4, 16px);
+    padding-top: var(--space-4, 16px);
+    border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3, 12px);
+  }
+
+  .skin-gallery__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+  }
+
+  .skin-gallery__title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+  }
+
+  .skin-gallery__title {
+    margin: 0;
+    font-size: var(--text-md, 1rem);
+    font-weight: 600;
+  }
+
+  .skin-gallery__head-actions {
+    display: flex;
+    gap: var(--space-2, 8px);
+    flex-wrap: wrap;
+  }
+
+  .skin-gallery__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--space-3, 12px);
+  }
+
+  .skin-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+    padding: var(--space-3, 12px);
+    border-radius: var(--radius-md, 8px);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .skin-card--previewing {
+    border-color: var(--accent, #10b981);
+  }
+
+  .skin-card__art {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    border-radius: var(--radius-sm, 6px);
+    overflow: hidden;
+    align-self: center;
+  }
+
+  .skin-card__art:focus-visible {
+    outline: 2px solid var(--accent, #10b981);
+    outline-offset: 2px;
+  }
+
+  /* Frozen 3D card art: keep cards compact — the viewer's 200px stage
+     min-height would otherwise stretch every card. */
+  .skin-card__art :global(.skin-viewer) {
+    min-height: 0;
+  }
+
+  .skin-card__art :global(.skin-viewer__canvas) {
+    max-width: 150px;
+  }
+
+  .skin-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 4px);
+    min-width: 0;
+  }
+
+  .skin-card__name {
+    margin: 0;
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .skin-card__meta {
+    margin: 0;
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--text-muted, #8b9bb4);
+  }
+
+  .skin-card__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1, 4px);
+    margin-top: var(--space-1, 4px);
+  }
+
+  .skin-card__rename {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 4px);
   }
 </style>

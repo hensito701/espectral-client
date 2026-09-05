@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 import { getJvmInfo, parseMajor } from './jvm.mjs';
 import { javaForVersion, javaForMajorExact } from './runtimes.mjs';
 import * as resolver from './resolver.mjs';
-import { getInstance } from './instances.mjs';
+import { effectiveModsDir, getInstance } from './instances.mjs';
 import { offlineUuid, getActiveAccount } from './accounts.mjs';
 import { cacheKey, cacheFilePath, isCacheStale } from './aot.mjs';
 import { loadConfig } from './config.mjs';
@@ -650,7 +650,7 @@ export async function resolveLaunch(
       ? {
           mainClass: fabric.main_class,
           jvmArgs: gameDir !== resolver.instanceDir(instance.name)
-            ? [...(fabric.jvm_args ?? []), `-Dfabric.modsDir=${resolver.instanceModsDir(instance.name)}`]
+            ? [...(fabric.jvm_args ?? []), `-Dfabric.modsDir=${effectiveModsDir(instance)}`]
             : fabric.jvm_args,
           gameArgs: [],
         }

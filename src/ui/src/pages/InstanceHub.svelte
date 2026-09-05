@@ -14,6 +14,7 @@
   import { onDestroy } from 'svelte';
   import {
     getInstance,
+    getModsDir,
     patchInstance,
     getInstanceServers,
     putInstanceServers,
@@ -120,6 +121,8 @@
   // Mods tab state
   let installProgress = $state<{ filename: string; done: number; total: number } | null>(null);
   let installingPreset = $state(false);
+  // Fallback only: clears a bar whose terminal SSE event never arrives.
+  let presetFallback: ReturnType<typeof setTimeout> | null = null;
 
   // Danger tab state
   let deleting = $state(false);
@@ -160,6 +163,10 @@
   });
 
   onDestroy(() => {
+    if (presetFallback) {
+      clearTimeout(presetFallback);
+      presetFallback = null;
+    }
     if (typeof document !== 'undefined') {
       document.documentElement.style.removeProperty('--ambient-hue');
     }
@@ -247,13 +254,88 @@
         }
       }
 
-      // Mod installation progress
+      // Mod installation progress. The engine emits mod-progress with
+      // { instance, phase, preset?, filename?, index?, total?, message? }:
+      // per-file file-count progress (no per-byte done/total exists —
+      // downloadAll only emits start/done/error per file). A frozen 0/100
+      // bar came from reading payload.done/total, which are never sent.
       if (type === 'mod-progress') {
-        installProgress = {
-          filename: typeof payload.filename === 'string' ? payload.filename : '',
-          done: typeof payload.done === 'number' ? payload.done : 0,
-          total: typeof payload.total === 'number' ? payload.total : 0,
-        };
+        // Ignore other instances' downloads so one instance's activity never
+        // drives this bar; ignore non-preset traffic kinds (seeded libs,
+        // mrpack/neoforge/client-jar downloads share this event name) and
+        // non-performance presets (branding/qol).
+        if (payload.instance !== decodedName) {
+          /* foreign instance — ignore */
+        } else if (typeof payload.kind === 'string') {
+          /* library/mrpack/loader traffic — ModCatalog/seed UI owns it */
+        } else if (typeof payload.preset === 'string' && payload.preset !== 'performance') {
+          /* other preset — ignore */
+        } else if (payload.preset === undefined && !installingPreset && installProgress === null) {
+          // Single-mod traffic while idle — ModCatalog owns its own banner.
+        } else {
+          const phase = typeof payload.phase === 'string' ? payload.phase : '';
+          const filename = typeof payload.filename === 'string' ? payload.filename : '';
+          const index = typeof payload.index === 'number' ? payload.index : null;
+          const total = typeof payload.total === 'number' ? payload.total : null;
+          const message =
+            typeof payload.message === 'string' && payload.message
+              ? payload.message
+              : typeof payload.error === 'string' && payload.error
+                ? payload.error
+                : 'preset install failed';
+          // Terminal events can arrive twice (per-file error, then the
+          // preset-level error that aborts the batch): toast + refresh only
+          // on the first, when the bar was actually live.
+          const wasActive = installingPreset || installProgress !== null;
+          const clearTerminal = () => {
+            if (presetFallback) {
+              clearTimeout(presetFallback);
+              presetFallback = null;
+            }
+            installProgress = null;
+            installingPreset = false;
+          };
+          const completed = phase === 'done' && index != null && total != null && index >= total;
+          if (phase === 'error') {
+            // Terminal failure, with or without filename (a single-file
+            // failure aborts the batch; the preset-level error follows).
+            clearTerminal();
+            if (wasActive) {
+              pushToast({ kind: 'err', text: message });
+              void loadData(decodedName);
+            }
+          } else if ((completed && !filename) || (phase === 'done' && !filename && index == null)) {
+            // Terminal success: final event carries index === total, no filename.
+            clearTerminal();
+            if (wasActive) {
+              pushToast({ kind: 'ok', text: t('instance.presetInstalled') });
+              void loadData(decodedName);
+            }
+          } else if (completed) {
+            // Single-mod install finished elsewhere for this instance:
+            // clear our bar without claiming the preset landed.
+            installProgress = null;
+            installingPreset = false;
+            void loadData(decodedName);
+          } else if (index != null && total != null && total > 0) {
+            // Determinate file-count progress; Math.max keeps the bar
+            // monotonic when concurrent workers finish out of order.
+            const done = phase === 'done' ? index + 1 : Math.max(index, 0);
+            installProgress = {
+              filename,
+              done: Math.max(installProgress?.done ?? 0, Math.min(done, total)),
+              total,
+            };
+            installingPreset = true;
+          } else if (filename || phase === 'start') {
+            installProgress = {
+              filename,
+              done: installProgress?.done ?? 0,
+              total: installProgress?.total ?? 0,
+            };
+            installingPreset = true;
+          }
+        }
       }
 
       // Refresh on launch exit
@@ -529,21 +611,36 @@
     }
   }
 
-  // Mods Performance Preset
+  // Mods Performance Preset (queued in the background; real progress and
+  // completion arrive via mod-progress SSE — see the subscriber above)
   async function handleInstallPerfPreset() {
     if (!decodedName || installingPreset) return;
     installingPreset = true;
-    installProgress = { filename: '', done: 0, total: 100 };
+    installProgress = { filename: '', done: 0, total: 0 };
     try {
+      // Returns { queued: true } immediately: success/error toasts fire on
+      // the terminal SSE event, not here. Refresh is immediate there too —
+      // no delayed setTimeout. The timer below is purely a fallback that
+      // clears a bar whose terminal event never arrives (e.g. a dropped
+      // SSE connection on an already-installed second run).
       await installMods(decodedName, 'performance');
-      pushToast({ kind: 'ok', text: t('instance.presetInstalled') });
-      setTimeout(() => {
-        void loadData(decodedName);
-      }, 5000);
+      if (presetFallback) clearTimeout(presetFallback);
+      presetFallback = setTimeout(() => {
+        presetFallback = null;
+        if (installingPreset) {
+          installingPreset = false;
+          installProgress = null;
+          void loadData(decodedName);
+        }
+      }, 90000);
     } catch (e) {
-      pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
-    } finally {
+      if (presetFallback) {
+        clearTimeout(presetFallback);
+        presetFallback = null;
+      }
       installingPreset = false;
+      installProgress = null;
+      pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     }
   }
 
@@ -569,6 +666,19 @@
     if (!decodedName) return;
     try {
       await openFolder(`instances/${decodedName}`);
+    } catch (e) {
+      pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  // Open Mods Folder — resolves the EFFECTIVE mods dir in the engine
+  // (<game_dir>/mods when the instance uses a custom folder) so the right
+  // place opens instead of the default profile dir.
+  async function handleOpenModsFolder() {
+    if (!decodedName) return;
+    try {
+      const { path } = await getModsDir(decodedName);
+      await openFolder(path);
     } catch (e) {
       pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     }
@@ -1296,7 +1406,7 @@
                   <Btn variant="primary" onclick={() => (window.location.hash = '#/mods')}>
                     {t('instance.goToMods')}
                   </Btn>
-                  <Btn variant="secondary" onclick={handleOpenFolder}>
+                  <Btn variant="secondary" onclick={handleOpenModsFolder}>
                     {t('instance.openModsFolder')}
                   </Btn>
                 </div>
@@ -1311,7 +1421,7 @@
                       <ProgressBar
                         value={installProgress.done}
                         max={Math.max(installProgress.total, 1)}
-                        label={installProgress.filename ? `Instalando ${installProgress.filename}…` : t('instance.installingPreset')}
+                        label={installProgress.filename ? t('instance.installingFile', { file: installProgress.filename }) : t('instance.installingPreset')}
                         tone="cyan"
                       />
                     </div>

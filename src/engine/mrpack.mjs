@@ -23,7 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readZipEntry, listZipEntries } from './ziputil.mjs';
-import { createInstance, listInstances } from './instances.mjs';
+import { createInstance, effectiveGameDir, listInstances } from './instances.mjs';
 import { resolveVersion, instanceDir } from './resolver.mjs';
 import { downloadAll, sha1File, downloadConcurrency, USER_AGENT } from './download.mjs';
 import { emit } from './events.mjs';
@@ -331,15 +331,19 @@ async function resolvePackFileUrls(rawUrls, onFailure = null) {
 export async function installMrpackFiles(instanceName, files, { onProgress = null, sourceDir = null } = {}) {
   const list = Array.isArray(files) ? files : [];
   const total = list.length;
-  const base = instanceDir(instanceName);
-  const jsonPath = path.join(base, 'instance.json');
+  // Pack files are game-relative paths (mods/, config/, resourcepacks/, …)
+  // and belong in the effective game dir when a custom folder is set.
+  // instance.json always lives in the instance dir — the collision guard
+  // below still points at the metadata home, never at the game dir.
+  const destBase = effectiveGameDir(instanceName);
+  const jsonPath = path.join(instanceDir(instanceName), 'instance.json');
   const pending = [];
 
   for (let i = 0; i < total; i++) {
     const file = list[i] ?? {};
     const filename = typeof file.path === 'string' ? file.path : '';
     if (!filename) continue; // malformed entry — skip, do not abort the pack
-    const dest = safeJoin(base, filename);
+    const dest = safeJoin(destBase, filename);
     if (dest === jsonPath) {
       throw httpError(400, 'BAD_PATH', `la ruta '${filename}' colisiona con la metadata de la instancia`);
     }
@@ -444,23 +448,23 @@ export async function installMrpackFiles(instanceName, files, { onProgress = nul
 
 /**
  * Shared override-writing loop for zip and folder sources: writes each `rel`
- * path into the instance dir via safeJoin, skips anything colliding with
+ * path into the effective game dir via safeJoin, skips anything colliding with
  * instance.json (with a warning), emits 'import-progress' phase 'overrides'
  * per file, and throws only when overrides were present but none could be
  * written. `writeOne(rel, dest)` writes a single override and returns false
  * when the source yielded nothing (e.g. a missing zip entry).
  * @param {string[]} rels override paths relative to overrides/
- * @param {string} instanceDirPath
+ * @param {string} instanceName
  * @param {{ writeOne: (rel: string, dest: string) => Promise<boolean|void>, failMessage: string }} opts
  */
-async function writeOverrideFiles(rels, instanceDirPath, { writeOne, failMessage }) {
-  const instance = path.basename(instanceDirPath);
-  const jsonPath = path.join(instanceDirPath, 'instance.json');
+async function writeOverrideFiles(rels, instanceName, { writeOne, failMessage }) {
+  const destBase = effectiveGameDir(instanceName);
+  const jsonPath = path.join(instanceDir(instanceName), 'instance.json');
   const total = rels.length;
   let index = 0;
   let written = 0;
   for (const rel of rels) {
-    const dest = safeJoin(instanceDirPath, rel);
+    const dest = safeJoin(destBase, rel);
     if (dest === jsonPath) {
       console.warn(`[mrpack] override '${rel}' collides with instance metadata; skipped`);
       index++;
@@ -472,7 +476,7 @@ async function writeOverrideFiles(rels, instanceDirPath, { writeOne, failMessage
     } catch (e) {
       console.warn(`[mrpack] override '${rel}' not written: ${e.message}`);
     }
-    emit('import-progress', { instance, phase: 'overrides', index, total, filename: rel });
+    emit('import-progress', { instance: instanceName, phase: 'overrides', index, total, filename: rel });
     index++;
   }
   if (written === 0 && total > 0) {
@@ -485,15 +489,15 @@ async function writeOverrideFiles(rels, instanceDirPath, { writeOne, failMessage
  * verbatim. Directory entries are skipped; files are written safely via
  * safeJoin. Emits 'import-progress' phase 'overrides' per file.
  * @param {string} zipPath
- * @param {string} instanceDirPath
+ * @param {string} instanceName
  */
-export async function extractOverrides(zipPath, instanceDirPath) {
+export async function extractOverrides(zipPath, instanceName) {
   const entries = await listZipEntries(zipPath);
   const rels = entries
     .filter((e) => e.startsWith(OVERRIDES_PREFIX) && !e.endsWith('/')) // skip directory entries
     .map((e) => e.slice(OVERRIDES_PREFIX.length))
     .filter((rel) => rel.length > 0);
-  return writeOverrideFiles(rels, instanceDirPath, {
+  return writeOverrideFiles(rels, instanceName, {
     writeOne: async (rel, dest) => {
       const buf = await readZipEntry(zipPath, `${OVERRIDES_PREFIX}${rel}`);
       if (buf === null) return false;
@@ -512,9 +516,9 @@ export async function extractOverrides(zipPath, instanceDirPath) {
  * extractOverrides. A missing overrides/ folder means no overrides — no-op.
  * Throws when overrides are present but none could be written.
  * @param {string} sourceDir
- * @param {string} instanceDirPath
+ * @param {string} instanceName
  */
-export async function copyOverridesFromDir(sourceDir, instanceDirPath) {
+export async function copyOverridesFromDir(sourceDir, instanceName) {
   const overridesRoot = path.join(sourceDir, 'overrides');
   let entries;
   try {
@@ -527,7 +531,7 @@ export async function copyOverridesFromDir(sourceDir, instanceDirPath) {
     .filter((d) => d.isFile())
     .map((d) => path.relative(overridesRoot, path.join(d.parentPath ?? overridesRoot, d.name)))
     .filter((rel) => rel.length > 0);
-  return writeOverrideFiles(rels, instanceDirPath, {
+  return writeOverrideFiles(rels, instanceName, {
     writeOne: async (rel, dest) => {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       await fs.promises.copyFile(path.join(overridesRoot, rel), dest);
@@ -607,10 +611,10 @@ export async function importMrpack({ file, memory_mb = null, jdk_path_override =
     try {
       if (resolved.kind === 'dir') {
         await installMrpackFiles(name, index.files, { sourceDir: resolved.dir });
-        await copyOverridesFromDir(resolved.dir, instanceDir(name));
+        await copyOverridesFromDir(resolved.dir, name);
       } else {
         await installMrpackFiles(name, index.files);
-        await extractOverrides(resolved.file, instanceDir(name));
+        await extractOverrides(resolved.file, name);
       }
       emit('import-done', { instance: name, ok: true });
     } catch (e) {

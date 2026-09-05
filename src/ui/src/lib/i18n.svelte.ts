@@ -36,16 +36,19 @@ export const lang = {
 /**
  * Translate a key for the active language. Reads `lang.value` reactively, so
  * callers get re-renders when the language changes. Unknown keys fall back to
- * the key itself. Optional params replace `{name}` placeholders.
+ * the key itself, or to a string fallback when one is passed as 2nd arg
+ * (e.g. server-provided English text). Optional params replace `{name}`
+ * placeholders.
  * @param {string} key
- * @param {Record<string, string | number>} [params]
+ * @param {Record<string, string | number> | string} [paramsOrFallback]
  */
-export function t(key, params?) {
+export function t(key, paramsOrFallback?) {
   const table = dicts[lang.value];
-  let str = table && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : key;
-  if (params) {
-    for (const k of Object.keys(params)) {
-      str = str.split(`{${k}}`).join(String(params[k]));
+  const fallback = typeof paramsOrFallback === 'string' ? paramsOrFallback : key;
+  let str = table && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : fallback;
+  if (paramsOrFallback && typeof paramsOrFallback === 'object') {
+    for (const k of Object.keys(paramsOrFallback)) {
+      str = str.split(`{${k}}`).join(String(paramsOrFallback[k]));
     }
   }
   return str;

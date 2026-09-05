@@ -453,7 +453,7 @@
     height: 44px;
     flex-shrink: 0;
     background: linear-gradient(135deg, var(--accent, #10b981), var(--accent-cyan, #06b6d4));
-    border-radius: var(--radius-md, 0.625rem);
+    border-radius: var(--radius-pill, 9999px);
     display: grid;
     place-items: center;
     color: #060a14;
@@ -584,9 +584,9 @@
   }
 
   .switch-item__avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-sm, 0.375rem);
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-pill, 9999px);
     background: var(--surface-up-solid, #161e36);
     display: grid;
     place-items: center;

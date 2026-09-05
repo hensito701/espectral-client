@@ -26,6 +26,9 @@
 
   let activeAccount = $state<Account | null>(null);
   let popoverOpen = $state(false);
+  // Cache-buster (AccountVault pattern): bumped on every account change so
+  // replaced avatar bytes refetch instead of serving stale cache.
+  let avatarBust = $state(0);
 
   // Signed-update CTA — this top-bar button is the single update surface
   // (the old banner component was removed). Nothing renders while idle, so an
@@ -82,6 +85,7 @@
     void loadActiveAccount();
 
     const onAccountChanged = () => {
+      avatarBust += 1;
       void loadActiveAccount();
     };
 
@@ -215,7 +219,7 @@
             <MonogramTile
               name={activeAccount.username}
               hue={activeAccount.avatar_color ?? undefined}
-              avatarUrl={activeAccount.has_avatar ? avatarUrl(activeAccount.username) : undefined}
+              avatarUrl={activeAccount.has_avatar ? `${avatarUrl(activeAccount.username)}${avatarBust ? `?v=${avatarBust}` : ''}` : undefined}
               size={26}
               shape="circle"
             />

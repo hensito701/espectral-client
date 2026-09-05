@@ -5,11 +5,21 @@
  */
 import * as config from '../config.mjs';
 import * as accounts from '../accounts.mjs';
+import {
+  clearAccountAutoAvatar,
+  clearSkinCache,
+  readSkinCache,
+  resolveSkinAccount,
+  shouldSyncAvatarFromSkin,
+  skinPngDimensions,
+  syncAccountAvatarFromSkin,
+  writeSkinCache,
+} from '../skins.mjs';
 import * as instances from '../instances.mjs';
 import { httpError } from '../error.mjs';
 import { VERSION } from '../server.mjs';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { dataDir } from '../config.mjs';
 
@@ -24,6 +34,43 @@ const msaFlows = new Map();
 // failure waits a little longer (index-aligned with the streak).
 const TRANSIENT_BACKOFF_SECONDS = [5, 10, 15];
 const MAX_TRANSIENT_STREAK = TRANSIENT_BACKOFF_SECONDS.length;
+
+/**
+ * Extra open-folder roots: every instance's custom game_dir (outside the data
+ * dir by design). Best-effort sync scan — an unreadable instances root simply
+ * yields no extra roots. Trash dirs (`*.deleted.*`) are never instances.
+ */
+function customGameDirs() {
+  const roots = [];
+  let names;
+  try {
+    names = readdirSync(instances.instancesRoot());
+  } catch {
+    return roots;
+  }
+  for (const n of names ?? []) {
+    if (typeof n !== 'string' || /\.deleted\.\d+(-\d+)?$/.test(n)) continue;
+    try {
+      const raw = JSON.parse(readFileSync(instances.instanceJsonPath(n), 'utf8'));
+      if (typeof raw?.game_dir === 'string' && raw.game_dir.length > 0) {
+        roots.push(path.resolve(raw.game_dir));
+      }
+    } catch {
+      /* skip unreadable entries */
+    }
+  }
+  return roots;
+}
+
+/** target === root or nested under it (case-insensitive on Windows). */
+function isWithinDir(target, root) {
+  if (process.platform === 'win32') {
+    const t = target.toLowerCase();
+    const r = root.toLowerCase();
+    return t === r || t.startsWith(r + path.sep);
+  }
+  return target === root || target.startsWith(root + path.sep);
+}
 
 export async function register(app) {
   app.get('/api/health', async () => ({ ok: true, version: VERSION }));
@@ -40,15 +87,19 @@ export async function register(app) {
   });
 
   // Opens a folder in the OS file manager. The path must resolve inside the
-  // engine data dir (instances live under <dataDir>/instances) — an arbitrary
-  // absolute path would let a compromised UI open any directory.
+  // engine data dir (instances live under <dataDir>/instances) or inside an
+  // instance's effective game dir — a custom game_dir usually lives OUTSIDE
+  // the data dir, and "Abrir carpeta de mods" must open <game_dir>/mods.
+  // Anything else (an arbitrary absolute path) would let a compromised UI
+  // open any directory. Traversal protection holds for both roots.
   app.post('/api/open-folder', async (req, res, params, body) => {
     const raw = body && typeof body.path === 'string' ? body.path.trim() : '';
     if (!raw) throw httpError(400, 'BAD_PATH', 'path is required');
     const root = path.resolve(dataDir());
     const target = path.resolve(path.isAbsolute(raw) ? raw : path.join(root, raw));
-    if (target !== root && !target.startsWith(root + path.sep)) {
-      throw httpError(400, 'BAD_PATH', 'path must be inside the engine data directory');
+    const allowedRoots = [root, ...customGameDirs()];
+    if (!allowedRoots.some((r) => isWithinDir(target, r))) {
+      throw httpError(400, 'BAD_PATH', 'path must be inside the engine data directory or an instance folder');
     }
     if (!existsSync(target)) throw httpError(404, 'BAD_PATH', `path does not exist: ${raw}`);
     try {
@@ -348,7 +399,100 @@ export async function register(app) {
     const username = body && typeof body.username === 'string' ? body.username : '';
     return accounts.deleteMsaAccount(username);
   });
+
+  // --- Account skins (<dataDir>/skins/<uuid>.png cache, TTL 1h) ---
+
+  // GET /api/accounts/:username/skin -> { username, variant, has_skin, cape }.
+  app.get('/api/accounts/:username/skin', async (req, res, params) => {
+    const { account, accessToken, msauth } = await resolveSkinAccount(params.username);
+    const profile = await msauth.getProfileSkin(accessToken);
+    return { username: account.username, variant: profile.variant, has_skin: profile.has_skin, cape: profile.cape };
+  });
+
+  // GET /api/accounts/:username/skin.png -> raw image/png bytes, proxied
+  // from textures.minecraft.net. 404 NO_SKIN when the profile has no skin.
+  app.get('/api/accounts/:username/skin.png', async (req, res, params) => {
+    const { account, accessToken, msauth } = await resolveSkinAccount(params.username);
+    const profile = await msauth.getProfileSkin(accessToken);
+    if (!profile.has_skin || !profile.skinUrl) {
+      throw httpError(404, 'NO_SKIN', `account '${account.username}' has no custom skin`);
+    }
+    const cached = await readSkinCache(account.uuid);
+    if (cached) {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': cached.length });
+      res.end(cached);
+      return undefined;
+    }
+    let png;
+    try {
+      const r = await fetch(profile.skinUrl);
+      if (!r.ok) throw httpError(502, 'SKIN_FETCH_FAILED', `could not fetch skin image (HTTP ${r.status})`);
+      png = Buffer.from(await r.arrayBuffer());
+    } catch (err) {
+      if (Number.isInteger(err?.status)) throw err;
+      throw httpError(502, 'SKIN_FETCH_FAILED', `could not fetch skin image: ${err?.message ?? err}`);
+    }
+    await writeSkinCache(account.uuid, png);
+    // MSA avatar auto = skin head: refresh the derived avatar unless the user
+    // uploaded a custom one. Best-effort — never fail the skin request.
+    try {
+      if (shouldSyncAvatarFromSkin(account.username)) {
+        await syncAccountAvatarFromSkin(account.username, png);
+      }
+    } catch {
+      /* avatar stays as-is */
+    }
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': png.length });
+    res.end(png);
+    return undefined;
+  });
+  // POST /api/accounts/:username/skin { image_base64, variant }
+  // -> { ok: true, variant }. Validates PNG magic (decodePngImage) + IHDR
+  // dims 64x64 (64x32 legacy accepted) before touching Mojang, then refreshes
+  // the png cache from the uploaded bytes.
+  app.post('/api/accounts/:username/skin', async (req, res, params, body) => {
+    const variant = body ? body.variant : undefined;
+    if (variant !== 'classic' && variant !== 'slim') {
+      throw httpError(400, 'BAD_SKIN_VARIANT', 'variant must be classic|slim');
+    }
+    const buf = decodePngImage(body ? body.image_base64 : undefined);
+    const dims = skinPngDimensions(buf);
+    if (!dims || dims.width !== 64 || (dims.height !== 64 && dims.height !== 32)) {
+      throw httpError(400, 'BAD_SKIN_DIMS', 'skin must be a 64x64 PNG (64x32 legacy accepted)');
+    }
+    const { account, accessToken, msauth } = await resolveSkinAccount(params.username);
+    await msauth.uploadProfileSkin(accessToken, buf, variant);
+    await writeSkinCache(account.uuid, buf);
+    // New/changed skin -> refresh the derived avatar unless custom.
+    // Best-effort — the Mojang upload already succeeded.
+    try {
+      if (shouldSyncAvatarFromSkin(account.username)) {
+        await syncAccountAvatarFromSkin(account.username, buf);
+      }
+    } catch {
+      /* avatar stays as-is */
+    }
+    return { ok: true, variant };
+  });
+
+  // DELETE /api/accounts/:username/skin -> { reset: true } (clears the cache).
+  app.delete('/api/accounts/:username/skin', async (req, res, params) => {
+    const { account, accessToken, msauth } = await resolveSkinAccount(params.username);
+    await msauth.resetProfileSkin(accessToken);
+    await clearSkinCache(account.uuid);
+    // Skin reset -> drop a skin-derived avatar, keep a user-uploaded one.
+    try {
+      await clearAccountAutoAvatar(account.username);
+    } catch {
+      /* avatar stays as-is */
+    }
+    return { reset: true };
+  });
+
 }
+
+// skinPngDimensions stays re-exported here so existing callers/tests keep working.
+export { skinPngDimensions };
 
 /**
  * Run a PowerShell picker script (OpenFileDialog or IFileOpenDialog) and

@@ -13,7 +13,8 @@ import {
   fetchJson,
   sha1File,
 } from './download.mjs';
-import { assertValidInstanceName, instanceDir, loadInstanceMeta } from './resolver.mjs';
+import { assertValidInstanceName, loadInstanceMeta } from './resolver.mjs';
+import { effectiveModsDir } from './instances.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -302,8 +303,8 @@ function primaryFile(meta) {
   return meta.files?.find((f) => f.primary) ?? meta.files?.[0] ?? null;
 }
 
-function modsDirOf(instanceName) {
-  return path.join(instanceDir(instanceName), 'mods');
+function modsDirOf(instanceOrName) {
+  return effectiveModsDir(instanceOrName);
 }
 
 function assertSafeFilename(filename) {
@@ -336,7 +337,7 @@ function assertSafeFilename(filename) {
 export async function listMods(instanceName) {
   assertValidInstanceName(instanceName);
   const instance = await loadInstanceMeta(instanceName);
-  const modsDir = modsDirOf(instanceName);
+  const modsDir = modsDirOf(instance);
   await mkdir(modsDir, { recursive: true });
 
   const pins = await pinsForVersion(instance.version);
@@ -429,9 +430,9 @@ export async function listMods(instanceName) {
 // ---------------------------------------------------------------------------
 export async function setModEnabled(instanceName, filename, enabled) {
   assertValidInstanceName(instanceName);
-  await loadInstanceMeta(instanceName);
+  const instance = await loadInstanceMeta(instanceName);
   const base = assertSafeFilename(filename);
-  const modsDir = modsDirOf(instanceName);
+  const modsDir = modsDirOf(instance);
   const jar = path.join(modsDir, `${base}.jar`);
   const disabled = path.join(modsDir, `${base}.jar.disabled`);
   const src = enabled ? disabled : jar;
@@ -483,7 +484,7 @@ export async function installPreset(instanceName, preset = PERFORMANCE_PRESET) {
       });
       return { installed: [], notes: [note] };
     }
-    const modsDir = modsDirOf(instanceName);
+    const modsDir = modsDirOf(instance);
     await mkdir(modsDir, { recursive: true });
 
     if (preset === BRANDING_PRESET) {
@@ -678,7 +679,7 @@ export async function ensureBrandingSeeded(instance) {
     if (!instance || instance.loader !== 'fabric' || !supportsBranding(instance.version)) return;
     const pin = brandingPinForVersion(instance.version);
     if (!pin) return;
-    const modsDir = path.join(instanceDir(instance.name), 'mods');
+    const modsDir = effectiveModsDir(instance);
     const dest = path.join(modsDir, pin.filename);
     // Prune stale branding jars: an instance upgraded across launcher versions
     // can otherwise carry two espectral-menu jars (same mod id) at once, which
@@ -749,7 +750,7 @@ export async function installedModFilenames(instanceName) {
   assertValidInstanceName(instanceName);
   let entries;
   try {
-    entries = await readdir(path.join(instanceDir(instanceName), 'mods'));
+    entries = await readdir(modsDirOf(instanceName));
   } catch {
     return [];
   }
@@ -836,7 +837,7 @@ export async function installModrinthMod(instanceName, projectId, loader = null)
     err.code = 'MOD_NOT_FOUND_FOR_VERSION';
     throw err;
   }
-  const modsDir = modsDirOf(instanceName);
+  const modsDir = modsDirOf(instance);
   await mkdir(modsDir, { recursive: true });
 
   emitEvent('mod-progress', {
