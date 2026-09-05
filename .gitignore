@@ -71,3 +71,4 @@ tests/bootlab2.test.mjs
 *.mrpack
 !tests/fixtures/*.mrpack
 scripts/publish-linux-deb.mjs
+dist-linux/
