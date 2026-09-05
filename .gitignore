@@ -70,3 +70,4 @@ scripts/golden-diff.mjs
 tests/bootlab2.test.mjs
 *.mrpack
 !tests/fixtures/*.mrpack
+scripts/publish-linux-deb.mjs
