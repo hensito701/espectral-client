@@ -54,6 +54,7 @@ node scripts/stage-tauri-resources.mjs
 # (.keys/espectral.key); password empty by design on the build box.
 if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && [ -f ".keys/espectral.key" ]; then
   export TAURI_SIGNING_PRIVATE_KEY="$(cat .keys/espectral.key)"
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
 fi
 
 echo "[build] tauri build (.deb)…"
