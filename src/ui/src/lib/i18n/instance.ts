@@ -18,6 +18,13 @@ export const es: Dict = {
   'instance.importedFrom': 'Importada desde {source}',
   'instance.openFolder': 'Abrir carpeta',
   'instance.openFolderTitle': 'Abrir directorio de la instancia en el explorador de archivos',
+  'instance.renameTitle': 'Renombrar instancia',
+  'instance.renamePlaceholder': 'Nuevo nombre…',
+  'instance.renameSave': 'Guardar nombre',
+  'instance.renameSuccess': 'Instancia renombrada a "{name}"',
+  'instance.renameConflict': 'Ya existe una instancia con ese nombre',
+  'instance.renameRunning': 'Detén la instancia antes de renombrarla',
+  'instance.renameInvalid': 'El nombre debe tener entre 1 y 40 caracteres (letras, números, espacios y . _ -)',
 
   // Tabs
   'instance.tabConfig': 'Configuración',
@@ -169,6 +176,13 @@ export const en: Dict = {
   'instance.importedFrom': 'Imported from {source}',
   'instance.openFolder': 'Open folder',
   'instance.openFolderTitle': 'Open instance directory in file explorer',
+  'instance.renameTitle': 'Rename instance',
+  'instance.renamePlaceholder': 'New name…',
+  'instance.renameSave': 'Save name',
+  'instance.renameSuccess': 'Instance renamed to "{name}"',
+  'instance.renameConflict': 'An instance with that name already exists',
+  'instance.renameRunning': 'Stop the instance before renaming it',
+  'instance.renameInvalid': 'Name must be 1-40 characters (letters, numbers, spaces and . _ -)',
 
   // Tabs
   'instance.tabConfig': 'Configuration',

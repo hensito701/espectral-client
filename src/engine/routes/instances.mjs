@@ -39,7 +39,14 @@ export async function register(app) {
   });
 
   app.patch('/api/instances/:name', async (req, res, params, body) => {
-    return instances.patchInstance(params.name, body ?? {});
+    const patch = body ?? {};
+    const rawRename = patch.new_name !== undefined ? patch.new_name : patch.name;
+    const wantsRename =
+      typeof rawRename === 'string' && rawRename.trim() !== '' && rawRename.trim() !== params.name;
+    if (wantsRename && activeInstances.has(params.name)) {
+      throw httpError(409, 'ALREADY_RUNNING', `instance '${params.name}' is running; stop it before renaming`);
+    }
+    return instances.patchInstance(params.name, patch);
   });
 
   app.get('/api/instances/:name/servers', async (req, res, params) => {

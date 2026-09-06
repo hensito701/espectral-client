@@ -144,6 +144,45 @@ async function forceKillProcess(child, pid) {
     });
   }
 }
+/** True when the OS still holds this pid (signal-0 probe; EPERM counts as alive). */
+function isPidAlive(pid) {
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err?.code === 'EPERM';
+  }
+}
+
+/** Reconcile spawned processes against the OS. A missed exit event (or a kill
+ *  from outside the launcher) would otherwise leave a stale activeInstances
+ *  entry plus a forever-running buffer: the UI keeps showing the game as
+ *  running and Terminate keeps targeting a dead process. Dead entries are
+ *  finalized through the same per-launch exit path (single launch-exit emit,
+ *  stats, presence), which is idempotent against a late real event.
+ *  Preparing launches (no spawned process yet) are never touched — the
+ *  pendingStops path owns those. */
+function reconcileRunning() {
+  for (const [name, proc] of runningProcesses) {
+    const exited = proc.child != null && (proc.child.exitCode !== null || proc.child.signalCode !== null);
+    if (!exited && isPidAlive(proc.pid)) continue;
+    runningProcesses.delete(name);
+    if (typeof proc.finalize === 'function') {
+      const buf = buffers.get(proc.key);
+      try {
+        proc.finalize({
+          code: proc.child?.exitCode ?? null,
+          signal: proc.child?.signalCode ?? null,
+          marker: buf?.menu_at != null,
+          error: null,
+        });
+      } catch {
+        /* finalizer is self-contained; never break status reads */
+      }
+    }
+  }
+}
 /** Public summary of one launch buffer (GET /api/launches). */
 function launchSummary(key, buf) {
   return {
@@ -466,6 +505,13 @@ export async function register(app) {
 
       liveLaunches.add(key);
       void pushPresence(instance, presenceStart);
+      // Single-flight exit finalizer (see reconcileRunning): the exit/error/
+      // close events can race each other, and the reconcile sweep may finalize
+      // a dead PID before a late real event arrives — only the first call
+      // runs. Stored on the runningProcesses entry so the sweep finalizes
+      // through this exact path (one launch-exit emit, one stats row).
+      let exitSeen = false;
+      let handleExit = null;
 
       try {
         const _launchInstance = __testHooks.launchInstance ?? launch.launchInstance;
@@ -516,7 +562,9 @@ export async function register(app) {
               buf.needsAutoTrain = true;
             }
           },
-          onExit: ({ code, signal, marker, error }) => {
+          onExit: (handleExit = ({ code, signal, marker, error }) => {
+            if (exitSeen) return;
+            exitSeen = true;
             runningProcesses.delete(params.name);
             pendingStops.delete(params.name);
             const buf = buffers.get(key);
@@ -584,10 +632,10 @@ export async function register(app) {
               buf.needsAutoTrain = false;
               autoTrain(instance, resolved.aotKey);
             }
-          },
+          }),
         });
         if (spawned?.child && spawned.child.exitCode === null && spawned.child.signalCode === null) {
-          runningProcesses.set(params.name, { child: spawned.child, pid: spawned.pid, key });
+          runningProcesses.set(params.name, { child: spawned.child, pid: spawned.pid, key, finalize: handleExit });
         }
       } catch (spawnErr) {
         runningProcesses.delete(params.name);
@@ -639,11 +687,15 @@ export async function register(app) {
     };
   });
 
-  // POST /api/instances/:name/stop -> { ok: true, instance: string, cancelled?: string }
+  // POST /api/instances/:name/stop -> { ok: true, instance: string, cancelled?: string, already_stopped?: true }
+  // Idempotent: stopping a non-running instance succeeds quietly (the UI can
+  // offer Terminate off a stale poll row, or race the game exiting on its
+  // own) instead of surfacing "instance is not running" as an error toast.
   app.post('/api/instances/:name/stop', async (req, res, params) => {
     const name = params.name;
+    reconcileRunning();
     if (!activeInstances.has(name)) {
-      throw httpError(404, 'NOT_RUNNING', `instance is not running: ${name}`);
+      return { ok: true, instance: name, already_stopped: true };
     }
     const proc = runningProcesses.get(name);
     if (!proc || !proc.child) {
@@ -701,6 +753,7 @@ export async function register(app) {
 
   // GET /api/launches -> { launches } — live launch buffers, newest first (Contract C).
   app.get('/api/launches', async () => {
+    reconcileRunning();
     const rows = [...buffers.entries()].map(([key, buf]) => launchSummary(key, buf));
     rows.sort((a, b) => (b.started_at ?? 0) - (a.started_at ?? 0));
     return { launches: rows };

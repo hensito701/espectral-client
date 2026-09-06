@@ -565,16 +565,27 @@ export async function importMrpack({ file, memory_mb = null, jdk_path_override =
     throw httpError(400, 'MC_VERSION_REQUIRED', 'el modpack no declara una versión de Minecraft compatible');
   }
 
+  // Real-world modrinth.index.json dependency keys are 'fabric-loader' and
+  // 'quilt-loader' ('fabric'/'quilt' never appear in published packs, so the
+  // old checks missed them and Fabric packs silently imported as Vanilla).
+  // Legacy short keys stay as fallbacks. Fabric loader_version is carried so
+  // the instance pins the pack's loader; vanilla stays the default only when
+  // the pack declares no loader at all.
+  const neoforgeVer = deps.neoforge ?? null;
+  const fabricVer = deps['fabric-loader'] ?? deps.fabric ?? null;
+  const forgeVer = deps.forge ?? null;
+  const quiltVer = deps['quilt-loader'] ?? deps.quilt ?? null;
   let loader;
   let loader_version = null;
-  if (deps.neoforge) {
+  if (neoforgeVer) {
     loader = 'neoforge';
-    loader_version = String(deps.neoforge);
-  } else if (deps.fabric) {
+    loader_version = String(neoforgeVer);
+  } else if (fabricVer) {
     loader = 'fabric';
-  } else if (deps.forge) {
+    loader_version = String(fabricVer);
+  } else if (forgeVer) {
     throw httpError(400, 'FORGE_UNSUPPORTED', 'Forge no está soportado; el modpack debe usar NeoForge');
-  } else if (deps.quilt) {
+  } else if (quiltVer) {
     throw httpError(400, 'QUILT_UNSUPPORTED', 'Quilt no está soportado');
   } else {
     loader = 'vanilla';

@@ -76,6 +76,23 @@
   let loadingMore = $state(false);
   let searchError = $state('');
   let installingProjectId = $state<string | null>(null);
+  // Single-mod catalog install tracking: the card's installed flag is a
+  // search-time snapshot (searchResults[].installed), so nothing flips it
+  // unless we mark it. The pending record lets the SSE terminal event below
+  // attribute completion to the exact project; confirmedIds keeps the mark
+  // sticky across re-searches when the server filename heuristic misses.
+  let pendingSingleInstall = $state<{ projectId: string; instance: string } | null>(null);
+  let singleInstallFallback: ReturnType<typeof setTimeout> | null = null;
+  let confirmedInstalledIds = $state<string[]>([]);
+  function markProjectInstalled(projectId: string) {
+    const key = `${targetInstance}::${projectId}`;
+    if (!confirmedInstalledIds.includes(key)) confirmedInstalledIds = [...confirmedInstalledIds, key];
+    if (searchResults) {
+      searchResults = searchResults.map((p) =>
+        p.project_id === projectId ? { ...p, installed: true } : p
+      );
+    }
+  }
   let searchSeq = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   // Selected Instance derivation
@@ -180,8 +197,38 @@
         installingPreset = false;
       };
       const completed = phase === 'done' && index != null && total != null && index >= total;
+      // Single-mod catalog completion carries a filename and no `preset`
+      // field (preset terminal events are filename-less and carry `preset`).
+      // Attribute it to the pending catalog install so its card flips to
+      // installed without a manual reload.
+      const isSingleEvent =
+        filename !== '' &&
+        typeof payload.preset !== 'string' &&
+        pendingSingleInstall !== null &&
+        pendingSingleInstall.instance === targetInstance;
       if (phase === 'error') {
         clearTerminal();
+        if (isSingleEvent) {
+          const failedId = pendingSingleInstall!.projectId;
+          const failedKey = `${targetInstance}::${failedId}`;
+          pendingSingleInstall = null;
+          installingProjectId = null;
+          // A failed download must not leave a prematurely marked card.
+          confirmedInstalledIds = confirmedInstalledIds.filter((k) => k !== failedKey);
+          if (searchResults) {
+            searchResults = searchResults.map((p) =>
+              p.project_id === failedId ? { ...p, installed: false } : p
+            );
+          }
+          if (singleInstallFallback) {
+            clearTimeout(singleInstallFallback);
+            singleInstallFallback = null;
+          }
+          loadMods();
+          loadPresetInfo();
+          pushToast({ kind: 'err', text: message });
+          return;
+        }
         if (wasActive) {
           loadMods();
           loadPresetInfo();
@@ -191,6 +238,23 @@
       }
       if (completed) {
         clearTerminal();
+        if (isSingleEvent) {
+          const doneId = pendingSingleInstall!.projectId;
+          pendingSingleInstall = null;
+          installingProjectId = null;
+          if (singleInstallFallback) {
+            clearTimeout(singleInstallFallback);
+            singleInstallFallback = null;
+          }
+          markProjectInstalled(doneId);
+          loadMods();
+          loadPresetInfo();
+          pushToast({
+            kind: 'ok',
+            text: filename ? `${filename} ${t('mods.installed') || 'instalado'}` : t('mods.installed') || 'Mods actualizados',
+          });
+          return;
+        }
         if (wasActive) {
           loadMods();
           loadPresetInfo();
@@ -228,6 +292,10 @@
     if (presetFallback) {
       clearTimeout(presetFallback);
       presetFallback = null;
+    }
+    if (singleInstallFallback) {
+      clearTimeout(singleInstallFallback);
+      singleInstallFallback = null;
     }
   });
 
@@ -371,7 +439,14 @@
       if (seq === searchSeq) {
         const batch = data.results ?? [];
         lastBatchCount = batch.length;
-        searchResults = append && searchResults ? [...searchResults, ...batch] : batch;
+        const merged = append && searchResults ? [...searchResults, ...batch] : batch;
+        // Keep catalog-confirmed installs sticky: a re-search must not flip
+        // a just-installed card back to Install when the server filename
+        // heuristic misses the downloaded jar basename.
+        const prefix = `${selectedInstance?.name ?? targetInstance}::`;
+        searchResults = merged.map((p) =>
+          confirmedInstalledIds.includes(prefix + p.project_id) ? { ...p, installed: true } : p
+        );
         searchTotal = typeof data.total === 'number' ? data.total : null;
       }
     } catch {
@@ -394,18 +469,37 @@
   async function handleInstallFromModrinth(project: ModrinthProject) {
     if (!targetInstance) return;
     installingProjectId = project.project_id;
+    pendingSingleInstall = { projectId: project.project_id, instance: targetInstance };
     try {
+      // Returns { queued: true } immediately; the sha1-verified download
+      // finishes in the background and completion arrives via the terminal
+      // mod-progress SSE event above (which marks the card installed). The
+      // timer below is purely a fallback for a lost terminal event.
       await installModrinthMod(targetInstance, project.project_id);
       pushToast({
         kind: 'info',
         text: `${t('mods.installingMod')} ${project.title}…`,
       });
-
-      setTimeout(() => {
+      if (singleInstallFallback) clearTimeout(singleInstallFallback);
+      const pendingId = project.project_id;
+      const pendingInstance = targetInstance;
+      singleInstallFallback = setTimeout(() => {
+        singleInstallFallback = null;
+        if (pendingSingleInstall?.projectId !== pendingId || pendingSingleInstall?.instance !== pendingInstance) return;
+        pendingSingleInstall = null;
         installingProjectId = null;
-        loadMods();
-      }, 2500);
+        if (pendingInstance === targetInstance) {
+          markProjectInstalled(pendingId);
+          loadMods();
+          loadPresetInfo();
+        }
+      }, 90000);
     } catch (e) {
+      if (singleInstallFallback) {
+        clearTimeout(singleInstallFallback);
+        singleInstallFallback = null;
+      }
+      pendingSingleInstall = null;
       pushToast({
         kind: 'err',
         text: e instanceof Error ? e.message : 'Error installing mod',

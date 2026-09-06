@@ -542,12 +542,39 @@ function trashDirName(name) {
 /**
  * PATCH an instance: memory_mb / jdk_path_override / aot_auto_train /
  * enabled_mods (rename *.jar <-> *.jar.disabled) + hue / game_dir (null
- * clears either). Mod toggles no longer invalidate the AOT key (mods are
+ * clears either) + rename via `name` / `new_name` (moves the instance
+ * directory and updates instance.json; 409 on invalid/duplicate names).
+ * Mod toggles no longer invalidate the AOT key (mods are
  * off-classpath; see aot.mjs) — the cache is keyed by version|javaBuild|osArch
  * only; mod_set_hash is still recorded in meta.json for diagnostics.
  */
 export async function patchInstance(name, patch = {}) {
   const inst = await getInstance(name);
+  // Rename: `name` (or `new_name`) carries the desired new instance name.
+  // This moves the instance directory on the same filesystem and updates
+  // instance.json below. The running-instance guard lives in
+  // routes/instances.mjs (activeInstances) — the engine layer cannot see it.
+  // No stored-path rewrite is needed: the default game dir derives from the
+  // instance dir (effectiveGameDir), and a custom `game_dir` is an absolute
+  // user folder outside the instance dir. Blank/unchanged is a no-op.
+  let current = name;
+  const rawRename = patch.new_name !== undefined ? patch.new_name : patch.name;
+  if (rawRename !== undefined) {
+    const next = typeof rawRename === 'string' ? rawRename.trim() : '';
+    if (next && next !== current) {
+      if (!isValidName(next)) {
+        throw httpError(409, 'INVALID_NAME', 'instance name must match ^[A-Za-z0-9 ._-]{1,40}$');
+      }
+      if (existsSyncSafe(instanceDir(next))) {
+        throw httpError(409, 'ALREADY_EXISTS', `instance '${next}' already exists`);
+      }
+      const fromDir = instanceDir(current);
+      await fs.promises.rename(fromDir, instanceDir(next));
+      modSetHashCache.delete(fromDir);
+      inst.name = next;
+      current = next;
+    }
+  }
   if (patch.memory_mb !== undefined) {
     const mb = Number(patch.memory_mb);
     if (!Number.isInteger(mb) || mb < 512 || mb > 65536) {
@@ -577,8 +604,8 @@ export async function patchInstance(name, patch = {}) {
     await applyEnabledMods(inst, patch.enabled_mods);
   }
   inst.updated_at = new Date().toISOString();
-  writeJson(instanceJsonPath(name), inst);
-  return getSummary(name);
+  writeJson(instanceJsonPath(current), inst);
+  return getSummary(current);
 }
 
 // ---------------------------------------------------------------------------

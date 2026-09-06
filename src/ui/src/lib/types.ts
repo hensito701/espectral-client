@@ -335,6 +335,10 @@ export interface InstancePatch {
   aot_auto_train?: boolean;
   hue?: number | null;
   game_dir?: string | null;
+  /** Rename: desired new instance name (dir move + instance.json update). */
+  name?: string;
+  /** Alias of `name` for the rename intent. */
+  new_name?: string;
 }
 
 export interface LogChunk {

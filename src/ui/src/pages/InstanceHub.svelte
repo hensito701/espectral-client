@@ -13,6 +13,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import {
+    ApiError,
     getInstance,
     getModsDir,
     patchInstance,
@@ -126,6 +127,10 @@
 
   // Danger tab state
   let deleting = $state(false);
+  // Rename state (inline edit in the header title row)
+  let renaming = $state(false);
+  let renameDraft = $state('');
+  let savingRename = $state(false);
 
   // Log container ref for auto-scroll
   let logContainer = $state<HTMLDivElement | undefined>(undefined);
@@ -659,6 +664,52 @@
     }
   }
 
+  // Rename Instance (inline edit in the header; PATCH { name })
+  function startRename() {
+    renameDraft = summary?.name ?? decodedName;
+    renaming = true;
+  }
+
+  function cancelRename() {
+    renaming = false;
+  }
+
+  async function handleSaveRename() {
+    if (!decodedName || savingRename) return;
+    const next = renameDraft.trim();
+    if (!next || next === decodedName) {
+      renaming = false;
+      return;
+    }
+    savingRename = true;
+    try {
+      summary = await patchInstance(decodedName, { name: next });
+      renameDraft = summary.name;
+      renaming = false;
+      await $instances.refresh();
+      pushToast({ kind: 'ok', text: t('instance.renameSuccess', { name: summary.name }) });
+      if (summary.name !== decodedName) {
+        window.location.hash = `#/instances/${encodeURIComponent(summary.name)}`;
+      }
+    } catch (e) {
+      if (e instanceof ApiError) {
+        if (e.code === 'ALREADY_EXISTS') {
+          pushToast({ kind: 'err', text: t('instance.renameConflict') });
+        } else if (e.code === 'ALREADY_RUNNING') {
+          pushToast({ kind: 'err', text: t('instance.renameRunning') });
+        } else if (e.code === 'INVALID_NAME') {
+          pushToast({ kind: 'err', text: t('instance.renameInvalid') });
+        } else {
+          pushToast({ kind: 'err', text: e.message });
+        }
+      } else {
+        pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+      }
+    } finally {
+      savingRename = false;
+    }
+  }
+
   // Open Folder — the engine jails paths under <dataDir>, and instances live
   // in <dataDir>/instances. Sending the bare name resolved to <dataDir>/<name>
   // which does not exist ("path does not exist: UHC").
@@ -765,7 +816,51 @@
 
     <div class="hub-header__title-row">
       <div class="hub-header__meta">
-        <h1 class="instance-title">{decodedName}</h1>
+        {#if renaming}
+          <div class="title-edit-row">
+            <input
+              class="rename-input"
+              bind:value={renameDraft}
+              maxlength={40}
+              placeholder={t('instance.renamePlaceholder')}
+              aria-label={t('instance.renameTitle')}
+              disabled={savingRename}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') void handleSaveRename();
+                else if (e.key === 'Escape') cancelRename();
+              }}
+            />
+            <Btn
+              variant="primary"
+              size="sm"
+              disabled={savingRename || !renameDraft.trim()}
+              loading={savingRename}
+              onclick={() => void handleSaveRename()}
+            >
+              {t('instance.renameSave')}
+            </Btn>
+            <Btn variant="ghost" size="sm" disabled={savingRename} onclick={cancelRename}>
+              {t('instance.cancelEdit')}
+            </Btn>
+          </div>
+        {:else}
+          <div class="title-edit-row">
+            <h1 class="instance-title">{summary?.name ?? decodedName}</h1>
+            {#if summary}
+              <button
+                type="button"
+                class="rename-btn"
+                onclick={startRename}
+                title={t('instance.renameTitle')}
+                aria-label={t('instance.renameTitle')}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                </svg>
+              </button>
+            {/if}
+          </div>
+        {/if}
 
         {#if summary}
           <div class="meta-badges">
@@ -1644,6 +1739,59 @@
     color: var(--text, #e8ecf4);
     margin: 0;
     text-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  }
+  .title-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .rename-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md, 0.5rem);
+    color: var(--muted, #8e9eb8);
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .rename-btn:hover {
+    background: var(--surface-up, rgba(25, 32, 64, 0.55));
+    color: var(--text, #e8ecf4);
+    border-color: var(--border-specular, rgba(255, 255, 255, 0.16));
+  }
+
+  .rename-btn:focus-visible {
+    outline: 2px solid var(--accent, #10b981);
+    outline-offset: 2px;
+  }
+
+  .rename-input {
+    font-family: var(--font-display, 'Space Grotesk', sans-serif);
+    font-size: var(--text-lg, 1.125rem);
+    font-weight: 600;
+    color: var(--text, #e8ecf4);
+    background: var(--surface, rgba(16, 22, 42, 0.65));
+    border: 1px solid var(--border-specular, rgba(255, 255, 255, 0.16));
+    border-radius: var(--radius-md, 0.5rem);
+    padding: 0.45rem 0.75rem;
+    min-width: 12rem;
+    max-width: 24rem;
+  }
+
+  .rename-input:focus {
+    outline: 2px solid var(--accent, #10b981);
+    outline-offset: 1px;
+  }
+
+  .rename-input:disabled {
+    opacity: 0.6;
   }
 
   .meta-badges {

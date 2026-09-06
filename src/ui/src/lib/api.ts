@@ -424,7 +424,10 @@ export const searchModrinth = (
 };
 export const installModrinthMod = (name: string, projectId: string): Promise<{ queued: true }> =>
   post(R.modrinthInstall(name)[1], { project_id: projectId });
-export const getInstanceServers = (name: string): Promise<ServerEntry[]> => get(R.instanceServers(name)[1]);
+export const getInstanceServers = async (name: string): Promise<ServerEntry[]> => {
+  const data = await get<{ servers: ServerEntry[] } | ServerEntry[]>(R.instanceServers(name)[1]);
+  return Array.isArray(data) ? data : (data.servers ?? []);
+};
 export const putInstanceServers = (name: string, servers: ServerEntry[]): Promise<{ count: number }> =>
   put(R.instanceServersPut(name)[1], { servers });
 export const getInstanceOptions = (name: string): Promise<OptionsPair[]> => get(R.instanceOptions(name)[1]);
@@ -440,7 +443,7 @@ export const launchInstance = (
   options: { mode: LaunchMode; dry_run: boolean; account?: string },
 ): Promise<LaunchReply | DryRunResult> =>
   request<LaunchReply | DryRunResult>(R.launch(name)[1], 'POST', options, TIMEOUT_MS.launch);
-export const stopInstance = (name: string): Promise<{ ok: true; instance: string }> =>
+export const stopInstance = (name: string): Promise<{ ok: true; instance: string; already_stopped?: boolean; cancelled?: string }> =>
   post(R.stopInstance(name)[1]);
 export const shutdownEngine = (): Promise<{ ok: true }> => post(R.shutdown[1]);
 export const getLaunchLog = (key: string, cursor = 0): Promise<LogChunk> => get(R.launchLog(key, cursor)[1]);

@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 import { getJvmInfo, parseMajor } from './jvm.mjs';
 import { javaForVersion, javaForMajorExact } from './runtimes.mjs';
 import * as resolver from './resolver.mjs';
-import { effectiveModsDir, getInstance } from './instances.mjs';
+import { effectiveGameDir, effectiveModsDir, getInstance } from './instances.mjs';
 import { offlineUuid, getActiveAccount } from './accounts.mjs';
 import { cacheKey, cacheFilePath, isCacheStale } from './aot.mjs';
 import { loadConfig } from './config.mjs';
@@ -598,16 +598,30 @@ export async function resolveLaunch(
     applyLaunchPreferences(instance, gameDir);
     phase('prefs');
     seedClientConfig(instance.name);
-    if (gameDir !== resolver.instanceDir(instance.name)) {
-      try {
-        const srcCfg = path.join(resolver.instanceDir(instance.name), 'config', 'espectral-client.json');
-        const dstCfg = path.join(gameDir, 'config', 'espectral-client.json');
-        if (fs.existsSync(srcCfg) && !fs.existsSync(dstCfg)) {
+    // The game reads <gameDir>/config/espectral-client.json, but the canonical
+    // file the UI patches lives in the effective game dir. On per-account
+    // profile launches (Contract C) those differ, so mirror the canonical file
+    // on EVERY launch — copying only when the profile file is missing strands
+    // any toggle made after the first launch (suite looks enabled in the UI
+    // while the game keeps reading stale bytes). Skipped only when both paths
+    // are identical (default and custom-folder launches seed in place).
+    try {
+      const srcCfg = path.join(effectiveGameDir(instance), 'config', 'espectral-client.json');
+      const dstCfg = path.join(gameDir, 'config', 'espectral-client.json');
+      if (path.resolve(srcCfg) !== path.resolve(dstCfg) && fs.existsSync(srcCfg)) {
+        let stale = true;
+        try {
+          stale = fs.readFileSync(dstCfg, 'utf8') !== fs.readFileSync(srcCfg, 'utf8');
+        } catch {
+          stale = true; // missing/unreadable profile copy -> (re)write below
+        }
+        if (stale) {
+          fs.mkdirSync(path.dirname(dstCfg), { recursive: true });
           fs.copyFileSync(srcCfg, dstCfg);
         }
-      } catch {
-        /* ignore profile config copy error */
       }
+    } catch {
+      /* ignore profile config sync error — launch must not fail over it */
     }
     // Fire-and-forget AOT proof-log pruning (lazy import to avoid circular dep with aot.mjs)
     try {
@@ -650,7 +664,7 @@ export async function resolveLaunch(
       ? {
           mainClass: fabric.main_class,
           jvmArgs: gameDir !== resolver.instanceDir(instance.name)
-            ? [...(fabric.jvm_args ?? []), `-Dfabric.modsDir=${effectiveModsDir(instance)}`]
+            ? [...(fabric.jvm_args ?? []), `-Dfabric.modsFolder=${effectiveModsDir(instance)}`]
             : fabric.jvm_args,
           gameArgs: [],
         }
@@ -853,14 +867,21 @@ export function launchInstance(instance, resolved, { onLog, onMarker, onExit, on
       relay(d);
     });
   }
-  child.on('exit', (code, signal) => {
+  // Single-flight exit: Node can deliver 'error' followed by 'exit'/'close'
+  // for the same death — without this guard onExit would fire twice (double
+  // launch-exit event, duplicate stats). 'close' is the backstop: if 'exit'
+  // were ever missed, closed stdio still finalizes the launch so the
+  // registry can't stick forever.
+  let exitFired = false;
+  const fireExit = (info) => {
+    if (exitFired) return;
+    exitFired = true;
     clearInterval(iv);
-    if (onExit) onExit({ code, signal, marker });
-  });
-  child.on('error', (err) => {
-    clearInterval(iv);
-    if (onExit) onExit({ code: null, signal: null, marker, error: err.message });
-  });
+    if (onExit) onExit(info);
+  };
+  child.on('exit', (code, signal) => fireExit({ code, signal, marker }));
+  child.on('error', (err) => fireExit({ code: null, signal: null, marker, error: err.message }));
+  child.on('close', (code, signal) => fireExit({ code, signal, marker }));
 
   return { pid: child.pid, child, argv };
 }

@@ -380,11 +380,14 @@ export const launchLog = createLaunchLogStore();
 /* ---------- live launches: GET /api/launches every 15 s (Contract C.2) ----------
    Feeds the "running games" indicator and the per-game log selector. The
    engine list is authoritative (it survives UI reloads); SSE launch-exit
-   triggers an immediate refresh so the badge clears without waiting a tick. */
+   triggers an immediate refresh so the badge clears without waiting a tick.
+   This store MUST keep polling while a game runs: pausing it here (like the
+   boot-quieted stores above) leaves a missed/slow SSE event showing the game
+   as launching/running forever, with Terminate offered for a dead instance. */
 
 const LAUNCHES_POLL_MS = 15_000;
 
-export const liveLaunches = createPollingStore<LiveLaunch[]>([], getLaunches, { pollMs: LAUNCHES_POLL_MS, pauseWhenRunning: true });
+export const liveLaunches = createPollingStore<LiveLaunch[]>([], getLaunches, { pollMs: LAUNCHES_POLL_MS });
 liveLaunches.start();
 
 subscribeEvents((ev) => {
