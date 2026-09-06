@@ -2,9 +2,9 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+ ## [1.3.14] - 2026-09-06
 
-### Added
+ ### Added
 - **Linux compatibility (.deb for Ubuntu 24.04 / Debian 12+, x86_64).**
   Tauri shell resolves the staged `node-bin/` runtime on Linux, uses
   `$XDG_DATA_HOME` (else `~/.local/share`) for the data dir, and reclaims a
@@ -33,6 +33,14 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
    the `✦` glyph for the real Espectral apple logo. Also fixed the vault's
    hero `<section>` never being closed (the rest of the page nested inside
    it in the live DOM).
+ 
+ ### Fixed
+ - **Windows installer back to ~31 MB.** The new per-platform node staging
+   (added for Linux) keyed off the host OS, so cross-building the NSIS
+   installer from WSL staged the 116 MB Linux `node` next to `node.exe`
+   and shipped both. Staging now targets `STAGE_NODE_PLATFORM`
+   (`win32` in `build-windows-exe.sh`, `linux` in `build-linux-deb.sh`)
+   and always prunes the other platform's binary.
 
  ## [1.3.13] - 2026-09-05
 

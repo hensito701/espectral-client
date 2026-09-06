@@ -46,6 +46,7 @@ if ! node -e "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json',
 fi
 
 echo "[build] staging engine resources…"
+export STAGE_NODE_PLATFORM=linux
 node scripts/stage-tauri-resources.mjs
 
 # Updater signing: without TAURI_SIGNING_PRIVATE_KEY, `tauri build` errors out

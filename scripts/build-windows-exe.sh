@@ -32,6 +32,7 @@ cd "$(dirname "$0")/.."
 export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$HOME/.cargo/bin:$HOME/mingw/usr/bin:$HOME/bin:$HOME/nsis/usr/bin:$PATH"
 export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc-posix
 export NSISDIR="${NSISDIR:-$HOME/nsis/usr/share/nsis}"
+export STAGE_NODE_PLATFORM=win32
 
 # The tauri bundler invokes makensis from PATH; NSISDIR must be inherited by
 # the child so stub resolution finds the extracted tree (the binary's baked-in
