@@ -101,9 +101,9 @@ export async function register(app) {
       const inst = await loadInstanceMeta(params.name);
       // The mod-pin presets (performance/QoL) are Fabric-only — vanilla and
       // NeoForge instances can't load them (for vanilla, integrated
-      // no-fog/fullbright live in Settings → Client). Branding is
-      // version-keyed (bundled Espectral Menu), so it's reported
-      // independently of the loader.
+      // no-fog/fullbright live in Settings → Client). Branding ships one jar
+      // per loader (Espectral Menu on Fabric, brand companion on NeoForge),
+      // resolved by version + loader.
       const note = inst.loader === 'neoforge'
         ? 'Conjunto de rendimiento solo disponible en Fabric'
         : inst.loader === 'vanilla'
@@ -114,10 +114,10 @@ export async function register(app) {
         loader: inst.loader,
         note,
         branding: {
-          supported: supportsBranding(inst.version),
-          note: supportsBranding(inst.version)
+          supported: supportsBranding(inst.version, inst.loader),
+          note: supportsBranding(inst.version, inst.loader)
             ? null
-            : `no bundled Espectral Menu for ${inst.version}; branding covers ${brandingVersions().join(', ') || 'nothing'}`,
+            : `no bundled brand mod for ${inst.version} on ${inst.loader}; branding covers ${brandingVersions().join(', ') || 'nothing'}`,
         },
       };
     } catch (err) {

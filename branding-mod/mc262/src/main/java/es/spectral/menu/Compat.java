@@ -11,7 +11,10 @@ import net.minecraft.world.entity.player.PlayerModelType;
 /** Screen-opening compatibility for 26.2 (setScreen moved to Gui). */
 public final class Compat {
 
-    private Compat() {}
+    /** Loader token for the minecraft:brand handshake ({@code espectral:<loader>[:<version>]}). */
+    public static String brandLoader() {
+        return "fabric";
+    }
 
     public static void open(Minecraft minecraft, Screen screen) {
         minecraft.setScreenAndShow(screen);

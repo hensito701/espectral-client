@@ -27,8 +27,8 @@ public final class EspectralClient implements ClientModInitializer {
     public void onInitializeClient() {
         CLIENT_KEY = new net.minecraft.client.KeyMapping("key.espectral.client", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
         ZOOM_KEY = new net.minecraft.client.KeyMapping("key.espectral.zoom", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_Z, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
-        String version = getClass().getPackage().getImplementationVersion();
-        if (version == null) version = "1.3.0";
+        String version = EspectralBrand.modVersion();
+        if (version == null) version = "dev";
         LOGGER.info("Initializing Espectral Client mod (v{})", version);
         ClientConfig.getInstance().load();
     }

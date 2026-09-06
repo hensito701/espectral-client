@@ -90,8 +90,9 @@ export async function qolPinsForVersion(version) {
 const JAR_IN_JAR = new Set(['eXts2L7r']);
 
 // ---------------------------------------------------------------------------
-// Branding preset: the bundled Espectral Menu mod (assets/branding/*.jar +
-// branding.json, staged to <resources>/branding next to the engine).
+// Branding preset: one bundled brand jar per loader (assets/branding/*.jar +
+// branding.json, staged to <resources>/branding next to the engine) —
+// espectral-menu on Fabric, espectral-brand companion on NeoForge.
 // No Modrinth round trip: install is a sha1-verified local copy.
 // ---------------------------------------------------------------------------
 function brandingDir() {
@@ -126,23 +127,27 @@ function brandingManifest() {
   return manifest;
 }
 
-/** Minecraft versions covered by the bundled branding jars. */
+/** Minecraft versions covered by the bundled brand jars (any loader). */
 export function brandingVersions() {
   return Object.keys(brandingManifest()?.mods ?? {});
 }
 
-/** True when a bundled Espectral Menu jar exists for this version. */
-export function supportsBranding(version) {
-  return brandingManifest()?.mods?.[version] != null;
+/** True when a bundled brand jar exists for this version + loader. */
+export function supportsBranding(version, loader = 'fabric') {
+  return brandingPinForVersion(version, loader) != null;
 }
 
-/** Pin-shaped branding entry for a version (null when unsupported). */
-export function brandingPinForVersion(version) {
+/**
+ * Pin-shaped branding entry for a version + loader (null when unsupported).
+ * Entries carry `loaders` (absent = legacy fabric-only jar); the slug is the
+ * entry's mod id (espectral-menu on Fabric, espectral-brand on NeoForge).
+ */
+export function brandingPinForVersion(version, loader = 'fabric') {
   const manifest = brandingManifest();
   const entry = manifest?.mods?.[version];
-  if (!entry) return null;
+  if (!entry || !(entry.loaders ?? ['fabric']).includes(loader)) return null;
   return {
-    slug: manifest.mod_id,
+    slug: entry.mod_id ?? manifest.mod_id,
     filename: entry.filename,
     sha1: entry.sha1,
     size: entry.size,
@@ -340,11 +345,12 @@ export async function listMods(instanceName) {
   const modsDir = modsDirOf(instance);
   await mkdir(modsDir, { recursive: true });
 
-  const pins = await pinsForVersion(instance.version);
+  // Null pins (unsupported version, or dynamic pins unresolvable offline) must
+  // not hide what's on disk: list untracked jars anyway and still tag branding.
+  const pins = (await pinsForVersion(instance.version)) ?? [];
   const note = pinNoteForVersion(instance.version);
-  if (!pins) {
+  if (pins.length === 0 && note) {
     console.warn(`[mods] ${note}`);
-    return [];
   }
 
   const metas = await Promise.all(
@@ -412,9 +418,9 @@ export async function listMods(instanceName) {
     });
   }
 
-  // Tag the bundled Espectral Menu jar with its branding metadata when present
+  // Tag the bundled brand jar with its branding metadata when present
   // in the mods dir (so the UI shows a recognizable, toggleable row).
-  const brandingPin = brandingPinForVersion(instance.version);
+  const brandingPin = brandingPinForVersion(instance.version, instance.loader);
   if (brandingPin) {
     const existing = entries.find((e) => e.filename === brandingPin.filename);
     if (existing) {
@@ -469,9 +475,9 @@ export async function installPreset(instanceName, preset = PERFORMANCE_PRESET) {
     // vanilla instance has no Fabric loader, so dropping the jars in is pure
     // clutter (vanilla ignores mods/) and misleads the user into thinking the
     // mods apply. Refuse with a clear note — the vanilla no-fog / fullbright
-    // live in the integrated Client options (Settings) instead. The branding
-    // preset is version-keyed (bundled resource-pack menu), not loader-keyed,
-    // so it stays available on any instance.
+    // live in the integrated Client options (Settings) instead. Branding
+    // resolves per version + loader (menu jar on Fabric, brand companion on
+    // NeoForge), so it stays available wherever a jar is bundled.
     if (preset !== BRANDING_PRESET && instance.loader !== 'fabric') {
       const note = `preset '${preset}' needs a Fabric instance (this one is '${instance.loader}'); ` +
         'integrated fullbright/no-fog are available under Settings → Client';
@@ -602,10 +608,10 @@ export async function installPreset(instanceName, preset = PERFORMANCE_PRESET) {
 // Branding preset install: sha1-verified local copy of the bundled jar
 // ---------------------------------------------------------------------------
 async function installBrandingPreset(instance, modsDir) {
-  const pin = brandingPinForVersion(instance.version);
+  const pin = brandingPinForVersion(instance.version, instance.loader);
   const notes = [];
   if (!pin) {
-    const note = `no bundled Espectral Menu for ${instance.version}; branding covers ${brandingVersions().join(', ') || 'nothing'}`;
+    const note = `no bundled brand mod for ${instance.version} on ${instance.loader}; branding covers ${brandingVersions().join(', ') || 'nothing'}`;
     notes.push(note);
     console.warn(`[mods] ${note}`);
     emitEvent('mod-progress', {
@@ -668,28 +674,29 @@ async function installBrandingPreset(instance, modsDir) {
   });
   return { installed: [pin.filename], notes };
 }
+
 /**
- * Retro-seed helper: ensure the bundled Espectral Menu jar exists for old
- * instances that predate the branding preset. No-op for non-fabric or
- * unsupported versions, and silently warns (never throws) on copy failure
+ * Retro-seed helper: ensure the bundled brand jar exists for old instances
+ * that predate the branding preset. No-op for vanilla/unsupported
+ * version+loader combos, and silently warns (never throws) on copy failure
  * so launch/detail never fails over branding.
  */
 export async function ensureBrandingSeeded(instance) {
   try {
-    if (!instance || instance.loader !== 'fabric' || !supportsBranding(instance.version)) return;
-    const pin = brandingPinForVersion(instance.version);
+    if (!instance || (instance.loader !== 'fabric' && instance.loader !== 'neoforge')) return;
+    const pin = brandingPinForVersion(instance.version, instance.loader);
     if (!pin) return;
     const modsDir = effectiveModsDir(instance);
     const dest = path.join(modsDir, pin.filename);
-    // Prune stale branding jars: an instance upgraded across launcher versions
-    // can otherwise carry two espectral-menu jars (same mod id) at once, which
-    // conflicts in-game. Only the pinned filename survives.
+    // Prune stale brand jars: an instance upgraded across launcher versions
+    // or switched loaders can otherwise carry two Espectral jars at once.
+    // Only the pinned filename survives.
     const entries = await readdir(modsDir).catch(() => []);
     const stale = entries.filter(
-      (f) => f !== pin.filename && f !== `${pin.filename}.disabled` && /^espectral-menu-.*\.jar(\.disabled)?$/i.test(f)
+      (f) => f !== pin.filename && f !== `${pin.filename}.disabled` && /^espectral-(menu|brand)-.*\.jar(\.disabled)?$/i.test(f)
     );
     // Presence alone is NOT freshness: the pinned FILENAME is version-derived
-    // (espectral-menu-26.2-1.3.0.jar) and stays identical across rebuilds of the
+    // (espectral-menu-26.2-1.3.13.jar) and stays identical across rebuilds of the
     // same mod version, so a launcher upgrade shipping a rebuilt jar (new sha1,
     // e.g. a mixin added) would leave the OLD bytes in place forever. Verify the
     // installed copy's sha1 against the pin and reinstall on mismatch.

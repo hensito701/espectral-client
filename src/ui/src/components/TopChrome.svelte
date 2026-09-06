@@ -12,6 +12,7 @@
   import LanguageToggle from './LanguageToggle.svelte';
   import AccountPopover from './AccountPopover.svelte';
   import MonogramTile from './MonogramTile.svelte';
+  import logoUrl from '../assets/logo_circle.png';
   import { theme, resolveTheme } from '../lib/theme.svelte';
   import { t } from '../lib/i18n.svelte';
   import { updateState, installUpdate } from '../lib/updater.svelte';
@@ -102,13 +103,12 @@
     }
   });
 </script>
-
 <header class="top-chrome" role="banner">
   <!-- Left: Espectral Brand Mark -->
   <div class="top-chrome__brand">
     <a href="#/" class="brand-link" title={t('nav.home') || 'Inicio'}>
       <div class="brand-mark">
-        <span class="brand-mark__glyph">✦</span>
+        <img class="brand-mark__logo" src={logoUrl} alt="Espectral" draggable="false" />
       </div>
       <div class="brand-text">
         <GradientText as="span">
@@ -119,8 +119,27 @@
     </a>
   </div>
 
-  <!-- Center: Hub Spacer -->
-  <div class="top-chrome__center"></div>
+  <!-- Center: quick shortcuts to the most-visited hubs -->
+  <nav class="top-chrome__shortcuts" aria-label="Accesos directos">
+    <a
+      href="#/account?section=skin"
+      class="shortcut-link"
+      class:shortcut-link--active={route.startsWith('#/account')}
+      title={t('vault.skin.title')}
+    >
+      <span class="shortcut-link__icon" aria-hidden="true">🎨</span>
+      <span>{t('vault.skin.title')}</span>
+    </a>
+    <a
+      href="#/mods"
+      class="shortcut-link"
+      class:shortcut-link--active={route.startsWith('#/mods')}
+      title={t('mods.title')}
+    >
+      <span class="shortcut-link__icon" aria-hidden="true">🧩</span>
+      <span>{t('mods.title')}</span>
+    </a>
+  </nav>
 
   <!-- Right: Command trigger + Toggles + Account Chip -->
   <div class="top-chrome__actions">
@@ -313,20 +332,21 @@
   .brand-mark {
     width: 32px;
     height: 32px;
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(6, 182, 212, 0.2));
     border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
-    border-radius: var(--radius-md, 0.625rem);
+    border-radius: 50%;
     display: grid;
     place-items: center;
+    overflow: hidden;
     box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+    background: rgba(8, 13, 26, 0.6);
   }
 
-  .brand-mark__glyph {
-    font-size: 0.875rem;
-    color: var(--accent, #10b981);
-    filter: drop-shadow(0 0 4px var(--accent, #10b981));
+  .brand-mark__logo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
-
   .brand-text {
     display: flex;
     flex-direction: column;
@@ -349,9 +369,61 @@
     letter-spacing: 0.12em;
   }
 
-  /* Center */
-  .top-chrome__center {
+  /* Center shortcuts */
+  .top-chrome__shortcuts {
     flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2, 8px);
+    min-width: 0;
+    padding: 0 var(--space-3, 12px);
+  }
+
+  .shortcut-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: var(--radius-md, 0.625rem);
+    border: 1px solid transparent;
+    color: var(--muted-strong, #8e9eb8);
+    font-size: var(--text-xs, 0.75rem);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+    white-space: nowrap;
+    outline: none;
+    transition:
+      color var(--dur-fast, 120ms) ease,
+      background var(--dur-fast, 120ms) ease,
+      border-color var(--dur-fast, 120ms) ease;
+  }
+
+  .shortcut-link:hover {
+    color: var(--text, #e8ecf4);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .shortcut-link:focus-visible {
+    box-shadow: var(--shadow-focus);
+  }
+
+  .shortcut-link--active {
+    color: var(--accent, #10b981);
+    background: rgba(var(--accent-rgb, 16, 185, 129), 0.12);
+    border-color: rgba(var(--accent-rgb, 16, 185, 129), 0.35);
+  }
+
+  .shortcut-link__icon {
+    font-size: 0.875rem;
+    line-height: 1;
+  }
+
+  @media (max-width: 900px) {
+    .top-chrome__shortcuts {
+      display: none;
+    }
   }
 
   /* Actions Cluster */

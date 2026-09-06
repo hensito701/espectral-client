@@ -1,0 +1,31 @@
+modLoader="javafml" #mandatory
+loaderVersion="${loader_version_range}" #mandatory
+license="${mod_license}"
+
+[[mods]] #mandatory
+modId="${mod_id}" #mandatory
+version="${mod_version}" #mandatory
+displayName="${mod_name}" #mandatory
+description='''
+Brand-handshake companion for the Espectral launcher (client + server safe).
+Reports espectral:neoforge:<version> on the minecraft:brand handshake so the
+server plugin detects Espectral users. No menu, no features.
+'''
+
+# Declare the mixin config to FML so it gets loaded.
+[[mixins]]
+config="espectral-brand.mixins.json"
+
+[[dependencies.${mod_id}]] #optional
+    modId="neoforge" #mandatory
+    type="required" #mandatory
+    versionRange="[${neo_version},)" #mandatory
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"

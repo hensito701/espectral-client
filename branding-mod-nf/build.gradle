@@ -1,0 +1,62 @@
+// Espectral Brand — NeoForge brand-handshake companion (MC 1.21.1).
+//
+// Brand-only mod: reports espectral:neoforge:<version> on the
+// minecraft:brand handshake so the server plugin detects Espectral users on
+// NeoForge instances. No menu port — the full Espectral Menu stays
+// Fabric-only (see ../branding-mod).
+//
+// Single source of truth: the mod version tracks the launcher release, so the
+// brand is accurate per build.
+
+plugins {
+    id 'java-library'
+    id 'net.neoforged.gradle.userdev' version '7.1.38'
+}
+
+version = new groovy.json.JsonSlurper().parse(file('../package.json')).version
+group = mod_group_id
+
+base {
+    archivesName = 'espectral-brand-1.21.1'
+}
+
+// Implementation-Version feeds EspectralBrand.modVersion()'s jar-manifest
+// fallback (used when the loader container lookup is unavailable).
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes(
+            'Implementation-Title': 'espectral-brand',
+            'Implementation-Version': project.version
+        )
+    }
+}
+// Mojang ships Java 21 for 1.21.1; NeoForge 1.21.x must boot on exact Java 21.
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+dependencies {
+    implementation "net.neoforged:neoforge:${neo_version}"
+}
+
+// Expand version placeholders in the mods metadata (a missing property fails
+// the build instead of shipping a stale version string).
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : project.version,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties
+    }
+}

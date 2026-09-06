@@ -19,6 +19,20 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   Linux uses the native Tauri dialog from the UI (Windows keeps the
   PowerShell picker byte-identical); the engine pick endpoints answer 501
   `UNSUPPORTED_PLATFORM` off-Windows, which the UI surfaces as a cancel.
+ - **Client identifies via the `minecraft:brand` handshake.** The bundled jars
+   report `espectral:<loader>[:<version>]` (Espectral Menu on Fabric, new
+   brand-only `espectral-brand` companion on NeoForge 1.21.1) instead of the
+   loader default, so the server plugin can detect Espectral users on join.
+   The preset/retro-seed pick the jar per version + loader. Mod versions track
+   the launcher release automatically (single source: `package.json`), and the
+   version segment is omitted — never faked — when unknown.
+ - **Header earns its space: shortcuts + real logo.** The top bar's empty
+   center now holds quick pills for the Skin Atelier (deep-links into
+   `#/account?section=skin` and scrolls to the 3D visualizer) and the
+   Catálogo de Mods, with active-state highlighting. The brand mark drops
+   the `✦` glyph for the real Espectral apple logo. Also fixed the vault's
+   hero `<section>` never being closed (the rest of the page nested inside
+   it in the live DOM).
 
  ## [1.3.13] - 2026-09-05
 

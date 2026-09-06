@@ -38,6 +38,8 @@ in-game toggle menu, and a versioned config file shared with the launcher
 apply live — no third-party jars, no restart. (Gamma Utils / Clear Fog jars left from older
 versions are inert leftovers; the QoL preset stays installable but is no longer required.)
 
+Plus `branding-mod-nf/`, a brand-only NeoForge companion (MC 1.21.1) that reports `espectral:neoforge:<version>` on the `minecraft:brand` handshake — no menu port, same version wiring.
+
 It is deliberately small and still early — the launcher is the mature half of this project.
 
 ---
@@ -72,6 +74,7 @@ recommended. `ESPECTRAL_PORT` overrides the port; `ESPECTRAL_DATA_DIR` overrides
 | Tests | `npm test` |
 | Type/template check | `npm run check` |
 | Client mod (Java 21) | `cd branding-mod && ./gradlew build` |
+| Brand companion, NeoForge (Java 21) | `cd branding-mod-nf && ./gradlew build` |
 
 ### Windows installer
 
@@ -107,6 +110,7 @@ bundling is NSIS-only. The engine, UI and mod are portable.
 - **`src/ui/src/`** — pages, one typed fetch wrapper per endpoint in `lib/api.ts`.
 - **`src-tauri/`** — thin Rust wrapper: engine lifecycle, port reclaim, window.
 - **`branding-mod/`** — shared Java source with per-version overlays behind a compatibility shim.
+- **`branding-mod-nf/`** — brand-only NeoForge companion (MC 1.21.1): same handshake contract, no menu.
 
 ---
 

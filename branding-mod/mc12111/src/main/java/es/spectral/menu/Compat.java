@@ -11,7 +11,10 @@ import net.minecraft.world.entity.player.PlayerModelType;
 /** Screen-opening compatibility for 1.21.11. */
 public final class Compat {
 
-    private Compat() {}
+    /** Loader token for the minecraft:brand handshake ({@code espectral:<loader>[:<version>]}). */
+    public static String brandLoader() {
+        return "fabric";
+    }
 
     public static void open(Minecraft minecraft, Screen screen) {
         minecraft.setScreen(screen);

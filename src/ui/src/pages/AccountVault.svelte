@@ -762,12 +762,34 @@
     }
   });
 
+  let skinScrollTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function scrollToSkinAtelier(): void {
+    if (typeof window === 'undefined' || !window.location.hash.includes('section=skin')) return;
+    // Layout shifts as accounts/gallery/3D viewers resolve, so re-assert the
+    // target until it settles instead of scrolling once into a moving page.
+    let attempts = 0;
+    const step = () => {
+      const el = document.getElementById('skin-atelier');
+      const top = el?.getBoundingClientRect().top ?? 0;
+      // Stop once settled under the fixed header — never fight manual scroll.
+      if (el && top >= 60 && top <= 140) return;
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      attempts += 1;
+      if (attempts < 4) skinScrollTimer = setTimeout(step, 600);
+    };
+    requestAnimationFrame(step);
+  }
+
   onMount(() => {
     void loadAccounts();
     void loadGallery();
+    scrollToSkinAtelier();
+    window.addEventListener('hashchange', scrollToSkinAtelier);
   });
-
   onDestroy(() => {
+    window.removeEventListener('hashchange', scrollToSkinAtelier);
+    if (skinScrollTimer) clearTimeout(skinScrollTimer);
     if (msTimer) {
       clearInterval(msTimer);
       msTimer = null;
@@ -919,9 +941,8 @@
       </div>
     </div>
   </section>
-
   <!-- Skin Atelier: 3D visualizer + named skin gallery (vanilla workflow) -->
-  <section class="skin-atelier-section" aria-label="Skin Atelier">
+  <section id="skin-atelier" class="skin-atelier-section" aria-label="Skin Atelier" style="scroll-margin-top: 76px;">
     <GlassCard title={t('vault.skin.title')} subtitle={t('vault.skin.subtitle')} elevation="md">
       {#if !activeAccount}
         <p class="skin-atelier__note">{t('vault.heroSelectPrompt')}</p>

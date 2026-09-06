@@ -1,12 +1,27 @@
 // Espectral Menu — thin root build. mc12111 (remap) and mc262 (non-remap) share ../src/main/java.
 
+// Single source of truth: the mod version tracks the launcher release, so the
+// minecraft:brand handshake (espectral:<loader>:<version>) is accurate per build.
+ext.launcherVersion = new groovy.json.JsonSlurper().parse(file('../package.json')).version
+
 subprojects {
     group = 'es.spectral'
-    version = '1.3.0'
+    version = rootProject.ext.launcherVersion
 
     tasks.withType(JavaCompile).configureEach {
         options.encoding = 'UTF-8'
         options.release = rootProject.ext.releaseOf(project)
+    }
+
+    // Implementation-Version feeds EspectralBrand.modVersion()'s jar-manifest
+    // fallback (used when the loader container lookup is unavailable).
+    tasks.withType(Jar).configureEach {
+        manifest {
+            attributes(
+                'Implementation-Title': 'espectral-menu',
+                'Implementation-Version': project.version
+            )
+        }
     }
 
     // Deferred: the sourceSets/processResources extensions only exist once

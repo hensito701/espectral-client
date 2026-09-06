@@ -22,6 +22,9 @@ dist-update/
 .gradle/
 branding-mod/.gradle/
 branding-mod/**/build/
+branding-mod-nf/.gradle/
+branding-mod-nf/build/
+branding-mod-nf/runs/
 
 # Logs and scratch files
 logs/
@@ -37,6 +40,7 @@ logs/
 !assets/site/logo_circle.png
 !assets/site/apple-touch-icon.png
 !branding-mod/src/main/resources/assets/espectral-menu/textures/gui/logo.png
+!src/ui/src/assets/logo_circle.png
 
 # Local editor / tool state
 .commandcode/
