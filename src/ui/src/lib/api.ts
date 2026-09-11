@@ -13,7 +13,6 @@ import type {
   InstancePatch,
   InstanceSummary,
   JvmInfo,
-  LaunchMode,
   LaunchReply,
   LaunchStat,
   LiveLaunch,
@@ -437,7 +436,7 @@ export const patchInstanceClient = (name: string, clientPatch: ClientPatch): Pro
   patch(R.clientPatch(name)[1], clientPatch);
 export const launchInstance = (
   name: string,
-  options: { mode: LaunchMode; dry_run: boolean; account?: string },
+  options: { dry_run: boolean; account?: string },
 ): Promise<LaunchReply | DryRunResult> =>
   request<LaunchReply | DryRunResult>(R.launch(name)[1], 'POST', options, TIMEOUT_MS.launch);
 export const stopInstance = (name: string): Promise<{ ok: true; instance: string }> =>

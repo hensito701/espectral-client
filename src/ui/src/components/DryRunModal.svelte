@@ -64,7 +64,6 @@
 
     try {
       const res = (await launchInstance(name, {
-        mode: 'normal',
         dry_run: true,
       })) as unknown as DryRunResult;
       result = res;

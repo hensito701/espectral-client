@@ -161,19 +161,40 @@ export function latestAotProofLog(instance) {
 }
 
 /**
+ * First JVM AOT refusal line in an -Xlog:aot log, or null. A refusal is a
+ * [warning][aot]/[error][aot] record (e.g. 'Unable to map shared spaces',
+ * 'This file is not the one used while building the shared archive file') —
+ * the JVM's own statement that the cache was NOT used. Truncated to keep the
+ * payload small; the full line stays in the log file.
+ */
+export function aotRefusalLine(text) {
+  const line = String(text ?? '')
+    .split('\n')
+    .find((l) => /\[(warning|error)\]\[aot\]/.test(l));
+  return line ? line.trim().slice(0, 300) : null;
+}
+
+/**
  * Proof object: parse the newest aot-<pid>.log for
  * 'Using AOT-linked classes: true'. Null when no AOT boot log exists.
+ * `refusal` carries the JVM's own refusal line when the cache was passed but
+ * not used, so the UI can explain a cache that silently did nothing.
  */
 export function aotProof(instance) {
   const logPath = latestAotProofLog(instance);
   if (!logPath) return null;
-  let using = false;
+  let text = '';
   try {
-    using = /Using AOT-linked classes: true/.test(fs.readFileSync(logPath, 'utf8'));
+    text = fs.readFileSync(logPath, 'utf8');
   } catch {
     /* log may be locked mid-write; report false */
   }
-  return { log_path: logPath, using_aot_linked_classes: using };
+  const using = /Using AOT-linked classes: true/.test(text);
+  return {
+    log_path: logPath,
+    using_aot_linked_classes: using,
+    refusal: using ? null : aotRefusalLine(text),
+  };
 }
 
 /**

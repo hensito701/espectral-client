@@ -7,7 +7,6 @@ export const THEMES = ['dark', 'light', 'system'] as const;
 export type Theme = typeof THEMES[number];
 export const LOADERS = ['vanilla', 'fabric', 'neoforge'] as const;
 export type Loader = typeof LOADERS[number];
-export type LaunchMode = 'normal' | 'aot';
 export type OverwritePolicy = 'never' | 'if-older';
 export type ImportSourceKind = 'vanilla' | 'fastclient' | 'lunar';
 export type JvmSource = 'bundled' | 'fastclient' | 'path' | 'downloaded';
@@ -185,6 +184,8 @@ export interface ImportResult {
 export interface AotProof {
   log_path: string;
   using_aot_linked_classes: boolean;
+  /** JVM's own refusal line when the cache was passed but not used. */
+  refusal?: string | null;
 }
 
 export interface AotStatus {
@@ -192,6 +193,10 @@ export interface AotStatus {
   cache_path: string;
   cache_exists: boolean;
   cache_size_bytes: number;
+  /** Classpath drift vs the cache stamp; null = unverifiable. */
+  stale?: boolean | null;
+  /** False for loaders with no AOT tier (NeoForge). */
+  ready_to_train?: boolean;
   trained_at?: string;
   proof?: AotProof;
 }

@@ -3,8 +3,9 @@
   TelemetryCapsule.svelte — Horizon Glass Launch Flight Deck
   ============================================================================
   Docked glass capsule offering full launch orchestration: account selector,
-  Normal/AOT mode switch, tactile JUGAR primary action, dry-run inspector,
-  live boot-phase telemetry readout, and active instance termination.
+  AOT status chip (cache/proof, never a mode switch), tactile JUGAR primary
+  action, dry-run inspector, live boot-phase telemetry readout, and active
+  instance termination.
 
   Props (Pinned Contract):
     - instanceName: string | null
@@ -12,9 +13,10 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Account, LaunchMode, LaunchReply, LaunchExitEvent } from '../lib/types';
+  import type { Account, AotStatus, LaunchReply, LaunchExitEvent } from '../lib/types';
   import {
     getAccounts,
+    getAotStatus,
     setActiveAccount,
     launchInstance,
     stopInstance,
@@ -49,30 +51,58 @@
   // same URL, so bump on every account change to force a refetch.
   let avatarBust = $state(0);
   let accountMenuOpen = $state(false);
-  let launchMode = $state<LaunchMode>('aot');
   let isLaunching = $state(false);
   let isStopping = $state(false);
+  let aotStatus = $state<AotStatus | null>(null);
+  let aotTraining = $state(false);
 
-  // Initial launch mode from localStorage
-  if (typeof window !== 'undefined') {
+  // The AOT cache is not a user choice: every launch consumes a valid trained
+  // cache automatically, and this chip reports what actually happened (cache
+  // present, JVM refusal, staleness, training in flight) instead of offering a
+  // switch that pretends the user decides.
+  async function refreshAotStatus(): Promise<void> {
+    if (!instanceName) {
+      aotStatus = null;
+      return;
+    }
     try {
-      const storedMode = localStorage.getItem('horizon:launch-mode');
-      if (storedMode === 'normal' || storedMode === 'aot') {
-        launchMode = storedMode;
-      }
+      aotStatus = await getAotStatus(instanceName);
     } catch {
-      // storage unavailable
+      aotStatus = null; // unknown — the chip hides rather than guess
     }
   }
 
-  function setMode(mode: LaunchMode): void {
-    launchMode = mode;
-    try {
-      localStorage.setItem('horizon:launch-mode', mode);
-    } catch {
-      // storage unavailable
+  const aotChip = $derived.by(() => {
+    if (!instanceName || !aotStatus) return null;
+    if (aotStatus.ready_to_train === false) return null; // NeoForge: no AOT tier
+    const proof = aotStatus.proof;
+    if (aotTraining) {
+      return { kind: 'warn' as const, key: 'home.aotChipTraining', title: t('home.aotChipTrainingTitle') };
     }
-  }
+    if (aotStatus.cache_exists && proof?.using_aot_linked_classes) {
+      return {
+        kind: 'ok' as const,
+        key: 'home.aotChipActive',
+        title: `${aotStatus.cache_path}${proof.log_path ? ` — ${proof.log_path}` : ''}`,
+      };
+    }
+    if (aotStatus.cache_exists && proof?.refusal) {
+      return { kind: 'warn' as const, key: 'home.aotChipRefused', title: proof.refusal };
+    }
+    if (aotStatus.cache_exists && aotStatus.stale === true) {
+      return { kind: 'warn' as const, key: 'home.aotChipStale', title: t('home.aotChipStaleTitle') };
+    }
+    if (aotStatus.cache_exists) {
+      return { kind: 'ok' as const, key: 'home.aotChipTrained', title: aotStatus.cache_path };
+    }
+    return { kind: 'off' as const, key: 'home.aotChipMissing', title: t('home.aotChipMissingTitle') };
+  });
+
+  $effect(() => {
+    void instanceName;
+    aotTraining = false;
+    void refreshAotStatus();
+  });
 
   // Derive active account object
   const activeAccount = $derived(
@@ -179,7 +209,6 @@
 
     try {
       const res = await launchInstance(instanceName, {
-        mode: launchMode,
         dry_run: false,
         account: activeUsername || undefined,
       });
@@ -261,11 +290,27 @@
     // C12: capture timing from launch-exit for this capsule's instance.
     // Graceful if engine hasn't yet shipped spawn_ms/boot_ms (pre-B).
     const unsubExit = subscribeEvents((ev) => {
+      if (ev.type === 'train-progress' || ev.type === 'train-done') {
+        const d = ev.data as { instance?: string } | null;
+        if (!instanceName || d?.instance !== instanceName) return;
+        if (ev.type === 'train-progress') {
+          aotTraining = true;
+        } else {
+          // A finished train changes the cache on disk — refresh what the chip
+          // shows instead of leaving the pre-train story on screen.
+          aotTraining = false;
+          void refreshAotStatus();
+        }
+        return;
+      }
       if (ev.type !== 'launch-exit') return;
       const d = ev.data as LaunchExitEvent | null;
       if (!d || typeof d.key !== 'string') return;
       const inst = d.instance ?? '';
       if (!inst) return;
+      // A finished launch wrote a fresh aot-<pid>.log, so the linked-class
+      // proof may have changed even when timings are absent (pre-B engines).
+      if (inst === instanceName) void refreshAotStatus();
       // Graceful: hide when engine hasn't yet sent timing (pre-B) — both
       // spawn_ms and boot_ms absent/null means nothing to show.
       if (d.spawn_ms == null && d.boot_ms == null) return;
@@ -378,27 +423,18 @@
           <span class="capsule-instance-empty">{t('home.capsuleSelectInstance')}</span>
         {/if}
 
-        <!-- Mode Segmented Control -->
-        <div class="capsule-mode-toggle" role="group" aria-label={t('home.capsuleMode')}>
-          <button
-            type="button"
-            class="capsule-mode-btn"
-            class:capsule-mode-btn--active={launchMode === 'normal'}
-            onclick={() => setMode('normal')}
-            title="Lanzamiento estándar JVM"
+        <!-- AOT status chip: reports what the launch path actually did -->
+        {#if aotChip}
+          <span
+            class="capsule-aot-chip"
+            class:capsule-aot-chip--ok={aotChip.kind === 'ok'}
+            class:capsule-aot-chip--warn={aotChip.kind === 'warn'}
+            class:capsule-aot-chip--off={aotChip.kind === 'off'}
+            title={aotChip.title}
           >
-            Normal
-          </button>
-          <button
-            type="button"
-            class="capsule-mode-btn capsule-mode-btn--aot"
-            class:capsule-mode-btn--active={launchMode === 'aot'}
-            onclick={() => setMode('aot')}
-            title="AOT AppCDS FastBoot optimizado"
-          >
-            ⚡ AOT
-          </button>
-        </div>
+            ⚡ {t(aotChip.key)}
+          </span>
+        {/if}
       </div>
 
       <!-- Live Log / Phase Readout -->
@@ -710,37 +746,38 @@
     font-style: italic;
   }
 
-  /* Mode Segmented */
-  .capsule-mode-toggle {
+  /* AOT status chip — state readout, not a control */
+  .capsule-aot-chip {
     display: inline-flex;
-    padding: 2px;
-    background: var(--surface-up, rgba(255, 255, 255, 0.05));
-    border-radius: var(--radius-pill, 9999px);
-    border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
-  }
-
-  .capsule-mode-btn {
+    align-items: center;
+    gap: 4px;
     padding: 2px 8px;
     font-family: var(--font-body, 'Space Grotesk', sans-serif);
     font-size: 0.6875rem;
     font-weight: 600;
-    background: transparent;
-    border: 1px solid transparent;
     border-radius: var(--radius-pill, 9999px);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    background: var(--surface-up, rgba(255, 255, 255, 0.05));
     color: var(--muted-strong, #8e9eb8);
-    cursor: pointer;
-    transition: all var(--dur-fast, 120ms) ease;
+    cursor: default;
+    white-space: nowrap;
   }
 
-  .capsule-mode-btn--active {
-    background: var(--surface-solid, #161e36);
-    border-color: var(--border, transparent);
-    color: var(--text, #ffffff);
-    box-shadow: var(--shadow-sm, 0 1px 4px rgba(0, 0, 0, 0.3));
+  .capsule-aot-chip--ok {
+    color: var(--accent-green, #22c55e);
+    border-color: rgba(var(--accent-green-rgb, 34, 197, 94), 0.35);
+    background: rgba(var(--accent-green-rgb, 34, 197, 94), 0.12);
   }
 
-  .capsule-mode-btn--aot.capsule-mode-btn--active {
-    color: var(--accent-gold, #ffd700);
+  .capsule-aot-chip--warn {
+    color: var(--accent-alt, #f59e0b);
+    border-color: rgba(var(--accent-alt-rgb, 245, 158, 11), 0.35);
+    background: rgba(var(--accent-alt-rgb, 245, 158, 11), 0.12);
+  }
+
+  .capsule-aot-chip--off {
+    color: var(--muted-strong, #8e9eb8);
+    opacity: 0.85;
   }
 
   /* Telemetry Status Line */

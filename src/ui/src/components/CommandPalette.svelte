@@ -203,7 +203,7 @@
         keywords: [inst.name, inst.version, inst.loader, 'lanzar', 'jugar', 'iniciar', 'play', 'launch', 'start'],
         run: async () => {
           try {
-            const res = await launchInstance(inst.name, { mode: 'normal', dry_run: false });
+            const res = await launchInstance(inst.name, { dry_run: false });
             if ('key' in res && res.key) {
               await launchLog.start(res.key, { instance: inst.name });
               pushToast({

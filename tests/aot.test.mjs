@@ -9,6 +9,8 @@ import {
   pruneAotProofLogs,
   evictOldAotCaches,
   aotRootDir,
+  aotProof,
+  aotRefusalLine,
   classpathStamp,
   stampMatches,
   isCacheStale,
@@ -174,6 +176,53 @@ test('pruneAotProofLogs ignores non-aot files and handles missing dir', async ()
     await pruneAotProofLogs({ name });
     assert.equal(fs.existsSync(path.join(dir, 'latest.log')), true);
     assert.equal(fs.existsSync(path.join(dir, 'aot-bad.log')), true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// aotProof / aotRefusalLine — the read side the UI chip depends on: a cache the
+// JVM silently refused must be explainable, not indistinguishable from success.
+// ---------------------------------------------------------------------------
+
+test('aotRefusalLine returns the first warning/error record, null on a clean log', () => {
+  assert.equal(aotRefusalLine('[0.003s][info][aot] opening archive file game.aot'), null);
+  assert.equal(aotRefusalLine(''), null);
+  assert.equal(aotRefusalLine(undefined), null);
+  assert.equal(
+    aotRefusalLine(
+      '[0.10s][warning][aot] This file is not the one used while building the shared archive file\n' +
+        '[0.11s][error][aot] Unable to map shared spaces'
+    ),
+    '[0.10s][warning][aot] This file is not the one used while building the shared archive file'
+  );
+});
+
+test('aotProof: standard run reports the proof, a refused cache reports the reason', async () => {
+  await withTempDataDir(async (tmp) => {
+    const name = 'proof-refusal';
+    const dir = instanceDirFor(tmp, name);
+    fs.mkdirSync(dir, { recursive: true });
+    assert.equal(aotProof({ name }), null, 'no proof log -> null, never a fake positive');
+    const log = path.join(dir, 'aot-4242.log');
+    fs.writeFileSync(
+      log,
+      '[0.003s][info][aot] opening archive file /data/cache/aot/key/game.aot\n' +
+        '[0.004s][error][aot] Unable to map shared spaces\n',
+      'utf8'
+    );
+    const refused = aotProof({ name });
+    assert.equal(refused.using_aot_linked_classes, false);
+    assert.equal(refused.refusal, '[0.004s][error][aot] Unable to map shared spaces');
+    // Same log path, cache actually used -> refusal disappears (no stale reason).
+    fs.writeFileSync(
+      log,
+      '[4.7s][info][aot] Using AOT-linked classes: true (static archive: has aot-linked classes)\n',
+      'utf8'
+    );
+    const linked = aotProof({ name });
+    assert.equal(linked.using_aot_linked_classes, true);
+    assert.equal(linked.refusal, null);
+    assert.equal(linked.log_path, log);
   });
 });
 
