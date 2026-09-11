@@ -13,11 +13,13 @@
     "WaterFogMixin",
     "FogRendererAccessor",
     "OptionsAccessor",
+    "LivingEntityRendererAccessor",
     "ChatListenerMixin",
     "ChatComponentMixin",
     "DrawingBackgroundGraphicsAccessMixin",
     "ChatDisconnectMixin",
     "AvatarRendererMixin",
+    "LivingEntityRendererSubmitMixin",
     "TextureManagerMixin"
   ],
   "injectors": {

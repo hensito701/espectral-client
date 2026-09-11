@@ -1,7 +1,6 @@
 package es.spectral.menu.mixin;
 
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -10,27 +9,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import es.spectral.menu.Compat;
+import es.spectral.menu.Skin3dSwap;
+import es.spectral.menu.Skin3dSwapHost;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.player.AvatarRenderer;
-import net.minecraft.client.renderer.entity.state.AvatarRenderState;
-import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
-import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.resources.Identifier;
 
 /**
- * 26.2: 3D Skin Layers — swaps the per-skin voxel model in around
- * {@code LivingEntityRenderer#submit} and the first-person hand path.
+ * 26.2: 3D Skin Layers — first-person hand half, plus the renderer state the
+ * whole feature shares: the constructor {@code slim} flag and the vanilla
+ * {@code model} saved while a swap is active ({@link Skin3dSwapHost}).
  *
- * <p>Third person: on {@code submit} HEAD the renderer {@code model} field is
- * pointed at the cached voxel model ({@link Compat#voxelForState}), which is
- * then {@code resetPose()} + {@code setupAnim(state)} — vanilla already posed
- * the original during extraction, so without this the voxel instance would
- * render in T-pose. Per-player {@code showHat}/{@code showJacket}/{@code
- * showLeftSleeve}/... flags keep working because {@code PlayerModel#setupAnim}
- * flows them into the voxel parts' visibility. TAIL restores the original.</p>
+ * <p>Third person is injected by {@link LivingEntityRendererSubmitMixin},
+ * because {@code submit} is declared on {@code LivingEntityRenderer} and Mixin
+ * only injects into methods its own target class declares.</p>
  *
  * <p>First person: the same swap wraps {@code AvatarRenderer#renderRightHand}
  * and {@code #renderLeftHand}; the private {@code renderHand} then poses the
@@ -40,17 +35,11 @@ import net.minecraft.resources.Identifier;
  * <p>Everything is gated on the {@code skin3d} feature inside the Compat
  * resolvers: when off (or the skin texture is not ready) the resolvers return
  * {@code null}, no swap happens, and rendering is vanilla-identical.</p>
- *
- * <p>Only the {@code CameraRenderState} package differs from 1.21.11
- * ({@code renderer.state.level} here vs {@code renderer.state} there).</p>
  */
 @Mixin(AvatarRenderer.class)
-public abstract class AvatarRendererMixin {
+public abstract class AvatarRendererMixin implements Skin3dSwapHost {
 
     /** Vanilla model saved on swap; {@code null} when no swap is active. */
-    @Shadow
-    protected EntityModel<?> model;
-
     @Unique
     private EntityModel<?> espectral$voxelBackup;
 
@@ -65,42 +54,22 @@ public abstract class AvatarRendererMixin {
         this.espectral$slimModel = slim;
     }
 
+    @Override
     @Unique
-    private void espectral$swapIn(PlayerModel voxel) {
-        this.espectral$voxelBackup = this.model;
-        this.model = voxel;
+    public EntityModel<?> espectral$voxelBackup() {
+        return this.espectral$voxelBackup;
     }
 
+    @Override
     @Unique
-    private void espectral$swapOut() {
-        if (this.espectral$voxelBackup != null) {
-            this.model = this.espectral$voxelBackup;
-            this.espectral$voxelBackup = null;
-        }
+    public void espectral$voxelBackup(EntityModel<?> model) {
+        this.espectral$voxelBackup = model;
     }
 
-    @Inject(
-            method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
-            at = @At("HEAD")
-    )
-    private void espectral$submitHead(LivingEntityRenderState state, PoseStack poseStack,
-            SubmitNodeCollector collector, CameraRenderState camera, CallbackInfo ci) {
-        this.espectral$voxelBackup = null;
-        if (!(state instanceof AvatarRenderState avatar)) return;
-        PlayerModel voxel = Compat.voxelForState(avatar, this.espectral$slimModel);
-        if (voxel == null) return;
-        espectral$swapIn(voxel);
-        voxel.resetPose();
-        voxel.setupAnim(avatar);
-    }
-
-    @Inject(
-            method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
-            at = @At("TAIL")
-    )
-    private void espectral$submitTail(LivingEntityRenderState state, PoseStack poseStack,
-            SubmitNodeCollector collector, CameraRenderState camera, CallbackInfo ci) {
-        espectral$swapOut();
+    @Override
+    @Unique
+    public boolean espectral$slimModel() {
+        return this.espectral$slimModel;
     }
 
     @Inject(
@@ -112,7 +81,7 @@ public abstract class AvatarRendererMixin {
         this.espectral$voxelBackup = null;
         PlayerModel voxel = Compat.voxelForHand(skinId, this.espectral$slimModel);
         if (voxel == null) return;
-        espectral$swapIn(voxel);
+        Skin3dSwap.in(this, voxel);
     }
 
     @Inject(
@@ -121,7 +90,7 @@ public abstract class AvatarRendererMixin {
     )
     private void espectral$rightHandTail(PoseStack poseStack, SubmitNodeCollector collector,
             int packedLight, Identifier skinId, boolean showSleeve, CallbackInfo ci) {
-        espectral$swapOut();
+        Skin3dSwap.out(this);
     }
 
     @Inject(
@@ -133,7 +102,7 @@ public abstract class AvatarRendererMixin {
         this.espectral$voxelBackup = null;
         PlayerModel voxel = Compat.voxelForHand(skinId, this.espectral$slimModel);
         if (voxel == null) return;
-        espectral$swapIn(voxel);
+        Skin3dSwap.in(this, voxel);
     }
 
     @Inject(
@@ -142,6 +111,6 @@ public abstract class AvatarRendererMixin {
     )
     private void espectral$leftHandTail(PoseStack poseStack, SubmitNodeCollector collector,
             int packedLight, Identifier skinId, boolean showSleeve, CallbackInfo ci) {
-        espectral$swapOut();
+        Skin3dSwap.out(this);
     }
 }
