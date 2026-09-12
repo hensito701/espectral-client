@@ -42,6 +42,11 @@
   let error = $state('');
   let togglingFeatureId = $state('');
   let patchError = $state('');
+  let togglingSuite = $state(false);
+  let featureSearch = $state('');
+  let activeCategory = $state('all');
+  let confirmingReset = $state(false);
+  let resetting = $state(false);
 
   // Macro Editor Draft State
   let macros = $state<ClientMacro[]>([]);
@@ -88,7 +93,7 @@
     error = '';
     patchError = '';
     savedMsg = '';
-
+    confirmingReset = false;
     try {
       const data = await getInstanceClient(targetInstance);
       if (currentSeq !== loadSeq) return; // Discard race condition
@@ -172,6 +177,77 @@
       });
     } finally {
       togglingFeatureId = '';
+    }
+  }
+
+  // Suite master switch: absent on old payloads — schema 2 defaults to true.
+  const suiteEnabled = $derived(info?.config.suite?.enabled ?? true);
+
+  // Category filter ids derive from the registry (registry order, no fixed list).
+  const categories = $derived(
+    [...new Set((info?.registry ?? []).map((f) => f.category).filter((c): c is string => Boolean(c)))]
+  );
+
+  // Accent-insensitive fold so "musica" matches "música".
+  function fold(s: string): string {
+    return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  const filteredFeatures = $derived.by(() => {
+    const q = fold(featureSearch.trim());
+    return (info?.registry ?? []).filter((feat) => {
+      if (activeCategory !== 'all' && (feat.category ?? '') !== activeCategory) return false;
+      if (!q) return true;
+      const name = fold(t(`client.feat.${feat.id}.name`, feat.name));
+      const desc = fold(t(`client.feat.${feat.id}.desc`, feat.description));
+      return name.includes(q) || desc.includes(q) || fold(feat.id).includes(q);
+    });
+  });
+
+  // Master PATCH mirrors the feature toggles: single-flight, and the switch
+  // derives from info.config so a failed patch never reverts visible state.
+  async function toggleSuite(next: boolean) {
+    if (!targetInstance || togglingSuite) return;
+    togglingSuite = true;
+    patchError = '';
+
+    try {
+      const result = await patchInstanceClient(targetInstance, { suite: { enabled: next } });
+      absorbPatch(result);
+      warnOrOk(result, next ? t('client.suiteEnabled') : t('client.suiteDisabled'));
+    } catch (e) {
+      patchError = e instanceof Error ? e.message : String(e);
+      pushToast({
+        kind: 'err',
+        text: patchError,
+      });
+    } finally {
+      togglingSuite = false;
+    }
+  }
+
+  // Reset sends every feature back to its registry default in ONE PATCH.
+  // The master switch is untouched and no per-feature request is emitted.
+  async function resetToDefaults() {
+    if (!targetInstance || resetting || !info) return;
+    resetting = true;
+    patchError = '';
+    const features: Record<string, { enabled: boolean }> = {};
+    for (const feat of info.registry) features[feat.id] = { enabled: feat.defaultEnabled };
+
+    try {
+      const result = await patchInstanceClient(targetInstance, { features });
+      absorbPatch(result);
+      confirmingReset = false;
+      warnOrOk(result, t('client.resetDone'));
+    } catch (e) {
+      patchError = e instanceof Error ? e.message : String(e);
+      pushToast({
+        kind: 'err',
+        text: patchError,
+      });
+    } finally {
+      resetting = false;
     }
   }
 
@@ -472,16 +548,79 @@
                 <p class="card-subhead muted">{t('client.featuresSub')}</p>
               </div>
             </div>
-            <Badge tone="neutral" mono>{info.registry.length} {t('client.featuresCount', { count: info.registry.length })}</Badge>
+            <Badge tone="neutral" mono>{t('client.resultsCount', { shown: filteredFeatures.length, total: info.registry.length })}</Badge>
           </div>
 
+          <!-- Suite master switch -->
+          <div class="suite-master glass-panel" class:suite-master--off={!suiteEnabled}>
+            <span class="suite-master__state" class:suite-master__state--off={!suiteEnabled}>
+              {suiteEnabled ? t('client.suiteEnabled') : t('client.suiteDisabled')}
+            </span>
+            <button
+              type="button"
+              class="switch"
+              class:on={suiteEnabled}
+              role="switch"
+              aria-checked={suiteEnabled}
+              aria-label={t('client.suiteStatus')}
+              onclick={() => toggleSuite(!suiteEnabled)}
+              disabled={togglingSuite}
+            >
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+
+          {#if !suiteEnabled}
+            <div class="suite-off-banner glass-panel" role="status">
+              <span>{t('client.suiteOffBanner')}</span>
+            </div>
+          {/if}
+
+          <!-- Search -->
+          <div class="suite-search">
+            <label class="suite-search__label" for="suite-feature-search">{t('client.searchLabel')}</label>
+            <input
+              id="suite-feature-search"
+              type="search"
+              class="macro-input suite-search__input"
+              placeholder={t('client.searchPlaceholder')}
+              bind:value={featureSearch}
+            />
+          </div>
+
+          <!-- Category filter (ids derive from the registry — no fixed list) -->
+          {#if categories.length > 0}
+            <div class="suite-categories" role="group" aria-label={t('client.category')}>
+              <button
+                type="button"
+                class="macro-pill-btn"
+                class:active={activeCategory === 'all'}
+                aria-pressed={activeCategory === 'all'}
+                onclick={() => (activeCategory = 'all')}
+              >
+                {t('client.categoryAll')}
+              </button>
+              {#each categories as cat (cat)}
+                <button
+                  type="button"
+                  class="macro-pill-btn"
+                  class:active={activeCategory === cat}
+                  aria-pressed={activeCategory === cat}
+                  onclick={() => (activeCategory = cat)}
+                >
+                  {t(`client.category.${cat}`, cat)}
+                </button>
+              {/each}
+            </div>
+          {/if}
+
           <div class="features-list">
-            {#each info.registry as feat (feat.id)}
+            {#each filteredFeatures as feat (feat.id)}
               {@const on = featureEnabled(feat.id, feat.defaultEnabled)}
               {@const isToggling = togglingFeatureId === feat.id}
               {@const featName = t(`client.feat.${feat.id}.name`, feat.name)}
               {@const featDesc = t(`client.feat.${feat.id}.desc`, feat.description)}
-              <div class="feature-item glass-panel" class:feature-item--on={on}>
+              <div class="feature-item glass-panel" class:feature-item--on={on} class:feature-item--suppressed={!suiteEnabled}>
                 <div class="feature-item__main">
                   <div class="feature-item__top">
                     <span class="feature-item__name">{featName}</span>
@@ -492,6 +631,9 @@
                   <p class="feature-item__desc muted">{featDesc}</p>
                   <div class="feature-item__hint muted font-mono text-xs">
                     {feat.kind === 'managed' ? t('client.restartHint') : t('client.liveHint')}
+                  </div>
+                  <div class="feature-item__state muted font-mono text-xs">
+                    {on ? t('instance.featureEnabled') : t('instance.featureDisabled')}{!suiteEnabled ? ` · ${t('client.suppressed')}` : ''}
                   </div>
                 </div>
 
@@ -512,6 +654,23 @@
                 </div>
               </div>
             {/each}
+          </div>
+
+          <!-- Reset to registry defaults (one PATCH, confirmed inline) -->
+          <div class="suite-reset-row">
+            {#if confirmingReset}
+              <span class="suite-reset-confirm">{t('client.resetConfirm')}</span>
+              <Btn variant="danger" size="sm" onclick={resetToDefaults} loading={resetting} disabled={resetting}>
+                {t('client.resetConfirmYes')}
+              </Btn>
+              <Btn variant="ghost" size="sm" onclick={() => (confirmingReset = false)} disabled={resetting}>
+                {t('client.resetCancel')}
+              </Btn>
+            {:else}
+              <Btn variant="ghost" size="sm" onclick={() => (confirmingReset = true)}>
+                {t('client.reset')}
+              </Btn>
+            {/if}
           </div>
         </GlassCard>
       </section>
@@ -1285,6 +1444,89 @@
     to {
       transform: rotate(360deg);
     }
+  }
+
+  /* Suite master switch + filters */
+  .suite-master {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .suite-master--off {
+    border-color: rgba(var(--accent-gold-rgb, 217, 169, 59), 0.4);
+  }
+
+  .suite-master__state {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--accent-green, #22c55e);
+  }
+
+  .suite-master__state--off {
+    color: var(--accent-gold, #d9a93b);
+  }
+
+  .suite-off-banner {
+    padding: 0.6rem 1rem;
+    margin-bottom: 0.75rem;
+    background: rgba(var(--accent-gold-rgb, 217, 169, 59), 0.08);
+    border-color: rgba(var(--accent-gold-rgb, 217, 169, 59), 0.35);
+    color: var(--text, #e8ecf4);
+    font-size: 0.8125rem;
+    line-height: var(--leading-body, 1.6);
+  }
+
+  .suite-search {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .suite-search__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted, #8e9eb8);
+  }
+
+  .suite-search__input {
+    min-width: 0;
+  }
+
+  .suite-categories {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+
+  .feature-item__state {
+    margin-top: 0.25rem;
+    opacity: 0.9;
+  }
+
+  .feature-item--suppressed {
+    opacity: 0.75;
+  }
+
+  .suite-reset-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+  }
+
+  .suite-reset-confirm {
+    font-size: 0.8125rem;
+    color: var(--text, #e8ecf4);
   }
 
   /* Switch Toggle Component */

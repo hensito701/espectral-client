@@ -265,6 +265,8 @@ export interface ClientMacro {
 
 export interface ClientConfig {
   schema: number;
+  /** Suite master switch (schema 2). Absent on old payloads — readers default to true. */
+  suite?: { enabled: boolean };
   features: Record<string, ClientFeatureState>;
   macros: ClientMacro[];
 }
@@ -276,6 +278,8 @@ export interface ClientRegistryEntry {
   kind: ClientFeatureKind;
   defaultEnabled: boolean;
   keybind?: string;
+  /** Registry category id (schema 2, additive). Absent on old payloads. */
+  category?: string;
 }
 
 export interface ClientReconcileError {
@@ -294,6 +298,7 @@ export interface ClientInfo {
 export type ClientPatch = Partial<{
   features: Record<string, { enabled?: boolean; [k: string]: unknown }>;
   macros: ClientMacro[];
+  suite: { enabled?: boolean };
 }>;
 
 /** GET /api/launches — live/recent launch buffers, newest first. */

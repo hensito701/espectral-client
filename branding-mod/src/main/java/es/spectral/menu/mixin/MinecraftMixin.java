@@ -14,6 +14,7 @@ import es.spectral.menu.GammaEngine;
 import es.spectral.menu.HudEngine;
 import es.spectral.menu.MacroEngine;
 import es.spectral.menu.SkinModelCache;
+import es.spectral.menu.SuiteShortcut;
 import es.spectral.menu.ZoomEngine;
 
 /**
@@ -31,6 +32,7 @@ public abstract class MinecraftMixin {
     private void espectral$onClientTick(CallbackInfo ci) {
         EspectralClient.ensureClientKeyRegistered();
         Minecraft minecraft = (Minecraft) (Object) this;
+        SuiteShortcut.onClientTick(minecraft);
         ZoomEngine.getInstance().onTick(minecraft);
         GammaEngine.getInstance().onTick(minecraft);
         FogEngine.getInstance().onTick(minecraft);

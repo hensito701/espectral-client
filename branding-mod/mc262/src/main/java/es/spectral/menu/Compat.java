@@ -105,4 +105,70 @@ public final class Compat {
         if (skinId == null) return null;
         return SkinModelCache.getOrBuild(Minecraft.getInstance(), skinId, slim);
     }
+    /**
+     * Suite painter primitive: filled rectangle through the 26.2 extraction
+     * pipeline. The graphics object is the lane's
+     * {@code GuiGraphicsExtractor}; anything else is ignored.
+     */
+    public static void uiFill(Object gfx, int x1, int y1, int x2, int y2, int argb) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor) {
+            extractor.fill(x1, y1, x2, y2, argb);
+        }
+    }
+
+    /** Suite painter primitive: vertical gradient rectangle. */
+    public static void uiFillGradient(Object gfx, int x1, int y1, int x2, int y2,
+            int argbTop, int argbBottom) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor) {
+            extractor.fillGradient(x1, y1, x2, y2, argbTop, argbBottom);
+        }
+    }
+
+    /** Suite painter primitive: 1 px rectangle outline. */
+    public static void uiOutline(Object gfx, int x, int y, int w, int h, int argb) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor) {
+            extractor.outline(x, y, w, h, argb);
+        }
+    }
+
+    /** Suite painter primitive: left-aligned text. */
+    public static void uiText(Object gfx, net.minecraft.client.gui.Font font,
+            net.minecraft.network.chat.Component text, int x, int y, int argb, boolean shadow) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor && font != null
+                && text != null) {
+            extractor.text(font, text, x, y, argb, shadow);
+        }
+    }
+
+    /**
+     * Suite painter primitive: text centred on {@code cx}. The extractor's
+     * centred variant carries no shadow flag, so the shadow is an offset
+     * darkened copy, matching the vanilla shadow tone.
+     */
+    public static void uiTextCentered(Object gfx, net.minecraft.client.gui.Font font,
+            net.minecraft.network.chat.Component text, int cx, int y, int argb, boolean shadow) {
+        if (!(gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor)
+                || font == null || text == null) {
+            return;
+        }
+        if (shadow) {
+            int shadowArgb = (argb & 0xFCFCFC) >> 2 | 0xFF000000;
+            extractor.centeredText(font, text, cx + 1, y + 1, shadowArgb);
+        }
+        extractor.centeredText(font, text, cx, y, argb);
+    }
+
+    /**
+     * Opens the canonical support URL in the system browser. Called only
+     * after the SuiteConfirmScreen confirmation, never with parameters.
+     */
+    public static void openUri(String uri) {
+        if (uri == null || uri.isBlank()) return;
+        try {
+            net.minecraft.util.Util.getPlatform().openUri(uri);
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger("espectral-menu")
+                    .warn("Could not open support URL", e);
+        }
+    }
 }

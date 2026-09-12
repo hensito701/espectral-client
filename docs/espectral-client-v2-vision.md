@@ -267,6 +267,23 @@ Turning the suite on restores every previous granular choice exactly. This behav
 - The title, Esc actions, Suite screen, search, narration, keyboard traversal, resize behavior, and parent return all work without duplicate widgets.
 - Disabled suite paths create no backend traffic and no material tick/render work beyond the central branch.
 
+### Measured outcome (2026-09-12) — 26.2 lane
+
+**Status: shipped on 26.2 and verified on the Fedora reference machine; the 1.21.11 lane is not verified (no rig for it on this box).**
+
+**One registry, two consumers.** `src/engine/suite-registry.json` is now the only list of features: ids, categories (visual / hud / chat / controls), kinds, `default_enabled`, per-feature state defaults, keybinds and the EN/ES names/descriptions. `scripts/sync-suite-registry.mjs` copies it into the mod jar as `assets/espectral-menu/suite-registry.json` and generates the jar's `lang/en_us.json` / `lang/es_es.json` (60 keys each); `tests/suite-registry.test.mjs` fails if the generated files, the launcher i18n keys or the registry ever drift apart (freshness is byte-compared). The engine derives its `REGISTRY`/`FEATURE_DEFAULTS` from the same file — a grep for feature ids in `src/engine/client.mjs` returns nothing. **The `nofog` mismatch is resolved to `false` on both sides** (the launcher's historical default won; an existing explicit `nofog: true` in a player file is left untouched), and `fullbright.gamma` defaults to the legal `1.0`.
+
+**Schema 2 and the master switch.** `config/espectral-client.json` gains `suite.enabled` (default true) and `schema: 2`. Migration is additive and non-destructive on both sides: a v1 fixture carrying an unknown root key, an unknown feature id, an extra per-feature key and a bare-boolean entry survives load→save with all of it intact, plus `schema: 2` and `suite.enabled: true` (`tests/client-config.test.mjs`, and a live launch that migrated the instance's own v1 file). In the mod, one choke point — `ClientConfig.isFeatureEnabled(id)` — is `suiteEnabled && stored flag`, so every engine's existing check becomes master-aware without a second code path; `isFeatureEnabledRaw(id)` exists only so the UI can show the stored flag.
+
+**In-game UI (26.2).** The flat toggle list is gone. New: a dark-glass/gold Suite screen (header with a live count, master chip, search box, category row, paginated feature rows with explicit `Enabled`/`Disabled` text and per-row tooltips, pager, Reset/Support/Done footer), a confirm dialog for both the reset and the support link, and a title screen that **keeps vanilla navigation** and appends one right-aligned action row (`★ Espectral Client…`, `♥ Apoyar`) plus a glass strip with the wordmark and version. Right Shift keeps opening the Suite from play, and the shortcut no longer lives inside `MacroEngine`.
+
+**Evidence (Fedora box, `Espectral default`, jar sha1 `c0001105…`).** Screenshots at 854×480 and in a 1920-wide window: title (vanilla logo/splash/Realms/icon row/version/copyright all intact, no overlap), Suite (`13/13`, page 1/3, five rows, footer), search filtered to `1/13` for "zoom", the same screen in Spanish (`Suite: Activada`, `Buscar función…`, `Reiniciar`/`Apoyar`/`Listo` — the generated lang files drive the game language), the support dialog showing exactly `https://espectral.tebex.io/` with no query, UUID or token, and a resize to 640×400 that re-lays out to 12 rows / 2 pages with **no duplicated widgets**. Transformed-class proof (`-Dmixin.debug.export=true`): `TitleScreen` carries both `handler$…$espectralMenu$appendActions` and `handler$…$espectral$paintSuiteBackdrop` alongside Iris's and Mod Menu's own injections. Master-switch proof in-game: with `suite.enabled: false` the log shows **no** fullbright activity at all, with `true` it shows `fullbright: gamma 0.5 → 1.0`, and the stored flags are byte-identical before and after — and the fullbright gamma bug is fixed (no `Illegal option value 15.0 for Brightness` line is possible any more, 0 across every run).
+
+**Gate mapping.** Registry contract ✅ (one file, parity tests, `nofog` resolved). Migration ✅ (both consumers, unknown data preserved). Master off/on ✅ (in-game logs + launcher file diffs; stored flags untouched). Disabled paths ✅ (chat-head intake now gated at the source, engines early-return through the choke point, no network in the mod). Title/Suite/search/resize/no-duplicates ✅ (screenshots). 854×480 ✅ and a 1920-wide window ✅ on 26.2; the 1.21.11 lane ✗ not verified here. Parent return, keyboard traversal and narration audio are vanilla `Screen`/`Button` behaviour and were code-audited (every `%s` language key was checked to receive its arguments — two were silently missing them and are fixed), but this box cannot inject keyboard input (no Wayland virtual-keyboard tooling, no passwordless `sudo`) so they were not exercised interactively. The Esc-screen additions are registered and compile, but `PauseScreen.init()` needs an in-world player and this box has no world, so they are **structurally verified only** (mixin registered, anchor `javap`-checked) and need one in-world launch on a rig with a world. `branding-mod/mc12111/.../Compat.java` gained the same five drawing primitives + `openUri` written in that lane's idiom — unverifiable here (no 1.21.11 jar, toolchain 21 absent, auto-download disabled) and therefore the first thing to compile on a 1.21.11 rig.
+
+**Launcher half (Svelte).** The Client page now has a master switch with real state text (`Suite activada` / `Suite DESACTIVADA`) and an explanatory banner, accent-insensitive search, category filter derived from the registry, an explicit enabled/disabled label per feature, a results counter and a confirmed reset that PATCHes every registry default in one request; `InstanceHub` shows a suppressed-state chip and `Activado · suprimida por la Suite` text while keeping the granular toggles operable. Verified in a real browser against the running engine (accessibility tree + PATCH round-trips + on-disk file checks); `svelte-check` 566 files / 0 errors, UI build green, `node --test` 288 tests with the same three pre-existing lunar-import failures as the pristine baseline.
+
+
 ## Workstream 4: Donator perks and cosmetics
 
 ### Objective
@@ -446,8 +463,8 @@ Stop-ship decisions before network implementation:
 
 - Automatically apply valid AOT caches to normal launches and expose proof. *(done 2026-09-11 — see Workstream 1 "Measured outcome")*
 - Add locked performance scenes and instrumentation.
-- Migrate to schema 2 and canonical feature defaults.
-- Build the title, Esc, Suite, master-toggle, recovery, and Apoyar experience.
+- Migrate to schema 2 and canonical feature defaults. *(done 2026-09-12 — schema 2 with `suite.enabled`, one canonical registry for launcher + mod, `nofog` resolved to off)*
+- Build the title, Esc, Suite, master-toggle, recovery, and Apoyar experience. *(done 2026-09-12 on 26.2 — see Workstream 3 "Measured outcome"; the Esc additions and the 1.21.11 lane still need a rig with a world / a 1.21.11 toolchain)*
 - Put Fedora artifacts into CI with signed install, update, and rollback paths.
 - Remove unsupported fixed-percentage, competitor, and verified-client messaging.
 
@@ -485,7 +502,7 @@ V2 stable requires all of the following:
 
 - Normal full-stack AOT meets the Fedora ≤9.5-second engineering gate. *(met 2026-09-11: 7.19 s median `menu_ms`, 20/20 linked-class proof — see Workstream 1 "Measured outcome")*
 - The exact seven-mod preset and Balanced visuals remain intact.
-- Custom UI and master state pass on both supported Fabric versions and required resolutions.
+- Custom UI and master state pass on both supported Fabric versions and required resolutions. *(26.2 side met 2026-09-12 at 854×480 and a 1920-wide window — see Workstream 3 "Measured outcome"; the 1.21.11 lane is still unverified on this box, so this gate stays open)*
 - Spoofed brand, local tier, peer URL, tampered asset, and invalid grant cannot produce paid cosmetics on a conforming viewer.
 - Share-off sends no presence publication.
 - Telemetry-off sends no analytics upload.

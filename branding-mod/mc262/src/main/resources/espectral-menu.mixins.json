@@ -4,6 +4,8 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "TitleScreenInitMixin",
+    "ScreenBackgroundMixin",
+    "PauseScreenInitMixin",
     "ClientBrandMixin",
     "MinecraftMixin",
     "CameraFovMixin",

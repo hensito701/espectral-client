@@ -15,6 +15,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.PlayerChatMessage;
 
 import es.spectral.menu.ChatHeads;
+import es.spectral.menu.ClientConfig;
 
 /**
  * 1.21.11: captures the signature -&gt; sender link for every signed player
@@ -34,6 +35,7 @@ public abstract class ChatListenerMixin {
     private void espectral$captureChatSender(ChatType.Bound bound, PlayerChatMessage message,
             Component decorated, GameProfile profile, boolean onlyShowSecureChat, Instant timestamp,
             CallbackInfoReturnable<Boolean> cir) {
+        if (!ClientConfig.getInstance().isFeatureEnabled("chatheads")) return;
         ChatHeads.onPlayerMessage(message.signature(), profile.id());
     }
 }

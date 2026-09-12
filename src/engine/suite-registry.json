@@ -1,0 +1,159 @@
+{
+  "registry_version": 2,
+  "schema": 2,
+  "suite": {
+    "default_enabled": true
+  },
+  "categories": [
+    { "id": "visual", "name_en": "Visual", "name_es": "Visual" },
+    { "id": "hud", "name_en": "HUD", "name_es": "HUD" },
+    { "id": "chat", "name_en": "Chat", "name_es": "Chat" },
+    { "id": "controls", "name_en": "Controls", "name_es": "Controles" }
+  ],
+  "features": [
+    {
+      "id": "fullbright",
+      "category": "visual",
+      "kind": "owned",
+      "default_enabled": true,
+      "state": { "gamma": 1.0 },
+      "name_en": "Fullbright",
+      "name_es": "Fullbright",
+      "description_en": "Built-in fullbright — gamma driven live by the mod. No jars, no restart.",
+      "description_es": "Brillo total integrado — gamma controlado en vivo por el mod. Sin jars, sin reinicio."
+    },
+    {
+      "id": "nofog",
+      "category": "visual",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": { "radius": null },
+      "name_en": "No Fog",
+      "name_es": "Sin niebla",
+      "description_en": "Built-in no-fog — fog removed live by the mod (Overworld, Nether, End). No jars, no restart.",
+      "description_es": "Sin niebla integrado — niebla eliminada en vivo por el mod (Overworld, Nether, End). Sin jars, sin reinicio."
+    },
+    {
+      "id": "lowfire",
+      "category": "visual",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": {},
+      "name_en": "Low Fire",
+      "name_es": "Fuego bajo",
+      "description_en": "Lowers the fire overlay while burning so the view stays readable.",
+      "description_es": "Baja el fuego al arder para ver mejor."
+    },
+    {
+      "id": "clearwater",
+      "category": "visual",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": {},
+      "name_en": "Clear Water",
+      "name_es": "Agua clara",
+      "description_en": "Removes murky water and pushes the underwater fog away.",
+      "description_es": "Quita el agua turbia y aleja la niebla submarina."
+    },
+    {
+      "id": "skin3d",
+      "category": "visual",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": {},
+      "name_en": "3D Skin Layers",
+      "name_es": "Capas 3D",
+      "description_en": "Turns the skin's second layer into voxels in third person.",
+      "description_es": "Convierte la segunda capa de la skin en vóxeles 3D."
+    },
+    {
+      "id": "potionstatus",
+      "category": "hud",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": {},
+      "name_en": "Potion Status",
+      "name_es": "Estado de pociones",
+      "description_en": "On-screen list of active potion effects with durations.",
+      "description_es": "Efectos de poción activos con duración en pantalla."
+    },
+    {
+      "id": "coords",
+      "category": "hud",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": {},
+      "name_en": "Coords",
+      "name_es": "Coordenadas",
+      "description_en": "XYZ coordinates and facing direction on screen.",
+      "description_es": "Coordenadas XYZ y dirección en pantalla."
+    },
+    {
+      "id": "healthstatus",
+      "category": "hud",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": {},
+      "name_en": "Health",
+      "name_es": "Salud",
+      "description_en": "Numeric health and absorption on screen.",
+      "description_es": "Salud numérica y absorción en pantalla."
+    },
+    {
+      "id": "armorstatus",
+      "category": "hud",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": {},
+      "name_en": "Armor",
+      "name_es": "Armadura",
+      "description_en": "Durability of every armor piece on screen.",
+      "description_es": "Durabilidad de cada pieza de armadura en pantalla."
+    },
+    {
+      "id": "fpsping",
+      "category": "hud",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": {},
+      "name_en": "FPS / Ping",
+      "name_es": "FPS / Ping",
+      "description_en": "Frames per second and latency on screen.",
+      "description_es": "Fotogramas por segundo y latencia en pantalla."
+    },
+    {
+      "id": "chatheads",
+      "category": "chat",
+      "kind": "owned",
+      "default_enabled": false,
+      "state": {},
+      "name_en": "Chat Heads",
+      "name_es": "Cabezas en el chat",
+      "description_en": "Player heads next to chat messages.",
+      "description_es": "Cabezas de jugador junto a los mensajes del chat."
+    },
+    {
+      "id": "zoom",
+      "category": "controls",
+      "kind": "owned",
+      "default_enabled": true,
+      "state": { "fov": 30.0, "smooth": true },
+      "keybind": "key.keyboard.z",
+      "name_en": "Zoom",
+      "name_es": "Zoom",
+      "description_en": "Built-in hold-to-zoom on Z — smooth FOV ease, applied live.",
+      "description_es": "Zoom integrado al mantener Z — suavizado de FOV, aplicado en vivo."
+    },
+    {
+      "id": "macros",
+      "category": "controls",
+      "kind": "owned",
+      "default_enabled": true,
+      "state": {},
+      "name_en": "Macros",
+      "name_es": "Macros",
+      "description_en": "Keybind macros — run chat/command sequences.",
+      "description_es": "Atajos de teclado para chat y comandos."
+    }
+  ]
+}

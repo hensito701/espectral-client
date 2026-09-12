@@ -24,8 +24,18 @@ import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
 
 /**
- * Versioned config store for <instanceDir>/config/espectral-client.json (Contract A).
+ * Versioned config store for &lt;instanceDir&gt;/config/espectral-client.json (schema 2).
  * Reads, preserves unknown fields, and writes atomically.
+ *
+ * <p>Schema 2 adds the {@code suite.enabled} master switch (default true).
+ * {@link #isFeatureEnabled(String)} is the ONE choke point every owned feature
+ * reads through: suite gate AND stored flag. The stored flags are never
+ * rewritten by the gate, so flipping the master off and on restores exactly
+ * the previous feature states. Loading a v1 file migrates in memory (master
+ * defaults to true, stored flags untouched) and the next save writes schema 2.
+ *
+ * <p>Feature defaults come from {@link FeatureRegistry} — the canonical
+ * registry shipped in the jar — never from a second hardcoded list.
  */
 public final class ClientConfig {
 
@@ -33,8 +43,16 @@ public final class ClientConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final ClientConfig INSTANCE = new ClientConfig();
 
+    /** Current config schema; written on every save. */
+    public static final int SCHEMA_VERSION = 2;
+
     public static ClientConfig getInstance() {
         return INSTANCE;
+    }
+
+    /** Schema this code writes (2). */
+    public static int schemaVersion() {
+        return SCHEMA_VERSION;
     }
 
     public static final class FeatureConfig {
@@ -74,7 +92,9 @@ public final class ClientConfig {
         }
     }
 
-    private int schema = 1;
+    private int schema = SCHEMA_VERSION;
+    /** Master switch; gates every owned feature through {@link #isFeatureEnabled}. */
+    private boolean suiteEnabled = true;
     private final Map<String, FeatureConfig> features = new HashMap<>();
     private final List<MacroConfig> macros = new ArrayList<>();
     private JsonObject rawRoot = new JsonObject();
@@ -85,20 +105,16 @@ public final class ClientConfig {
         initDefaults();
     }
 
+    /**
+     * Seeds stored flags from the canonical registry. Unknown ids already in
+     * the map are dropped here; {@link #load()} re-applies the file's entries
+     * (including unknown ids) over these defaults.
+     */
     private void initDefaults() {
-        features.put("fullbright", new FeatureConfig(true, null));
-        features.put("nofog", new FeatureConfig(true, null));
-        features.put("zoom", new FeatureConfig(true, null));
-        features.put("macros", new FeatureConfig(true, null));
-        features.put("potionstatus", new FeatureConfig(false, null));
-        features.put("coords", new FeatureConfig(false, null));
-        features.put("healthstatus", new FeatureConfig(false, null));
-        features.put("armorstatus", new FeatureConfig(false, null));
-        features.put("fpsping", new FeatureConfig(false, null));
-        features.put("lowfire", new FeatureConfig(false, null));
-        features.put("clearwater", new FeatureConfig(false, null));
-        features.put("chatheads", new FeatureConfig(false, null));
-        features.put("skin3d", new FeatureConfig(false, null));
+        features.clear();
+        for (FeatureRegistry.Feature f : FeatureRegistry.all()) {
+            features.put(f.id(), new FeatureConfig(f.defaultEnabled(), null));
+        }
     }
 
     public static Path getConfigPath() {
@@ -123,6 +139,16 @@ public final class ClientConfig {
                     parsedSchema = rootObj.get("schema").getAsInt();
                 }
 
+                // Master switch; v1 files predate it and default to enabled
+                // without touching any stored feature flag.
+                boolean parsedSuite = true;
+                if (rootObj.has("suite") && rootObj.get("suite").isJsonObject()) {
+                    JsonObject suiteObj = rootObj.getAsJsonObject("suite");
+                    if (suiteObj.has("enabled") && suiteObj.get("enabled").isJsonPrimitive()
+                            && suiteObj.get("enabled").getAsJsonPrimitive().isBoolean()) {
+                        parsedSuite = suiteObj.get("enabled").getAsBoolean();
+                    }
+                }
                 Map<String, FeatureConfig> parsedFeatures = new HashMap<>();
                 initDefaults();
                 parsedFeatures.putAll(this.features);
@@ -134,7 +160,9 @@ public final class ClientConfig {
                         JsonElement val = entry.getValue();
                         if (val.isJsonObject()) {
                             JsonObject obj = val.getAsJsonObject();
-                            boolean en = obj.has("enabled") && obj.get("enabled").getAsBoolean();
+                            boolean en = obj.has("enabled") && obj.get("enabled").isJsonPrimitive()
+                                    && obj.get("enabled").getAsJsonPrimitive().isBoolean()
+                                    && obj.get("enabled").getAsBoolean();
                             parsedFeatures.put(id, new FeatureConfig(en, obj));
                         } else if (val.isJsonPrimitive() && val.getAsJsonPrimitive().isBoolean()) {
                             boolean en = val.getAsBoolean();
@@ -171,7 +199,9 @@ public final class ClientConfig {
                 }
 
                 this.rawRoot = rootObj;
-                this.schema = parsedSchema;
+                // Migrate in memory: anything older than schema 2 becomes 2.
+                this.schema = Math.max(parsedSchema, SCHEMA_VERSION);
+                this.suiteEnabled = parsedSuite;
                 this.features.clear();
                 this.features.putAll(parsedFeatures);
                 this.macros.clear();
@@ -219,7 +249,14 @@ public final class ClientConfig {
         try {
             Files.createDirectories(path.getParent());
 
-            rawRoot.addProperty("schema", schema);
+            rawRoot.addProperty("schema", SCHEMA_VERSION);
+            this.schema = SCHEMA_VERSION;
+
+            JsonObject suiteObj = rawRoot.has("suite") && rawRoot.get("suite").isJsonObject()
+                    ? rawRoot.getAsJsonObject("suite")
+                    : new JsonObject();
+            suiteObj.addProperty("enabled", suiteEnabled);
+            rawRoot.add("suite", suiteObj);
 
             JsonObject featObj = rawRoot.has("features") && rawRoot.get("features").isJsonObject()
                     ? rawRoot.getAsJsonObject("features")
@@ -267,9 +304,47 @@ public final class ClientConfig {
         }
     }
 
+    /** Master switch state. */
+    public synchronized boolean isSuiteEnabled() {
+        return suiteEnabled;
+    }
+
+    /** Sets the master switch and persists immediately; stored flags are untouched. */
+    public synchronized void setSuiteEnabled(boolean enabled) {
+        this.suiteEnabled = enabled;
+        save();
+    }
+
+    /**
+     * The ONE choke point every owned feature reads through: suite gate AND
+     * stored flag. With the master off everything evaluates false while the
+     * stored flags stay unchanged.
+     */
     public synchronized boolean isFeatureEnabled(String id) {
+        if (!suiteEnabled) return false;
+        return isFeatureEnabledRaw(id);
+    }
+
+    /** Stored flag with the master ignored (for UI state that must stay operable). */
+    public synchronized boolean isFeatureEnabledRaw(String id) {
         FeatureConfig fc = features.get(id);
         return fc != null && fc.enabled;
+    }
+
+    /**
+     * Resets every registry feature to its canonical default. The master
+     * switch and unknown (non-registry) feature ids are left untouched.
+     */
+    public synchronized void resetFeaturesToDefaults() {
+        for (FeatureRegistry.Feature f : FeatureRegistry.all()) {
+            FeatureConfig fc = features.get(f.id());
+            if (fc != null) {
+                fc.enabled = f.defaultEnabled();
+                fc.rawObject.addProperty("enabled", f.defaultEnabled());
+            } else {
+                features.put(f.id(), new FeatureConfig(f.defaultEnabled(), null));
+            }
+        }
     }
 
     public synchronized void setFeatureEnabled(String id, boolean enabled) {
