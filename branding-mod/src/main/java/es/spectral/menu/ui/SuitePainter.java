@@ -1,6 +1,8 @@
 package es.spectral.menu.ui;
 
-import net.minecraft.ChatFormatting;
+import java.util.ArrayList;
+import java.util.List;
+
 import es.spectral.menu.Compat;
 import es.spectral.menu.EspectralBrand;
 import net.minecraft.client.gui.Font;
@@ -66,10 +68,50 @@ public final class SuitePainter {
         int cy = (height - ch) / 2;
         Compat.uiFill(gfx, cx, cy, cx + cw, cy + ch, SuiteTheme.PANEL);
         Compat.uiOutline(gfx, cx, cy, cw, ch, SuiteTheme.PANEL_EDGE);
-        Compat.uiTextCentered(gfx, font, screen.getTitleText(), width / 2, cy + 14,
-                SuiteTheme.GOLD, false);
-        Compat.uiTextCentered(gfx, font, screen.getMessageText(), width / 2, cy + 34,
-                SuiteTheme.TEXT, false);
+        Compat.uiTextCenteredGradient(gfx, font, screen.getTitleText(), width / 2, cy + 14,
+                SuiteTheme.GOLD_GRADIENT_LEFT, SuiteTheme.GOLD_GRADIENT_RIGHT, false);
+        int my = cy + 34;
+        for (String line : screen.getMessageLines()) {
+            Compat.uiTextCentered(gfx, font, Component.literal(line), width / 2, my,
+                    SuiteTheme.TEXT, false);
+            my += LINE_H;
+        }
+    }
+
+    /**
+     * Greedy word wrap of a plain message to the given pixel width, measured
+     * with the live font. A single over-long word (e.g. the support URL)
+     * keeps its own line rather than overflowing the dialog. Shared and
+     * version-neutral: only {@code Font.width(String)} is used.
+     */
+    public static List<String> wrap(String text, Font font, int maxW) {
+        List<String> out = new ArrayList<>();
+        if (text == null || text.isEmpty() || font == null || maxW <= 0) {
+            out.add(text == null ? "" : text);
+            return out;
+        }
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            String candidate = line.length() == 0 ? word : line + " " + word;
+            if (font.width(candidate) <= maxW || line.length() == 0) {
+                line.setLength(0);
+                line.append(candidate);
+            } else {
+                out.add(line.toString());
+                line.setLength(0);
+                line.append(word);
+            }
+        }
+        if (line.length() > 0) {
+            out.add(line.toString());
+        }
+        if (out.isEmpty()) {
+            out.add("");
+        }
+        return out;
     }
 
     private static void paintPanel(Object gfx, int width, int height) {

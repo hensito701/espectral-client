@@ -1,10 +1,12 @@
 package es.spectral.menu.ui;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-
 import es.spectral.menu.ClientConfig;
 import es.spectral.menu.Compat;
 
@@ -95,6 +97,17 @@ public class SuiteConfirmScreen extends Screen {
         return Component.translatable(messageKey, messageArgs);
     }
 
+    /** Message wrapped to the dialog inner width; recomputed in init. */
+    private List<String> messageLines = new ArrayList<>();
+
+    /**
+     * Wrapped message lines for the lane painter. Never null; empty before
+     * the first init.
+     */
+    public List<String> getMessageLines() {
+        return messageLines;
+    }
+
     @Override
     protected void init() {
         super.init();
@@ -102,6 +115,11 @@ public class SuiteConfirmScreen extends Screen {
         // never stacks widgets.
         this.clearWidgets();
         int cw = panelWidth(this.width);
+        // Wrap the message to the dialog inner width so long text (reset
+        // explanation, support URL) stays inside the box instead of
+        // overflowing it. Recomputed here so resize re-wraps correctly.
+        this.messageLines = SuitePainter.wrap(getMessageText().getString(),
+                this.font, cw - 2 * SuiteTheme.PAD);
         int cx = (this.width - cw) / 2;
         int cy = (this.height - PANEL_H) / 2;
         int bw = (cw - 2 * SuiteTheme.PAD - SuiteTheme.GAP) / 2;
