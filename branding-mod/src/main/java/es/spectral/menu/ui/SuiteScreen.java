@@ -224,6 +224,10 @@ public class SuiteScreen extends Screen {
 
     @Override
     public void onClose() {
+        // Done/Esc persists exactly the toggled state: toggles already save
+        // on press, but this covers any in-memory change so the next open
+        // (which reloads from disk in init) can never revert it.
+        ClientConfig.getInstance().save();
         Minecraft minecraft = Minecraft.getInstance();
         if (parent != null && minecraft != null) {
             Compat.open(minecraft, parent);

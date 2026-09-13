@@ -334,6 +334,8 @@ public final class ClientConfig {
     /**
      * Resets every registry feature to its canonical default. The master
      * switch and unknown (non-registry) feature ids are left untouched.
+     * Persists immediately so a screen re-init (which reloads from disk)
+     * can never revert the reset.
      */
     public synchronized void resetFeaturesToDefaults() {
         for (FeatureRegistry.Feature f : FeatureRegistry.all()) {
@@ -345,8 +347,13 @@ public final class ClientConfig {
                 features.put(f.id(), new FeatureConfig(f.defaultEnabled(), null));
             }
         }
+        save();
     }
-
+    /**
+     * Stores one feature flag and persists immediately, exactly like the
+     * master switch: toggling from the Suite screen must survive Done/Esc
+     * (which reload from disk on the next open), not just live in memory.
+     */
     public synchronized void setFeatureEnabled(String id, boolean enabled) {
         FeatureConfig fc = features.get(id);
         if (fc != null) {
@@ -357,6 +364,7 @@ public final class ClientConfig {
             obj.addProperty("enabled", enabled);
             features.put(id, new FeatureConfig(enabled, obj));
         }
+        save();
     }
 
     public synchronized List<MacroConfig> getMacros() {
