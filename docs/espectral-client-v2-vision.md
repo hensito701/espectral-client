@@ -256,7 +256,7 @@ Make the client unmistakably Espectral while preserving the familiar Minecraft i
 - Preserve keyboard navigation, narration, resizing, and correct parent-screen behavior.
 - Add append-only **Espectral Client…** and **Apoyar** actions to the Esc screen without replacing vanilla pause behavior.
 - Keep Right Shift as the recovery shortcut.
-- Confirm before opening the canonical support URL: `https://espectral.tebex.io/`.
+- Confirm before opening the canonical support URL: `https://espectral.es/donaciones`.
 - Never append a Minecraft UUID, account token, or tracking query to the support URL.
 
 ### Suite master-toggle contract

@@ -40,7 +40,7 @@ public class SuiteScreen extends Screen {
     /** QA hook: {@code -Despectral.suite.search=<text>} prefills search. */
     public static final String QA_SEARCH_PROPERTY = "espectral.suite.search";
     /** Canonical support URL, quoted without parameters. */
-    public static final String SUPPORT_URL = "https://espectral.tebex.io/";
+    public static final String SUPPORT_URL = "https://espectral.es/donaciones";
 
     private static final Logger LOGGER = LoggerFactory.getLogger("espectral-menu");
     private static final String CATEGORY_ALL = "all";
