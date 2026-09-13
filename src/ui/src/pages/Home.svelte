@@ -10,7 +10,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { instances, servers, liveLaunches } from '../lib/stores';
-  import { getAccounts, avatarUrl } from '../lib/api';
+  import { getAccounts, avatarUrl, ApiError } from '../lib/api';
   import { renderMotd } from '../lib/motd';
   import type { Account } from '../lib/types';
   import { t } from '../lib/i18n.svelte';
@@ -119,6 +119,11 @@
       }
     } catch (e) {
       console.error('Failed to load accounts:', e);
+      // Engine may still be booting when the window first shows — retry while
+      // unreachable so the home rail isn't empty until a remount.
+      if (e instanceof ApiError && e.status === 0) {
+        setTimeout(() => void loadAccountsList(), 2_000);
+      }
     }
   }
 

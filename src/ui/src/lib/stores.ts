@@ -1,5 +1,6 @@
 import { get, writable } from 'svelte/store';
 import {
+  ApiError,
   getHealth,
   getLaunches,
   getLaunchLog,
@@ -20,9 +21,11 @@ export { theme };
    are unavailable here; consume in .svelte files via $store auto-subscription
    e.g. `$servers.value`, or `get(store)` in .ts).
    ========================================================================== */
-
 const SERVER_POLL_MS = 60_000;
 const MAX_LOG_LINES = 2000;
+/** Delay between retries for one-shot stores while the engine is unreachable. */
+const RETRY_MS = 2_000;
+
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -41,10 +44,25 @@ interface PollingState<T> {
   refresh: () => Promise<void>;
 }
 
+function isEngineUnreachable(err: unknown): boolean {
+  // ApiError status 0 = fetch never got a response (engine down/booting) or
+  // timed out — worth retrying. Any HTTP status means the engine answered
+  // and the error is real (4xx/5xx), so retrying would just spam it.
+  return err instanceof ApiError && err.status === 0;
+}
+
 function createPollingStore<T>(
   initial: T,
   fetcher: () => Promise<T>,
-  opts: { pollMs?: number; onError?: (err: unknown) => void; pauseWhenRunning?: boolean } = {},
+  opts: {
+    pollMs?: number;
+    onError?: (err: unknown) => void;
+    pauseWhenRunning?: boolean;
+    /** One-shot stores: keep retrying engine-unreachable failures until the
+        first success (the window can show before the engine finishes booting —
+        lib.rs shows it after a bounded 10 s wait either way). */
+    retryUntilReady?: boolean;
+  } = {},
 ) {
   const { subscribe, set, update } = writable<PollingState<T>>({
     value: initial,
@@ -53,8 +71,8 @@ function createPollingStore<T>(
     lastFetched: null,
     refresh: async () => {},
   });
-
   let timer: ReturnType<typeof setInterval> | null = null;
+  let ready = false;
 
   // Check whether any live launch is currently running — used to quiet
   // polling during boot (C13). Lazy reference to liveLaunches so the factory
@@ -75,10 +93,19 @@ function createPollingStore<T>(
     update((s) => ({ ...s, loading: true, error: null, refresh }));
     try {
       const value = await fetcher();
+      ready = true;
       set({ value, loading: false, error: null, lastFetched: Date.now(), refresh });
     } catch (err) {
       update((s) => ({ ...s, loading: false, error: errMsg(err), refresh }));
       opts.onError?.(err);
+      // One-shot stores: the Tauri window shows after a bounded 10 s engine
+      // wait whether or not health passed, so the first fetch can land while
+      // the engine is still booting. Without a retry the store stays in its
+      // error state until something remounts — which is why accounts and
+      // instances only appeared after navigating away and back.
+      if (opts.retryUntilReady && !ready && isEngineUnreachable(err)) {
+        setTimeout(() => void refresh(), RETRY_MS);
+      }
     }
   };
 
@@ -130,12 +157,12 @@ health.start();
 
 /* ---------- versions: version manifest (cached 6 h server-side) ---------- */
 
-export const versions = createPollingStore<VersionManifest | null>(null, getVersions);
+export const versions = createPollingStore<VersionManifest | null>(null, getVersions, { retryUntilReady: true });
 versions.start();
 
 /* ---------- instances ---------- */
 
-export const instances = createPollingStore<InstanceSummary[]>([], listInstances);
+export const instances = createPollingStore<InstanceSummary[]>([], listInstances, { retryUntilReady: true });
 instances.start();
 
 /* ---------- launch log: keyed ring buffers fed by SSE (launch-log / launch-exit) ----------
