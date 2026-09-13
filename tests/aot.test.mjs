@@ -17,6 +17,7 @@ import {
   cacheDirFor,
   metaPathFor,
   trainInstance,
+  waitForMarker,
 } from '../src/engine/aot.mjs';
 
 function sha256Hex(s) {
@@ -433,4 +434,69 @@ test('trainInstance without isBlocked still honors the opt-in flag', async () =>
   const r = await trainInstance({ name: 'optout-inst', aot_auto_train: false }, {});
   assert.equal(r.ok, false);
   assert.equal(r.skipped, true);
+});
+
+// ---------------------------------------------------------------------------
+// waitForMarker run-time veto — the duplicate-window race the pre-spawn
+// checks cannot see: a game launched after the trainer spawned must yield the
+// still-booting trainer instead of sharing the screen with it.
+// ---------------------------------------------------------------------------
+
+function tempLogFile() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'espectral-marker-test-'));
+  const log = path.join(tmp, 'latest.log');
+  fs.writeFileSync(log, '', 'utf8');
+  return { tmp, log };
+}
+
+test('waitForMarker aborts promptly when the veto fires mid-boot', async () => {
+  const { tmp, log } = tempLogFile();
+  try {
+    let veto = false;
+    setTimeout(() => { veto = true; }, 150);
+    const started = Date.now();
+    const r = await waitForMarker(log, 180_000, 600_000, () => veto);
+    assert.equal(r.ok, false);
+    assert.equal(r.aborted, true);
+    assert.ok(Date.now() - started < 10_000, 'veto must beat the minute-scale caps by orders of magnitude');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('waitForMarker lets a same-tick menu win over the veto', async () => {
+  const { tmp, log } = tempLogFile();
+  try {
+    // Marker lands before the first 100 ms tick while the veto is already
+    // true: the tick reads the marker first, so the run counts as a menu and
+    // the trainer closes through the normal graceful ladder instead.
+    setTimeout(() => fs.appendFileSync(log, 'blah\nSound engine started\n'), 50);
+    const r = await waitForMarker(log, 180_000, 600_000, () => true);
+    assert.equal(r.ok, true);
+    assert.equal(r.aborted, undefined);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('waitForMarker without a veto keeps the old timeout behavior', async () => {
+  const { tmp, log } = tempLogFile();
+  try {
+    const r = await waitForMarker(log, 200, 400);
+    assert.equal(r.ok, false);
+    assert.equal(r.aborted, undefined);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('waitForMarker survives a throwing veto', async () => {
+  const { tmp, log } = tempLogFile();
+  try {
+    setTimeout(() => fs.appendFileSync(log, 'Sound engine started\n'), 50);
+    const r = await waitForMarker(log, 180_000, 600_000, () => { throw new Error('veto boom'); });
+    assert.equal(r.ok, true);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
