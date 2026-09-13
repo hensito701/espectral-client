@@ -22,8 +22,9 @@ import es.spectral.menu.ui.SuiteScreen;
  * 26.2 only: inserts the Espectral Client and Apoyar buttons into the vanilla
  * Esc-screen button column, below the Options row and above Disconnect, at
  * the vanilla full-button width and position. Vanilla buttons are never
- * removed or reordered: the disconnect button is only shifted down to make
- * room, and every {@code init()} starts from a cleared widget list (vanilla
+ * removed, covered or reordered: the two new rows take the disconnect slot
+ * and the slot below it, and only the disconnect button moves (down two
+ * pitches). Every {@code init()} starts from a cleared widget list (vanilla
  * {@code rebuildWidgets}), so re-init/resize never stacks widgets.
  */
 @Mixin(PauseScreen.class)
@@ -56,11 +57,11 @@ public abstract class PauseScreenInitMixin extends Screen {
         this.addRenderableWidget(Button.builder(
                 Component.translatable("espectral.pause.client").withStyle(ChatFormatting.GOLD),
                 b -> Compat.open(minecraft, new SuiteScreen(this)))
-                .bounds(dx, dy - 2 * pitch, dw, dh).build());
+                .bounds(dx, dy, dw, dh).build());
         this.addRenderableWidget(Button.builder(
                 Component.translatable("espectral.pause.support").withStyle(ChatFormatting.GOLD),
                 b -> Compat.open(minecraft, SuiteConfirmScreen.support(this)))
-                .bounds(dx, dy - pitch, dw, dh).build());
+                .bounds(dx, dy + pitch, dw, dh).build());
         this.disconnectButton.setY(dy + 2 * pitch);
     }
 
