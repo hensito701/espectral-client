@@ -196,6 +196,29 @@ Sodium already provides the largest renderer improvement. A credible v2 must not
 - heap after garbage collection
 - fixed static, chunk-loading, entity-heavy, and shader scenes
 
+### Instrumentation and first baseline (2026-09-13)
+
+**Status: instrumentation shipped on 26.2; first hardware baseline recorded on the Fedora reference machine.**
+
+**Bench mode.** The branding mod (mc262 lane only) gains a file-gated bench engine: `<instance>/espectral-bench.json` present → armed; absent → fully inert (no hooks, no per-frame work, no I/O). The mod auto-creates or opens a named fixed-seed singleplayer world (no launcher/engine change needed — `progArgs` are hardcoded, so QuickPlay args were never an option), auto-skips the accessibility onboarding screen that otherwise blocks fresh gameDirs forever, executes scene steps (`tp`, `look`, `summon` via the integrated server's command stack at permission level 4, `wait_s`), and records per-frame times plus heap-after-GC (`GarbageCollectorMXBean` listener) into `<instance>/bench-metrics.jsonl` as `scene_start`/`scene_end`/`done` lines. Missing or un-creatable worlds emit a `world missing` line + `done` instead of hanging (30 s still-on-title detector).
+
+**Harness.** `bench-fps.py` (next to `bench-menu.py`, outside the repo) writes the scene config, launches via the engine API, tails the metrics file, gives the shader scene its own launch with `iris.properties` pre-written (`shaderPack`/`enableShaders` — verified against `IrisConfig.class`; `currentShader` does not exist), and appends `fps` records to `results.jsonl`. `check-envelope.py` implements the regression envelope below as pass/fail (exit 0/1) with `--record-baseline`; superseded records are excluded from baselines. `setup-bench-world.sh` restores the world snapshot (`world-snapshot.tar.gz`) and checks the shaderpack.
+
+**World + scenes.** `espectral-bench` save: seed 20260913, default terrain, survival/normal, spawn (−816, 76, −32). Scenes: `static`, `chunkload`, `entities` (20 cows — zombies burn in daylight), `shader` (MakeUp Ultra Fast 9.5e, Modrinth `izsIPI7a`, 26.2-compatible).
+
+**First baseline (radeonsi hardware GL, 30 s scenes, single pass).** The box's amdgpu was never bound at boot (simple-framebuffer held the PCI device; module present in initramfs but never probed) — every earlier run rendered on **llvmpipe**. Fixed via `modprobe amdgpu` + `/etc/modules-load.d/amdgpu.conf`; the llvmpipe record is kept in `results.jsonl` marked superseded. On hardware:
+
+| Scene | Frames | p50 | p95 | p99 | >50 ms | >100 ms | Heap after GC |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| static | 1 766 | 16.66 ms | 17.23 ms | 29.66 ms | 3 | 0 | 547 MB |
+| chunkload | 1 165 | 33.33 ms | 33.34 ms | 33.34 ms | 0 | 0 | 547 MB |
+| entities | 900 | 33.33 ms | 33.34 ms | 33.34 ms | 0 | 0 | 542 MB |
+| shader | 1 780 | 16.68 ms | 17.08 ms | 25.17 ms | 2 | 0 | 549 MB |
+
+Static and shader hold a clean 60 fps; chunkload and entities sit at a locked 33.3 ms — a frame-pacing characteristic (likely vsync at a halved interval under load), not a tail problem: p50/p95/p99 are nearly identical inside those scenes. Baseline stored in `bench-baseline.json`; every later Workstream 2 change now has a pass/fail gate.
+
+**Engine fix found by the swarm.** Contract C gave non-active-account launches `nativesDir = profiles/<uuid>/natives`, but `installLibraries` only ever extracts to the instance natives dir — every such launch died on `liblwjgl.so`. Profile launches now share the instance natives dir (`launch.mjs`; test updated).
+
 ### Product rules
 
 1. **Balanced means today's visual quality.** No silent reductions to render distance, particles, shaders, graphics, or texture quality.
@@ -455,14 +478,14 @@ Stop-ship decisions before network implementation:
 - Decide multi-account, gifting, offline-account, Boost expiry, role-loss, chargeback, and revocation policies.
 - Approve Spanish/English consent, retention, deletion, and minors treatment.
 - Assign backend, signing-key, catalog, privacy, and operational owners.
-- Capture missing in-game frame-time baselines.
+- Capture missing in-game frame-time baselines. *(done 2026-09-13 — four locked scenes baselined on radeonsi hardware; see Workstream 2 "Instrumentation and first baseline")*
 - Freeze additive/versioned schemas for Suite config, `/api/v2`, entitlement, catalog, presence, and telemetry.
 - Establish beta/stable feature flags and rollback behavior.
 
 ### Phase 1: Truthful, valuable core
 
 - Automatically apply valid AOT caches to normal launches and expose proof. *(done 2026-09-11 — see Workstream 1 "Measured outcome")*
-- Add locked performance scenes and instrumentation.
+- Add locked performance scenes and instrumentation. *(done 2026-09-13 — file-gated bench engine in the mod, bench-fps.py harness, check-envelope.py regression gate, espectral-bench world + MakeUp shaderpack; see Workstream 2)*
 - Migrate to schema 2 and canonical feature defaults. *(done 2026-09-12 — schema 2 with `suite.enabled`, one canonical registry for launcher + mod, `nofog` resolved to off)*
 - Build the title, Esc, Suite, master-toggle, recovery, and Apoyar experience. *(done 2026-09-12 on 26.2 — see Workstream 3 "Measured outcome"; the Esc additions and the 1.21.11 lane still need a rig with a world / a 1.21.11 toolchain)*
 - Put Fedora artifacts into CI with signed install, update, and rollback paths.
