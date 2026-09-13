@@ -416,10 +416,12 @@ export function applyLaunchPreferences(instance, gameDir = null) {
  *   unless dryRun); the per-account profiles split is skipped and natives
  *   stay at the instance default.
  * - Otherwise (Contract C): a non-active account gets its own
- *   <instanceDir>/profiles/<uuid>/ for BOTH gameDir and nativesDir so
- *   concurrent launches under different accounts don't collide on
- *   options.txt/logs. mods/, libraries, assets, version json stay shared
- *   (read-only at boot). Active-account launches keep the instance dir.
+ *   <instanceDir>/profiles/<uuid>/ gameDir so concurrent launches under
+ *   different accounts don't collide on options.txt/logs. Natives stay at
+ *   the instance dir for every launch: installLibraries extracts them
+ *   there once and they are read-only at runtime, so a per-profile
+ *   nativesDir would point -Djava.library.path at an empty dir.
+ *   Active-account launches keep the instance dir as gameDir.
  */
 export function selectGameDir(instance, launchAccount, { dryRun = false, warnings = null } = {}) {
   const base = resolver.instanceDir(instance.name);
@@ -447,7 +449,7 @@ export function selectGameDir(instance, launchAccount, { dryRun = false, warning
         warnings?.push(`could not create profile dir: ${e.message}`);
       }
     }
-    return { gameDir: profileDir, nativesDir: path.join(profileDir, 'natives') };
+    return { gameDir: profileDir, nativesDir: resolver.instanceNativesDir(instance.name) };
   }
   return { gameDir: base, nativesDir: resolver.instanceNativesDir(instance.name) };
 }

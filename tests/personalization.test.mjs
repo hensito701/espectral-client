@@ -236,5 +236,7 @@ test('selectGameDir: default split unchanged (active -> base, other -> profile)'
   const alt = { username: 'LaunchAlt', uuid: '11111111-2222-3333-4444-555555555555' };
   const split = launch.selectGameDir(inst, alt, { dryRun: true });
   assert.equal(split.gameDir, path.join(resolver.instanceDir('split-inst'), 'profiles', alt.uuid));
-  assert.equal(split.nativesDir, path.join(split.gameDir, 'natives'));
+  // Natives are shared read-only at the instance dir — installLibraries only
+  // ever extracts there, so a per-profile nativesDir would be empty.
+  assert.equal(split.nativesDir, resolver.instanceNativesDir('split-inst'));
 });
