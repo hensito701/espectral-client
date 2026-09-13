@@ -346,10 +346,27 @@ export async function register(app) {
     return { client_id: id };
   });
   // POST /api/accounts/microsoft/device-code -> { flow_id, user_code, verification_uri, ... }
+  // When Microsoft returns verification_uri_complete (code embedded), the
+  // engine opens it in the system browser so the user lands on a pre-filled
+  // sign-in — the on-screen code stays as fallback for a missing opener or
+  // a tenant that omits the field.
   app.post('/api/accounts/microsoft/device-code', async () => {
     const msa = await import('../msauth.mjs');
     const flow = await msa.startDeviceLogin();
     msaFlows.set(flow.flow_id, { device_code: flow.device_code ?? flow.flow_id, interval: flow.interval });
+    if (flow.verification_uri_complete) {
+      try {
+        const [cmd, args] =
+          process.platform === 'win32'
+            ? ['cmd', ['/c', 'start', '', flow.verification_uri_complete]]
+            : process.platform === 'darwin'
+              ? ['open', [flow.verification_uri_complete]]
+              : ['xdg-open', [flow.verification_uri_complete]];
+        spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      } catch {
+        /* no opener — the UI still shows the code + plain link */
+      }
+    }
     return flow;
   });
 

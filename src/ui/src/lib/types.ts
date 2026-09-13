@@ -75,6 +75,8 @@ export interface MsDeviceFlow {
   flow_id: string;
   user_code: string;
   verification_uri: string;
+  /** RFC 8628 verification URI with the code embedded; null when the tenant omits it. */
+  verification_uri_complete: string | null;
   expires_in: number;
   interval: number;
 }
