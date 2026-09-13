@@ -20,6 +20,9 @@ public final class SuiteTheme {
     public static final int GOLD = 0xFFD9A93B;
     public static final int GOLD_BRIGHT = 0xFFFFD873;
     public static final int GOLD_HAIRLINE = 0x40D9A93B;
+    /** Horizontal gold gradient: light left edge, deep right edge. */
+    public static final int GOLD_GRADIENT_LEFT = 0xFFFFE3A1;
+    public static final int GOLD_GRADIENT_RIGHT = 0xFFC47B1E;
     public static final int TEXT = 0xFFE8E6E1;
     public static final int TEXT_DIM = 0xFF9AA0A8;
     public static final int OK = 0xFF7FD58B;
@@ -54,15 +57,33 @@ public final class SuiteTheme {
         return (screenWidth - panelWidth(screenWidth)) / 2;
     }
 
-    // Title/Esc action row: one right-aligned row at the top-right corner
-    // (y = 6, 6 px margin), widths 120 + 100 with a 4 px gap.
+    /**
+     * Linear interpolation between two opaque ARGB colors ({@code t} 0..1).
+     * Pure arithmetic for the painter's per-character gold gradient.
+     */
+    public static int lerpArgb(int left, int right, float t) {
+        float clamped = Math.min(1.0F, Math.max(0.0F, t));
+        int a = Math.round(((left >>> 24) & 0xFF) * (1.0F - clamped)
+                + ((right >>> 24) & 0xFF) * clamped);
+        int r = Math.round(((left >>> 16) & 0xFF) * (1.0F - clamped)
+                + ((right >>> 16) & 0xFF) * clamped);
+        int g = Math.round(((left >>> 8) & 0xFF) * (1.0F - clamped)
+                + ((right >>> 8) & 0xFF) * clamped);
+        int b = Math.round((left & 0xFF) * (1.0F - clamped)
+                + (right & 0xFF) * clamped);
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    // Title action row: one right-aligned row at the top-right corner
+    // (y = 6, 6 px margin), widths 120 + 100 with a 4 px gap. (The Esc
+    // screen buttons live in the vanilla button column instead.)
     public static final int ACTION_Y = 6;
     public static final int ACTION_MARGIN = 6;
     public static final int ACTION_CLIENT_W = 120;
     public static final int ACTION_SUPPORT_W = 100;
     public static final int ACTION_ROW_W = ACTION_CLIENT_W + GAP + ACTION_SUPPORT_W;
 
-    /** Left edge of the right-aligned title/Esc action row. */
+    /** Left edge of the right-aligned title action row. */
     public static int actionRowX(int screenWidth) {
         return Math.max(ACTION_MARGIN, screenWidth - ACTION_MARGIN - ACTION_ROW_W);
     }

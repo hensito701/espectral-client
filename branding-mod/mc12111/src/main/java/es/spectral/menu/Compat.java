@@ -159,6 +159,57 @@ public final class Compat {
         }
         graphics.drawString(font, text, left, y, argb, false);
     }
+    /**
+     * Suite painter primitive: left-aligned text with a horizontal
+     * per-character gradient (light left, deep right). Drawn one code point
+     * at a time in the lane's own {@code GuiGraphics} idiom; anything else
+     * is ignored. Plain {@code Component.getString()} text: gold labels carry
+     * no inline formatting, so no style runs are lost.
+     */
+    public static void uiTextGradient(Object gfx, net.minecraft.client.gui.Font font,
+            net.minecraft.network.chat.Component text, int x, int y,
+            int argbLeft, int argbRight, boolean shadow) {
+        if (!(gfx instanceof net.minecraft.client.gui.GuiGraphics graphics)
+                || font == null || text == null) {
+            return;
+        }
+        String s = text.getString();
+        int total = font.width(s);
+        if (total <= 0) {
+            return;
+        }
+        int cx = x;
+        for (int i = 0; i < s.length();) {
+            int cp = s.codePointAt(i);
+            String ch = new String(Character.toChars(cp));
+            int w = font.width(ch);
+            float t = (float) (cx - x + w / 2) / (float) total;
+            int color = es.spectral.menu.ui.SuiteTheme.lerpArgb(argbLeft, argbRight, t);
+            graphics.drawString(font, net.minecraft.network.chat.Component.literal(ch),
+                    cx, y, color, shadow);
+            cx += w;
+            i += Character.charCount(cp);
+        }
+    }
+
+    /**
+     * Suite painter primitive: gradient text centred on {@code cx}. Same
+     * per-character interpolation as {@link #uiTextGradient}; the shadow, if
+     * any, is drawn per character by the graphics object.
+     */
+    public static void uiTextCenteredGradient(Object gfx, net.minecraft.client.gui.Font font,
+            net.minecraft.network.chat.Component text, int cx, int y,
+            int argbLeft, int argbRight, boolean shadow) {
+        if (gfx == null || font == null || text == null) {
+            return;
+        }
+        int total = font.width(text.getString());
+        if (total <= 0) {
+            return;
+        }
+        uiTextGradient(gfx, font, text, cx - total / 2, y, argbLeft, argbRight, shadow);
+    }
+
 
     /**
      * Opens the canonical support URL in the system browser. Called only

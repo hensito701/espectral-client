@@ -11,10 +11,17 @@ import net.minecraft.network.chat.Component;
  * wordmark. Pure drawing through {@code Compat.ui*} with an opaque graphics
  * object, so this shared class never names a version-specific graphics type;
  * each lane's background hook calls it with its own extractor.
+ *
+ * <p>Gold labels (title wordmark, confirm-dialog title) render as a
+ * horizontal light-to-deep gradient, interpolated per character in
+ * {@link Compat} — never flat gold. Body text stays flat for readability.
  */
 public final class SuitePainter {
 
     private SuitePainter() {}
+
+    /** Wrapped message line height in the confirm dialog. */
+    private static final int LINE_H = 10;
 
     /**
      * Title-screen backdrop: a full-width dark glass strip across the top
@@ -28,9 +35,10 @@ public final class SuitePainter {
         if (height < bandH + 40) return;
         Compat.uiFill(gfx, 0, 0, width, bandH, SuiteTheme.PANEL);
         Compat.uiFill(gfx, 0, bandH, width, bandH + 1, SuiteTheme.GOLD_HAIRLINE);
-        Compat.uiText(gfx, font,
-                Component.translatable("espectral.suite.title").withStyle(ChatFormatting.GOLD),
-                8, SuiteTheme.ACTION_Y + 1, SuiteTheme.GOLD, false);
+        Compat.uiTextGradient(gfx, font,
+                Component.translatable("espectral.suite.title"),
+                8, SuiteTheme.ACTION_Y + 1,
+                SuiteTheme.GOLD_GRADIENT_LEFT, SuiteTheme.GOLD_GRADIENT_RIGHT, false);
         String version = EspectralBrand.modVersion();
         if (version != null && !version.isBlank()) {
             Compat.uiText(gfx, font, Component.literal("v" + version.trim()),
