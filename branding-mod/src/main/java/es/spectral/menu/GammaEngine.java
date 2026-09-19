@@ -3,6 +3,7 @@ package es.spectral.menu;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import es.spectral.menu.mixin.OptionsAccessor.OptionValueAccessor;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -60,6 +61,7 @@ public final class GammaEngine {
             capturedGamma = minecraft.options.gamma().get();
             LOGGER.info("fullbright: gamma {} → {}", capturedGamma, FULLBRIGHT_GAMMA);
         }
-        minecraft.options.gamma().set(FULLBRIGHT_GAMMA);
+        ((OptionValueAccessor<Double>) (Object) minecraft.options.gamma())
+                .espectral$setValue(FULLBRIGHT_GAMMA);
     }
 }

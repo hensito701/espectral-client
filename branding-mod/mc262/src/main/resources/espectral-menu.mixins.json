@@ -16,11 +16,12 @@
     "WaterFogMixin",
     "FogRendererAccessor",
     "OptionsAccessor",
-    "LivingEntityRendererAccessor",
+    "OptionsAccessor$OptionValueAccessor",
     "ChatListenerMixin",
     "ChatComponentMixin",
     "DrawingBackgroundGraphicsAccessMixin",
     "ChatDisconnectMixin",
+    "LivingEntityRendererAccessor",
     "AvatarRendererMixin",
     "LivingEntityRendererSubmitMixin",
     "TextureManagerMixin"

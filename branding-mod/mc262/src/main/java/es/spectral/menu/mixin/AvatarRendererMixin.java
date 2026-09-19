@@ -40,6 +40,7 @@ import net.minecraft.resources.Identifier;
 public abstract class AvatarRendererMixin implements Skin3dSwapHost {
 
     /** Vanilla model saved on swap; {@code null} when no swap is active. */
+
     @Unique
     private EntityModel<?> espectral$voxelBackup;
 

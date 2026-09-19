@@ -1,5 +1,10 @@
 pluginManagement {
     repositories {
+        // Local marker for the fabric-loom-remap plugin id (a stub POM that
+        // delegates to net.fabricmc:fabric-loom). maven.fabricmc.net is
+        // unreachable from some workstations; keep this first so plugin
+        // resolution never depends on it.
+        maven { url new File(settingsDir, 'gradle/local-plugins').toURI() }
         gradlePluginPortal()
         maven { url 'https://maven.fabricmc.net/' }
     }
