@@ -54,17 +54,40 @@ public final class Compat {
         if (minecraft.options.hideGui) return;
         net.minecraft.client.gui.Font font = minecraft.font;
         if (font == null) return;
-        int y = 4;
-        for (String line : HudEngine.getInstance().leftLines(minecraft)) {
-            graphics.drawString(font, line, 4, y, 0xFFFFFF, true);
-            y += 10;
+        int guiW = graphics.guiWidth();
+        int guiH = graphics.guiHeight();
+        for (HudEngine.Block block : HudEngine.getInstance().blocks(minecraft)) {
+            int w = blockWidth(font, block);
+            int h = blockHeight(block);
+            int[] pos = HudLayout.pos(block.id, guiW, guiH, w, h);
+            int x = pos[0], y = pos[1];
+            // 50% black backing box, then opaque white text.
+            graphics.fill(x, y, x + w, y + h, 0x80000000);
+            int ty = y + HudLayout.PAD;
+            for (String line : block.lines) {
+                graphics.drawString(font, line, x + HudLayout.PAD, ty, 0xFFFFFFFF, true);
+                ty += HudLayout.LINE_PITCH;
+            }
         }
-        int width = graphics.guiWidth();
-        int rightY = 4;
-        for (String line : HudEngine.getInstance().rightLines(minecraft)) {
-            graphics.drawString(font, line, width - font.width(line) - 4, rightY, 0xFFFFFF, true);
-            rightY += 10;
+    }
+
+    /** Widest line width + padding — the overlay box width. */
+    private static int blockWidth(net.minecraft.client.gui.Font font, HudEngine.Block block) {
+        int w = 0;
+        for (String line : block.lines) {
+            w = Math.max(w, font.width(line));
         }
+        return w + HudLayout.PAD * 2;
+    }
+
+    /** Line count × pitch + padding — the overlay box height. */
+    private static int blockHeight(HudEngine.Block block) {
+        return block.lines.size() * HudLayout.LINE_PITCH - (HudLayout.LINE_PITCH - 9) + HudLayout.PAD * 2;
+    }
+
+    /** Opens the drag-to-move HUD overlay editor. */
+    public static void openHudEditor(Minecraft minecraft, Screen parent) {
+        open(minecraft, new es.spectral.menu.ui.HudEditScreen(parent));
     }
 
     /**

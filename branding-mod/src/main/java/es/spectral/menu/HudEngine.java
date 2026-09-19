@@ -70,50 +70,69 @@ public final class HudEngine {
     }
 
     /**
-     * Top-left stack: fpsping, coords, healthstatus, armorstatus (only the
-     * enabled ones, in that order). Empty when there is no player/world.
+     * One movable overlay block: a feature id plus its text lines. The draw
+     * side measures the widest line for the box width and stacks the lines at
+     * {@link HudLayout#LINE_PITCH}.
      */
-    public List<String> leftLines(Minecraft minecraft) {
+    public static final class Block {
+        public final String id;
+        public final List<String> lines;
+
+        public Block(String id, List<String> lines) {
+            this.id = id;
+            this.lines = lines;
+        }
+    }
+
+    /**
+     * Enabled overlay blocks in draw order: fpsping, coords, healthstatus,
+     * armorstatus, then potionstatus. Each block carries only its own lines so
+     * it can be positioned independently. Empty blocks (e.g. armor with no
+     * gear, potions with none active) are omitted so they never reserve space.
+     * Returns empty when there is no player/world.
+     */
+    public List<Block> blocks(Minecraft minecraft) {
         if (minecraft == null || minecraft.player == null || minecraft.level == null) {
             return Collections.emptyList();
         }
-        List<String> lines = new ArrayList<>(8);
+        List<Block> out = new ArrayList<>(5);
         if (isEnabled("fpsping")) {
-            lines.add(fpsPingLine(minecraft));
+            out.add(new Block("fpsping", List.of(fpsPingLine(minecraft))));
         }
         if (isEnabled("coords")) {
-            lines.add(String.format(Locale.ROOT, "XYZ: %.1f / %.1f / %.1f [%s]",
+            out.add(new Block("coords", List.of(String.format(Locale.ROOT, "XYZ: %.1f / %.1f / %.1f [%s]",
                     minecraft.player.getX(), minecraft.player.getY(), minecraft.player.getZ(),
-                    facingName(minecraft)));
+                    facingName(minecraft)))));
         }
         if (isEnabled("healthstatus")) {
             float health = minecraft.player.getHealth();
             float max = minecraft.player.getMaxHealth();
             float absorption = minecraft.player.getAbsorptionAmount();
-            if (absorption > 0.05f) {
-                lines.add(String.format(Locale.ROOT, "Salud: %.1f/%.1f (+%.1f)", health, max, absorption));
-            } else {
-                lines.add(String.format(Locale.ROOT, "Salud: %.1f/%.1f", health, max));
-            }
+            String line = absorption > 0.05f
+                    ? String.format(Locale.ROOT, "Salud: %.1f/%.1f (+%.1f)", health, max, absorption)
+                    : String.format(Locale.ROOT, "Salud: %.1f/%.1f", health, max);
+            out.add(new Block("healthstatus", List.of(line)));
         }
         if (isEnabled("armorstatus")) {
-            lines.addAll(armorLines(minecraft));
+            List<String> armor = armorLines(minecraft);
+            if (!armor.isEmpty()) {
+                out.add(new Block("armorstatus", armor));
+            }
         }
-        return lines;
+        if (isEnabled("potionstatus")) {
+            List<String> potions = potionLines(minecraft);
+            if (!potions.isEmpty()) {
+                out.add(new Block("potionstatus", potions));
+            }
+        }
+        return out;
     }
 
     /**
-     * Top-right column: one line per active potion effect, each with name,
-     * amplifier level and remaining duration. Empty when the feature is off,
-     * when there is no player/world, or when no effects are active.
+     * One line per active potion effect, each with name, amplifier level and
+     * remaining duration. Empty when no effects are active.
      */
-    public List<String> rightLines(Minecraft minecraft) {
-        if (minecraft == null || minecraft.player == null || minecraft.level == null) {
-            return Collections.emptyList();
-        }
-        if (!isEnabled("potionstatus")) {
-            return Collections.emptyList();
-        }
+    private static List<String> potionLines(Minecraft minecraft) {
         List<String> lines = new ArrayList<>();
         for (MobEffectInstance instance : minecraft.player.getActiveEffects()) {
             String name = instance.getEffect().value().getDisplayName().getString();

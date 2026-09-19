@@ -367,6 +367,46 @@ public final class ClientConfig {
         save();
     }
 
+    /**
+     * Stored pixel position for a HUD overlay block, or {@code null} when the
+     * feature still uses its default anchor. Positions live inside the
+     * feature's raw object ({@code features.<id>.x/y}) so no schema bump is
+     * needed and a reset-to-defaults leaves them intact.
+     */
+    public synchronized int[] getFeaturePos(String id) {
+        FeatureConfig fc = features.get(id);
+        if (fc == null) return null;
+        JsonObject o = fc.rawObject;
+        if (!o.has("x") || !o.has("y")) return null;
+        try {
+            return new int[] { o.get("x").getAsInt(), o.get("y").getAsInt() };
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Persists a dragged overlay position; saves immediately like toggles. */
+    public synchronized void setFeaturePos(String id, int x, int y) {
+        FeatureConfig fc = features.get(id);
+        if (fc == null) {
+            fc = new FeatureConfig(false, null);
+            features.put(id, fc);
+        }
+        fc.rawObject.addProperty("x", x);
+        fc.rawObject.addProperty("y", y);
+        save();
+    }
+
+    /** Clears a dragged position so the overlay returns to its default anchor. */
+    public synchronized void clearFeaturePos(String id) {
+        FeatureConfig fc = features.get(id);
+        if (fc != null) {
+            fc.rawObject.remove("x");
+            fc.rawObject.remove("y");
+            save();
+        }
+    }
+
     public synchronized List<MacroConfig> getMacros() {
         return Collections.unmodifiableList(new ArrayList<>(macros));
     }

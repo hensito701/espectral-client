@@ -203,20 +203,25 @@ public class SuiteScreen extends Screen {
                 Component.empty(), this.font);
         this.addRenderableWidget(this.pagerLabel);
 
-        int footerW = (innerW - 2 * SuiteTheme.GAP) / 3;
+        int footerW = (innerW - 3 * SuiteTheme.GAP) / 4;
+        this.addRenderableWidget(Button.builder(
+                Component.translatable("espectral.suite.button.move"),
+                b -> Compat.openHudEditor(Minecraft.getInstance(), this))
+                .bounds(innerX, footerY, footerW, SuiteTheme.FOOTER_H).build());
         this.addRenderableWidget(Button.builder(
                 Component.translatable("espectral.suite.button.reset"),
                 b -> Compat.open(Minecraft.getInstance(), SuiteConfirmScreen.reset(this)))
-                .bounds(innerX, footerY, footerW, SuiteTheme.FOOTER_H).build());
+                .bounds(innerX + footerW + SuiteTheme.GAP, footerY,
+                        footerW, SuiteTheme.FOOTER_H).build());
         this.addRenderableWidget(Button.builder(
                 Component.translatable("espectral.suite.button.support"),
                 b -> Compat.open(Minecraft.getInstance(), SuiteConfirmScreen.support(this)))
-                .bounds(innerX + footerW + SuiteTheme.GAP, footerY,
+                .bounds(innerX + 2 * (footerW + SuiteTheme.GAP), footerY,
                         footerW, SuiteTheme.FOOTER_H).build());
         this.addRenderableWidget(Button.builder(
                 Component.translatable("espectral.suite.button.done"),
                 b -> this.onClose())
-                .bounds(innerX + 2 * (footerW + SuiteTheme.GAP), footerY,
+                .bounds(innerX + 3 * (footerW + SuiteTheme.GAP), footerY,
                         footerW, SuiteTheme.FOOTER_H).build());
 
         this.refreshList();
