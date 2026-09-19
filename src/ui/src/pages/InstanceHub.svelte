@@ -111,6 +111,8 @@
   // Client Suite state
   let clientInfo = $state<ClientInfo | null>(null);
   let togglingFeature = $state('');
+  // Suite master switch (schema 2, absent on old payloads defaults to true).
+  const suiteEnabled = $derived(clientInfo?.config.suite?.enabled ?? true);
 
   // Servers tab state
   let servers = $state<ServerEntry[]>([]);
@@ -1343,16 +1345,23 @@
             <!-- Espectral Client Suite Toggles Card -->
             {#if clientInfo?.supported && clientInfo?.registry?.length}
               <GlassCard title={t('instance.clientTitle')} subtitle={t('instance.clientSubtitle')} elevation="md">
+                {#if !suiteEnabled}
+                  <div class="suite-off-chip" role="status">
+                    <span class="suite-off-chip__dot"></span>
+                    <span>{t('client.suiteDisabled')}</span>
+                  </div>
+                {/if}
                 <div class="client-features-list">
                   {#each clientInfo.registry as feat}
                     {@const isEnabled = clientInfo.config?.features?.[feat.id]?.enabled ?? feat.defaultEnabled}
-                    <div class="client-feature-row">
+                    <div class="client-feature-row" class:client-feature-row--suppressed={!suiteEnabled}>
                       <div class="feature-meta">
                         <span class="feature-name">{feat.name}</span>
                         <span class="feature-desc">{feat.description}</span>
                         {#if feat.keybind}
                           <span class="feature-keybind">{t('instance.keybind', { key: feat.keybind })}</span>
                         {/if}
+                        <span class="feature-state">{isEnabled ? t('instance.featureEnabled') : t('instance.featureDisabled')}{!suiteEnabled ? ` · ${t('client.suppressed')}` : ''}</span>
                       </div>
                       <button
                         type="button"
@@ -2318,6 +2327,37 @@
   }
 
   .feature-desc {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--muted, #8e9eb8);
+  }
+
+  /* Suite master state (compact chip + suppressed rows) */
+  .suite-off-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.65rem;
+    margin-bottom: 0.65rem;
+    border-radius: var(--radius-md, 0.5rem);
+    background: rgba(var(--accent-gold-rgb, 217, 169, 59), 0.1);
+    border: 1px solid rgba(var(--accent-gold-rgb, 217, 169, 59), 0.4);
+    color: var(--accent-gold, #d9a93b);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .suite-off-chip__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-gold, #d9a93b);
+  }
+
+  .client-feature-row--suppressed {
+    opacity: 0.75;
+  }
+
+  .feature-state {
     font-size: var(--text-xs, 0.75rem);
     color: var(--muted, #8e9eb8);
   }

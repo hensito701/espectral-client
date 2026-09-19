@@ -161,19 +161,40 @@ export function latestAotProofLog(instance) {
 }
 
 /**
+ * First JVM AOT refusal line in an -Xlog:aot log, or null. A refusal is a
+ * [warning][aot]/[error][aot] record (e.g. 'Unable to map shared spaces',
+ * 'This file is not the one used while building the shared archive file') —
+ * the JVM's own statement that the cache was NOT used. Truncated to keep the
+ * payload small; the full line stays in the log file.
+ */
+export function aotRefusalLine(text) {
+  const line = String(text ?? '')
+    .split('\n')
+    .find((l) => /\[(warning|error)\]\[aot\]/.test(l));
+  return line ? line.trim().slice(0, 300) : null;
+}
+
+/**
  * Proof object: parse the newest aot-<pid>.log for
  * 'Using AOT-linked classes: true'. Null when no AOT boot log exists.
+ * `refusal` carries the JVM's own refusal line when the cache was passed but
+ * not used, so the UI can explain a cache that silently did nothing.
  */
 export function aotProof(instance) {
   const logPath = latestAotProofLog(instance);
   if (!logPath) return null;
-  let using = false;
+  let text = '';
   try {
-    using = /Using AOT-linked classes: true/.test(fs.readFileSync(logPath, 'utf8'));
+    text = fs.readFileSync(logPath, 'utf8');
   } catch {
     /* log may be locked mid-write; report false */
   }
-  return { log_path: logPath, using_aot_linked_classes: using };
+  const using = /Using AOT-linked classes: true/.test(text);
+  return {
+    log_path: logPath,
+    using_aot_linked_classes: using,
+    refusal: using ? null : aotRefusalLine(text),
+  };
 }
 
 /**
@@ -336,8 +357,13 @@ function closeWindowGracefully(pid) {
  * growth): cold-path pre-log work (asset verification, natives extraction —
  * minutes on a big instance) is pipeline latency, not game-init time, and must
  * not burn the init budget. `hardTimeoutMs` bounds the total wait regardless,
- * so a silent JVM can never wedge the training queue slot. */
-function waitForMarker(logFile, gameInitTimeoutMs = 180_000, hardTimeoutMs = 600_000) {
+ * so a silent JVM can never wedge the training queue slot.
+ * `shouldAbort`, when provided, is polled every tick AFTER the marker read, so
+ * a menu reached on the same tick still counts: the trainer then closes itself
+ * through the normal graceful ladder instead of being killed. A veto resolves
+ * `{ ok: false, aborted: true }` — the caller drops the pre-menu trainer JVM,
+ * which has produced no cache yet and is safe to kill. Exported for tests. */
+export function waitForMarker(logFile, gameInitTimeoutMs = 180_000, hardTimeoutMs = 600_000, shouldAbort = null) {
   return new Promise((resolve) => {
     let seenSize = fs.existsSync(logFile) ? fs.statSync(logFile).size : -1;
     const started = Date.now();
@@ -379,6 +405,18 @@ function waitForMarker(logFile, gameInitTimeoutMs = 180_000, hardTimeoutMs = 600
       } catch {
         /* log locked mid-write; retry */
       }
+      // Veto poll: a game launched mid-training makes this trainer the
+      // duplicate window — yield so at most one game window stays up. Runs
+      // after the marker read (even when the log is absent/locked) so a
+      // same-tick menu still wins and closes through the normal ladder.
+      try {
+        if (typeof shouldAbort === 'function' && shouldAbort()) {
+          clearInterval(iv);
+          resolve({ ok: false, aborted: true, at: Date.now() });
+        }
+      } catch {
+        /* a throwing veto must never wedge the training slot */
+      }
     }, 100);
   });
 }
@@ -419,8 +457,10 @@ export async function trainInstance(instance, { key = null, onProgress, force = 
   // the same latest.log/natives). When the caller reports the instance busy
   // (relaunch during the resolve phase), abort BEFORE spawning: the new game's
   // own exit re-queues, so the cache still converges with one window at a time.
-  // Checked twice: here (skip the minutes-long resolve) and right before
-  // spawn (close the relaunch-during-resolve race).
+  // Checked three times: here (skip the minutes-long resolve), right before
+  // spawn (close the relaunch-during-resolve race), and continuously while the
+  // trainer boots (a launch mid-training kills the pre-menu trainer — the
+  // duplicate-window race the first two checks cannot see).
   const blockedPayload = () => ({
     key,
     ok: false,
@@ -534,7 +574,39 @@ export async function trainInstance(instance, { key = null, onProgress, force = 
   // a totally silent JVM still hits the hard cap above.
   const CAP_MS = 180_000;
   const HARD_CAP_MS = 600_000; // never wait longer than 10 min, logged or not
-  const marker = await waitForMarker(logFile, CAP_MS, HARD_CAP_MS);
+  // Run-time veto (third isBlocked check): a game launched after the trainer
+  // spawned would otherwise boot alongside it — the duplicate-window bug. The
+  // veto is polled every 100 ms and loses to a same-tick menu, in which case
+  // the trainer below closes itself through the normal ladder anyway.
+  const marker = await waitForMarker(
+    logFile,
+    CAP_MS,
+    HARD_CAP_MS,
+    typeof isBlocked === 'function' ? isBlocked : null
+  );
+
+  if (marker.aborted === true) {
+    // The trainer IS the duplicate window: yield at once. Killing a PRE-MENU
+    // JVM cannot corrupt the cache — game.aot is written only by the
+    // post-menu shutdown dump, which never ran — and the new game's own exit
+    // re-queues training via needsAutoTrain, so the cache still converges.
+    progress('superseded', 'a game launched while the trainer was still booting; closing the trainer');
+    try {
+      child.kill('SIGTERM');
+    } catch {
+      /* already gone */
+    }
+    const abortedExit = await waitForExit(child, 30_000);
+    if (!abortedExit) {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        /* already gone */
+      }
+      await waitForExit(child, 5_000);
+    }
+    return done(blockedPayload());
+  }
 
   if (!marker.ok) {
     progress('timeout', `game did not reach the menu within ${CAP_MS / 1000}s`);

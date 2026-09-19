@@ -40,13 +40,8 @@ public final class MacroEngine {
 
         boolean isScreenOpen = Compat.isScreenOpen(minecraft);
 
-        // KeyBinding only (discoverable in Controls): unbinding it in Controls
-        // is honored. No raw-GLFW polling fallback.
-        if (EspectralClient.CLIENT_KEY != null && EspectralClient.CLIENT_KEY.consumeClick() && !isScreenOpen) {
-            Compat.open(minecraft, new EspectralClientScreen(null));
-            // Re-evaluate isScreenOpen after opening so macro block below is skipped
-            isScreenOpen = true;
-        }
+        // The Right Shift shortcut lives in SuiteShortcut now (it opens the
+        // Suite screen); this engine only handles chat/command macros below.
 
         // Always clean up released keys so repeat guard doesn't get stuck if released inside a screen
         pressedKeys.removeIf(code -> !InputConstants.isKeyDown(minecraft.getWindow(), code));

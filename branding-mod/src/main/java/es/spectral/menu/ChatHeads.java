@@ -75,9 +75,12 @@ public final class ChatHeads {
     /**
      * Intake hook: records which sender a signed player message belongs to.
      * Null signatures (unsigned messages) are skipped — those lines get no head.
+     * While the feature is inactive (including suite master off) nothing is
+     * recorded, so a disabled feature accumulates no side state.
      */
     public static void onPlayerMessage(MessageSignature signature, UUID senderId) {
         if (signature == null || senderId == null) return;
+        if (!ClientConfig.getInstance().isFeatureEnabled(FEATURE_ID)) return;
         SENDERS.put(signature, senderId);
     }
 
@@ -90,9 +93,11 @@ public final class ChatHeads {
     /**
      * Maps a message's first-line content instance to its sender. Only the
      * first line is ever mapped, so continuation lines never draw heads.
+     * No-op while the feature is inactive, matching {@link #onPlayerMessage}.
      */
     public static void mapFirstLine(UUID senderId, FormattedCharSequence firstLine) {
         if (senderId == null || firstLine == null) return;
+        if (!ClientConfig.getInstance().isFeatureEnabled(FEATURE_ID)) return;
         if (LINES.size() >= LINE_CAP) LINES.clear();
         LINES.put(firstLine, senderId);
     }

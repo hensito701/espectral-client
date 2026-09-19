@@ -14,7 +14,8 @@
   ],
   "entrypoints": {
     "client": [
-      "es.spectral.menu.EspectralClient"
+      "es.spectral.menu.EspectralClient",
+      "es.spectral.menu.bench.BenchClient"
     ]
   },
   "depends": {

@@ -104,4 +104,124 @@ public final class Compat {
         if (skinId == null) return null;
         return SkinModelCache.getOrBuild(Minecraft.getInstance(), skinId, slim);
     }
+    /**
+     * Suite painter primitive: filled rectangle in the lane's own
+     * {@code GuiGraphics} idiom. Anything else is ignored.
+     */
+    public static void uiFill(Object gfx, int x1, int y1, int x2, int y2, int argb) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
+            graphics.fill(x1, y1, x2, y2, argb);
+        }
+    }
+
+    /** Suite painter primitive: vertical gradient rectangle. */
+    public static void uiFillGradient(Object gfx, int x1, int y1, int x2, int y2,
+            int argbTop, int argbBottom) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
+            graphics.fillGradient(x1, y1, x2, y2, argbTop, argbBottom);
+        }
+    }
+
+    /** Suite painter primitive: 1 px rectangle outline, drawn as four fills. */
+    public static void uiOutline(Object gfx, int x, int y, int w, int h, int argb) {
+        if (!(gfx instanceof net.minecraft.client.gui.GuiGraphics graphics)) {
+            return;
+        }
+        graphics.fill(x, y, x + w, y + 1, argb);
+        graphics.fill(x, y + h - 1, x + w, y + h, argb);
+        graphics.fill(x, y, x + 1, y + h, argb);
+        graphics.fill(x + w - 1, y, x + w, y + h, argb);
+    }
+
+    /** Suite painter primitive: left-aligned text. */
+    public static void uiText(Object gfx, net.minecraft.client.gui.Font font,
+            net.minecraft.network.chat.Component text, int x, int y, int argb, boolean shadow) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics && font != null
+                && text != null) {
+            graphics.drawString(font, text, x, y, argb, shadow);
+        }
+    }
+
+    /**
+     * Suite painter primitive: text centred on {@code cx}. The shadow is an
+     * offset darkened copy, matching the vanilla shadow tone.
+     */
+    public static void uiTextCentered(Object gfx, net.minecraft.client.gui.Font font,
+            net.minecraft.network.chat.Component text, int cx, int y, int argb, boolean shadow) {
+        if (!(gfx instanceof net.minecraft.client.gui.GuiGraphics graphics)
+                || font == null || text == null) {
+            return;
+        }
+        int left = cx - font.width(text) / 2;
+        if (shadow) {
+            int shadowArgb = (argb & 0xFCFCFC) >> 2 | 0xFF000000;
+            graphics.drawString(font, text, left + 1, y + 1, shadowArgb, false);
+        }
+        graphics.drawString(font, text, left, y, argb, false);
+    }
+    /**
+     * Suite painter primitive: left-aligned text with a horizontal
+     * per-character gradient (light left, deep right). Drawn one code point
+     * at a time in the lane's own {@code GuiGraphics} idiom; anything else
+     * is ignored. Plain {@code Component.getString()} text: gold labels carry
+     * no inline formatting, so no style runs are lost.
+     */
+    public static void uiTextGradient(Object gfx, net.minecraft.client.gui.Font font,
+            net.minecraft.network.chat.Component text, int x, int y,
+            int argbLeft, int argbRight, boolean shadow) {
+        if (!(gfx instanceof net.minecraft.client.gui.GuiGraphics graphics)
+                || font == null || text == null) {
+            return;
+        }
+        String s = text.getString();
+        int total = font.width(s);
+        if (total <= 0) {
+            return;
+        }
+        int cx = x;
+        for (int i = 0; i < s.length();) {
+            int cp = s.codePointAt(i);
+            String ch = new String(Character.toChars(cp));
+            int w = font.width(ch);
+            float t = (float) (cx - x + w / 2) / (float) total;
+            int color = es.spectral.menu.ui.SuiteTheme.lerpArgb(argbLeft, argbRight, t);
+            graphics.drawString(font, net.minecraft.network.chat.Component.literal(ch),
+                    cx, y, color, shadow);
+            cx += w;
+            i += Character.charCount(cp);
+        }
+    }
+
+    /**
+     * Suite painter primitive: gradient text centred on {@code cx}. Same
+     * per-character interpolation as {@link #uiTextGradient}; the shadow, if
+     * any, is drawn per character by the graphics object.
+     */
+    public static void uiTextCenteredGradient(Object gfx, net.minecraft.client.gui.Font font,
+            net.minecraft.network.chat.Component text, int cx, int y,
+            int argbLeft, int argbRight, boolean shadow) {
+        if (gfx == null || font == null || text == null) {
+            return;
+        }
+        int total = font.width(text.getString());
+        if (total <= 0) {
+            return;
+        }
+        uiTextGradient(gfx, font, text, cx - total / 2, y, argbLeft, argbRight, shadow);
+    }
+
+
+    /**
+     * Opens the canonical support URL in the system browser. Called only
+     * after the SuiteConfirmScreen confirmation, never with parameters.
+     */
+    public static void openUri(String uri) {
+        if (uri == null || uri.isBlank()) return;
+        try {
+            net.minecraft.util.Util.getPlatform().openUri(uri);
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger("espectral-menu")
+                    .warn("Could not open support URL", e);
+        }
+    }
 }

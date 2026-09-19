@@ -1,6 +1,6 @@
 /**
  * Launch / train / AOT-status / launch-log / stats routes (B4 contract).
- *   POST /api/instances/:name/launch { mode:'normal'|'aot', dry_run:boolean }
+ *   POST /api/instances/:name/launch { dry_run:boolean, account?:string }
  *       -> LaunchReply { key, pid? } | DryRunResult (when dry_run)
  *   POST /api/instances/:name/stop   -> { ok: true, instance: string }
  *   POST /api/instances/:name/train -> { key }       (background; train-done)
@@ -357,10 +357,6 @@ export async function register(app) {
   // POST /api/instances/:name/launch
   app.post('/api/instances/:name/launch', async (req, res, params, body) => {
     const instance = await instances.getInstance(params.name);
-    const mode = body?.mode ?? 'normal';
-    if (!['normal', 'aot'].includes(mode)) {
-      throw httpError(400, 'BAD_MODE', "mode must be 'normal' or 'aot'");
-    }
     // Contract C: optional account override — launch under a non-active
     // account (its own per-account run dir is resolved in resolveLaunch).
     let accountOverride = null;
@@ -375,7 +371,7 @@ export async function register(app) {
     }
     const dryRun = body?.dry_run === true;
     if (dryRun) {
-      const resolved = await launch.resolveLaunch(instance, { mode, dryRun: true, account: accountOverride });
+      const resolved = await launch.resolveLaunch(instance, { dryRun: true, account: accountOverride });
       return launch.dryRunResult(instance, resolved);
     }
     if (activeInstances.has(params.name)) {
@@ -429,7 +425,7 @@ export async function register(app) {
           }
         }
         const _resolveLaunch = __testHooks.resolveLaunch ?? launch.resolveLaunch;
-        resolved = await _resolveLaunch(instance, { mode, onProgress: progress, account: accountForResolve });
+        resolved = await _resolveLaunch(instance, { onProgress: progress, account: accountForResolve });
       } catch (e) {
         const msg = `[espectral] launch error: ${e?.message ?? e}`;
         activeInstances.delete(params.name);
@@ -680,7 +676,6 @@ export async function register(app) {
       key,
       pid: null,
       preparing: true,
-      mode,
       instance: params.name,
       version: instance.version,
       account: accountOverride?.username ?? null,

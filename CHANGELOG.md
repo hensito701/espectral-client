@@ -182,6 +182,13 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   `-Xverify:none`. A new opt-in `fast_boot` setting (Settings → Engine & Client Features) adds
   `-XX:TieredStopAtLevel=1` (C1-only JIT), which measurably shortens time-to-menu on a modded
   instance at the cost of peak JIT quality once you are in-game. The tradeoff is stated in the UI.
+- **In-game Suite UI with a master switch (client config schema 2).** The title, pause and Suite
+  screens share one canonical feature registry (`src/engine/suite-registry.json`) that feeds the
+  launcher API and is copied verbatim into the mod jar with its EN/ES strings
+  (`scripts/sync-suite-registry.mjs`). Configs gain a `suite.enabled` master switch (on by
+  default) gating every owned feature; v1 files upgrade in place without touching stored flags.
+  Also resolves two defaults against the registry: No Fog defaults to off, and the fullbright
+  gamma default is corrected to 1.0.
 
 ### Fixed
 - Launching under a non-active account failed with a server error since 1.0.0 (a missing resolver

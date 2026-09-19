@@ -1534,58 +1534,103 @@
 
             {#if msFlow}
               <div class="ms-device-flow-card" transition:scalePop={{ start: 0.96, duration: 160 }}>
-                <!-- Step 1: Verification URI -->
-                <div class="flow-step">
-                  <div class="flow-step__head">
-                    <span class="flow-step__number">1</span>
-                    <span class="flow-step__label">{t('vault.msStep1')}</span>
-                  </div>
-                  <div class="flow-step__body">
-                    <div class="uri-pill">
-                      <a
-                        href={msFlow.verification_uri}
-                        target="_blank"
-                        rel="noopener"
-                        class="uri-link"
-                      >
-                        {msFlow.verification_uri}
-                        <span class="external-icon">↗</span>
-                      </a>
-                      <div class="uri-actions">
-                        <Btn
-                          variant="ghost"
-                          size="sm"
-                          onclick={() => uriCopier.copy(msFlow?.verification_uri || '')}
+                {#if msFlow.verification_uri_complete}
+                  <!-- Browser was auto-opened with the code embedded -->
+                  <div class="flow-step">
+                    <div class="flow-step__head">
+                      <span class="flow-step__number">✓</span>
+                      <span class="flow-step__label">{t('vault.msBrowserOpened')}</span>
+                    </div>
+                    <div class="flow-step__body">
+                      <div class="uri-pill">
+                        <a
+                          href={msFlow.verification_uri_complete}
+                          target="_blank"
+                          rel="noopener"
+                          class="uri-link"
                         >
-                          {uriCopier.copied ? t('vault.msLinkCopied') : t('vault.msCopyLink')}
+                          {t('vault.msReopenLink')}
+                          <span class="external-icon">↗</span>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Fallback: manual code if the browser didn't open -->
+                  <div class="flow-step">
+                    <div class="flow-step__head">
+                      <span class="flow-step__number">?</span>
+                      <span class="flow-step__label">{t('vault.msFallbackLabel')}</span>
+                    </div>
+                    <div class="flow-step__body">
+                      <div class="code-banner">
+                        <span class="code-display font-pixel">{msFlow.user_code}</span>
+                        <Btn
+                          variant="primary"
+                          size="sm"
+                          onclick={() => codeCopier.copy(msFlow?.user_code || '')}
+                        >
+                          {#snippet icon()}
+                            <span>📋</span>
+                          {/snippet}
+                          {codeCopier.copied ? t('vault.msCodeCopied') : t('vault.msCopyCode')}
                         </Btn>
                       </div>
                     </div>
                   </div>
-                </div>
-
-                <!-- Step 2: User Code -->
-                <div class="flow-step">
-                  <div class="flow-step__head">
-                    <span class="flow-step__number">2</span>
-                    <span class="flow-step__label">{t('vault.msStep2')}</span>
-                  </div>
-                  <div class="flow-step__body">
-                    <div class="code-banner">
-                      <span class="code-display font-pixel">{msFlow.user_code}</span>
-                      <Btn
-                        variant="primary"
-                        size="sm"
-                        onclick={() => codeCopier.copy(msFlow?.user_code || '')}
-                      >
-                        {#snippet icon()}
-                          <span>📋</span>
-                        {/snippet}
-                        {codeCopier.copied ? t('vault.msCodeCopied') : t('vault.msCopyCode')}
-                      </Btn>
+                {:else}
+                  <!-- No complete URI: classic two-step manual flow -->
+                  <div class="flow-step">
+                    <div class="flow-step__head">
+                      <span class="flow-step__number">1</span>
+                      <span class="flow-step__label">{t('vault.msStep1')}</span>
+                    </div>
+                    <div class="flow-step__body">
+                      <div class="uri-pill">
+                        <a
+                          href={msFlow.verification_uri}
+                          target="_blank"
+                          rel="noopener"
+                          class="uri-link"
+                        >
+                          {msFlow.verification_uri}
+                          <span class="external-icon">↗</span>
+                        </a>
+                        <div class="uri-actions">
+                          <Btn
+                            variant="ghost"
+                            size="sm"
+                            onclick={() => uriCopier.copy(msFlow?.verification_uri || '')}
+                          >
+                            {uriCopier.copied ? t('vault.msLinkCopied') : t('vault.msCopyLink')}
+                          </Btn>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+
+                  <div class="flow-step">
+                    <div class="flow-step__head">
+                      <span class="flow-step__number">2</span>
+                      <span class="flow-step__label">{t('vault.msStep2')}</span>
+                    </div>
+                    <div class="flow-step__body">
+                      <div class="code-banner">
+                        <span class="code-display font-pixel">{msFlow.user_code}</span>
+                        <Btn
+                          variant="primary"
+                          size="sm"
+                          onclick={() => codeCopier.copy(msFlow?.user_code || '')}
+                        >
+                          {#snippet icon()}
+                            <span>📋</span>
+                          {/snippet}
+                          {codeCopier.copied ? t('vault.msCodeCopied') : t('vault.msCopyCode')}
+                        </Btn>
+                      </div>
+                    </div>
+                  </div>
+                {/if}
 
                 <!-- Waiting state pulse -->
                 <div class="flow-waiting">

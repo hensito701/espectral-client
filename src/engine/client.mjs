@@ -28,42 +28,41 @@ import { PINS_QOL_BY_VERSION } from './mods.mjs';
 import { httpError } from './error.mjs';
 
 /**
- * The v1.0.0 feature registry — the SAME list the in-game mod ships
- * (Contract A). GET /api/instances/:name/client returns it verbatim so
- * the UI renders names/descriptions without hardcoding them.
+ * The canonical feature registry — the SAME list the in-game mod ships.
+ * Single source of truth: `src/engine/suite-registry.json` (schema 2),
+ * shared verbatim with the mod jar by `scripts/sync-suite-registry.mjs`.
+ * GET /api/instances/:name/client returns the derived entries verbatim so
+ * the UI renders names/descriptions without hardcoding them. Changing the
+ * JSON changes the ids, defaults and categories fed to the API — there is
+ * no second feature list in this module.
  */
-export const REGISTRY = [
-  { id: 'fullbright', name: 'Fullbright', description: 'Built-in fullbright — gamma driven live by the mod. No jars, no restart.', kind: 'owned', defaultEnabled: true },
-  { id: 'nofog', name: 'No Fog', description: 'Built-in no-fog — fog removed live by the mod (Overworld, Nether, End). No jars, no restart.', kind: 'owned', defaultEnabled: false },
-  { id: 'zoom', name: 'Zoom', description: 'Built-in hold-to-zoom on Z — smooth FOV ease, applied live.', kind: 'owned', defaultEnabled: true, keybind: 'key.keyboard.z' },
-  { id: 'macros', name: 'Macros', description: 'Keybind macros — run chat/command sequences.', kind: 'owned', defaultEnabled: true },
-  { id: 'potionstatus', name: 'Potion Status', description: 'On-screen list of active potion effects with durations.', kind: 'owned', defaultEnabled: false },
-  { id: 'coords', name: 'Coords Display', description: 'On-screen XYZ coordinates and facing direction.', kind: 'owned', defaultEnabled: false },
-  { id: 'healthstatus', name: 'Health Display', description: 'Numeric health and absorption readout on screen.', kind: 'owned', defaultEnabled: false },
-  { id: 'armorstatus', name: 'Armor Status', description: 'On-screen armor durability for each equipped piece.', kind: 'owned', defaultEnabled: false },
-  { id: 'fpsping', name: 'FPS / Ping', description: 'On-screen frames-per-second and server latency.', kind: 'owned', defaultEnabled: false },
-  { id: 'lowfire', name: 'Low Fire', description: 'Lowers the burning fire overlay so it blocks less of the view.', kind: 'owned', defaultEnabled: false },
-  { id: 'clearwater', name: 'Clear Water', description: 'Removes the underwater overlay and water fog for clear vision.', kind: 'owned', defaultEnabled: false },
-  { id: 'chatheads', name: 'Chat Heads', description: 'Shows each player head next to their name in chat.', kind: 'owned', defaultEnabled: false },
-  { id: 'skin3d', name: '3D Skin Layers', description: 'Renders skin outer layers (hat, jacket, sleeves) as real 3D voxels.', kind: 'owned', defaultEnabled: false },
-];
+const SUITE_REGISTRY_DOC = JSON.parse(
+  fs.readFileSync(new URL('./suite-registry.json', import.meta.url), 'utf8'),
+);
+
+/** Master-switch default for `suite.enabled` (schema 2 config root). */
+export const SUITE_DEFAULT_ENABLED = SUITE_REGISTRY_DOC.suite?.default_enabled ?? true;
+
+/** Schema version written by seed/PATCH (v1 files upgrade on seed). */
+export const CLIENT_CONFIG_SCHEMA = SUITE_REGISTRY_DOC.schema ?? 2;
+
+export const REGISTRY = SUITE_REGISTRY_DOC.features.map((f) => ({
+  id: f.id,
+  name: f.name_en,
+  description: f.description_en,
+  kind: f.kind,
+  defaultEnabled: f.default_enabled,
+  ...(f.keybind !== undefined ? { keybind: f.keybind } : {}),
+  category: f.category,
+}));
 
 /** Default feature state objects — merged under whatever the file holds. */
-export const FEATURE_DEFAULTS = {
-  fullbright: { enabled: true, gamma: 15.0 },
-  nofog: { enabled: false, radius: null },
-  zoom: { enabled: true, fov: 30.0, smooth: true },
-  macros: { enabled: true },
-  potionstatus: { enabled: false },
-  coords: { enabled: false },
-  healthstatus: { enabled: false },
-  armorstatus: { enabled: false },
-  fpsping: { enabled: false },
-  lowfire: { enabled: false },
-  clearwater: { enabled: false },
-  chatheads: { enabled: false },
-  skin3d: { enabled: false },
-};
+export const FEATURE_DEFAULTS = Object.fromEntries(
+  SUITE_REGISTRY_DOC.features.map((f) => [
+    f.id,
+    { enabled: f.default_enabled, ...(isPlainObject(f.state) ? f.state : {}) },
+  ]),
+);
 
 // --- macro validation limits (Contract A) ---------------------------------
 const MACRO_ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
@@ -118,19 +117,35 @@ function readRawConfig(instanceName) {
  * Normalized view of the config for GET/launch: every default feature id
  * present as `{ enabled, ...extra }` (file wins over defaults), unknown
  * feature ids preserved, unknown top-level fields preserved, macros
- * always an array.
+ * always an array, and the schema-2 `suite.enabled` master switch present
+ * (registry default when absent — the switch gates every owned feature).
+ * A bare-boolean feature entry is tolerated as `{ enabled: <bool> }`.
  */
+function coerceFeatureEntry(def, entry) {
+  if (typeof entry === 'boolean') return { ...def, enabled: entry };
+  if (isPlainObject(entry)) return { ...def, ...entry };
+  return { ...def };
+}
+
 function normalizeConfig(raw) {
-  const out = { ...raw, schema: raw.schema ?? 1 };
+  const out = { ...raw, schema: raw.schema ?? CLIENT_CONFIG_SCHEMA };
+  const rawSuite = isPlainObject(raw.suite) ? raw.suite : {};
+  out.suite = {
+    ...rawSuite,
+    enabled: typeof rawSuite.enabled === 'boolean' ? rawSuite.enabled : SUITE_DEFAULT_ENABLED,
+  };
   const features = {};
   for (const [id, def] of Object.entries(FEATURE_DEFAULTS)) {
     const entry = isPlainObject(raw.features) ? raw.features[id] : undefined;
-    features[id] = isPlainObject(entry) ? { ...def, ...entry } : { ...def };
+    features[id] = coerceFeatureEntry(def, entry);
   }
   if (isPlainObject(raw.features)) {
     for (const [id, entry] of Object.entries(raw.features)) {
-      if (!(id in features) && isPlainObject(entry)) {
+      if (id in features) continue;
+      if (isPlainObject(entry)) {
         features[id] = { enabled: false, ...entry };
+      } else if (typeof entry === 'boolean') {
+        features[id] = { enabled: entry };
       }
     }
   }
@@ -176,25 +191,30 @@ export async function getClientInfo(instanceName) {
  * Seed defaults into the instance config at launch. MERGES into an
  * existing file (file wins per feature id / existing macros); never
  * overwrites wholesale, never throws — a launch must not fail over the
- * client config. Writes only when something actually changed.
+ * client config. Writes only when something actually changed. Upgrades a
+ * v1 file in place (sets `schema: 2`, adds `suite.enabled` from the
+ * registry) without touching stored feature flags.
  */
 export function seedClientConfig(instanceName) {
   try {
     const raw = readRawConfig(instanceName);
     const merged = { ...raw };
-    if (merged.schema === undefined) merged.schema = 1;
+    if (merged.schema === undefined || merged.schema === 1) merged.schema = CLIENT_CONFIG_SCHEMA;
+    const suiteEntry = isPlainObject(merged.suite) ? { ...merged.suite } : {};
+    if (typeof suiteEntry.enabled !== 'boolean') suiteEntry.enabled = SUITE_DEFAULT_ENABLED;
+    merged.suite = suiteEntry;
     const features = isPlainObject(merged.features) ? { ...merged.features } : {};
     let changed = !deepEqual(merged, raw);
     for (const [id, def] of Object.entries(FEATURE_DEFAULTS)) {
       const entry = features[id];
-      if (isPlainObject(entry)) {
-        const filled = { ...def, ...entry };
-        if (!deepEqual(filled, entry)) {
-          features[id] = filled;
-          changed = true;
-        }
-      } else {
-        features[id] = { ...def };
+      const filled = coerceFeatureEntry(def, entry);
+      const base = typeof entry === 'boolean' ? { enabled: entry } : entry;
+      if (!deepEqual(filled, base)) {
+        features[id] = filled;
+        changed = true;
+      } else if (typeof entry === 'boolean') {
+        // Tolerated on read, but persist the canonical object form.
+        features[id] = filled;
         changed = true;
       }
     }
@@ -245,15 +265,24 @@ function validatePatch(patch) {
   if (!isPlainObject(patch)) {
     throw httpError(400, 'BAD_PATCH', 'PATCH body must be a JSON object');
   }
-  const { features, macros, ...rest } = patch;
+  const { features, macros, suite, ...rest } = patch;
   if (Object.keys(rest).length > 0) {
     throw httpError(400, 'BAD_PATCH', `unknown PATCH fields: ${Object.keys(rest).join(', ')}`);
+  }
+  if (suite !== undefined) {
+    if (!isPlainObject(suite)) {
+      throw httpError(400, 'BAD_PATCH', 'suite must be an object ({ enabled, ... })');
+    }
+    if ('enabled' in suite && typeof suite.enabled !== 'boolean') {
+      throw httpError(400, 'BAD_PATCH', 'suite.enabled must be a boolean');
+    }
   }
   if (features !== undefined) {
     if (!isPlainObject(features)) {
       throw httpError(400, 'BAD_FEATURES', 'features must be an object keyed by feature id');
     }
     for (const [id, entry] of Object.entries(features)) {
+      if (typeof entry === 'boolean') continue;
       if (!isPlainObject(entry)) {
         throw httpError(400, 'BAD_FEATURES', `features.${id} must be an object ({ enabled, ... })`);
       }
@@ -288,12 +317,13 @@ async function reconcileManagedJars() {
 /**
  * PATCH /api/instances/:name/client.
  *
- * Body: `{ features?, macros? }` — both optional. `features` shallow-
- * merges per feature id into the RAW file (unknown ids and extra keys
- * preserved); `macros` replaces the array wholesale after validation.
- * Unknown top-level fields in the file survive. Reconcile is a legacy
- * no-op (always []); the config flags record user intent and the native
- * mod applies them live.
+ * Body: `{ features?, macros?, suite? }` — all optional. `features`
+ * shallow-merges per feature id into the RAW file (unknown ids and extra
+ * keys preserved; a bare boolean means `{ enabled }`); `macros` replaces
+ * the array wholesale after validation; `suite` shallow-merges into the
+ * schema-2 master switch. Unknown top-level fields in the file survive.
+ * Reconcile is a legacy no-op (always []); the config flags record user
+ * intent and the native mod applies them live.
  *
  * Response: the same ClientInfo as GET plus an always-present additive
  * `errors: Array<{ feature, message }>` (empty when clean).
@@ -303,12 +333,18 @@ export async function patchClientConfig(instanceName, patch) {
   const instance = await getInstance(instanceName);
 
   const raw = readRawConfig(instanceName);
-  if (raw.schema === undefined) raw.schema = 1;
+  if (raw.schema === undefined || raw.schema === 1) raw.schema = CLIENT_CONFIG_SCHEMA;
 
+  if (patch.suite !== undefined) {
+    raw.suite = { ...(isPlainObject(raw.suite) ? raw.suite : {}), ...patch.suite };
+  }
   if (patch.features !== undefined) {
     const features = isPlainObject(raw.features) ? raw.features : {};
     for (const [id, entry] of Object.entries(patch.features)) {
-      features[id] = { ...(isPlainObject(features[id]) ? features[id] : {}), ...entry };
+      const base = isPlainObject(features[id])
+        ? features[id]
+        : typeof features[id] === 'boolean' ? { enabled: features[id] } : {};
+      features[id] = { ...base, ...(typeof entry === 'boolean' ? { enabled: entry } : entry) };
     }
     raw.features = features;
   }

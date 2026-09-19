@@ -106,35 +106,38 @@ test('buildArgv full argv shape: memory, fixed set, natives, -cp, main class, pr
   ]);
 });
 
-test('buildArgv AOT mode branches: train/aot/missing cache/pre-25 runtime', () => {
-  // train on JDK 25: -XX:AOTCacheOutput, no read-side flags
+test('buildArgv: every player launch consumes a valid AOT cache (there is no aot mode)', () => {
+  // Ordinary launch + fresh cache: both flags ride after -cp (the JVM reads the
+  // classpath before mapping the archive).
+  const fresh = makeResolved({ aotCacheExists: true });
+  const argv = buildArgv({ name: 't' }, fresh);
+  assert.ok(argv.includes('-XX:AOTCache=/data/cache/aot/key/game.aot'));
+  assert.ok(argv.includes('-Xlog:aot=info:file=aot-%p.log'));
+  const cpIdx = argv.indexOf('-cp');
+  const aotIdx = argv.findIndex((a) => a.startsWith('-XX:AOTCache='));
+  assert.ok(cpIdx > -1 && aotIdx > cpIdx, 'AOT flags must come after -cp');
+  // A missing cache gets no flag (it would only buy a doomed map attempt) and a
+  // warning that names the path, so the launch log explains the slow boot.
+  const missing = makeResolved({ aotCacheExists: false });
+  const argvMissing = buildArgv({ name: 't' }, missing);
+  assert.equal(argvMissing.some((a) => a.startsWith('-XX:AOTCache=')), false);
+  assert.equal(argvMissing.some((a) => a.startsWith('-Xlog:aot=')), false);
+  assert.ok(missing.warnings.some((w) => w.includes('AOT cache') && w.includes('not found')));
+  // train writes the cache and never reads one
   const train = buildArgv({ name: 't' }, makeResolved({ mode: 'train' }));
   assert.ok(train.includes('-XX:AOTCacheOutput=/data/cache/aot/key/game.aot'));
-  assert.equal(train.includes('-XX:AOTCache='), false);
-  assert.equal(train.includes('-Xlog:aot='), false);
-  // aot with an existing cache: -XX:AOTCache + relative proof log
-  const aot = buildArgv({ name: 't' }, makeResolved({ mode: 'aot', aotCacheExists: true }));
-  assert.ok(aot.includes('-XX:AOTCache=/data/cache/aot/key/game.aot'));
-  assert.ok(aot.includes('-Xlog:aot=info:file=aot-%p.log'));
-  // aot with a missing cache: no flag, warning instead of a dead flag
-  const aotMissing = makeResolved({ mode: 'aot', aotCacheExists: false });
-  const argvMissing = buildArgv({ name: 't' }, aotMissing);
-  assert.equal(argvMissing.includes('-XX:AOTCache='), false);
-  assert.equal(argvMissing.includes('-Xlog:aot='), false);
-  assert.ok(aotMissing.warnings.some((w) => w.includes('AOT cache') && w.includes('not found')));
-  // normal: neither AOT flag
-  const normal = buildArgv({ name: 't' }, makeResolved({ mode: 'normal' }));
-  assert.equal(normal.includes('-XX:AOTCache'), false);
-  assert.equal(normal.includes('-Xlog:aot='), false);
-  // train on a pre-25 runtime: no flag, warning; fixed set also skipped (< 21)
-  const old = makeResolved({
-    mode: 'train',
+  assert.equal(train.some((a) => a.startsWith('-XX:AOTCache=')), false);
+  assert.equal(train.some((a) => a.startsWith('-Xlog:aot=')), false);
+  // pre-25 runtime: no AOT flags at all, warning names the tier; fixed set also skipped (< 21)
+  const oldRuntime = makeResolved({
+    aotCacheExists: true,
     java: { path: '/jdk17/bin/java.exe', major: 17, build: '17.0.12+7' },
   });
-  const argvOld = buildArgv({ name: 't' }, old);
-  assert.equal(argvOld.includes('-XX:AOTCache'), false);
+  const argvOld = buildArgv({ name: 't' }, oldRuntime);
+  assert.equal(argvOld.some((a) => a.startsWith('-XX:AOTCache=')), false);
+  assert.equal(argvOld.some((a) => a.startsWith('-Xlog:aot=')), false);
   assert.equal(argvOld.includes('--add-opens'), false);
-  assert.ok(old.warnings.some((w) => w.includes('AOT training requires a JDK 25-tier runtime')));
+  assert.ok(oldRuntime.warnings.some((w) => w.includes('JDK 25-tier')));
 });
 
 test('buildArgv skips -XX:AOTCache when the cache is stale (JEP 483 classpath drift)', () => {
@@ -142,7 +145,7 @@ test('buildArgv skips -XX:AOTCache when the cache is stale (JEP 483 classpath dr
   // ("shared class paths mismatch" -> "Unable to map shared spaces"), so
   // passing the flag only buys a doomed mapping attempt and an error-level log
   // on every boot. The launcher must detect it and boot clean instead.
-  const stale = makeResolved({ mode: 'aot', aotCacheExists: true, aotCacheStale: true });
+  const stale = makeResolved({ aotCacheExists: true, aotCacheStale: true });
   const argv = buildArgv({ name: 't' }, stale);
   assert.equal(argv.some((a) => a.startsWith('-XX:AOTCache=')), false);
   assert.equal(argv.some((a) => a.startsWith('-Xlog:aot=')), false);
@@ -151,7 +154,7 @@ test('buildArgv skips -XX:AOTCache when the cache is stale (JEP 483 classpath dr
     'a stale cache must be reported, not silently ignored'
   );
   // A fresh cache still gets the flag — the gate must not be unconditional.
-  const fresh = makeResolved({ mode: 'aot', aotCacheExists: true, aotCacheStale: false });
+  const fresh = makeResolved({ aotCacheExists: true, aotCacheStale: false });
   assert.ok(buildArgv({ name: 't' }, fresh).includes('-XX:AOTCache=/data/cache/aot/key/game.aot'));
 });
 
@@ -276,7 +279,9 @@ test('effectiveMemoryMb clamp via buildArgv pushes warning', () => {
   const totalBytes = os.totalmem();
   const cap = Math.floor(totalBytes / (1024 * 1024) * 0.6);
   const over = cap + 5000;
-  const resolved = makeResolved({ memoryMb: over });
+  // aotCacheExists:true keeps the AOT path warning-free so the only warning
+  // this test counts is the clamp one.
+  const resolved = makeResolved({ memoryMb: over, aotCacheExists: true });
   const beforeWarnings = resolved.warnings.length;
   const argv = buildArgv({ name: 't' }, resolved);
   // Should have clamped and pushed warning
@@ -287,7 +292,7 @@ test('effectiveMemoryMb clamp via buildArgv pushes warning', () => {
   assert.ok(argv.includes(`-Xms${expectedLabel}`) || argv.includes(`-Xmx${expectedLabel}`));
   // Request under cap should not push warning
   const under = Math.min(4096, cap - 1 > 0 ? cap - 1 : 1024);
-  const resolved2 = makeResolved({ memoryMb: under });
+  const resolved2 = makeResolved({ memoryMb: under, aotCacheExists: true });
   buildArgv({ name: 't' }, resolved2);
   assert.equal(resolved2.warnings.length, 0, 'no warning when under cap');
 });

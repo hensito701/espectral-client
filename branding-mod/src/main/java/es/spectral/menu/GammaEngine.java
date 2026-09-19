@@ -13,7 +13,8 @@ import net.minecraft.client.Minecraft;
  * {@code Options#save()}, so no disk write happens per tick. The user's prior
  * value is captured once per session on the first override and restored
  * exactly on the enabled-&gt;disabled transition (persisted once via
- * {@code Options#save()}).
+ * {@code Options#save()}), so turning the suite master switch off restores
+ * vanilla state through the same path.
  *
  * When the feature is off and was never overridden this session, vanilla
  * state is never touched: the default-off path is behavior-identical to an
@@ -25,8 +26,8 @@ public final class GammaEngine {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("espectral-client");
 
-    /** Gamma forced while fullbright is on (vanilla slider caps at 1.0). */
-    public static final double FULLBRIGHT_GAMMA = 15.0;
+    /** Gamma forced while fullbright is on (vanilla slider caps at 1.0 — anything higher is rejected). */
+    public static final double FULLBRIGHT_GAMMA = 1.0;
 
     private static final GammaEngine INSTANCE = new GammaEngine();
 
@@ -57,7 +58,7 @@ public final class GammaEngine {
         }
         if (capturedGamma == null) {
             capturedGamma = minecraft.options.gamma().get();
-            LOGGER.info("Fullbright on: captured prior gamma {}", capturedGamma);
+            LOGGER.info("fullbright: gamma {} → {}", capturedGamma, FULLBRIGHT_GAMMA);
         }
         minecraft.options.gamma().set(FULLBRIGHT_GAMMA);
     }

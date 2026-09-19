@@ -298,7 +298,7 @@ export function buildArgv(instance, resolved) {
   }
   jvm.push('-cp', resolved.classpath.join(path.delimiter));
 
-  // AOT (-XX:AOTCache*/JEP 483) exists only on JDK 24+/25 runtimes.
+  // AOT (-XX:AOTCache*/JEP 483) exists only on JDK 25+ runtimes.
   if (resolved.mode === 'train') {
     if (javaMajor >= 25) {
       // Visible to the in-game mod (System.getProperty) so the branding mod can
@@ -312,28 +312,30 @@ export function buildArgv(instance, resolved) {
         `AOT training requires a JDK 25-tier runtime (current major ${javaMajor}); skipping -XX:AOTCacheOutput`
       );
     }
-  } else if (resolved.mode === 'aot') {
-    if (javaMajor >= 25) {
-      if (resolved.aotCacheExists && !resolved.aotCacheStale) {
-        jvm.push(`-XX:AOTCache=${resolved.aotCachePath}`);
-        // RELATIVE proof log — never an absolute Windows path: -Xlog splits
-        // options on ':' so file=C:\... would break; cwd = gameDir.
-        jvm.push('-Xlog:aot=info:file=aot-%p.log');
-      } else if (resolved.aotCacheExists) {
-        // Passing a stale cache costs a doomed 0.5s mapping attempt and an
-        // error-level JVM log on every boot; skip it and let the launch route
-        // queue a retrain instead.
-        resolved.warnings.push(
-          `AOT cache ${resolved.aotCachePath} no longer matches the classpath on disk; retraining is required`
-        );
-      } else {
-        resolved.warnings.push(`AOT cache ${resolved.aotCachePath} not found; running without -XX:AOTCache`);
-      }
-    } else {
+  } else if (javaMajor >= 25) {
+    // Every player launch consumes a valid trained cache — there is no separate
+    // 'aot' mode. -XX:AOTMode defaults to 'auto': if the JVM cannot use the
+    // cache it keeps going without it, so a broken cache can never block a
+    // launch, and -Xlog:aot names the reason (aotProof() reads it back).
+    if (resolved.aotCacheExists && !resolved.aotCacheStale) {
+      jvm.push(`-XX:AOTCache=${resolved.aotCachePath}`);
+      // RELATIVE proof log — never an absolute Windows path: -Xlog splits
+      // options on ':' so file=C:\... would break; cwd = gameDir.
+      jvm.push('-Xlog:aot=info:file=aot-%p.log');
+    } else if (resolved.aotCacheExists) {
+      // Passing a stale cache costs a doomed 0.5s mapping attempt and an
+      // error-level JVM log on every boot; skip it and let the launch route
+      // queue a retrain instead.
       resolved.warnings.push(
-        `AOT requires a JDK 25-tier runtime (current major ${javaMajor}); running without -XX:AOTCache`
+        `AOT cache ${resolved.aotCachePath} no longer matches the classpath on disk; retraining is required`
       );
+    } else {
+      resolved.warnings.push(`AOT cache ${resolved.aotCachePath} not found; running without -XX:AOTCache`);
     }
+  } else {
+    resolved.warnings.push(
+      `AOT requires a JDK 25-tier runtime (current major ${javaMajor}); running without -XX:AOTCache`
+    );
   }
 
   const mainClass =
@@ -414,10 +416,12 @@ export function applyLaunchPreferences(instance, gameDir = null) {
  *   unless dryRun); the per-account profiles split is skipped and natives
  *   stay at the instance default.
  * - Otherwise (Contract C): a non-active account gets its own
- *   <instanceDir>/profiles/<uuid>/ for BOTH gameDir and nativesDir so
- *   concurrent launches under different accounts don't collide on
- *   options.txt/logs. mods/, libraries, assets, version json stay shared
- *   (read-only at boot). Active-account launches keep the instance dir.
+ *   <instanceDir>/profiles/<uuid>/ gameDir so concurrent launches under
+ *   different accounts don't collide on options.txt/logs. Natives stay at
+ *   the instance dir for every launch: installLibraries extracts them
+ *   there once and they are read-only at runtime, so a per-profile
+ *   nativesDir would point -Djava.library.path at an empty dir.
+ *   Active-account launches keep the instance dir as gameDir.
  */
 export function selectGameDir(instance, launchAccount, { dryRun = false, warnings = null } = {}) {
   const base = resolver.instanceDir(instance.name);
@@ -445,7 +449,7 @@ export function selectGameDir(instance, launchAccount, { dryRun = false, warning
         warnings?.push(`could not create profile dir: ${e.message}`);
       }
     }
-    return { gameDir: profileDir, nativesDir: path.join(profileDir, 'natives') };
+    return { gameDir: profileDir, nativesDir: resolver.instanceNativesDir(instance.name) };
   }
   return { gameDir: base, nativesDir: resolver.instanceNativesDir(instance.name) };
 }
@@ -887,7 +891,7 @@ export function launchInstance(instance, resolved, { onLog, onMarker, onExit, on
 }
 
 // ---------------------------------------------------------------------------
-// CLI: node src/engine/launch.mjs --dry-run --instance <name> [--mode aot|train]
+// CLI: node src/engine/launch.mjs --dry-run --instance <name> [--mode normal|train]
 // ---------------------------------------------------------------------------
 
 function redactPreview(argv, accessToken) {
@@ -936,7 +940,7 @@ function printDryRun(dr, resolved, versionStats, loaderStats) {
 }
 
 function cliUsage() {
-  console.log('usage: node src/engine/launch.mjs --dry-run --instance <name> [--mode normal|aot|train]');
+  console.log('usage: node src/engine/launch.mjs --dry-run --instance <name> [--mode normal|train]');
 }
 
 const IS_CLI =
@@ -968,8 +972,8 @@ if (IS_CLI) {
     cliUsage();
     process.exit(2);
   }
-  if (!['normal', 'aot', 'train'].includes(flags.mode)) {
-    console.error(`--mode must be normal|aot|train (got ${flags.mode})`);
+  if (!['normal', 'train'].includes(flags.mode)) {
+    console.error(`--mode must be normal|train (got ${flags.mode})`);
     process.exit(2);
   }
 

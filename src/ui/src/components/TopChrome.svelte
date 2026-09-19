@@ -16,7 +16,7 @@
   import { theme, resolveTheme } from '../lib/theme.svelte';
   import { t } from '../lib/i18n.svelte';
   import { updateState, installUpdate } from '../lib/updater.svelte';
-  import { getAccounts, avatarUrl } from '../lib/api';
+  import { getAccounts, avatarUrl, ApiError } from '../lib/api';
   import type { Account } from '../lib/types';
 
   interface Props {
@@ -77,8 +77,14 @@
       } else {
         activeAccount = null;
       }
-    } catch {
+    } catch (e) {
       activeAccount = null;
+      // The window can show before the engine finishes booting (bounded 10 s
+      // wait in lib.rs); an unreachable engine used to leave "Sin cuenta"
+      // until the user visited #/account. Retry while it's still coming up.
+      if (e instanceof ApiError && e.status === 0) {
+        setTimeout(() => void loadActiveAccount(), 2_000);
+      }
     }
   }
 

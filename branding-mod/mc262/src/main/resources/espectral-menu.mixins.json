@@ -4,6 +4,9 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "TitleScreenInitMixin",
+    "BenchMixin",
+    "ScreenBackgroundMixin",
+    "PauseScreenInitMixin",
     "ClientBrandMixin",
     "MinecraftMixin",
     "CameraFovMixin",
@@ -13,11 +16,13 @@
     "WaterFogMixin",
     "FogRendererAccessor",
     "OptionsAccessor",
+    "LivingEntityRendererAccessor",
     "ChatListenerMixin",
     "ChatComponentMixin",
     "DrawingBackgroundGraphicsAccessMixin",
     "ChatDisconnectMixin",
     "AvatarRendererMixin",
+    "LivingEntityRendererSubmitMixin",
     "TextureManagerMixin"
   ],
   "injectors": {

@@ -819,7 +819,14 @@ export async function aotStatus(inst) {
   const summary = await getSummary(inst.name);
   const key = summary.aot_key;
   if (!key) {
-    return { key: null, cache_path: null, cache_exists: false, cache_size_bytes: 0 };
+    return {
+      key: null,
+      cache_path: null,
+      cache_exists: false,
+      cache_size_bytes: 0,
+      stale: null,
+      ready_to_train: inst.loader !== 'neoforge',
+    };
   }
   const cacheDir = aotCacheDirForKey(key);
   const cachePath = path.join(cacheDir, 'game.aot');
@@ -836,6 +843,25 @@ export async function aotStatus(inst) {
     const meta = JSON.parse(await fs.promises.readFile(path.join(cacheDir, 'meta.json'), 'utf8'));
     if (meta && typeof meta.trained_at === 'string') trainedAt = meta.trained_at;
   } catch { /* no meta yet */ }
+
+  // Classpath-drift check — mirrors resolveLaunch's stamp source (same resolver
+  // calls, same order) so the answer matches what buildArgv will decide. null
+  // means unverifiable (no cache, NeoForge's merged profile, cold metadata):
+  // the UI must never read null as "valid".
+  let stale = null;
+  if (cacheExists && inst.loader !== 'neoforge') {
+    try {
+      const resolver = await import('./resolver.mjs');
+      const versionJson = await resolver.getVersionJson(inst.version);
+      const fabric = inst.loader === 'fabric' ? await resolver.resolveFabric(inst.version) : null;
+      const aotMod = await getAotModule();
+      if (aotMod && typeof aotMod.isCacheStale === 'function') {
+        stale = aotMod.isCacheStale(key, resolver.resolveClasspath(inst, versionJson, fabric));
+      }
+    } catch {
+      stale = null;
+    }
+  }
 
   let proof = null;
   try {
@@ -866,9 +892,14 @@ export async function aotStatus(inst) {
     if (recent.length > 0) {
       const logPath = path.join(gameBase, recent[recent.length - 1]);
       const content = await fs.promises.readFile(logPath, 'utf8');
+      const usingNow = /Using AOT-linked classes: true/.test(content);
+      const aotMod = await getAotModule();
       proof = {
         log_path: logPath,
-        using_aot_linked_classes: /Using AOT-linked classes: true/.test(content),
+        using_aot_linked_classes: usingNow,
+        // The JVM's own refusal line when it was handed a cache it could not
+        // use, so a cache that silently did nothing is explainable in the UI.
+        refusal: usingNow ? null : (aotMod?.aotRefusalLine?.(content) ?? null),
       };
     }
   } catch { /* proof unavailable */ }
@@ -878,6 +909,7 @@ export async function aotStatus(inst) {
     cache_path: cachePath,
     cache_exists: cacheExists,
     cache_size_bytes: cacheSize,
+    stale,
     ready_to_train: inst.loader !== 'neoforge',
     ...(trainedAt ? { trained_at: trainedAt } : {}),
     ...(proof ? { proof } : {}),

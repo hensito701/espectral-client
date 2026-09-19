@@ -7,7 +7,6 @@ export const THEMES = ['dark', 'light', 'system'] as const;
 export type Theme = typeof THEMES[number];
 export const LOADERS = ['vanilla', 'fabric', 'neoforge'] as const;
 export type Loader = typeof LOADERS[number];
-export type LaunchMode = 'normal' | 'aot';
 export type OverwritePolicy = 'never' | 'if-older';
 export type ImportSourceKind = 'vanilla' | 'fastclient' | 'lunar';
 export type JvmSource = 'bundled' | 'fastclient' | 'path' | 'downloaded';
@@ -76,6 +75,8 @@ export interface MsDeviceFlow {
   flow_id: string;
   user_code: string;
   verification_uri: string;
+  /** RFC 8628 verification URI with the code embedded; null when the tenant omits it. */
+  verification_uri_complete: string | null;
   expires_in: number;
   interval: number;
 }
@@ -185,6 +186,8 @@ export interface ImportResult {
 export interface AotProof {
   log_path: string;
   using_aot_linked_classes: boolean;
+  /** JVM's own refusal line when the cache was passed but not used. */
+  refusal?: string | null;
 }
 
 export interface AotStatus {
@@ -192,6 +195,10 @@ export interface AotStatus {
   cache_path: string;
   cache_exists: boolean;
   cache_size_bytes: number;
+  /** Classpath drift vs the cache stamp; null = unverifiable. */
+  stale?: boolean | null;
+  /** False for loaders with no AOT tier (NeoForge). */
+  ready_to_train?: boolean;
   trained_at?: string;
   proof?: AotProof;
 }
@@ -260,6 +267,8 @@ export interface ClientMacro {
 
 export interface ClientConfig {
   schema: number;
+  /** Suite master switch (schema 2). Absent on old payloads — readers default to true. */
+  suite?: { enabled: boolean };
   features: Record<string, ClientFeatureState>;
   macros: ClientMacro[];
 }
@@ -271,6 +280,8 @@ export interface ClientRegistryEntry {
   kind: ClientFeatureKind;
   defaultEnabled: boolean;
   keybind?: string;
+  /** Registry category id (schema 2, additive). Absent on old payloads. */
+  category?: string;
 }
 
 export interface ClientReconcileError {
@@ -289,6 +300,7 @@ export interface ClientInfo {
 export type ClientPatch = Partial<{
   features: Record<string, { enabled?: boolean; [k: string]: unknown }>;
   macros: ClientMacro[];
+  suite: { enabled?: boolean };
 }>;
 
 /** GET /api/launches — live/recent launch buffers, newest first. */

@@ -1,0 +1,132 @@
+package es.spectral.menu.ui;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import es.spectral.menu.Compat;
+import es.spectral.menu.EspectralBrand;
+import net.minecraft.client.gui.Font;
+import net.minecraft.network.chat.Component;
+
+/**
+ * The optional dark-glass backdrop behind the Suite screens and the title
+ * wordmark. Pure drawing through {@code Compat.ui*} with an opaque graphics
+ * object, so this shared class never names a version-specific graphics type;
+ * each lane's background hook calls it with its own extractor.
+ *
+ * <p>Gold labels (title wordmark, confirm-dialog title) render as a
+ * horizontal light-to-deep gradient, interpolated per character in
+ * {@link Compat} — never flat gold. Body text stays flat for readability.
+ */
+public final class SuitePainter {
+
+    private SuitePainter() {}
+
+    /** Wrapped message line height in the confirm dialog. */
+    private static final int LINE_H = 10;
+
+    /**
+     * Title-screen backdrop: a full-width dark glass strip across the top
+     * (behind the appended top-right action row) with a gold hairline, the
+     * Espectral wordmark at the left and a dim version line under it. The
+     * panorama, logo, splash and every vanilla widget are untouched.
+     */
+    public static void paintTitle(Object gfx, int width, int height, Font font) {
+        if (gfx == null || font == null) return;
+        int bandH = SuiteTheme.ACTION_Y + 20 + 8;
+        if (height < bandH + 40) return;
+        Compat.uiFill(gfx, 0, 0, width, bandH, SuiteTheme.PANEL);
+        Compat.uiFill(gfx, 0, bandH, width, bandH + 1, SuiteTheme.GOLD_HAIRLINE);
+        Compat.uiTextGradient(gfx, font,
+                Component.translatable("espectral.suite.title"),
+                8, SuiteTheme.ACTION_Y + 1,
+                SuiteTheme.GOLD_GRADIENT_LEFT, SuiteTheme.GOLD_GRADIENT_RIGHT, false);
+        String version = EspectralBrand.modVersion();
+        if (version != null && !version.isBlank()) {
+            Compat.uiText(gfx, font, Component.literal("v" + version.trim()),
+                    8, SuiteTheme.ACTION_Y + 12, SuiteTheme.TEXT_DIM, false);
+        }
+    }
+
+    /**
+     * Suite-screen backdrop: a full-screen dim plus the centred glass panel
+     * with hairlines separating the header and footer zones. Row widgets draw
+     * themselves; this only frames them.
+     */
+    public static void paintSuite(Object gfx, SuiteScreen screen, int width, int height, Font font) {
+        if (gfx == null || font == null) return;
+        paintPanel(gfx, width, height);
+    }
+
+    /** Confirm-dialog backdrop: dim plus the small centred glass panel. */
+    public static void paintConfirm(Object gfx, SuiteConfirmScreen screen, int width, int height, Font font) {
+        if (gfx == null || font == null || screen == null) return;
+        Compat.uiFill(gfx, 0, 0, width, height, SuiteTheme.SCRIM);
+        int cw = SuiteConfirmScreen.panelWidth(width);
+        int ch = SuiteConfirmScreen.PANEL_H;
+        int cx = (width - cw) / 2;
+        int cy = (height - ch) / 2;
+        Compat.uiFill(gfx, cx, cy, cx + cw, cy + ch, SuiteTheme.PANEL);
+        Compat.uiOutline(gfx, cx, cy, cw, ch, SuiteTheme.PANEL_EDGE);
+        Compat.uiTextCenteredGradient(gfx, font, screen.getTitleText(), width / 2, cy + 14,
+                SuiteTheme.GOLD_GRADIENT_LEFT, SuiteTheme.GOLD_GRADIENT_RIGHT, false);
+        int my = cy + 34;
+        for (String line : screen.getMessageLines()) {
+            Compat.uiTextCentered(gfx, font, Component.literal(line), width / 2, my,
+                    SuiteTheme.TEXT, false);
+            my += LINE_H;
+        }
+    }
+
+    /**
+     * Greedy word wrap of a plain message to the given pixel width, measured
+     * with the live font. A single over-long word (e.g. the support URL)
+     * keeps its own line rather than overflowing the dialog. Shared and
+     * version-neutral: only {@code Font.width(String)} is used.
+     */
+    public static List<String> wrap(String text, Font font, int maxW) {
+        List<String> out = new ArrayList<>();
+        if (text == null || text.isEmpty() || font == null || maxW <= 0) {
+            out.add(text == null ? "" : text);
+            return out;
+        }
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            String candidate = line.length() == 0 ? word : line + " " + word;
+            if (font.width(candidate) <= maxW || line.length() == 0) {
+                line.setLength(0);
+                line.append(candidate);
+            } else {
+                out.add(line.toString());
+                line.setLength(0);
+                line.append(word);
+            }
+        }
+        if (line.length() > 0) {
+            out.add(line.toString());
+        }
+        if (out.isEmpty()) {
+            out.add("");
+        }
+        return out;
+    }
+
+    private static void paintPanel(Object gfx, int width, int height) {
+        Compat.uiFill(gfx, 0, 0, width, height, SuiteTheme.SCRIM);
+        int pw = SuiteTheme.panelWidth(width);
+        int px = SuiteTheme.panelX(width);
+        int top = SuiteTheme.PANEL_TOP;
+        int bottom = height - SuiteTheme.PANEL_TOP;
+        Compat.uiFill(gfx, px, top, px + pw, bottom, SuiteTheme.PANEL);
+        Compat.uiOutline(gfx, px, top, pw, bottom - top, SuiteTheme.PANEL_EDGE);
+        int headerLine = SuiteTheme.headerBottom() + 2;
+        Compat.uiFill(gfx, px + 1, headerLine, px + pw - 1, headerLine + 1,
+                SuiteTheme.GOLD_HAIRLINE);
+        int footerLine = SuiteTheme.footerY(height) - 3;
+        Compat.uiFill(gfx, px + 1, footerLine, px + pw - 1, footerLine + 1,
+                SuiteTheme.GOLD_HAIRLINE);
+    }
+}

@@ -286,8 +286,8 @@ test('buildArgv: neoforge launch (module path, fml args, substituted placeholder
   assert.ok(!text.includes('-XX:AOTCache'));
 });
 
-test('buildArgv: AOT mode on JDK 21 is skipped with a warning', () => {
-  const resolved = fakeNeoforgeResolved({ mode: 'aot' });
+test('buildArgv: an ordinary NeoForge launch on JDK 21 skips AOT with a warning', () => {
+  const resolved = fakeNeoforgeResolved();
   const argv = buildArgv({ name: 'Keke', memory_mb: 3072 }, resolved);
   assert.ok(!argv.join(' ').includes('-XX:AOTCache'));
   assert.ok(resolved.warnings.some((w) => w.includes('JDK 25-tier')));

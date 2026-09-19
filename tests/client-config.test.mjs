@@ -45,14 +45,20 @@ test('REGISTRY: exports Contract A feature entries', () => {
     assert.ok(typeof item.description === 'string');
     assert.equal(item.kind, 'owned');
     assert.ok(typeof item.defaultEnabled === 'boolean');
+    assert.ok(typeof item.category === 'string', `${item.id} has a category`);
   }
+  assert.equal(REGISTRY.length, 13);
+  assert.deepEqual(
+    [...new Set(REGISTRY.map((r) => r.category))].sort(),
+    ['chat', 'controls', 'hud', 'visual'],
+  );
   const zoom = REGISTRY.find((r) => r.id === 'zoom');
   assert.equal(zoom.keybind, 'key.keyboard.z');
 });
 
 test('FEATURE_DEFAULTS: has default feature configurations', () => {
   assert.equal(FEATURE_DEFAULTS.fullbright.enabled, true);
-  assert.equal(FEATURE_DEFAULTS.fullbright.gamma, 15.0);
+  assert.equal(FEATURE_DEFAULTS.fullbright.gamma, 1.0);
   assert.equal(FEATURE_DEFAULTS.nofog.enabled, false);
   assert.equal(FEATURE_DEFAULTS.zoom.enabled, true);
   assert.equal(FEATURE_DEFAULTS.macros.enabled, true);
@@ -65,10 +71,12 @@ test('FEATURE_DEFAULTS: has default feature configurations', () => {
 });
 
 test('loadClientConfig: returns defaults when file is missing', () => {
-  const cfg = loadClientConfig('test-inst');
-  assert.equal(cfg.schema, 1);
+  const cfg = loadClientConfig('missing-inst');
+  assert.equal(cfg.schema, 2);
+  assert.equal(cfg.suite.enabled, true);
   assert.deepEqual(cfg.features, FEATURE_DEFAULTS);
   assert.deepEqual(cfg.macros, []);
+  assert.equal(cfg.features.nofog.enabled, false);
 });
 
 test('seedClientConfig: writes defaults and preserves unknown fields', () => {
@@ -86,9 +94,11 @@ test('seedClientConfig: writes defaults and preserves unknown fields', () => {
 
   seedClientConfig('test-inst');
   const seeded = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  assert.equal(seeded.schema, 2); // v1 upgraded in place
+  assert.equal(seeded.suite.enabled, true); // master switch added, on by default
   assert.equal(seeded.custom_field, 'keep-me');
   assert.equal(seeded.features.fullbright.enabled, false); // preserved user setting
-  assert.equal(seeded.features.fullbright.gamma, 15.0); // filled missing default field
+  assert.equal(seeded.features.fullbright.gamma, 1.0); // filled missing default field
   assert.equal(seeded.features.zoom.enabled, true); // added missing default
   assert.equal(seeded.features.custom_mod.enabled, true); // preserved custom feature
   assert.equal(seeded.macros.length, 1);
@@ -144,4 +154,72 @@ test('patchClientConfig: rejects invalid macros with BAD_MACRO', async () => {
       }),
     (err) => err.code === 'BAD_MACRO',
   );
+});
+
+test('seedClientConfig: fresh file gets schema 2 and an enabled suite', () => {
+  seedClientConfig('fresh-suite-inst');
+  const seeded = JSON.parse(fs.readFileSync(clientConfigPath('fresh-suite-inst'), 'utf8'));
+  assert.equal(seeded.schema, 2);
+  assert.equal(seeded.suite.enabled, true);
+  assert.equal(seeded.features.nofog.enabled, false);
+  assert.equal(seeded.features.fullbright.gamma, 1.0);
+});
+
+test('seedClientConfig: v1 upgrade preserves flags, suite choice and unknown fields', () => {
+  const cfgPath = clientConfigPath('v1-upgrade-inst');
+  fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+  fs.writeFileSync(
+    cfgPath,
+    JSON.stringify({
+      schema: 1,
+      custom_field: 'keep-me',
+      suite: { enabled: false },
+      features: { fullbright: { enabled: false, gamma: 3.5 }, custom_mod: { enabled: true } },
+      macros: [],
+    }),
+  );
+
+  seedClientConfig('v1-upgrade-inst');
+  const seeded = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  assert.equal(seeded.schema, 2);
+  assert.equal(seeded.suite.enabled, false); // stored switch choice untouched
+  assert.equal(seeded.custom_field, 'keep-me');
+  assert.equal(seeded.features.fullbright.enabled, false); // stored flag untouched
+  assert.equal(seeded.features.fullbright.gamma, 3.5); // stored value untouched
+  assert.equal(seeded.features.custom_mod.enabled, true);
+});
+
+test('patchClientConfig: suite master switch round-trips', async () => {
+  const off = await patchClientConfig('test-inst', { suite: { enabled: false } });
+  assert.equal(off.config.suite.enabled, false);
+  assert.equal(off.config.schema, 2);
+
+  const on = await patchClientConfig('test-inst', { suite: { enabled: true } });
+  assert.equal(on.config.suite.enabled, true);
+
+  const raw = JSON.parse(fs.readFileSync(clientConfigPath('test-inst'), 'utf8'));
+  assert.equal(raw.suite.enabled, true);
+});
+
+test('patchClientConfig: unknown top-level fields are rejected', async () => {
+  await assert.rejects(
+    () => patchClientConfig('test-inst', { bogus_field: true }),
+    (err) => err.code === 'BAD_PATCH',
+  );
+});
+
+test('bare-boolean feature entries are tolerated', async () => {
+  const cfgPath = clientConfigPath('bool-entry-inst');
+  fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+  fs.writeFileSync(
+    cfgPath,
+    JSON.stringify({ schema: 2, suite: { enabled: true }, features: { coords: true }, macros: [] }),
+  );
+
+  const loaded = loadClientConfig('bool-entry-inst');
+  assert.equal(loaded.features.coords.enabled, true);
+
+  seedClientConfig('bool-entry-inst');
+  const seeded = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  assert.equal(seeded.features.coords.enabled, true); // flag preserved through seed
 });

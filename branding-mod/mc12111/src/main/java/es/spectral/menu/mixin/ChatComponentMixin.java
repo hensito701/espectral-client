@@ -15,6 +15,7 @@ import net.minecraft.client.GuiMessage;
 import net.minecraft.client.gui.components.ChatComponent;
 
 import es.spectral.menu.ChatHeads;
+import es.spectral.menu.ClientConfig;
 
 /**
  * 1.21.11: maps first-line content instances to senders so the background
@@ -51,6 +52,7 @@ public abstract class ChatComponentMixin {
             at = @At("TAIL")
     )
     private void espectral$mapQueuedSenders(GuiMessage message, CallbackInfo ci) {
+        if (!ClientConfig.getInstance().isFeatureEnabled("chatheads")) return;
         UUID senderId = ChatHeads.senderFor(message.signature());
         if (senderId == null) return;
         for (GuiMessage.Line line : this.trimmedMessages) {
