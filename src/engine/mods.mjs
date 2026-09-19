@@ -97,10 +97,13 @@ const JAR_IN_JAR = new Set(['eXts2L7r']);
 // ---------------------------------------------------------------------------
 function brandingDir() {
   // Bundled layout: the tauri resource dir ships the jars at
-  // <resources>/branding (staged beside engine/); REPO_ROOT resolves to the
-  // parent of the resource dir in the packaged app. Dev layout keeps the jars
-  // under assets/branding at the repo root.
+  // <resources>/branding, staged beside engine/ — so the resource dir is
+  // resolve(__dirname, '..') in the packaged app (engine/ sits directly under
+  // it), NOT REPO_ROOT (which is the install dir's parent there). Dev layout
+  // keeps the jars under assets/branding at the repo root.
+  const resourceDir = path.resolve(__dirname, '..');
   const candidates = [
+    path.join(resourceDir, 'branding'),
     path.join(REPO_ROOT, 'resources', 'branding'),
     path.join(REPO_ROOT, 'branding'),
     path.join(REPO_ROOT, 'assets', 'branding'),
