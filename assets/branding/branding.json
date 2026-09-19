@@ -15,8 +15,8 @@
     },
     "1.21.11": {
       "filename": "espectral-menu-1.21.11-1.3.14.jar",
-      "sha1": "9c97d37afe8663985ab97867577c6424b9ef3502",
-      "size": 96591,
+      "sha1": "5067c1a113019f61a0e90d6415e331378e94405d",
+      "size": 223101,
       "loaders": [
         "fabric"
       ],
@@ -25,8 +25,8 @@
     },
     "26.2": {
       "filename": "espectral-menu-26.2-1.3.14.jar",
-      "sha1": "538996dcd3f9735f9cc6e4fede437b54a5aeacc6",
-      "size": 118161,
+      "sha1": "db27977ee65788cc64f61fc71670b5796aae7ab9",
+      "size": 244696,
       "loaders": [
         "fabric"
       ],

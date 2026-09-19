@@ -1,5 +1,8 @@
 package es.spectral.menu;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
@@ -285,6 +288,96 @@ public final class Compat {
             return;
         }
         uiTextGradient(gfx, font, text, cx - total / 2, y, argbLeft, argbRight, shadow);
+    }
+    /**
+     * Title-menu primitive: draw the full texture scaled to {@code w} x {@code h}.
+     * Anything else is ignored.
+     */
+    public static void uiBlit(Object gfx, Identifier id, int x, int y, int w, int h) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics && id != null) {
+            graphics.blit(id, x, y, w, h, 0f, 0f, 1f, 1f);
+        }
+    }
+
+    /**
+     * Title-menu primitive: horizontal-gradient text drawn at a uniform scale.
+     * Translates to ({@code x}, {@code y}), scales, draws at the origin through
+     * {@link #uiTextGradient}, then restores the pose.
+     */
+    public static void uiTextScaledGradient(Object gfx, net.minecraft.client.gui.Font font,
+            String text, int x, int y, float scale, int argbLeft, int argbRight) {
+        if (!(gfx instanceof net.minecraft.client.gui.GuiGraphics graphics)
+                || font == null || text == null) {
+            return;
+        }
+        graphics.pose().pushMatrix();
+        graphics.pose().translate(x, y);
+        graphics.pose().scale(scale, scale);
+        uiTextGradient(graphics, font,
+                net.minecraft.network.chat.Component.literal(text),
+                0, 0, argbLeft, argbRight, false);
+        graphics.pose().popMatrix();
+    }
+
+    /**
+     * Loads a user-supplied PNG from disk as a {@code DynamicTexture} and
+     * registers it under {@code espectral-menu:menu_bg}. Returns null on failure.
+     */
+    public static Identifier loadExternalTexture(Minecraft minecraft, Path path) {
+        if (minecraft == null || path == null) {
+            return null;
+        }
+        try (java.io.InputStream in = Files.newInputStream(path)) {
+            com.mojang.blaze3d.platform.NativeImage image =
+                    com.mojang.blaze3d.platform.NativeImage.read(in);
+            net.minecraft.client.renderer.texture.DynamicTexture texture =
+                    new net.minecraft.client.renderer.texture.DynamicTexture(
+                            () -> "espectral-menu-bg", image);
+            Identifier id = Identifier.fromNamespaceAndPath("espectral-menu", "menu_bg");
+            minecraft.getTextureManager().register(id, texture);
+            return id;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Pixel dimensions of a registered {@code DynamicTexture}; null-safe. */
+    public static int[] textureSize(Minecraft minecraft, Identifier id) {
+        if (minecraft == null || id == null) {
+            return null;
+        }
+        try {
+            net.minecraft.client.renderer.texture.AbstractTexture texture =
+                    minecraft.getTextureManager().getTexture(id);
+            if (texture instanceof net.minecraft.client.renderer.texture.DynamicTexture dynamic) {
+                com.mojang.blaze3d.platform.NativeImage pixels = dynamic.getPixels();
+                if (pixels == null) {
+                    return null;
+                }
+                return new int[]{pixels.getWidth(), pixels.getHeight()};
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Title-menu navigation targets. Unknown keys yield null. */
+    public static Screen menuTarget(Minecraft minecraft, Screen back, String which) {
+        if (minecraft == null || which == null) {
+            return null;
+        }
+        switch (which) {
+            case "selectWorld":
+                return new net.minecraft.client.gui.screens.worldselection.SelectWorldScreen(back);
+            case "joinMultiplayer":
+                return new net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen(back);
+            case "accessibility":
+                return new net.minecraft.client.gui.screens.options.AccessibilityOptionsScreen(
+                        back, minecraft.options);
+            default:
+                return null;
+        }
     }
 
 

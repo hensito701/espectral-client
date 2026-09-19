@@ -3,7 +3,7 @@
   "package": "es.spectral.menu.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "TitleScreenInitMixin",
+    "TitleSwapMixin",
     "BenchMixin",
     "ScreenBackgroundMixin",
     "PauseScreenInitMixin",

@@ -1,5 +1,8 @@
 package es.spectral.menu;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
@@ -305,6 +308,99 @@ public final class Compat {
         }
         uiTextGradient(gfx, font, text, cx - total / 2, y, argbLeft, argbRight, shadow);
     }
+
+    /**
+     * Suite painter primitive: full-texture blit scaled to {@code w}×{@code h}
+     * through the 26.2 extraction pipeline (normalized UVs cover the whole
+     * texture). Anything else is ignored.
+     */
+    public static void uiBlit(Object gfx, Identifier id, int x, int y, int w, int h) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor && id != null) {
+            extractor.blit(id, x, y, w, h, 0f, 0f, 1f, 1f);
+        }
+    }
+
+    /**
+     * Suite painter primitive: plain-{@code String} wordmark with a
+     * horizontal per-character gradient (light left, deep right), drawn
+     * scaled about ({@code x}, {@code y}) through the 26.2 extraction
+     * pipeline. Anything else is ignored.
+     */
+    public static void uiTextScaledGradient(Object gfx, net.minecraft.client.gui.Font font,
+            String text, int x, int y, float scale, int argbLeft, int argbRight) {
+        if (!(gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor)
+                || font == null || text == null || text.isEmpty()) {
+            return;
+        }
+        extractor.pose().pushMatrix();
+        extractor.pose().translate(x, y);
+        extractor.pose().scale(scale, scale);
+        uiTextGradient(extractor, font,
+                net.minecraft.network.chat.Component.literal(text),
+                0, 0, argbLeft, argbRight, false);
+        extractor.pose().popMatrix();
+    }
+
+    /**
+     * Loads an external PNG as a dynamic texture and registers it under
+     * {@code espectral-menu:menu_bg}. Returns {@code null} on any failure.
+     */
+    public static Identifier loadExternalTexture(Minecraft minecraft, Path path) {
+        if (minecraft == null || path == null) return null;
+        try (java.io.InputStream in = Files.newInputStream(path)) {
+            com.mojang.blaze3d.platform.NativeImage img =
+                    com.mojang.blaze3d.platform.NativeImage.read(in);
+            net.minecraft.client.renderer.texture.DynamicTexture tex =
+                    new net.minecraft.client.renderer.texture.DynamicTexture(
+                            () -> "espectral-menu-bg", img);
+            Identifier id = Identifier.fromNamespaceAndPath("espectral-menu", "menu_bg");
+            minecraft.getTextureManager().register(id, tex);
+            return id;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Pixel dimensions of a previously registered dynamic texture, or
+     * {@code null} when unknown (null input, missing texture, or a texture
+     * with no pixels).
+     */
+    public static int[] textureSize(Minecraft minecraft, Identifier id) {
+        if (minecraft == null || id == null) return null;
+        try {
+            net.minecraft.client.renderer.texture.AbstractTexture tex =
+                    minecraft.getTextureManager().getTexture(id);
+            if (tex instanceof net.minecraft.client.renderer.texture.DynamicTexture dyn
+                    && dyn.getPixels() != null) {
+                return new int[]{dyn.getPixels().getWidth(), dyn.getPixels().getHeight()};
+            }
+        } catch (Exception ignored) {
+            // fall through to null
+        }
+        return null;
+    }
+
+    /**
+     * Version-divergent main-menu navigation targets: {@code "selectWorld"},
+     * {@code "joinMultiplayer"} and {@code "accessibility"}. Any other key
+     * returns {@code null}.
+     */
+    public static Screen menuTarget(Minecraft minecraft, Screen back, String which) {
+        if (which == null) return null;
+        switch (which) {
+            case "selectWorld":
+                return new net.minecraft.client.gui.screens.worldselection.SelectWorldScreen(back);
+            case "joinMultiplayer":
+                return new net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen(back);
+            case "accessibility":
+                return new net.minecraft.client.gui.screens.options.AccessibilityOptionsScreen(
+                        back, minecraft.options);
+            default:
+                return null;
+        }
+    }
+
 
     /**
      * Opens the canonical support URL in the system browser. Called only

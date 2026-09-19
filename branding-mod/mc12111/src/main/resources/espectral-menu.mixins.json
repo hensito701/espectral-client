@@ -3,7 +3,6 @@
   "package": "es.spectral.menu.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "TitleScreenInitMixin",
     "ClientBrandMixin",
     "MinecraftMixin",
     "GameMenuScreenMixin",
@@ -21,7 +20,8 @@
     "LivingEntityRendererAccessor",
     "LivingEntityRendererMixin",
     "AvatarRendererMixin",
-    "TextureManagerMixin"
+    "TextureManagerMixin",
+    "TitleSwapMixin"
   ],
   "injectors": {
     "defaultRequire": 1
