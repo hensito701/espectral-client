@@ -137,6 +137,22 @@ public final class HudEditLogic {
         dragging = null;
     }
 
+    /**
+     * Right-click: resets the block under the cursor to its default anchor.
+     * Returns true when a block was reset.
+     */
+    public boolean resetAt(double mx, double my, Minecraft minecraft, Font font, int guiW, int guiH) {
+        for (int i = blocks.size() - 1; i >= 0; i--) {
+            EditBlock b = blocks.get(i);
+            if (b.contains(mx, my)) {
+                HudLayout.resetPos(b.id);
+                rebuild(minecraft, font, guiW, guiH);
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Resets every overlay to its default anchor and rebuilds positions. */
     public void resetAll(Minecraft minecraft, Font font, int guiW, int guiH) {
         HudLayout.resetAll();

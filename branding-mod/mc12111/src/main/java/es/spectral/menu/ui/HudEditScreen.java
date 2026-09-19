@@ -82,6 +82,9 @@ public class HudEditScreen extends Screen {
         if (event.button() == 0 && logic.mouseDown(event.x(), event.y())) {
             return true;
         }
+        if (event.button() == 1 && logic.resetAt(event.x(), event.y(), this.minecraft, this.font, this.width, this.height)) {
+            return true;
+        }
         return super.mouseClicked(event, doubleClick);
     }
 
