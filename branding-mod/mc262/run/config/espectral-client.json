@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "features": {
+    "macros": {
+      "enabled": true
+    },
+    "armorstatus": {
+      "enabled": false
+    },
+    "zoom": {
+      "enabled": true
+    },
+    "lowfire": {
+      "enabled": false
+    },
+    "clearwater": {
+      "enabled": false
+    },
+    "chatheads": {
+      "enabled": false
+    },
+    "fullbright": {
+      "enabled": true
+    },
+    "healthstatus": {
+      "enabled": false
+    },
+    "fpsping": {
+      "enabled": false
+    },
+    "skin3d": {
+      "enabled": false
+    },
+    "potionstatus": {
+      "enabled": false
+    },
+    "coords": {
+      "enabled": false
+    },
+    "nofog": {
+      "enabled": false
+    }
+  },
+  "macros": []
+}

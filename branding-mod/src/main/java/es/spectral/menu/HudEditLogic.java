@@ -23,16 +23,17 @@ public final class HudEditLogic {
     public static final class EditBlock {
         public final String id;
         public final String label;
-        public final List<String> lines;
+        public final List<HudEngine.Row> rows;
         public int x;
         public int y;
         public int w;
         public int h;
 
-        EditBlock(String id, String label, List<String> lines) {
+
+        EditBlock(String id, String label, List<HudEngine.Row> rows) {
             this.id = id;
             this.label = label;
-            this.lines = lines;
+            this.rows = rows;
         }
 
         public boolean contains(double mx, double my) {
@@ -40,6 +41,20 @@ public final class HudEditLogic {
         }
     }
 
+    /** Pixel height of one row: icon rows grow to fit the icon + 2px. */
+    public static int rowHeight(HudEngine.Row row) {
+        return row.icon != null ? Math.max(HudLayout.LINE_PITCH, row.icon.size() + 2)
+                                : HudLayout.LINE_PITCH;
+    }
+
+    /** Pixel width of one row: icon (if any) + gap + text width. */
+    public static int rowWidth(Font font, HudEngine.Row row) {
+        int w = font.width(row.text);
+        if (row.icon != null) {
+            w += row.icon.size() + 3; // icon + gap before text
+        }
+        return w;
+    }
     /** Display labels per overlay id (Spanish, matching the suite UI). */
     private static String labelOf(String id) {
         switch (id) {
@@ -52,15 +67,23 @@ public final class HudEditLogic {
         }
     }
 
-    /** Placeholder line when a block has no live content (no world / off). */
-    private static String sampleOf(String id) {
+    /**
+     * Placeholder row when a block has no live content (no world / feature
+     * off). Icon rows get a representative icon so the box sizes itself like
+     * the real overlay.
+     */
+    private static HudEngine.Row sampleOf(String id) {
         switch (id) {
-            case "fpsping": return "FPS: 240 | Ping: 12 ms";
-            case "coords": return "XYZ: 128.5 / 64.0 / -256.2 [Norte]";
-            case "healthstatus": return "Salud: 20.0/20.0";
-            case "armorstatus": return "Casco: 363/363";
-            case "potionstatus": return "Velocidad II 0:42";
-            default: return id;
+            case "fpsping": return new HudEngine.Row("FPS: 240 | Ping: 12 ms", null);
+            case "coords": return new HudEngine.Row("XYZ: 128.5 / 64.0 / -256.2 [Norte]", null);
+            case "healthstatus": return new HudEngine.Row("Salud: 20.0/20.0",
+                    HudIcon.heart(HudIcon.Heart.NORMAL));
+            case "armorstatus": return new HudEngine.Row("Casco: 363/363",
+                    HudIcon.item(new net.minecraft.world.item.ItemStack(
+                            net.minecraft.world.item.Items.DIAMOND_HELMET)));
+            case "potionstatus": return new HudEngine.Row("Velocidad II 0:42",
+                    HudIcon.effect(net.minecraft.world.effect.MobEffects.SPEED));
+            default: return new HudEngine.Row(id, null);
         }
     }
 
@@ -71,27 +94,31 @@ public final class HudEditLogic {
     private boolean dirty;
 
     /**
-     * Rebuilds the block list with current positions. Live lines come from
+     * Rebuilds the block list with current positions. Live rows come from
      * {@link HudEngine#blocks} when a world is loaded; otherwise each overlay
-     * gets its sample line so it stays draggable on the title screen.
+     * gets its sample row so it stays draggable on the title screen.
      */
     public void rebuild(Minecraft minecraft, Font font, int guiW, int guiH) {
         blocks.clear();
         // Live content keyed by id, when a world is loaded.
         List<HudEngine.Block> live = HudEngine.getInstance().blocks(minecraft);
         for (String id : HudLayout.OVERLAY_IDS) {
-            List<String> lines = null;
+            List<HudEngine.Row> rows = null;
             for (HudEngine.Block b : live) {
-                if (b.id.equals(id)) { lines = b.lines; break; }
+                if (b.id.equals(id)) { rows = b.rows; break; }
             }
-            if (lines == null || lines.isEmpty()) {
-                lines = List.of(sampleOf(id));
+            if (rows == null || rows.isEmpty()) {
+                rows = List.of(sampleOf(id));
             }
-            EditBlock eb = new EditBlock(id, labelOf(id), lines);
+            EditBlock eb = new EditBlock(id, labelOf(id), rows);
             int w = 0;
-            for (String line : lines) w = Math.max(w, font.width(line));
+            int h = HudLayout.PAD * 2;
+            for (HudEngine.Row row : rows) {
+                w = Math.max(w, rowWidth(font, row));
+                h += rowHeight(row);
+            }
             eb.w = w + HudLayout.PAD * 2;
-            eb.h = lines.size() * HudLayout.LINE_PITCH - (HudLayout.LINE_PITCH - 9) + HudLayout.PAD * 2;
+            eb.h = h;
             int[] pos = HudLayout.pos(id, guiW, guiH, eb.w, eb.h);
             eb.x = pos[0];
             eb.y = pos[1];

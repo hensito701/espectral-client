@@ -70,23 +70,38 @@ public final class HudEngine {
     }
 
     /**
-     * One movable overlay block: a feature id plus its text lines. The draw
-     * side measures the widest line for the box width and stacks the lines at
-     * {@link HudLayout#LINE_PITCH}.
+     * One text row inside an overlay block, optionally with a leading icon
+     * (heart / armor item / potion effect sprite). {@code icon} is null for
+     * plain text rows.
+     */
+    public static final class Row {
+        public final String text;
+        public final HudIcon icon;
+
+        public Row(String text, HudIcon icon) {
+            this.text = text;
+            this.icon = icon;
+        }
+    }
+
+    /**
+     * One movable overlay block: a feature id plus its rows. The draw side
+     * measures the widest row (icon + text) for the box width and stacks rows
+     * at their own heights.
      */
     public static final class Block {
         public final String id;
-        public final List<String> lines;
+        public final List<Row> rows;
 
-        public Block(String id, List<String> lines) {
+        public Block(String id, List<Row> rows) {
             this.id = id;
-            this.lines = lines;
+            this.rows = rows;
         }
     }
 
     /**
      * Enabled overlay blocks in draw order: fpsping, coords, healthstatus,
-     * armorstatus, then potionstatus. Each block carries only its own lines so
+     * armorstatus, then potionstatus. Each block carries only its own rows so
      * it can be positioned independently. Empty blocks (e.g. armor with no
      * gear, potions with none active) are omitted so they never reserve space.
      * Returns empty when there is no player/world.
@@ -97,12 +112,12 @@ public final class HudEngine {
         }
         List<Block> out = new ArrayList<>(5);
         if (isEnabled("fpsping")) {
-            out.add(new Block("fpsping", List.of(fpsPingLine(minecraft))));
+            out.add(new Block("fpsping", List.of(new Row(fpsPingLine(minecraft), null))));
         }
         if (isEnabled("coords")) {
-            out.add(new Block("coords", List.of(String.format(Locale.ROOT, "XYZ: %.1f / %.1f / %.1f [%s]",
+            out.add(new Block("coords", List.of(new Row(String.format(Locale.ROOT, "XYZ: %.1f / %.1f / %.1f [%s]",
                     minecraft.player.getX(), minecraft.player.getY(), minecraft.player.getZ(),
-                    facingName(minecraft)))));
+                    facingName(minecraft)), null))));
         }
         if (isEnabled("healthstatus")) {
             float health = minecraft.player.getHealth();
@@ -111,16 +126,16 @@ public final class HudEngine {
             String line = absorption > 0.05f
                     ? String.format(Locale.ROOT, "Salud: %.1f/%.1f (+%.1f)", health, max, absorption)
                     : String.format(Locale.ROOT, "Salud: %.1f/%.1f", health, max);
-            out.add(new Block("healthstatus", List.of(line)));
+            out.add(new Block("healthstatus", List.of(new Row(line, HudIcon.heart(heartFor(minecraft))))));
         }
         if (isEnabled("armorstatus")) {
-            List<String> armor = armorLines(minecraft);
+            List<Row> armor = armorRows(minecraft);
             if (!armor.isEmpty()) {
                 out.add(new Block("armorstatus", armor));
             }
         }
         if (isEnabled("potionstatus")) {
-            List<String> potions = potionLines(minecraft);
+            List<Row> potions = potionRows(minecraft);
             if (!potions.isEmpty()) {
                 out.add(new Block("potionstatus", potions));
             }
@@ -129,17 +144,41 @@ public final class HudEngine {
     }
 
     /**
-     * One line per active potion effect, each with name, amplifier level and
-     * remaining duration. Empty when no effects are active.
+     * Heart variant for the health overlay, mirroring vanilla
+     * {@code HeartType.forPlayer}: poison > wither > absorption > frozen >
+     * normal. Absorption shows gold hearts in vanilla; we surface it as the
+     * ABSORBING variant so the icon matches the (+%.1f) text.
      */
-    private static List<String> potionLines(Minecraft minecraft) {
-        List<String> lines = new ArrayList<>();
+    private static HudIcon.Heart heartFor(Minecraft minecraft) {
+        var player = minecraft.player;
+        if (player.hasEffect(net.minecraft.world.effect.MobEffects.POISON)) {
+            return HudIcon.Heart.POISIONED;
+        }
+        if (player.hasEffect(net.minecraft.world.effect.MobEffects.WITHER)) {
+            return HudIcon.Heart.WITHERED;
+        }
+        if (player.getAbsorptionAmount() > 0.05f) {
+            return HudIcon.Heart.ABSORBING;
+        }
+        if (player.isFullyFrozen()) {
+            return HudIcon.Heart.FROZEN;
+        }
+        return HudIcon.Heart.NORMAL;
+    }
+
+    /**
+     * One row per active potion effect: effect sprite + name, amplifier level
+     * and remaining duration. Empty when no effects are active.
+     */
+    private static List<Row> potionRows(Minecraft minecraft) {
+        List<Row> rows = new ArrayList<>();
         for (MobEffectInstance instance : minecraft.player.getActiveEffects()) {
             String name = instance.getEffect().value().getDisplayName().getString();
             String level = toRoman(instance.getAmplifier() + 1);
-            lines.add(name + " " + level + " " + formatDuration(instance));
+            rows.add(new Row(name + " " + level + " " + formatDuration(instance),
+                    HudIcon.effect(instance.getEffect())));
         }
-        return lines;
+        return rows;
     }
 
     private static String fpsPingLine(Minecraft minecraft) {
@@ -166,27 +205,32 @@ public final class HudEngine {
         }
     }
 
-    private static List<String> armorLines(Minecraft minecraft) {
-        List<String> lines = new ArrayList<>(4);
-        addArmorPiece(lines, minecraft, EquipmentSlot.HEAD, "Casco");
-        addArmorPiece(lines, minecraft, EquipmentSlot.CHEST, "Peto");
-        addArmorPiece(lines, minecraft, EquipmentSlot.LEGS, "Grebas");
-        addArmorPiece(lines, minecraft, EquipmentSlot.FEET, "Botas");
-        return lines;
+    /**
+     * One row per worn armor piece: the item's icon + label and remaining
+     * durability. Non-damageable pieces show "--". Empty when nothing is worn.
+     */
+    private static List<Row> armorRows(Minecraft minecraft) {
+        List<Row> rows = new ArrayList<>(4);
+        addArmorPiece(rows, minecraft, EquipmentSlot.HEAD, "Casco");
+        addArmorPiece(rows, minecraft, EquipmentSlot.CHEST, "Peto");
+        addArmorPiece(rows, minecraft, EquipmentSlot.LEGS, "Grebas");
+        addArmorPiece(rows, minecraft, EquipmentSlot.FEET, "Botas");
+        return rows;
     }
 
-    private static void addArmorPiece(List<String> lines, Minecraft minecraft, EquipmentSlot slot, String label) {
+    private static void addArmorPiece(List<Row> rows, Minecraft minecraft, EquipmentSlot slot, String label) {
         ItemStack stack = minecraft.player.getItemBySlot(slot);
         if (stack == null || stack.isEmpty()) {
             return;
         }
+        HudIcon icon = HudIcon.item(stack);
         if (!stack.isDamageableItem()) {
-            lines.add(label + ": --");
+            rows.add(new Row(label + ": --", icon));
             return;
         }
         int max = stack.getMaxDamage();
         int remaining = Math.max(0, max - stack.getDamageValue());
-        lines.add(label + ": " + remaining + "/" + max);
+        rows.add(new Row(label + ": " + remaining + "/" + max, icon));
     }
 
     private static String formatDuration(MobEffectInstance instance) {

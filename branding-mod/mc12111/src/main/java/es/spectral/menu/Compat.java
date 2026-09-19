@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
 import net.minecraft.client.model.player.PlayerModel;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerModelType;
@@ -63,26 +64,79 @@ public final class Compat {
             int x = pos[0], y = pos[1];
             // 50% black backing box, then opaque white text.
             graphics.fill(x, y, x + w, y + h, 0x80000000);
-            int ty = y + HudLayout.PAD;
-            for (String line : block.lines) {
-                graphics.drawString(font, line, x + HudLayout.PAD, ty, 0xFFFFFFFF, true);
-                ty += HudLayout.LINE_PITCH;
+            int rowTop = y + HudLayout.PAD;
+            for (HudEngine.Row row : block.rows) {
+                int rowH = HudEditLogic.rowHeight(row);
+                int iconW = 0;
+                if (row.icon != null) {
+                    int iconSize = row.icon.size();
+                    drawIcon(graphics, minecraft, row.icon,
+                            x + HudLayout.PAD, rowTop + (rowH - iconSize) / 2);
+                    iconW = iconSize + 3;
+                }
+                int textY = rowTop + (rowH - 9) / 2;
+                graphics.drawString(font, row.text, x + HudLayout.PAD + iconW, textY, 0xFFFFFFFF, true);
+                rowTop += rowH;
             }
         }
     }
 
-    /** Widest line width + padding — the overlay box width. */
+    /**
+     * Draws one overlay row icon at its native size (hearts 9px, items
+     * 16px, effect sprites 18px).
+     */
+    public static void drawIcon(net.minecraft.client.gui.GuiGraphics gfx,
+            Minecraft minecraft, HudIcon icon, int x, int y) {
+        if (gfx == null || icon == null) return;
+        switch (icon.kind) {
+            case HEART: {
+                if (icon.heart == null) break;
+                boolean hardcore = minecraft != null && minecraft.level != null
+                        && minecraft.level.getLevelData().isHardcore();
+                // Gui.HeartType is package-private in 1.21.11, so build the
+                // same full-heart sprite id getSprite(hardcore,false,false)
+                // would return (hud/heart/<variant>[_hardcore]_full).
+                String variant;
+                switch (icon.heart) {
+                    case POISIONED: variant = "poisoned_"; break;
+                    case WITHERED: variant = "withered_"; break;
+                    case ABSORBING: variant = "absorbing_"; break;
+                    case FROZEN: variant = "frozen_"; break;
+                    case NORMAL:
+                    default: variant = ""; break;
+                }
+                Identifier s = Identifier.withDefaultNamespace(
+                        "hud/heart/" + variant + (hardcore ? "hardcore_" : "") + "full");
+                gfx.blitSprite(RenderPipelines.GUI_TEXTURED, s, x, y, 9, 9);
+                break;
+            }
+            case ITEM:
+                if (icon.item != null) gfx.renderItem(icon.item, x, y);
+                break;
+            case EFFECT: {
+                Identifier s = net.minecraft.client.gui.Gui.getMobEffectSprite(icon.effect);
+                gfx.blitSprite(RenderPipelines.GUI_TEXTURED, s, x, y, 18, 18);
+                break;
+            }
+        }
+    }
+
+    /** Widest row width + padding — the overlay box width. */
     private static int blockWidth(net.minecraft.client.gui.Font font, HudEngine.Block block) {
         int w = 0;
-        for (String line : block.lines) {
-            w = Math.max(w, font.width(line));
+        for (HudEngine.Row row : block.rows) {
+            w = Math.max(w, HudEditLogic.rowWidth(font, row));
         }
         return w + HudLayout.PAD * 2;
     }
 
-    /** Line count × pitch + padding — the overlay box height. */
+    /** Padding + summed row heights — the overlay box height. */
     private static int blockHeight(HudEngine.Block block) {
-        return block.lines.size() * HudLayout.LINE_PITCH - (HudLayout.LINE_PITCH - 9) + HudLayout.PAD * 2;
+        int h = HudLayout.PAD * 2;
+        for (HudEngine.Row row : block.rows) {
+            h += HudEditLogic.rowHeight(row);
+        }
+        return h;
     }
 
     /** Opens the drag-to-move HUD overlay editor. */

@@ -7,7 +7,9 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
+import es.spectral.menu.Compat;
 import es.spectral.menu.HudEditLogic;
+import es.spectral.menu.HudEngine;
 import es.spectral.menu.HudLayout;
 
 /**
@@ -60,12 +62,19 @@ public class HudEditScreen extends Screen {
             int outline = hot ? 0xFFFFD700 : 0x80FFFFFF;
             graphics.fill(b.x, b.y, b.x + b.w, b.y + 1, outline);
             graphics.fill(b.x, b.y + b.h - 1, b.x + b.w, b.y + b.h, outline);
-            graphics.fill(b.x, b.y, b.x + 1, b.y + b.h, outline);
-            graphics.fill(b.x + b.w - 1, b.y, b.x + b.w, b.y + b.h, outline);
-            int ty = b.y + HudLayout.PAD;
-            for (String line : b.lines) {
-                graphics.drawString(this.font, line, b.x + HudLayout.PAD, ty, 0xFFFFFFFF, true);
-                ty += HudLayout.LINE_PITCH;
+            int rowTop = b.y + HudLayout.PAD;
+            for (HudEngine.Row row : b.rows) {
+                int rowH = HudEditLogic.rowHeight(row);
+                int iconW = 0;
+                if (row.icon != null) {
+                    int iconSize = row.icon.size();
+                    Compat.drawIcon(graphics, this.minecraft, row.icon,
+                            b.x + HudLayout.PAD, rowTop + (rowH - iconSize) / 2);
+                    iconW = iconSize + 3;
+                }
+                int textY = rowTop + (rowH - 9) / 2;
+                graphics.drawString(this.font, row.text, b.x + HudLayout.PAD + iconW, textY, 0xFFFFFFFF, true);
+                rowTop += rowH;
             }
             // Feature label above the box.
             graphics.drawString(this.font, b.label, b.x, b.y - 10, 0xFFAAAAAA, false);

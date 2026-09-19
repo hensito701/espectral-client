@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
 import net.minecraft.client.model.player.PlayerModel;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerModelType;
@@ -65,26 +66,98 @@ public final class Compat {
             // 50% black backing box, then opaque white text (ARGB — the
             // extractor drops alpha-0 colors, so 0xFFFFFF would be invisible).
             extractor.fill(x, y, x + w, y + h, 0x80000000);
-            int ty = y + HudLayout.PAD;
-            for (String line : block.lines) {
-                extractor.text(font, line, x + HudLayout.PAD, ty, 0xFFFFFFFF, true);
-                ty += HudLayout.LINE_PITCH;
+            int rowTop = y + HudLayout.PAD;
+            for (HudEngine.Row row : block.rows) {
+                int rowH = HudEditLogic.rowHeight(row);
+                int iconW = 0;
+                if (row.icon != null) {
+                    int size = row.icon.size();
+                    drawIcon(extractor, minecraft, row.icon,
+                            x + HudLayout.PAD, rowTop + (rowH - size) / 2);
+                    iconW = size + 3;
+                }
+                extractor.text(font, row.text,
+                        x + HudLayout.PAD + iconW, rowTop + (rowH - 9) / 2,
+                        0xFFFFFFFF, true);
+                rowTop += rowH;
             }
         }
     }
 
-    /** Widest line width + padding — the overlay box width. */
+    /**
+     * Draws one overlay row icon at its native size: hearts as the vanilla
+     * {@code hud/heart} sprite for the row's variant (hardcore-aware),
+     * armor pieces as the item icon, potion effects as the vanilla
+     * mob-effect sprite.
+     */
+    public static void drawIcon(net.minecraft.client.gui.GuiGraphicsExtractor gfx,
+            Minecraft minecraft, HudIcon icon, int x, int y) {
+        if (gfx == null || icon == null) return;
+        switch (icon.kind) {
+            case HEART: {
+                boolean hardcore = minecraft != null && minecraft.level != null
+                        && minecraft.level.getLevelData().isHardcore();
+                gfx.blitSprite(RenderPipelines.GUI_TEXTURED,
+                        heartSprite(icon.heart, hardcore), x, y, 9, 9);
+                break;
+            }
+            case ITEM:
+                if (icon.item != null) {
+                    gfx.item(icon.item, x, y);
+                }
+                break;
+            case EFFECT:
+                if (icon.effect != null) {
+                    gfx.blitSprite(RenderPipelines.GUI_TEXTURED,
+                            net.minecraft.client.gui.Hud.getMobEffectSprite(icon.effect),
+                            x, y, 18, 18);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Vanilla {@code hud/heart} full sprite for a heart variant. Paths mirror
+     * the private {@code Hud.HeartType} table in 26.2 (which is not visible
+     * outside {@code net.minecraft.client.gui}, so the sprite id is built
+     * directly instead of going through {@code HeartType.valueOf}).
+     */
+    private static Identifier heartSprite(HudIcon.Heart heart, boolean hardcore) {
+        String variant;
+        if (heart == null) {
+            variant = "";
+        } else {
+            switch (heart) {
+                case POISIONED: variant = "poisoned_"; break;
+                case WITHERED: variant = "withered_"; break;
+                case ABSORBING: variant = "absorbing_"; break;
+                case FROZEN: variant = "frozen_"; break;
+                case NORMAL:
+                default: variant = ""; break;
+            }
+        }
+        String path = hardcore
+                ? "hud/heart/" + variant + "hardcore_full"
+                : "hud/heart/" + variant + "full";
+        return Identifier.withDefaultNamespace(path);
+    }
+
+    /** Widest row width (icon + text) + padding — the overlay box width. */
     private static int blockWidth(net.minecraft.client.gui.Font font, HudEngine.Block block) {
         int w = 0;
-        for (String line : block.lines) {
-            w = Math.max(w, font.width(line));
+        for (HudEngine.Row row : block.rows) {
+            w = Math.max(w, HudEditLogic.rowWidth(font, row));
         }
         return w + HudLayout.PAD * 2;
     }
 
-    /** Line count × pitch + padding — the overlay box height. */
+    /** Stacked row heights + padding — the overlay box height. */
     private static int blockHeight(HudEngine.Block block) {
-        return block.lines.size() * HudLayout.LINE_PITCH - (HudLayout.LINE_PITCH - 9) + HudLayout.PAD * 2;
+        int h = HudLayout.PAD * 2;
+        for (HudEngine.Row row : block.rows) {
+            h += HudEditLogic.rowHeight(row);
+        }
+        return h;
     }
 
     /** Opens the drag-to-move HUD overlay editor. */
