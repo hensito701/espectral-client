@@ -25,6 +25,7 @@ branding-mod/**/build/
 branding-mod-nf/.gradle/
 branding-mod-nf/build/
 branding-mod-nf/runs/
+branding-mod/mc262/run/
 
 # Logs and scratch files
 logs/
