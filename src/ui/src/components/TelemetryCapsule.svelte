@@ -21,6 +21,7 @@
     launchInstance,
     stopInstance,
     avatarUrl,
+    ApiError,
   } from '../lib/api';
   import { launchLog, liveLaunches, instances as instancesStore } from '../lib/stores';
   import { subscribeEvents } from '../lib/sse';
@@ -180,6 +181,12 @@
       }
     } catch (e) {
       console.error('Failed to fetch accounts:', e);
+      // Engine may still be booting when the window first shows — retry while
+      // unreachable so the capsule isn't stuck on "Sin cuenta activa" until a
+      // remount (same recovery as TopChrome/Home).
+      if (e instanceof ApiError && e.status === 0) {
+        setTimeout(() => void loadAccountsList(), 2_000);
+      }
     }
   }
 
