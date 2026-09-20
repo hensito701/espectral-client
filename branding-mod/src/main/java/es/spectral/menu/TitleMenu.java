@@ -32,9 +32,9 @@ import es.spectral.menu.ui.SuiteTheme;
  */
 public final class TitleMenu {
 
-    /** Bundled logo (assets/espectral-menu/textures/gui/logo.png). */
+    /** Bundled logo, drawn through the GUI sprite atlas (alpha-safe). */
     private static final Identifier LOGO =
-            Identifier.fromNamespaceAndPath("espectral-menu", "textures/gui/logo.png");
+            Identifier.fromNamespaceAndPath("espectral-menu", "logo");
 
     /** Where a user-supplied background PNG is looked for, in priority order. */
     private static List<Path> backgroundCandidates(Minecraft minecraft) {
@@ -232,10 +232,8 @@ public final class TitleMenu {
         int cx = width - Math.max(24, width / 10) - logoSize / 2;
         int cy = height / 3;
 
-        // Soft glow behind the logo.
-        Compat.uiFill(gfx, cx - logoSize / 2 - 6, cy - logoSize / 2 - 6,
-                cx + logoSize / 2 + 6, cy + logoSize / 2 + 6, 0x22D9A93B);
-        Compat.uiBlit(gfx, LOGO, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize);
+        // Logo through the GUI sprite atlas so transparency renders.
+        Compat.uiSprite(gfx, LOGO, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize);
 
         // Wordmark under the logo, gold gradient, scaled up.
         String word = "ESPECTRAL";

@@ -40,7 +40,7 @@ logs/
 !assets/site/favicon.png
 !assets/site/logo_circle.png
 !assets/site/apple-touch-icon.png
-!branding-mod/src/main/resources/assets/espectral-menu/textures/gui/logo.png
+!branding-mod/src/main/resources/assets/espectral-menu/textures/gui/sprites/logo.png
 !src/ui/src/assets/logo_circle.png
 
 # Local editor / tool state

@@ -321,6 +321,18 @@ public final class Compat {
     }
 
     /**
+     * Draws a GUI-atlas sprite (assets/<ns>/textures/gui/sprites/<path>.png)
+     * scaled to w×h. Alpha-safe — use this for the logo and icons, not uiBlit
+     * (standalone mod textures don't auto-load through the blit path).
+     */
+    public static void uiSprite(Object gfx, Identifier spriteId, int x, int y, int w, int h) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor && spriteId != null) {
+            extractor.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
+                    spriteId, x, y, w, h);
+        }
+    }
+
+    /**
      * Suite painter primitive: plain-{@code String} wordmark with a
      * horizontal per-character gradient (light left, deep right), drawn
      * scaled about ({@code x}, {@code y}) through the 26.2 extraction

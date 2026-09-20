@@ -300,6 +300,18 @@ public final class Compat {
     }
 
     /**
+     * Draws a GUI-atlas sprite (assets/<ns>/textures/gui/sprites/<path>.png)
+     * scaled to w×h. Alpha-safe — use this for the logo and icons, not uiBlit
+     * (standalone mod textures don't auto-load through the blit path).
+     */
+    public static void uiSprite(Object gfx, Identifier spriteId, int x, int y, int w, int h) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics && spriteId != null) {
+            graphics.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
+                    spriteId, x, y, w, h);
+        }
+    }
+
+    /**
      * Title-menu primitive: horizontal-gradient text drawn at a uniform scale.
      * Translates to ({@code x}, {@code y}), scales, draws at the origin through
      * {@link #uiTextGradient}, then restores the pose.
