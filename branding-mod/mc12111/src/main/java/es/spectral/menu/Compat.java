@@ -295,7 +295,8 @@ public final class Compat {
      */
     public static void uiBlit(Object gfx, Identifier id, int x, int y, int w, int h) {
         if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics && id != null) {
-            graphics.blit(id, x, y, w, h, 0f, 0f, 1f, 1f);
+            // blit's 3rd/4th ints are the bottom-right CORNER (x1,y1), not w/h.
+            graphics.blit(id, x, y, x + w, y + h, 0f, 0f, 1f, 1f);
         }
     }
 
