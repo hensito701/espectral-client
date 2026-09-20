@@ -627,6 +627,28 @@ export async function resolveLaunch(
     } catch {
       /* ignore profile config sync error — launch must not fail over it */
     }
+    // Same Contract-C gap for the title-menu background: the mod resolves
+    // <gameDir>/config/espectral-menu-background.png, so mirror the canonical
+    // image into the per-account profile dir on every launch.
+    try {
+      const srcBg = path.join(effectiveGameDir(instance), 'config', 'espectral-menu-background.png');
+      const dstBg = path.join(gameDir, 'config', 'espectral-menu-background.png');
+      if (path.resolve(srcBg) !== path.resolve(dstBg) && fs.existsSync(srcBg)) {
+        let stale = true;
+        try {
+          const s = fs.statSync(srcBg), d = fs.statSync(dstBg);
+          stale = s.size !== d.size || s.mtimeMs !== d.mtimeMs;
+        } catch {
+          stale = true;
+        }
+        if (stale) {
+          fs.mkdirSync(path.dirname(dstBg), { recursive: true });
+          fs.copyFileSync(srcBg, dstBg);
+        }
+      }
+    } catch {
+      /* ignore background sync error — launch must not fail over it */
+    }
     // Fire-and-forget AOT proof-log pruning (lazy import to avoid circular dep with aot.mjs)
     try {
       const aot = await import('./aot.mjs');
