@@ -3,6 +3,7 @@ package es.spectral.menu.ui;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
@@ -48,6 +49,18 @@ public class EspectralTitleScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean dbl) {
         if (menu.mouseClicked(event.x(), event.y(), event.button())) return true;
         return super.mouseClicked(event, dbl);
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        if (menu.keyPressed(event.key(), event.modifiers())) return true;
+        return super.keyPressed(event);
+    }
+
+    /** The title screen is the root: Esc must not close it (vanilla parity). */
+    @Override
+    public boolean shouldCloseOnEsc() {
+        return false;
     }
 
     @Override

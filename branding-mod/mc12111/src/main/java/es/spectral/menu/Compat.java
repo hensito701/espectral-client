@@ -1,8 +1,5 @@
 package es.spectral.menu;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
@@ -289,33 +286,68 @@ public final class Compat {
         }
         uiTextGradient(gfx, font, text, cx - total / 2, y, argbLeft, argbRight, shadow);
     }
+
     /**
-     * Title-menu primitive: draw the full texture scaled to {@code w} x {@code h}.
-     * Anything else is ignored.
+     * Title-menu primitive: blits the UV window ({@code u0},{@code v0})–
+     * ({@code u1},{@code v1}) of a standalone texture onto the rectangle at
+     * ({@code x},{@code y}) sized {@code w}×{@code h}.
+     *
+     * <p>Vanilla's {@code blit(Identifier, x0, y0, x1, y1, …)} takes its four
+     * floats as <b>u0, u1, v0, v1</b> (verified in the 1.21.11 bytecode: they
+     * go straight into {@code BlitRenderState(u0, u1, v0, v1)}), not as two
+     * corners; passing {@code 0,0,1,1} collapses the quad onto one texel.
      */
-    public static void uiBlit(Object gfx, Identifier id, int x, int y, int w, int h) {
+    public static void uiBlitUv(Object gfx, Identifier id, int x, int y, int w, int h,
+            float u0, float v0, float u1, float v1) {
         if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics && id != null) {
-            // blit's 3rd/4th ints are the bottom-right CORNER (x1,y1), not w/h.
-            graphics.blit(id, x, y, x + w, y + h, 0f, 0f, 1f, 1f);
+            graphics.blit(id, x, y, x + w, y + h, u0, u1, v0, v1);
         }
     }
 
     /**
      * Draws a GUI-atlas sprite (assets/<ns>/textures/gui/sprites/<path>.png)
-     * scaled to w×h. Alpha-safe — use this for the logo and icons, not uiBlit
-     * (standalone mod textures don't auto-load through the blit path).
+     * scaled to w×h, multiplied by {@code argb} (tint + opacity; use
+     * {@code 0xFFFFFFFF} for the untouched sprite). Alpha-safe — use this for
+     * the logo and decorative art.
      */
-    public static void uiSprite(Object gfx, Identifier spriteId, int x, int y, int w, int h) {
-        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics && spriteId != null) {
+    public static void uiSprite(Object gfx, Identifier spriteId, int x, int y, int w, int h,
+            int argb) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics && spriteId != null
+                && (argb >>> 24) != 0) {
             graphics.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
-                    spriteId, x, y, w, h);
+                    spriteId, x, y, w, h, argb);
+        }
+    }
+
+    /** Pushes a sub-pixel translation onto the pose stack; pair with {@link #uiPop}. */
+    public static void uiPush(Object gfx, float dx, float dy) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
+            graphics.pose().pushMatrix();
+            graphics.pose().translate(dx, dy);
+        }
+    }
+
+    /** Pops the pose pushed by {@link #uiPush}. */
+    public static void uiPop(Object gfx) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
+            graphics.pose().popMatrix();
+        }
+    }
+
+    /** Queues a vanilla tooltip for this frame at the mouse position. */
+    public static void uiTooltip(Object gfx, net.minecraft.client.gui.Font font,
+            net.minecraft.network.chat.Component text, int mouseX, int mouseY) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics && font != null
+                && text != null) {
+            graphics.setTooltipForNextFrame(font, text, mouseX, mouseY);
         }
     }
 
     /**
      * Title-menu primitive: horizontal-gradient text drawn at a uniform scale.
      * Translates to ({@code x}, {@code y}), scales, draws at the origin through
-     * {@link #uiTextGradient}, then restores the pose.
+     * {@link #uiTextGradient} (with the vanilla drop shadow), then restores
+     * the pose.
      */
     public static void uiTextScaledGradient(Object gfx, net.minecraft.client.gui.Font font,
             String text, int x, int y, float scale, int argbLeft, int argbRight) {
@@ -328,51 +360,8 @@ public final class Compat {
         graphics.pose().scale(scale, scale);
         uiTextGradient(graphics, font,
                 net.minecraft.network.chat.Component.literal(text),
-                0, 0, argbLeft, argbRight, false);
+                0, 0, argbLeft, argbRight, true);
         graphics.pose().popMatrix();
-    }
-
-    /**
-     * Loads a user-supplied PNG from disk as a {@code DynamicTexture} and
-     * registers it under {@code espectral-menu:menu_bg}. Returns null on failure.
-     */
-    public static Identifier loadExternalTexture(Minecraft minecraft, Path path) {
-        if (minecraft == null || path == null) {
-            return null;
-        }
-        try (java.io.InputStream in = Files.newInputStream(path)) {
-            com.mojang.blaze3d.platform.NativeImage image =
-                    com.mojang.blaze3d.platform.NativeImage.read(in);
-            net.minecraft.client.renderer.texture.DynamicTexture texture =
-                    new net.minecraft.client.renderer.texture.DynamicTexture(
-                            () -> "espectral-menu-bg", image);
-            Identifier id = Identifier.fromNamespaceAndPath("espectral-menu", "menu_bg");
-            minecraft.getTextureManager().register(id, texture);
-            return id;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /** Pixel dimensions of a registered {@code DynamicTexture}; null-safe. */
-    public static int[] textureSize(Minecraft minecraft, Identifier id) {
-        if (minecraft == null || id == null) {
-            return null;
-        }
-        try {
-            net.minecraft.client.renderer.texture.AbstractTexture texture =
-                    minecraft.getTextureManager().getTexture(id);
-            if (texture instanceof net.minecraft.client.renderer.texture.DynamicTexture dynamic) {
-                com.mojang.blaze3d.platform.NativeImage pixels = dynamic.getPixels();
-                if (pixels == null) {
-                    return null;
-                }
-                return new int[]{pixels.getWidth(), pixels.getHeight()};
-            }
-            return null;
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     /** Title-menu navigation targets. Unknown keys yield null. */

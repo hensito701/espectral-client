@@ -5,26 +5,35 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.Util;
+import org.lwjgl.glfw.GLFW;
 
 import es.spectral.menu.ui.SuiteTheme;
 
 /**
  * Shared controller for the Espectral custom main menu. Not a {@link Screen} —
  * the per-version {@code EspectralTitleScreen} owns the Screen lifecycle and
- * delegates {@code init}/{@code render}/{@code mouseClicked} here, so all
- * layout, art direction and click handling live in one place and compile
+ * delegates {@code init}/{@code render}/{@code mouseClicked}/{@code keyPressed}
+ * here, so all layout, art direction and input live in one place and compile
  * against both supported versions.
  *
- * <p>Layout (per the approved design): a full-bleed background (user PNG with
- * a slow Ken Burns pan, else a branded gradient), a vertical button stack on
- * the left, and the circular logo + "ESPECTRAL" wordmark on the right. A small
- * icon row sits top-left (quit, accessibility, screenshot) and a support heart
- * top-right.
+ * <p>Layout: a full-bleed background (the user PNG from {@link MenuBackground}
+ * with a slow sub-pixel Ken Burns drift and a light mouse parallax, else a
+ * branded charcoal), a left-hand readability scrim, drifting gold motes, a
+ * vertical button stack on the left, and the circular logo (with a breathing
+ * gold halo) + "ESPECTRAL" wordmark + tagline on the right. A small icon row
+ * sits top-left (quit, accessibility, screenshots folder) and a support heart
+ * top-right; icons carry tooltips.
+ *
+ * <p>The first title screen of a session plays a short entrance (background
+ * reveal, staggered buttons); later returns render settled immediately.
+ * Buttons respond to the mouse and to Up/Down/Tab + Enter/Space.
  *
  * <p>All drawing goes through {@code Compat.ui*} primitives taking the
  * version's graphics object as {@code Object}, so this class never names a
@@ -32,52 +41,65 @@ import es.spectral.menu.ui.SuiteTheme;
  */
 public final class TitleMenu {
 
-    /** Bundled logo, drawn through the GUI sprite atlas (alpha-safe). */
-    private static final Identifier LOGO =
-            Identifier.fromNamespaceAndPath("espectral-menu", "logo");
+    private static final Identifier LOGO = Identifier.fromNamespaceAndPath("espectral-menu", "logo");
+    /** White radial falloff, tinted at draw time (gold halo, dark contact shadow). */
+    private static final Identifier GLOW = Identifier.fromNamespaceAndPath("espectral-menu", "glow");
+    /** Horizontal near-black → transparent readability gradient. */
+    private static final Identifier SCRIM = Identifier.fromNamespaceAndPath("espectral-menu", "scrim");
 
-    /** Where a user-supplied background PNG is looked for, in priority order. */
-    private static List<Path> backgroundCandidates(Minecraft minecraft) {
-        List<Path> out = new ArrayList<>(3);
-        String override = System.getProperty("espectral.menu.background");
-        if (override != null && !override.isBlank()) {
-            out.add(Path.of(override));
-        }
-        if (minecraft != null && minecraft.gameDirectory != null) {
-            out.add(minecraft.gameDirectory.toPath().resolve("config").resolve("espectral-menu-background.png"));
-            out.add(minecraft.gameDirectory.toPath().resolve("espectral-menu-background.png"));
-        }
-        return out;
-    }
+    private static final int BASE = 0xFF0B0D10;
+    private static final int BTN_FILL = 0x8C090B0E;
+    private static final int BTN_FILL_HOT = 0xC8151A21;
+    private static final int BTN_EDGE_HOT = 0xCCD9A93B;
+    private static final int MOTE_GOLD = 0xFFFFD27A;
+    private static final int MOTE_WHITE = 0xFFF4EEDF;
+    private static final int MOTES = 28;
+    private static final Component CHEVRON = Component.literal("›");
+    private static final Component TAGLINE = Component.translatable("espectral.menu.tagline");
+
+    /** Session start of the entrance animation; -1 until the first title frame. */
+    private static long introStartMs = -1;
 
     private final Minecraft minecraft;
     private final Screen host;
-
-    // Background texture state (loaded lazily, cached).
-    private boolean bgTried;
-    private Identifier bgTexture;
-    private int bgW;
-    private int bgH;
-    private long bgStartMs = -1;
 
     // Layout rects (recomputed on init/resize).
     private final List<Btn> buttons = new ArrayList<>();
     private final List<Btn> icons = new ArrayList<>();
     private int width;
     private int height;
+    private Component footer;
+
+    // Interaction + animation state (per screen instance).
+    private int focused = -1;
+    private int lastMouseX = Integer.MIN_VALUE;
+    private int lastMouseY = Integer.MIN_VALUE;
+    private long lastFrameMs = -1;
+    private float parX;
+    private float parY;
 
     public TitleMenu(Minecraft minecraft, Screen host) {
         this.minecraft = minecraft;
         this.host = host;
     }
 
-    /** One clickable region: a label + an action. */
+    /** One clickable region: a label (lang key or glyph) + an action. */
     private static final class Btn {
-        final String key;      // lang key
+        final Component text;
+        final Component tooltip;
         final Runnable action;
         int x, y, w, h;
-        Btn(String key, Runnable action) { this.key = key; this.action = action; }
-        boolean hit(double mx, double my) { return mx >= x && mx < x + w && my >= y && my < y + h; }
+        float hover;
+
+        Btn(Component text, Component tooltip, Runnable action) {
+            this.text = text;
+            this.tooltip = tooltip;
+            this.action = action;
+        }
+
+        boolean hit(double mx, double my) {
+            return mx >= x && mx < x + w && my >= y && my < y + h;
+        }
     }
 
     // ── Layout ──────────────────────────────────────────────────────────────
@@ -86,11 +108,16 @@ public final class TitleMenu {
     public void init(int width, int height) {
         this.width = width;
         this.height = height;
+        // Off-thread decode; the first call of the session starts it, the
+        // rest are no-ops. The branded fallback shows until it lands.
+        MenuBackground.request(minecraft);
         buttons.clear();
         icons.clear();
+        footer = Component.literal("Minecraft " + SharedConstants.getCurrentVersion().name()
+                + " · Espectral " + EspectralBrand.modVersion());
 
-        // Left vertical stack, vertically centered.
-        int bw = Math.min(150, Math.max(110, width / 5));
+        // Left vertical stack, a little below centre.
+        int bw = Math.min(160, Math.max(116, width / 5));
         int bh = 22;
         int gap = 6;
         int bx = Math.max(18, width / 12);
@@ -105,29 +132,32 @@ public final class TitleMenu {
                 Compat.open(minecraft, Compat.optionsScreen(minecraft, host)));
         addButton("espectral.menu.suite", bx, by + 3 * (bh + gap), bw, bh, () ->
                 Compat.open(minecraft, new es.spectral.menu.ui.SuiteScreen(host)));
+        if (focused >= buttons.size()) {
+            focused = -1;
+        }
 
-        // Top-left icon row: quit, accessibility, screenshot.
+        // Top-left icon row: quit, accessibility, screenshots folder.
         int is = 18;
-        int iy = 10;
-        int ix = 10;
-        addIcon("✕", ix, iy, is, () -> minecraft.stop());
-        addIcon("♿", ix + is + 6, iy, is, () ->
+        int iy = 8;
+        int ix = 8;
+        addIcon("✕", "espectral.menu.quit", ix, iy, is, minecraft::stop);
+        addIcon("♿", "espectral.menu.accessibility", ix + is + 4, iy, is, () ->
                 Compat.open(minecraft, newScreen("accessibility")));
-        addIcon("📷", ix + 2 * (is + 6), iy, is, () -> {}); // screenshot: no-op placeholder
+        addIcon("📷", "espectral.menu.screenshots", ix + 2 * (is + 4), iy, is, this::openScreenshots);
 
         // Top-right support heart.
-        addIcon("♥", width - 10 - is, iy, is, () ->
+        addIcon("♥", "espectral.menu.support", width - 8 - is, iy, is, () ->
                 Compat.open(minecraft, es.spectral.menu.ui.SuiteConfirmScreen.support(host)));
     }
 
     private void addButton(String key, int x, int y, int w, int h, Runnable action) {
-        Btn b = new Btn(key, action);
+        Btn b = new Btn(Component.translatable(key), null, action);
         b.x = x; b.y = y; b.w = w; b.h = h;
         buttons.add(b);
     }
 
-    private void addIcon(String glyph, int x, int y, int s, Runnable action) {
-        Btn b = new Btn(glyph, action);
+    private void addIcon(String glyph, String tooltipKey, int x, int y, int s, Runnable action) {
+        Btn b = new Btn(Component.literal(glyph), Component.translatable(tooltipKey), action);
         b.x = x; b.y = y; b.w = s; b.h = s;
         icons.add(b);
     }
@@ -137,57 +167,19 @@ public final class TitleMenu {
         return Compat.menuTarget(minecraft, host, which);
     }
 
-    // ── Background ──────────────────────────────────────────────────────────
-
-    /** Lazily resolve + load the background texture. Null → gradient fallback. */
-    private Identifier background() {
-        if (bgTried) return bgTexture;
-        bgTried = true;
-        for (Path p : backgroundCandidates(minecraft)) {
-            try {
-                if (Files.isRegularFile(p)) {
-                    Identifier id = Compat.loadExternalTexture(minecraft, p);
-                    int[] dim = Compat.textureSize(minecraft, id);
-                    if (id != null && dim != null && dim[0] > 0 && dim[1] > 0) {
-                        bgTexture = id;
-                        bgW = dim[0];
-                        bgH = dim[1];
-                        return bgTexture;
-                    }
-                }
-            } catch (Exception ignored) {
-                // try next candidate
-            }
-        }
-        return null;
-    }
-
-    private void drawBackground(Object gfx) {
-        Identifier bg = background();
-        if (bg == null) {
-            // Branded fallback: deep charcoal with a gold vignette glow.
-            Compat.uiFill(gfx, 0, 0, width, height, 0xFF0B0D10);
-            Compat.uiFillGradient(gfx, 0, 0, width, height, 0x00000000, 0x66000000);
+    /** Opens {@code <gameDir>/screenshots} (vanilla's F2 target) in the OS file browser. */
+    private void openScreenshots() {
+        if (minecraft.gameDirectory == null) {
             return;
         }
-        // Ken Burns: a slowly drifting crop window over the source image.
-        if (bgStartMs < 0) bgStartMs = System.currentTimeMillis();
-        float t = (System.currentTimeMillis() - bgStartMs) / 1000.0f;
-        // Cover-fit: scale source to fill the screen, then pan within the
-        // overflow. ~5% zoom breathing over a 24s cycle.
-        float zoom = 1.08f + 0.04f * (float) Math.sin(t * (Math.PI * 2 / 24.0));
-        float scale = Math.max(width / (float) bgW, height / (float) bgH) * zoom;
-        float drawW = bgW * scale;
-        float drawH = bgH * scale;
-        float overX = Math.max(0, drawW - width);
-        float overY = Math.max(0, drawH - height);
-        float px = (float) (0.5 + 0.5 * Math.sin(t * (Math.PI * 2 / 30.0)));
-        float py = (float) (0.5 + 0.5 * Math.cos(t * (Math.PI * 2 / 36.0)));
-        int dx = (int) (-overX * px);
-        int dy = (int) (-overY * py);
-        Compat.uiBlit(gfx, bg, dx, dy, (int) drawW, (int) drawH);
-        // Readability scrim behind the left stack.
-        Compat.uiFillGradient(gfx, 0, 0, width / 2, height, 0xB0080A0C, 0x00000000);
+        Path dir = minecraft.gameDirectory.toPath().resolve("screenshots");
+        try {
+            Files.createDirectories(dir);
+            Util.getPlatform().openPath(dir);
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger("espectral-menu")
+                    .warn("Could not open screenshots folder {}", dir, e);
+        }
     }
 
     // ── Render ──────────────────────────────────────────────────────────────
@@ -197,54 +189,231 @@ public final class TitleMenu {
      * (GuiGraphicsExtractor on 26.2, GuiGraphics on 1.21.11).
      */
     public void render(Object gfx, Font font, int mouseX, int mouseY, float delta) {
-        drawBackground(gfx);
+        long now = Util.getMillis();
+        if (introStartMs < 0) {
+            introStartMs = now;
+        }
+        float dt = lastFrameMs < 0 ? 0f : Math.min(0.1f, (now - lastFrameMs) / 1000f);
+        lastFrameMs = now;
+        float intro = (now - introStartMs) / 1000f;
 
-        // Wordmark + logo, right side.
-        drawBrand(gfx, font);
-
-        // Buttons.
-        for (Btn b : buttons) {
-            boolean hot = b.hit(mouseX, mouseY);
-            int fill = hot ? SuiteTheme.ROW_HOVER : 0x66090B0E;
-            int edge = hot ? SuiteTheme.GOLD : SuiteTheme.GOLD_HAIRLINE;
-            Compat.uiFill(gfx, b.x, b.y, b.x + b.w, b.y + b.h, fill);
-            Compat.uiOutline(gfx, b.x, b.y, b.w, b.h, edge);
-            int textColor = hot ? SuiteTheme.GOLD_BRIGHT : SuiteTheme.TEXT;
-            Compat.uiText(gfx, font, Component.translatable(b.key), b.x + 12, b.y + (b.h - 9) / 2 + 1, textColor, false);
+        // A real mouse move hands focus back from the keyboard to the pointer.
+        if (mouseX != lastMouseX || mouseY != lastMouseY) {
+            if (lastMouseX != Integer.MIN_VALUE) {
+                focused = -1;
+            }
+            lastMouseX = mouseX;
+            lastMouseY = mouseY;
         }
 
-        // Icon row (small, dim until hovered).
+        // Eased parallax target in [-1, 1] from the pointer position.
+        if (width > 0 && height > 0) {
+            float tx = clamp01(mouseX / (float) width) * 2f - 1f;
+            float ty = clamp01(mouseY / (float) height) * 2f - 1f;
+            float k = 1f - (float) Math.exp(-dt * 2.5f);
+            parX += (tx - parX) * k;
+            parY += (ty - parY) * k;
+        }
+
+        drawBackground(gfx, now);
+        drawMotes(gfx, intro, fade(intro, 0.6f, 1.6f));
+        drawBrand(gfx, font, intro);
+        drawButtons(gfx, font, mouseX, mouseY, dt, intro);
+        drawIcons(gfx, font, mouseX, mouseY, dt, fade(intro, 0.5f, 0.6f));
+
+        // Footer: game + suite version, bottom-right, dim.
+        float footA = fade(intro, 0.9f, 0.6f);
+        if (footA > 0.02f && footer != null) {
+            Compat.uiText(gfx, font, footer,
+                    width - font.width(footer) - 8, height - 14,
+                    withAlpha(SuiteTheme.TEXT_DIM, footA), false);
+        }
+    }
+
+    // ── Background ──────────────────────────────────────────────────────────
+
+    private void drawBackground(Object gfx, long now) {
+        Compat.uiFill(gfx, 0, 0, width, height, BASE);
+        if (MenuBackground.ready() && MenuBackground.width() > 0 && MenuBackground.height() > 0) {
+            float bw = MenuBackground.width();
+            float bh = MenuBackground.height();
+            float t = (now - MenuBackground.readyAtMs()) / 1000f;
+            // Cover-fit, then crop a UV window that breathes (~±3% zoom over
+            // 28 s) and drifts (40 s / 52 s Lissajous) plus a light parallax.
+            // UVs are floats, so the motion is sub-pixel smooth at any GUI scale.
+            float zoom = 1.08f + 0.03f * (float) Math.sin(t * (Math.PI * 2 / 28.0));
+            float scale = Math.max(width / bw, height / bh) * zoom;
+            float uw = Math.min(1f, width / scale / bw);
+            float vh = Math.min(1f, height / scale / bh);
+            float px = clamp01(0.5f + 0.32f * (float) Math.sin(t * (Math.PI * 2 / 40.0)) + 0.14f * parX);
+            float py = clamp01(0.5f + 0.32f * (float) Math.cos(t * (Math.PI * 2 / 52.0)) + 0.14f * parY);
+            float u0 = (1f - uw) * px;
+            float v0 = (1f - vh) * py;
+            Compat.uiBlitUv(gfx, MenuBackground.ID, 0, 0, width, height, u0, v0, u0 + uw, v0 + vh);
+
+            // Reveal: fade in from the base colour once the upload lands.
+            float reveal = easeOutCubic(clamp01(t / 0.9f));
+            if (reveal < 1f) {
+                Compat.uiFill(gfx, 0, 0, width, height, withAlpha(BASE, 1f - reveal));
+            }
+        } else {
+            Compat.uiFillGradient(gfx, 0, 0, width, height, 0x00000000, 0x66000000);
+        }
+
+        // Readability: soft left scrim behind the buttons, a bottom vignette
+        // for the footer, and a thin top shade for the icon row.
+        Compat.uiSprite(gfx, SCRIM, 0, 0, Math.max(1, (int) (width * 0.62f)), height, 0xFFFFFFFF);
+        Compat.uiFillGradient(gfx, 0, (int) (height * 0.55f), width, height, 0x00000000, 0xA6000000);
+        Compat.uiFillGradient(gfx, 0, 0, width, 36, 0x73000000, 0x00000000);
+    }
+
+    /**
+     * Drifting gold "spectral" motes: deterministic per index, rising slowly
+     * with a gentle sway and twinkle. Drawn at sub-pixel positions.
+     */
+    private void drawMotes(Object gfx, float t, float alpha) {
+        if (alpha <= 0.01f || width <= 0 || height <= 0) {
+            return;
+        }
+        float span = height + 24f;
+        for (int i = 0; i < MOTES; i++) {
+            float r1 = rnd(i * 3 + 1);
+            float r2 = rnd(i * 3 + 2);
+            float r3 = rnd(i * 3 + 3);
+            float speed = 5f + 9f * r2;
+            float life = span / speed;
+            float phase = ((t + r3 * life) % life) / life;
+            float y = height + 12f - phase * span;
+            float x = r1 * width + 7f * (float) Math.sin(t * (0.35f + 0.4f * r3) + i * 1.3f);
+            float twinkle = 0.65f + 0.35f * (float) Math.sin(t * (1.4f + r1) + i * 1.7f);
+            float a = alpha * (float) Math.sin(phase * Math.PI) * (0.22f + 0.38f * r3) * twinkle;
+            if (a <= 0.02f) {
+                continue;
+            }
+            int size = r2 > 0.82f ? 2 : 1;
+            Compat.uiPush(gfx, x, y);
+            Compat.uiFill(gfx, 0, 0, size, size, withAlpha(r1 > 0.3f ? MOTE_GOLD : MOTE_WHITE, a));
+            Compat.uiPop(gfx);
+        }
+    }
+
+    // ── Brand ───────────────────────────────────────────────────────────────
+
+    /** Circular logo with halo + "ESPECTRAL" gradient wordmark + tagline, right side. */
+    private void drawBrand(Object gfx, Font font, float t) {
+        float a = fade(t, 0.15f, 1.0f);
+        if (a <= 0.01f) {
+            return;
+        }
+        int logoSize = Math.max(48, Math.min(104, (int) (height / 3.6f)));
+        float wordScale = Math.min(3.0f, Math.max(1.6f, width / 420.0f));
+        int wordH = (int) (9 * wordScale);
+        int blockH = logoSize + 12 + wordH + 9 + 1 + 7 + 9;
+        int cx = width - Math.max(32, (int) (width * 0.19f));
+        int top = Math.max(40, (int) (height * 0.44f) - blockH / 2);
+        int cy = top + logoSize / 2;
+        String word = "ESPECTRAL";
+        int wpx = (int) (font.width(word) * wordScale);
+
+        // Soft dark pool behind the whole block so the gold reads over any photo.
+        int poolW = (int) (Math.max(wpx, logoSize) * 1.25f);
+        int poolH = (int) (blockH * 0.95f);
+        int poolCy = top + blockH / 2;
+        Compat.uiSprite(gfx, GLOW, cx - poolW, poolCy - poolH, poolW * 2, poolH * 2,
+                argb(0.62f * a, 0x040507));
+
+        // Logo group floats (4.8 s bob) and counter-parallaxes the background.
+        float rise = (1f - easeOutCubic(a)) * 10f;
+        float bob = 2.2f * (float) Math.sin(t * (Math.PI * 2 / 4.8));
+        Compat.uiPush(gfx, -parX * 5f, -parY * 3.5f + bob + rise);
+        float pulse = 0.5f + 0.5f * (float) Math.sin(t * (Math.PI * 2 / 5.5));
+        int halo = (int) (logoSize * (0.95f + 0.07f * pulse));
+        Compat.uiSprite(gfx, GLOW, cx - halo, cy - halo, halo * 2, halo * 2,
+                argb((0.38f + 0.22f * pulse) * a, 0xFFB948));
+        Compat.uiSprite(gfx, LOGO, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize,
+                argb(a, 0xFFFFFF));
+        Compat.uiPop(gfx);
+
+        // Wordmark: gold gradient, scaled, with a drop shadow.
+        int wy = cy + logoSize / 2 + 12;
+        if (a > 0.02f) {
+            Compat.uiTextScaledGradient(gfx, font, word, cx - wpx / 2, wy, wordScale,
+                    withAlpha(SuiteTheme.GOLD_GRADIENT_LEFT, a), withAlpha(SuiteTheme.GOLD_GRADIENT_RIGHT, a));
+        }
+
+        // Hairline divider fading out at both ends, then the tagline.
+        int dy = wy + wordH + 9;
+        int half = Math.max(24, wpx / 3);
+        int seg = half / 3;
+        Compat.uiFill(gfx, cx - half, dy, cx - half + seg, dy + 1, argb(0.18f * a, 0xD9A93B));
+        Compat.uiFill(gfx, cx - half + seg, dy, cx + half - seg, dy + 1, argb(0.55f * a, 0xD9A93B));
+        Compat.uiFill(gfx, cx + half - seg, dy, cx + half, dy + 1, argb(0.18f * a, 0xD9A93B));
+        float tagA = fade(t, 0.7f, 0.8f);
+        if (tagA > 0.02f) {
+            Compat.uiTextCentered(gfx, font, TAGLINE,
+                    cx, dy + 7, withAlpha(0xFFD8D2C4, tagA), true);
+        }
+    }
+
+    // ── Buttons & icons ─────────────────────────────────────────────────────
+
+    private void drawButtons(Object gfx, Font font, int mouseX, int mouseY, float dt, float intro) {
+        float k = 1f - (float) Math.exp(-dt * 14f);
+        for (int i = 0; i < buttons.size(); i++) {
+            Btn b = buttons.get(i);
+            boolean hot = focused >= 0 ? focused == i : b.hit(mouseX, mouseY);
+            b.hover += ((hot ? 1f : 0f) - b.hover) * k;
+            float h = b.hover;
+            float appear = easeOutCubic(fade(intro, 0.35f + 0.08f * i, 0.5f));
+            if (appear <= 0.01f) {
+                continue;
+            }
+
+            Compat.uiPush(gfx, (1f - appear) * -16f, 0f);
+            Compat.uiFill(gfx, b.x, b.y, b.x + b.w, b.y + b.h,
+                    scaleAlpha(SuiteTheme.lerpArgb(BTN_FILL, BTN_FILL_HOT, h), appear));
+            Compat.uiOutline(gfx, b.x, b.y, b.w, b.h,
+                    scaleAlpha(SuiteTheme.lerpArgb(SuiteTheme.GOLD_HAIRLINE, BTN_EDGE_HOT, h), appear));
+            // Gold accent bar grows from the centre of the left edge.
+            int bar = Math.round((b.h - 2) * h);
+            if (bar > 0) {
+                int by = b.y + (b.h - bar) / 2;
+                Compat.uiFill(gfx, b.x, by, b.x + 2, by + bar, scaleAlpha(SuiteTheme.GOLD, appear));
+            }
+            if (appear > 0.03f) {
+                int textColor = scaleAlpha(SuiteTheme.lerpArgb(SuiteTheme.TEXT, SuiteTheme.GOLD_BRIGHT, h), appear);
+                int ty = b.y + (b.h - 9) / 2 + 1;
+                Compat.uiText(gfx, font, b.text,
+                        b.x + 12 + Math.round(3f * h), ty, textColor, true);
+                if (h * appear > 0.03f) {
+                    Compat.uiText(gfx, font, CHEVRON, b.x + b.w - 14 + Math.round(3f * (1f - h)), ty,
+                            withAlpha(SuiteTheme.GOLD_BRIGHT, h * appear), false);
+                }
+            }
+            Compat.uiPop(gfx);
+        }
+    }
+
+    private void drawIcons(Object gfx, Font font, int mouseX, int mouseY, float dt, float alpha) {
+        if (alpha <= 0.02f) {
+            return;
+        }
+        float k = 1f - (float) Math.exp(-dt * 14f);
         for (Btn b : icons) {
             boolean hot = b.hit(mouseX, mouseY);
-            int color = hot ? SuiteTheme.GOLD_BRIGHT : SuiteTheme.TEXT_DIM;
-            Compat.uiTextCentered(gfx, font, Component.literal(b.key), b.x + b.w / 2, b.y + (b.h - 9) / 2 + 1, color, false);
+            b.hover += ((hot ? 1f : 0f) - b.hover) * k;
+            if (b.hover > 0.02f) {
+                Compat.uiFill(gfx, b.x, b.y, b.x + b.w, b.y + b.h, argb(0.45f * b.hover * alpha, 0x000000));
+                Compat.uiOutline(gfx, b.x, b.y, b.w, b.h, argb(0.5f * b.hover * alpha, 0xD9A93B));
+            }
+            int color = scaleAlpha(SuiteTheme.lerpArgb(0xFFC9CDD3, SuiteTheme.GOLD_BRIGHT, b.hover), alpha);
+            Compat.uiTextCentered(gfx, font, b.text,
+                    b.x + b.w / 2, b.y + (b.h - 9) / 2 + 1, color, true);
+            if (hot && b.tooltip != null) {
+                Compat.uiTooltip(gfx, font, b.tooltip, mouseX, mouseY);
+            }
         }
-
-        // Footer: version + loader, bottom-right, dim.
-        String footer = "v" + EspectralBrand.modVersion() + " · " + Compat.brandLoader();
-        Compat.uiText(gfx, font, Component.literal(footer),
-                width - font.width(footer) - 8, height - 14, SuiteTheme.TEXT_DIM, false);
     }
-
-    /** Circular logo + "ESPECTRAL" gradient wordmark, right-aligned. */
-    private void drawBrand(Object gfx, Font font) {
-        int logoSize = Math.min(96, height / 4);
-        int cx = width - Math.max(24, width / 10) - logoSize / 2;
-        int cy = height / 3;
-
-        // Logo through the GUI sprite atlas so transparency renders.
-        Compat.uiSprite(gfx, LOGO, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize);
-
-        // Wordmark under the logo, gold gradient, scaled up.
-        String word = "ESPECTRAL";
-        float scale = Math.min(3.0f, Math.max(1.6f, width / 420.0f));
-        int wpx = (int) (font.width(word) * scale);
-        Compat.uiTextScaledGradient(gfx, font, word,
-                cx - wpx / 2, cy + logoSize / 2 + 10, scale,
-                SuiteTheme.GOLD_GRADIENT_LEFT, SuiteTheme.GOLD_GRADIENT_RIGHT);
-    }
-
-
 
     // ── Input ───────────────────────────────────────────────────────────────
 
@@ -258,5 +427,77 @@ public final class TitleMenu {
             if (b.hit(mx, my)) { b.action.run(); return true; }
         }
         return false;
+    }
+
+    /**
+     * Keyboard navigation over the button stack: Up/Down (and Tab /
+     * Shift+Tab) move the focus, Enter/Space activate it. Returns true when
+     * the key was consumed.
+     */
+    public boolean keyPressed(int key, int modifiers) {
+        int n = buttons.size();
+        if (n == 0) return false;
+        switch (key) {
+            case GLFW.GLFW_KEY_DOWN:
+                focused = focused < 0 ? 0 : (focused + 1) % n;
+                return true;
+            case GLFW.GLFW_KEY_UP:
+                focused = focused < 0 ? n - 1 : (focused + n - 1) % n;
+                return true;
+            case GLFW.GLFW_KEY_TAB:
+                boolean back = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+                focused = focused < 0 ? (back ? n - 1 : 0) : (focused + (back ? n - 1 : 1)) % n;
+                return true;
+            case GLFW.GLFW_KEY_ENTER:
+            case GLFW.GLFW_KEY_KP_ENTER:
+            case GLFW.GLFW_KEY_SPACE:
+                if (focused >= 0 && focused < n) {
+                    buttons.get(focused).action.run();
+                    return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    // ── Math ────────────────────────────────────────────────────────────────
+
+    /** 0 before {@code start} s, 1 after {@code start + dur} s, linear between. */
+    private static float fade(float t, float start, float dur) {
+        return clamp01((t - start) / dur);
+    }
+
+    private static float clamp01(float v) {
+        return v < 0f ? 0f : (v > 1f ? 1f : v);
+    }
+
+    private static float easeOutCubic(float t) {
+        float u = 1f - t;
+        return 1f - u * u * u;
+    }
+
+    /** RGB with the given opacity (0..1). */
+    private static int argb(float alpha, int rgb) {
+        return (Math.round(clamp01(alpha) * 255f) << 24) | (rgb & 0xFFFFFF);
+    }
+
+    /** Replaces the colour's alpha with {@code alpha} (0..1). */
+    private static int withAlpha(int argb, float alpha) {
+        return argb(alpha, argb);
+    }
+
+    /** Multiplies the colour's existing alpha by {@code factor} (0..1). */
+    private static int scaleAlpha(int argb, float factor) {
+        return argb(((argb >>> 24) / 255f) * factor, argb);
+    }
+
+    /** Stable hash of {@code n} to [0, 1). */
+    private static float rnd(int n) {
+        int h = n * 0x9E3779B1;
+        h ^= h >>> 15;
+        h *= 0x85EBCA77;
+        h ^= h >>> 13;
+        return (h & 0xFFFFFF) / 16777216f;
     }
 }

@@ -2,6 +2,32 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **Custom main menu now shows its background photo.** Vanilla's
+  `blit(Identifier, x0, y0, x1, y1, …)` takes its floats as `u0, u1, v0, v1`
+  (checked in the 26.2 and 1.21.11 bytecode). The mod passed `0, 0, 1, 1`,
+  which drew one texel of the image (its dark bottom-left corner) across the
+  whole screen. The helper is now `Compat.uiBlitUv`, which uses the correct
+  order in both lanes.
+
+### Changed
+- **Title menu polish.** The background PNG is decoded off the render thread
+  (`MenuBackground`), uploaded once per session with linear filtering, and
+  fades in when it is ready. It drifts in a smooth sub-pixel Ken Burns motion
+  with a light mouse parallax. The hard-edged half-screen scrim is now a soft
+  horizontal gradient, with bottom and top vignettes. The logo floats slowly
+  over a breathing gold halo and a dark pool that keeps it readable. Other
+  additions: gold motes, a localized tagline ("Tu juego, a tu manera"),
+  animated hover (accent bar, chevron), Up/Down/Tab + Enter keyboard
+  navigation, and icon tooltips. The camera icon opens the screenshots
+  folder (it was a no-op before), and Esc no longer closes the root title
+  screen.
+- `assets/branding/branding.json` now pins the jars that actually ship. Its
+  sha1s were stale, so the engine logged `branding_sha1_mismatch` on every
+  launch and the pin test failed.
+
  ## [1.3.14] - 2026-09-06
 
  ### Added
