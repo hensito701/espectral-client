@@ -5,7 +5,7 @@
   "mods": {
     "1.21.1": {
       "filename": "espectral-brand-1.21.1-1.3.14.jar",
-      "sha1": "939531764fb763b8a6db4cf86f056c8a399dd5db",
+      "sha1": "450990ea9cbdd844ddec521e38bb3efc1ecd75a4",
       "size": 4225,
       "loaders": [
         "neoforge"
@@ -15,8 +15,8 @@
     },
     "1.21.11": {
       "filename": "espectral-menu-1.21.11-1.3.14.jar",
-      "sha1": "5067c1a113019f61a0e90d6415e331378e94405d",
-      "size": 223101,
+      "sha1": "b480e9c03806ee9230303925a8c262afd10c94e1",
+      "size": 255206,
       "loaders": [
         "fabric"
       ],
@@ -25,8 +25,8 @@
     },
     "26.2": {
       "filename": "espectral-menu-26.2-1.3.14.jar",
-      "sha1": "db27977ee65788cc64f61fc71670b5796aae7ab9",
-      "size": 244696,
+      "sha1": "42eb0c3525752c6b5b6ce495bce1d38a24702546",
+      "size": 279288,
       "loaders": [
         "fabric"
       ],

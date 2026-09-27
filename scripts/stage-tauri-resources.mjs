@@ -226,16 +226,37 @@ async function stage() {
   // 4. bundled node binary for the TARGET platform into node-bin/ (best-effort, see stageNodeExe)
   await stageNodeExe();
 
-  // 5. bundled Espectral Menu jars (assets/branding -> resources/branding)
+  // 5. bundled Espectral Menu jars (assets/branding -> resources/branding).
+  // Every shipped client bundles branding: tauri.conf unconditionally lists
+  // resources/branding and the engine installs the manifest-pinned jar into
+  // each instance's mods dir — so a missing manifest or jar must fail the
+  // stage, never ship an installer that silently lacks branding.
   const brandingSrc = join(ROOT, 'assets', 'branding');
   const brandingDst = join(STAGE, 'branding');
-  if (existsSync(brandingSrc)) {
-    rmSync(brandingDst, { recursive: true, force: true });
-    cpSync(brandingSrc, brandingDst, { recursive: true });
-    console.log(`[stage] staged branding jars (${dirSizeKb(brandingDst)} KB) → ${brandingDst}`);
-  } else {
-    console.warn('[stage] assets/branding missing — continuing without bundled Espectral Menu');
+  const brandingManifestPath = join(brandingSrc, 'branding.json');
+  if (!existsSync(brandingManifestPath)) {
+    console.error(
+      '[stage] assets/branding/branding.json missing — run `npm run deploy:mod`' +
+        ' (or build the mods, drop the jars into assets/branding, then run' +
+        ' `node scripts/update-branding-manifest.mjs`) to produce it'
+    );
+    process.exit(1);
   }
+  const brandingManifest = JSON.parse(readFileSync(brandingManifestPath, 'utf8'));
+  const missingJars = Object.values(brandingManifest.mods ?? {})
+    .map((mod) => mod.filename)
+    .filter((filename) => filename && !existsSync(join(brandingSrc, filename)));
+  if (missingJars.length > 0) {
+    console.error(
+      `[stage] assets/branding missing jar(s) referenced by branding.json: ${missingJars.join(', ')}` +
+        ' — run `npm run deploy:mod` (or rebuild the mods and re-run' +
+        ' `node scripts/update-branding-manifest.mjs`)'
+    );
+    process.exit(1);
+  }
+  rmSync(brandingDst, { recursive: true, force: true });
+  cpSync(brandingSrc, brandingDst, { recursive: true });
+  console.log(`[stage] staged branding jars (${dirSizeKb(brandingDst)} KB) → ${brandingDst}`);
 }
 
 await stage();

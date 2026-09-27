@@ -16,6 +16,10 @@ subprojects {
     // Implementation-Version feeds EspectralBrand.modVersion()'s jar-manifest
     // fallback (used when the loader container lookup is unavailable).
     tasks.withType(Jar).configureEach {
+        // Reproducible builds: a rebuild without source changes must produce
+        // byte-identical jars, or branding.json sha1s churn on every deploy.
+        preserveFileTimestamps = false
+        reproducibleFileOrder = true
         manifest {
             attributes(
                 'Implementation-Title': 'espectral-menu',

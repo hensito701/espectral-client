@@ -9,4 +9,9 @@ dependencies {
     minecraft 'com.mojang:minecraft:1.21.11'
     mappings loom.officialMojangMappings()
     modImplementation 'net.fabricmc:fabric-loader:0.19.3'
+    // Dev runtime only: fabric-api's resource-loader-v0 registers the mod's
+    // asset pack (textures/lang) in runClient — the production install ships
+    // the same pin via the launcher (src/engine/mods.mjs). Not compiled
+    // against and never bundled into the built jar.
+    modLocalRuntime 'net.fabricmc.fabric-api:fabric-api:0.141.6+1.21.11'
 }

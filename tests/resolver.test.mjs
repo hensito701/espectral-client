@@ -149,6 +149,23 @@ import { createHash } from 'node:crypto';
 
 function sha1HexBuf(buf) { return createHash('sha1').update(buf).digest('hex'); }
 
+// Poll a JSON cache file until `predicate` holds or the deadline expires.
+// SWR background writes land after the fetch promise resolves, so a fixed
+// sleep is racy; waiting on the observable file state is deterministic.
+async function waitForJsonFile(file, predicate, { timeoutMs = 5000, intervalMs = 10 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (predicate(value)) return value;
+    } catch {}
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out waiting for ${file} to satisfy condition`);
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // C15: stale-while-revalidate
 // ---------------------------------------------------------------------------
@@ -186,10 +203,12 @@ test('getVersionManifest SWR: TTL-lapsed + stale present returns stale and kicks
     assert.equal(out.versions[0].id, '1.21.1');
     // background refresh should have been kicked
     await bgDone;
-    // give background write a moment
-    await new Promise((r) => setTimeout(r, 30));
     assert.equal(fetchCalled, true);
-    const updated = JSON.parse(fs.readFileSync(path.join(versionsDir, 'manifest.json'), 'utf8'));
+    // background write lands after the fetch resolves — poll the cache file
+    const updated = await waitForJsonFile(
+      path.join(versionsDir, 'manifest.json'),
+      (m) => m.latest_release === '1.21.2',
+    );
     assert.equal(updated.latest_release, '1.21.2');
   } finally {
     if (old === undefined) delete process.env.ESPECTRAL_DATA_DIR;
@@ -224,9 +243,11 @@ test('getFabricLoaders SWR: TTL-lapsed + stale present returns stale and kicks b
     assert.equal(out.latest_stable, '0.15.0');
     assert.equal(out.loaders[0].version, '0.15.0');
     await bgDone;
-    await new Promise((r) => setTimeout(r, 30));
     assert.equal(fetchCalled, true);
-    const updated = JSON.parse(fs.readFileSync(path.join(versionsDir, 'fabric-loaders.json'), 'utf8'));
+    const updated = await waitForJsonFile(
+      path.join(versionsDir, 'fabric-loaders.json'),
+      (m) => m.latest_stable === '0.16.0',
+    );
     assert.equal(updated.latest_stable, '0.16.0');
   } finally {
     if (old === undefined) delete process.env.ESPECTRAL_DATA_DIR;
