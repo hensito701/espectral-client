@@ -529,7 +529,7 @@
     -webkit-backdrop-filter: blur(24px);
     border: 1px solid var(--border, rgba(40, 58, 96, 0.45));
     border-radius: var(--radius-pill, 9999px);
-    box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.6)), var(--glass-glow, 0 0 24px rgba(16, 185, 129, 0.15));
+    box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.6)), var(--glass-glow, 0 0 24px rgba(var(--accent-rgb), 0.15));
     max-width: 960px;
     width: 100%;
     transition: all var(--dur-med, 260ms) ease;
@@ -538,12 +538,12 @@
   [data-theme='light'] .telemetry-capsule {
     background: var(--surface, rgba(255, 255, 255, 0.9));
     border-color: var(--border, rgba(190, 204, 226, 0.65));
-    box-shadow: var(--shadow-lg, 0 16px 40px rgba(18, 24, 41, 0.12)), 0 0 20px rgba(5, 150, 105, 0.1);
+    box-shadow: var(--shadow-lg, 0 16px 40px rgba(18, 24, 41, 0.12)), 0 0 20px rgba(var(--accent-rgb), 0.1);
   }
 
   .telemetry-capsule-dock--running .telemetry-capsule {
-    border-color: rgba(var(--accent-green-rgb, 34, 197, 94), 0.5);
-    box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.6)), 0 0 28px rgba(var(--accent-green-rgb, 34, 197, 94), 0.25);
+    border-color: rgba(var(--accent-green-rgb), 0.5);
+    box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.6)), 0 0 28px rgba(var(--accent-green-rgb), 0.25);
   }
 
   .capsule-section {
@@ -584,7 +584,7 @@
   }
 
   .capsule-account__btn:focus-visible {
-    box-shadow: 0 0 0 2px var(--accent, #10b981);
+    box-shadow: 0 0 0 2px var(--accent);
   }
 
   .capsule-account__info {
@@ -667,8 +667,8 @@
   }
 
   .capsule-dropdown-item--active {
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.15);
-    color: var(--accent, #10b981);
+    background: rgba(var(--accent-rgb), 0.15);
+    color: var(--accent);
     font-weight: 600;
   }
 
@@ -690,13 +690,13 @@
     padding: 6px 8px;
     font-size: var(--text-xs, 0.75rem);
     font-weight: 600;
-    color: var(--accent, #10b981);
+    color: var(--accent);
     text-decoration: none;
     border-radius: var(--radius-sm, 0.375rem);
   }
 
   .capsule-dropdown-link:hover {
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.1);
+    background: rgba(var(--accent-rgb), 0.1);
   }
   /* --- Telemetry Center --- */
   .capsule-telemetry {
@@ -729,7 +729,7 @@
   }
 
   .capsule-instance-link:hover .capsule-instance-name {
-    color: var(--accent, #10b981);
+    color: var(--accent);
   }
 
   .capsule-instance-name {
@@ -771,15 +771,15 @@
   }
 
   .capsule-aot-chip--ok {
-    color: var(--accent-green, #22c55e);
-    border-color: rgba(var(--accent-green-rgb, 34, 197, 94), 0.35);
-    background: rgba(var(--accent-green-rgb, 34, 197, 94), 0.12);
+    color: var(--accent-green);
+    border-color: rgba(var(--accent-green-rgb), 0.35);
+    background: rgba(var(--accent-green-rgb), 0.12);
   }
 
   .capsule-aot-chip--warn {
-    color: var(--accent-alt, #f59e0b);
-    border-color: rgba(var(--accent-alt-rgb, 245, 158, 11), 0.35);
-    background: rgba(var(--accent-alt-rgb, 245, 158, 11), 0.12);
+    color: var(--accent-alt);
+    border-color: rgba(var(--accent-alt-rgb), 0.35);
+    background: rgba(var(--accent-alt-rgb), 0.12);
   }
 
   .capsule-aot-chip--off {
@@ -801,7 +801,7 @@
   }
 
   .capsule-phase-status--running {
-    color: var(--accent-green, #22c55e);
+    color: var(--accent-green);
     font-weight: 600;
     display: inline-flex;
     align-items: center;
@@ -812,13 +812,13 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent-green, #22c55e);
-    box-shadow: 0 0 6px var(--accent-green, #22c55e);
+    background: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
     animation: pulseGlow 1.5s infinite;
   }
 
   .capsule-phase-status--starting {
-    color: var(--accent-alt, #f59e0b);
+    color: var(--accent-alt);
     font-weight: 600;
   }
 
@@ -861,7 +861,7 @@
   .capsule-dryrun-btn:hover:not(:disabled) {
     background: var(--surface-solid, rgba(255, 255, 255, 0.1));
     color: var(--text, #e8ecf4);
-    border-color: var(--accent, rgba(255, 255, 255, 0.2));
+    border-color: var(--accent);
   }
 
   .capsule-dryrun-btn:disabled {
@@ -879,6 +879,6 @@
   }
 
   :global(.capsule-stop-btn) {
-    background: var(--accent-red, #ef4444) !important;
+    background: var(--accent-red) !important;
   }
 </style>

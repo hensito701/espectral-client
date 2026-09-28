@@ -50,12 +50,15 @@ public final class TitleMenu {
     private static final int BASE = 0xFF0B0D10;
     private static final int BTN_FILL = 0x8C090B0E;
     private static final int BTN_FILL_HOT = 0xC8151A21;
-    private static final int BTN_EDGE_HOT = 0xCCD9A93B;
-    private static final int MOTE_GOLD = 0xFFFFD27A;
     private static final int MOTE_WHITE = 0xFFF4EEDF;
     private static final int MOTES = 28;
     private static final Component CHEVRON = Component.literal("›");
     private static final Component TAGLINE = Component.translatable("espectral.menu.tagline");
+
+    /** Hot-state button edge: 80%-alpha accent (theme-driven, was a constant). */
+    private static int btnEdgeHot() {
+        return (SuiteTheme.accent() & 0xFFFFFF) | 0xCC000000;
+    }
 
     /** Session start of the entrance animation; -1 until the first title frame. */
     private static long introStartMs = -1;
@@ -189,13 +192,16 @@ public final class TitleMenu {
      * (GuiGraphicsExtractor on 26.2, GuiGraphics on 1.21.11).
      */
     public void render(Object gfx, Font font, int mouseX, int mouseY, float delta) {
+        // Reduced motion (personalization.reduced_motion): no entrance, no
+        // parallax, no drifting motes, no Ken Burns — everything settles.
+        boolean reduced = ClientConfig.getInstance().reducedMotion();
         long now = Util.getMillis();
         if (introStartMs < 0) {
             introStartMs = now;
         }
         float dt = lastFrameMs < 0 ? 0f : Math.min(0.1f, (now - lastFrameMs) / 1000f);
         lastFrameMs = now;
-        float intro = (now - introStartMs) / 1000f;
+        float intro = reduced ? Float.MAX_VALUE : (now - introStartMs) / 1000f;
 
         // A real mouse move hands focus back from the keyboard to the pointer.
         if (mouseX != lastMouseX || mouseY != lastMouseY) {
@@ -207,17 +213,22 @@ public final class TitleMenu {
         }
 
         // Eased parallax target in [-1, 1] from the pointer position.
-        if (width > 0 && height > 0) {
+        if (!reduced && width > 0 && height > 0) {
             float tx = clamp01(mouseX / (float) width) * 2f - 1f;
             float ty = clamp01(mouseY / (float) height) * 2f - 1f;
             float k = 1f - (float) Math.exp(-dt * 2.5f);
             parX += (tx - parX) * k;
             parY += (ty - parY) * k;
+        } else {
+            parX = 0f;
+            parY = 0f;
         }
 
-        drawBackground(gfx, now);
-        drawMotes(gfx, intro, fade(intro, 0.6f, 1.6f));
-        drawBrand(gfx, font, intro);
+        drawBackground(gfx, now, reduced);
+        if (!reduced) {
+            drawMotes(gfx, intro, fade(intro, 0.6f, 1.6f));
+        }
+        drawBrand(gfx, font, intro, reduced);
         drawButtons(gfx, font, mouseX, mouseY, dt, intro);
         drawIcons(gfx, font, mouseX, mouseY, dt, fade(intro, 0.5f, 0.6f));
 
@@ -232,12 +243,17 @@ public final class TitleMenu {
 
     // ── Background ──────────────────────────────────────────────────────────
 
-    private void drawBackground(Object gfx, long now) {
+    private void drawBackground(Object gfx, long now, boolean reduced) {
+        // Drives the async pack resolution/upload and advances animated
+        // packs; per-frame cost is an id compare when nothing changed.
+        MenuBackground.request(minecraft);
         Compat.uiFill(gfx, 0, 0, width, height, BASE);
         if (MenuBackground.ready() && MenuBackground.width() > 0 && MenuBackground.height() > 0) {
             float bw = MenuBackground.width();
             float bh = MenuBackground.height();
-            float t = (now - MenuBackground.readyAtMs()) / 1000f;
+            // Under reduced motion the Ken Burns clock is frozen at t = 0 so
+            // the cover-fit UV window stays put; only the upload reveal fades.
+            float t = reduced ? 0f : (now - MenuBackground.readyAtMs()) / 1000f;
             // Cover-fit, then crop a UV window that breathes (~±3% zoom over
             // 28 s) and drifts (40 s / 52 s Lissajous) plus a light parallax.
             // UVs are floats, so the motion is sub-pixel smooth at any GUI scale.
@@ -249,10 +265,11 @@ public final class TitleMenu {
             float py = clamp01(0.5f + 0.32f * (float) Math.cos(t * (Math.PI * 2 / 52.0)) + 0.14f * parY);
             float u0 = (1f - uw) * px;
             float v0 = (1f - vh) * py;
-            Compat.uiBlitUv(gfx, MenuBackground.ID, 0, 0, width, height, u0, v0, u0 + uw, v0 + vh);
-
-            // Reveal: fade in from the base colour once the upload lands.
-            float reveal = easeOutCubic(clamp01(t / 0.9f));
+            Compat.uiBlitUv(gfx, MenuBackground.texture(), 0, 0, width, height, u0, v0, u0 + uw, v0 + vh);
+            // Reveal: a one-shot fade-in once the upload lands. Under reduced
+            // motion the background simply appears (reveal = 1).
+            float reveal = reduced ? 1f
+                    : easeOutCubic(clamp01(((now - MenuBackground.readyAtMs()) / 1000f) / 0.9f));
             if (reveal < 1f) {
                 Compat.uiFill(gfx, 0, 0, width, height, withAlpha(BASE, 1f - reveal));
             }
@@ -292,7 +309,7 @@ public final class TitleMenu {
             }
             int size = r2 > 0.82f ? 2 : 1;
             Compat.uiPush(gfx, x, y);
-            Compat.uiFill(gfx, 0, 0, size, size, withAlpha(r1 > 0.3f ? MOTE_GOLD : MOTE_WHITE, a));
+            Compat.uiFill(gfx, 0, 0, size, size, withAlpha(r1 > 0.3f ? SuiteTheme.accentBright() : MOTE_WHITE, a));
             Compat.uiPop(gfx);
         }
     }
@@ -300,7 +317,7 @@ public final class TitleMenu {
     // ── Brand ───────────────────────────────────────────────────────────────
 
     /** Circular logo with halo + "ESPECTRAL" gradient wordmark + tagline, right side. */
-    private void drawBrand(Object gfx, Font font, float t) {
+    private void drawBrand(Object gfx, Font font, float t, boolean reduced) {
         float a = fade(t, 0.15f, 1.0f);
         if (a <= 0.01f) {
             return;
@@ -314,40 +331,43 @@ public final class TitleMenu {
         int cy = top + logoSize / 2;
         String word = "ESPECTRAL";
         int wpx = (int) (font.width(word) * wordScale);
+        int accentRgb = SuiteTheme.accent() & 0xFFFFFF;
 
-        // Soft dark pool behind the whole block so the gold reads over any photo.
+        // Soft dark pool behind the whole block so the accent reads over any photo.
         int poolW = (int) (Math.max(wpx, logoSize) * 1.25f);
         int poolH = (int) (blockH * 0.95f);
         int poolCy = top + blockH / 2;
         Compat.uiSprite(gfx, GLOW, cx - poolW, poolCy - poolH, poolW * 2, poolH * 2,
                 argb(0.62f * a, 0x040507));
 
-        // Logo group floats (4.8 s bob) and counter-parallaxes the background.
+        // Logo group floats (4.8 s bob) and counter-parallaxes the background;
+        // both freeze under reduced motion.
         float rise = (1f - easeOutCubic(a)) * 10f;
-        float bob = 2.2f * (float) Math.sin(t * (Math.PI * 2 / 4.8));
+        float bob = reduced ? 0f : 2.2f * (float) Math.sin(t * (Math.PI * 2 / 4.8));
         Compat.uiPush(gfx, -parX * 5f, -parY * 3.5f + bob + rise);
-        float pulse = 0.5f + 0.5f * (float) Math.sin(t * (Math.PI * 2 / 5.5));
+        float pulse = reduced ? 0.5f : 0.5f + 0.5f * (float) Math.sin(t * (Math.PI * 2 / 5.5));
         int halo = (int) (logoSize * (0.95f + 0.07f * pulse));
         Compat.uiSprite(gfx, GLOW, cx - halo, cy - halo, halo * 2, halo * 2,
-                argb((0.38f + 0.22f * pulse) * a, 0xFFB948));
+                argb((0.38f + 0.22f * pulse) * a, accentRgb));
         Compat.uiSprite(gfx, LOGO, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize,
                 argb(a, 0xFFFFFF));
         Compat.uiPop(gfx);
 
-        // Wordmark: gold gradient, scaled, with a drop shadow.
+        // Wordmark: accent gradient, scaled, with a drop shadow.
         int wy = cy + logoSize / 2 + 12;
         if (a > 0.02f) {
             Compat.uiTextScaledGradient(gfx, font, word, cx - wpx / 2, wy, wordScale,
-                    withAlpha(SuiteTheme.GOLD_GRADIENT_LEFT, a), withAlpha(SuiteTheme.GOLD_GRADIENT_RIGHT, a));
+                    withAlpha(SuiteTheme.accentGradientLeft(), a),
+                    withAlpha(SuiteTheme.accentGradientRight(), a));
         }
 
         // Hairline divider fading out at both ends, then the tagline.
         int dy = wy + wordH + 9;
         int half = Math.max(24, wpx / 3);
         int seg = half / 3;
-        Compat.uiFill(gfx, cx - half, dy, cx - half + seg, dy + 1, argb(0.18f * a, 0xD9A93B));
-        Compat.uiFill(gfx, cx - half + seg, dy, cx + half - seg, dy + 1, argb(0.55f * a, 0xD9A93B));
-        Compat.uiFill(gfx, cx + half - seg, dy, cx + half, dy + 1, argb(0.18f * a, 0xD9A93B));
+        Compat.uiFill(gfx, cx - half, dy, cx - half + seg, dy + 1, argb(0.18f * a, accentRgb));
+        Compat.uiFill(gfx, cx - half + seg, dy, cx + half - seg, dy + 1, argb(0.55f * a, accentRgb));
+        Compat.uiFill(gfx, cx + half - seg, dy, cx + half, dy + 1, argb(0.18f * a, accentRgb));
         float tagA = fade(t, 0.7f, 0.8f);
         if (tagA > 0.02f) {
             Compat.uiTextCentered(gfx, font, TAGLINE,
@@ -373,21 +393,21 @@ public final class TitleMenu {
             Compat.uiFill(gfx, b.x, b.y, b.x + b.w, b.y + b.h,
                     scaleAlpha(SuiteTheme.lerpArgb(BTN_FILL, BTN_FILL_HOT, h), appear));
             Compat.uiOutline(gfx, b.x, b.y, b.w, b.h,
-                    scaleAlpha(SuiteTheme.lerpArgb(SuiteTheme.GOLD_HAIRLINE, BTN_EDGE_HOT, h), appear));
+                    scaleAlpha(SuiteTheme.lerpArgb(SuiteTheme.accentHairline(), btnEdgeHot(), h), appear));
             // Gold accent bar grows from the centre of the left edge.
             int bar = Math.round((b.h - 2) * h);
             if (bar > 0) {
                 int by = b.y + (b.h - bar) / 2;
-                Compat.uiFill(gfx, b.x, by, b.x + 2, by + bar, scaleAlpha(SuiteTheme.GOLD, appear));
+                Compat.uiFill(gfx, b.x, by, b.x + 2, by + bar, scaleAlpha(SuiteTheme.accent(), appear));
             }
             if (appear > 0.03f) {
-                int textColor = scaleAlpha(SuiteTheme.lerpArgb(SuiteTheme.TEXT, SuiteTheme.GOLD_BRIGHT, h), appear);
+                int textColor = scaleAlpha(SuiteTheme.lerpArgb(SuiteTheme.TEXT, SuiteTheme.accentBright(), h), appear);
                 int ty = b.y + (b.h - 9) / 2 + 1;
                 Compat.uiText(gfx, font, b.text,
                         b.x + 12 + Math.round(3f * h), ty, textColor, true);
                 if (h * appear > 0.03f) {
                     Compat.uiText(gfx, font, CHEVRON, b.x + b.w - 14 + Math.round(3f * (1f - h)), ty,
-                            withAlpha(SuiteTheme.GOLD_BRIGHT, h * appear), false);
+                            withAlpha(SuiteTheme.accentBright(), h * appear), false);
                 }
             }
             Compat.uiPop(gfx);
@@ -404,9 +424,9 @@ public final class TitleMenu {
             b.hover += ((hot ? 1f : 0f) - b.hover) * k;
             if (b.hover > 0.02f) {
                 Compat.uiFill(gfx, b.x, b.y, b.x + b.w, b.y + b.h, argb(0.45f * b.hover * alpha, 0x000000));
-                Compat.uiOutline(gfx, b.x, b.y, b.w, b.h, argb(0.5f * b.hover * alpha, 0xD9A93B));
+                Compat.uiOutline(gfx, b.x, b.y, b.w, b.h, argb(0.5f * b.hover * alpha, SuiteTheme.accent() & 0xFFFFFF));
             }
-            int color = scaleAlpha(SuiteTheme.lerpArgb(0xFFC9CDD3, SuiteTheme.GOLD_BRIGHT, b.hover), alpha);
+            int color = scaleAlpha(SuiteTheme.lerpArgb(0xFFC9CDD3, SuiteTheme.accentBright(), b.hover), alpha);
             Compat.uiTextCentered(gfx, font, b.text,
                     b.x + b.w / 2, b.y + (b.h - 9) / 2 + 1, color, true);
             if (hot && b.tooltip != null) {

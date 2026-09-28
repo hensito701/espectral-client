@@ -270,7 +270,7 @@ public class SuiteScreen extends Screen {
 
         boolean master = config.isSuiteEnabled();
         MutableComponent header = Component.translatable("espectral.suite.title")
-                .withStyle(ChatFormatting.GOLD).append(Component.literal(
+                .withStyle(SuiteTheme.accentFormat()).append(Component.literal(
                         " \u00b7 " + filtered.size() + "/" + total)
                         .withStyle(ChatFormatting.GRAY));
         this.headerLabel.setMessage(header);

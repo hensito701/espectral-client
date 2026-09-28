@@ -207,7 +207,7 @@ export function makeRequestHandler(app) {
         // carrying a header that the preflight did not allow. Missing it here
         // made every cross-origin call from the Tauri webview fail preflight
         // with "TypeError: Failed to fetch" (regression in the H1 hardening).
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-espectral-client');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-espectral-client, x-espectral-bridge');
         res.setHeader('Access-Control-Max-Age', '86400');
       }
       res.writeHead(204);

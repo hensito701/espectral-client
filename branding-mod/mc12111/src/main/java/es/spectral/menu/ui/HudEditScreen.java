@@ -55,13 +55,17 @@ public class HudEditScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
         // Dim backdrop so the boxes read clearly over the world/title.
         graphics.fill(0, 0, this.width, this.height, 0x60000000);
+        es.spectral.menu.HudTheme hudTheme = es.spectral.menu.HudTheme.current();
         for (HudEditLogic.EditBlock b : logic.blocks()) {
             boolean hot = b == logic.dragging() || b.contains(mouseX, mouseY);
-            // Box: 50% black fill + accent outline while hovered/dragged.
-            graphics.fill(b.x, b.y, b.x + b.w, b.y + b.h, 0x80000000);
-            int outline = hot ? 0xFFFFD700 : 0x80FFFFFF;
+            // Theme fill + editor outline (accent while hovered/dragged).
+            graphics.fill(b.x, b.y, b.x + b.w, b.y + b.h,
+                    hudTheme.hasFill() ? hudTheme.fill : 0x80000000);
+            int outline = hot ? hudTheme.outlineHot : hudTheme.outlineIdle;
             graphics.fill(b.x, b.y, b.x + b.w, b.y + 1, outline);
             graphics.fill(b.x, b.y + b.h - 1, b.x + b.w, b.y + b.h, outline);
+            graphics.fill(b.x, b.y, b.x + 1, b.y + b.h, outline);
+            graphics.fill(b.x + b.w - 1, b.y, b.x + b.w, b.y + b.h, outline);
             int rowTop = b.y + HudLayout.PAD;
             for (HudEngine.Row row : b.rows) {
                 int rowH = HudEditLogic.rowHeight(row);
@@ -73,11 +77,12 @@ public class HudEditScreen extends Screen {
                     iconW = iconSize + 3;
                 }
                 int textY = rowTop + (rowH - 9) / 2;
-                graphics.drawString(this.font, row.text, b.x + HudLayout.PAD + iconW, textY, 0xFFFFFFFF, true);
+                graphics.drawString(this.font, row.text, b.x + HudLayout.PAD + iconW, textY,
+                        hudTheme.text, hudTheme.shadow);
                 rowTop += rowH;
             }
             // Feature label above the box.
-            graphics.drawString(this.font, b.label, b.x, b.y - 10, 0xFFAAAAAA, false);
+            graphics.drawString(this.font, b.label, b.x, b.y - 10, hudTheme.label, false);
         }
         // Hint line.
         graphics.drawCenteredString(this.font,

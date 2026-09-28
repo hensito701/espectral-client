@@ -56,31 +56,31 @@
   .gradient-text--emerald-gold {
     background-image: linear-gradient(
       135deg,
-      var(--accent, #10b981) 0%,
-      var(--accent-gold, #ffd700) 100%
+      var(--accent-green) 0%,
+      var(--accent-gold) 100%
     );
   }
 
   .gradient-text--cyan-emerald {
     background-image: linear-gradient(
       135deg,
-      var(--accent-cyan, #06b6d4) 0%,
-      var(--accent, #10b981) 100%
+      var(--accent-cyan) 0%,
+      var(--accent-green) 100%
     );
   }
 
   .gradient-text--gold-amber {
     background-image: linear-gradient(
       135deg,
-      var(--accent-gold, #ffd700) 0%,
-      var(--accent-alt, #f59e0b) 100%
+      var(--accent-gold) 0%,
+      var(--accent-alt) 100%
     );
   }
 
   .gradient-text--purple-pink {
     background-image: linear-gradient(
       135deg,
-      var(--accent-purple, #a855f7) 0%,
+      var(--accent-purple) 0%,
       #ec4899 100%
     );
   }

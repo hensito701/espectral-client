@@ -34,7 +34,11 @@ import { dataDir, loadConfig } from './config.mjs';
 import { computeModSetHash, effectiveGameDir } from './instances.mjs';
 import { getJvmInfo } from './jvm.mjs';
 import { emit } from './events.mjs';
+import * as presence from './presence.mjs';
 import { resolveLaunch, buildArgv, spawnJava } from './launch.mjs';
+
+/** Test hooks — same pattern as routes/launch.mjs (ESM namespace is non-configurable). */
+export const __testHooks = { resolveLaunch: null };
 
 /** Root of all AOT caches: <dataDir>/cache/aot. */
 export function aotRootDir() {
@@ -501,7 +505,7 @@ export async function trainInstance(instance, { key = null, onProgress, force = 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       progress('resolve', `resolving launch configuration (${attempt}/${maxAttempts})…`);
-      resolved = await resolveLaunch(instance, { mode: 'train' });
+      resolved = await (__testHooks.resolveLaunch ?? resolveLaunch)(instance, { mode: 'train' });
       lastError = null;
       break;
     } catch (e) {
@@ -553,6 +557,34 @@ export async function trainInstance(instance, { key = null, onProgress, force = 
   });
   const pid = child.pid;
   progress('running', `pid ${pid}`);
+
+  // The trainer is a full game boot carrying a minted bridge token on its
+  // argv — register it with the mod bridge like any launch (without this its
+  // /api/bridge/visible polls 403 for the whole run) and detach on process
+  // end (exit/close/error — presence.launchExited is idempotent and scoped to
+  // this token, so a relaunched game's registration is never evicted). The
+  // presence DELETE rides the same teardown when this was the account's last
+  // registered launch.
+  try {
+    presence.launchStarted({
+      instance: instance.name,
+      uuid: resolved.account?.uuid,
+      gameDir,
+      token: resolved.bridgeToken ?? '',
+    });
+  } catch {
+    /* bridge registration must never fail a training run */
+  }
+  const detachTrainer = () => {
+    try {
+      presence.launchExited(instance.name, resolved.bridgeToken ?? '');
+    } catch {
+      /* ignore */
+    }
+  };
+  child.once('exit', detachTrainer);
+  child.once('close', detachTrainer);
+  child.once('error', detachTrainer);
 
   // Relay JVM/game output to the console so training is observable.
   const relay = (chunk) => {

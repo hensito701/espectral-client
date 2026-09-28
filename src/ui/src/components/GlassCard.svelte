@@ -206,15 +206,15 @@
 
   /* Featured Emerald Accent */
   .glass-card--featured {
-    border-color: var(--border-focus, rgba(16, 185, 129, 0.6));
-    box-shadow: var(--glass-glow, 0 8px 32px rgba(16, 185, 129, 0.15));
+    border-color: var(--border-focus, rgba(var(--accent-rgb), 0.6));
+    box-shadow: var(--glass-glow, 0 8px 32px rgba(var(--accent-rgb), 0.15));
   }
 
   .glass-card--featured::before {
     background: linear-gradient(
       90deg,
       transparent 0%,
-      var(--accent, #10b981) 50%,
+      var(--accent) 50%,
       transparent 100%
     );
     height: 2px;
@@ -224,7 +224,7 @@
   .glass-card--interactive:hover,
   .glass-card--clickable:hover {
     transform: translateY(-4px);
-    border-color: var(--hover-border, rgba(16, 185, 129, 0.4));
+    border-color: var(--hover-border, rgba(var(--accent-rgb), 0.4));
     box-shadow: var(--shadow-lg, 0 16px 48px rgba(0, 0, 0, 0.5));
   }
 

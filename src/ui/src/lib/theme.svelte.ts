@@ -1,18 +1,22 @@
 // @ts-nocheck — svelte 5 compiles .svelte.ts modules with a JS-only parser
 // (analyze_module hardcodes typescript=false), so this file cannot contain TS
 // syntax/annotations; tsc would flag implicit anys, hence the file-level opt-out.
-import { setTheme as apiSetTheme } from './api';
+import { setTheme as apiSetTheme, setAccent as apiSetAccent } from './api';
 import { createStorageState } from './storageState.svelte';
 
 /* ==========================================================================
-   Theme store (runes — this file MUST keep the .svelte.ts extension so the
-   Svelte compiler rewrites $state/$effect; .svelte.ts modules are parsed as
-   plain JS by the compiler, so no TypeScript annotations here).
+   Theme + accent stores (runes — this file MUST keep the .svelte.ts extension
+   so the Svelte compiler rewrites $state/$effect; .svelte.ts modules are
+   parsed as plain JS by the compiler, so no TypeScript annotations here).
    - `theme.value`: 'dark' | 'light' | 'system' (reactive; read directly).
    - `theme.set(t)`: applies + persists to localStorage 'espectral_theme' +
      mirrors to the backend (PUT /api/theme).
-   The data-theme attribute on <html> is driven by a module-level $effect,
-   resolving 'system' through prefers-color-scheme (default dark).
+   - `accent.value`: 'oro' | 'carmesi' | 'amatista' | 'esmeralda' | 'glaciar'
+     (Workstream 4). Persists to 'espectral_accent' + mirrors to the backend
+     (PUT /api/accent); the engine copies it into personalization.theme at
+     launch so the Suite and title menu share the palette.
+   The data-theme/data-accent attributes on <html> are driven by module
+   effects registered from App.svelte (initThemeEffect).
    ========================================================================== */
 
 function isTheme(v) {
@@ -57,14 +61,53 @@ export const theme = {
   },
 };
 
+// --- Accent (client colour theme) -------------------------------------------
+
+/** Accent ids in display order; `swatch` feeds pickers (CSS needs no lookup). */
+export const ACCENTS = [
+  { id: 'oro', swatch: '#d9a93b' },
+  { id: 'carmesi', swatch: '#e5484d' },
+  { id: 'amatista', swatch: '#bb86fc' },
+  { id: 'esmeralda', swatch: '#10b981' },
+  { id: 'glaciar', swatch: '#38bdf8' },
+];
+
+const ACCENT_IDS = ACCENTS.map((a) => a.id);
+
+function isAccent(v) {
+  return typeof v === 'string' && ACCENT_IDS.includes(v);
+}
+
+function mirrorAccent(next) {
+  apiSetAccent(next).catch(() => {
+    /* backend offline: localStorage keeps the choice */
+  });
+}
+
+const _accent = createStorageState('espectral_accent', 'oro', isAccent, mirrorAccent);
+
+export const accent = {
+  get value() {
+    return _accent.value;
+  },
+  /** @param {string} next */
+  set(next) {
+    _accent.value = next;
+  },
+};
+
 /**
  * MUST be called once from a component's init scope (App.svelte) — a module-
  * level $effect here is an orphan (svelte.dev/e/effect_orphan) and crashes
- * mount. The effect keeps <html data-theme> in sync with the store.
+ * mount. The effects keep <html data-theme>/<html data-accent> in sync.
  */
 export function initThemeEffect() {
   $effect(() => {
     if (typeof document === 'undefined') return;
     document.documentElement.dataset.theme = resolveTheme(_storage.value);
+  });
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.dataset.accent = _accent.value;
   });
 }

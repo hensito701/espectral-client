@@ -36,11 +36,11 @@ public final class SuitePainter {
         int bandH = SuiteTheme.ACTION_Y + 20 + 8;
         if (height < bandH + 40) return;
         Compat.uiFill(gfx, 0, 0, width, bandH, SuiteTheme.PANEL);
-        Compat.uiFill(gfx, 0, bandH, width, bandH + 1, SuiteTheme.GOLD_HAIRLINE);
+        Compat.uiFill(gfx, 0, bandH, width, bandH + 1, SuiteTheme.accentHairline());
         Compat.uiTextGradient(gfx, font,
                 Component.translatable("espectral.suite.title"),
                 8, SuiteTheme.ACTION_Y + 1,
-                SuiteTheme.GOLD_GRADIENT_LEFT, SuiteTheme.GOLD_GRADIENT_RIGHT, false);
+                SuiteTheme.accentGradientLeft(), SuiteTheme.accentGradientRight(), false);
         String version = EspectralBrand.modVersion();
         if (version != null && !version.isBlank()) {
             Compat.uiText(gfx, font, Component.literal("v" + version.trim()),
@@ -67,9 +67,9 @@ public final class SuitePainter {
         int cx = (width - cw) / 2;
         int cy = (height - ch) / 2;
         Compat.uiFill(gfx, cx, cy, cx + cw, cy + ch, SuiteTheme.PANEL);
-        Compat.uiOutline(gfx, cx, cy, cw, ch, SuiteTheme.PANEL_EDGE);
+        Compat.uiOutline(gfx, cx, cy, cw, ch, SuiteTheme.panelEdge());
         Compat.uiTextCenteredGradient(gfx, font, screen.getTitleText(), width / 2, cy + 14,
-                SuiteTheme.GOLD_GRADIENT_LEFT, SuiteTheme.GOLD_GRADIENT_RIGHT, false);
+                SuiteTheme.accentGradientLeft(), SuiteTheme.accentGradientRight(), false);
         int my = cy + 34;
         for (String line : screen.getMessageLines()) {
             Compat.uiTextCentered(gfx, font, Component.literal(line), width / 2, my,
@@ -121,12 +121,12 @@ public final class SuitePainter {
         int top = SuiteTheme.PANEL_TOP;
         int bottom = height - SuiteTheme.PANEL_TOP;
         Compat.uiFill(gfx, px, top, px + pw, bottom, SuiteTheme.PANEL);
-        Compat.uiOutline(gfx, px, top, pw, bottom - top, SuiteTheme.PANEL_EDGE);
+        Compat.uiOutline(gfx, px, top, pw, bottom - top, SuiteTheme.panelEdge());
         int headerLine = SuiteTheme.headerBottom() + 2;
         Compat.uiFill(gfx, px + 1, headerLine, px + pw - 1, headerLine + 1,
-                SuiteTheme.GOLD_HAIRLINE);
+                SuiteTheme.accentHairline());
         int footerLine = SuiteTheme.footerY(height) - 3;
         Compat.uiFill(gfx, px + 1, footerLine, px + pw - 1, footerLine + 1,
-                SuiteTheme.GOLD_HAIRLINE);
+                SuiteTheme.accentHairline());
     }
 }

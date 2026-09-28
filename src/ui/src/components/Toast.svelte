@@ -143,19 +143,19 @@
 
   /* Kind Tints */
   .toast--ok {
-    color: var(--accent, #10b981);
-    border-color: rgba(16, 185, 129, 0.4);
-    box-shadow: var(--shadow-lg), 0 0 20px rgba(16, 185, 129, 0.15);
+    color: var(--accent-green);
+    border-color: rgba(var(--accent-green-rgb), 0.4);
+    box-shadow: var(--shadow-lg), 0 0 20px rgba(var(--accent-green-rgb), 0.15);
   }
 
   .toast--err {
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
     border-color: rgba(239, 68, 68, 0.4);
     box-shadow: var(--shadow-lg), 0 0 20px rgba(239, 68, 68, 0.15);
   }
 
   .toast--info {
-    color: var(--accent-cyan, #06b6d4);
+    color: var(--accent-cyan);
     border-color: rgba(6, 182, 212, 0.4);
     box-shadow: var(--shadow-lg), 0 0 20px rgba(6, 182, 212, 0.15);
   }

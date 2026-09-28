@@ -4,6 +4,59 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [Unreleased]
 
+### Added
+- **Free personalization for everyone.** Five client themes (Oro, Carmesí,
+  Amatista, Esmeralda, Glaciar) recolour the launcher, the Suite and the title
+  menu from one setting (`/api/accent`, `personalization.theme`). Menu
+  background packs: import your own PNG or an animated frame pack (≤300
+  frames, ≤1280×720) from the instance Appearance card; animated packs are
+  decoded off the render thread and loop. HUD themes (Cristal, Oro, Mínimo,
+  Píxel) restyle the HUD boxes and the HUD editor. A "Movimiento reducido"
+  setting stills the title-menu motion, cosmetic physics and emotes. A
+  background placed by hand at `config/espectral-menu-background.png` is
+  imported once as the pack "Mi fondo" and selected.
+- **⚛ Espectral badge and ★ supporter mark.** Players who share their
+  cosmetics show `⚛` before their name in nametags and the tab list for other
+  Espectral players; any donor Discord role adds `★`. Server names and
+  LuckPerms prefixes are never rebuilt. The glyph ships as a bitmap font at
+  Mojangles metrics, and the title/pause buttons use it instead of ★.
+- **MVP cosmetics (client-only).** Manto Espectral, Capucha Errante and
+  Jirones de Ceniza (cloth physics), Alas de Eco (react to falling, sneaking
+  and sprinting), Bufanda Llama de Alma, Orejas Vulpinas, Vendas Rúnicas
+  (also on your own first-person hands) and three elytra skins. They render
+  only from a verified grant, never on invisible or spectating players, stay
+  inside a fixed footprint, and simulate physics for at most the eight
+  nearest wearers. The launcher's new Armario page (`#/armario`) verifies the
+  account, links Discord, and holds the sharing consent, the loadout and the
+  hidden-players list.
+- **Local emotes for MVP.** Press B for the emote wheel (Saludo, Reverencia,
+  Aplauso, Sentarse, Invocación). Only you see them; movement, attacking or
+  taking damage cancels them.
+- **`espectral-id` service** (`services/espectral-id/`, live at
+  `https://id.espectral.es` on OVM3): Mojang ownership proof, Discord role
+  resolution for guild `648307511648321536`, Ed25519 grants and in-memory
+  presence. The record is DNS-only with a Let's Encrypt origin certificate,
+  because the zone's Flexible SSL mode would send bearer tokens from
+  Cloudflare to the origin in plaintext.
+- **Supporter cosmetics + identity plumbing (Workstream 4, engine).** The
+  engine now verifies Minecraft uuid ownership through `espectral-id`
+  (`POST /api/identity/:uuid/verify` runs the Mojang `join`/`hasJoined`
+  handshake), links Discord without shipping the OAuth client secret
+  (`/v1/discord/identify` + `/v1/discord/link`), and keeps a per-uuid session
+  in `<data>/identity.json`. Grants are Ed25519 JWS tokens verified against a
+  pinned public key (`kid eid1`); a missing or invalid grant means no ★ and
+  no cosmetics. `GET/PUT /api/cosmetics` validates loadouts against the
+  bundled catalog (slot, flag requirement, scarf↔cloak exclusivity) and the
+  engine writes `<gameDir>/config/espectral-cosmetics.json` at launch,
+  mirrored into the per-account profile dir like `espectral-client.json`.
+  The in-game mod reaches the engine through a per-launch authenticated
+  loopback bridge (`POST /api/bridge/visible`, `x-espectral-bridge` token);
+  uncached uuids are batched to `/v1/presence/query` in the background
+  (≤1 req / 3 s, 60 s positive and negative cache). Presence publishing
+  follows running instances: `PUT /v1/presence` every 240 s while `share` is
+  on, `DELETE` on exit or share-off. Grant refresh at launch is capped at 2 s
+  and never blocks or fails the launch.
+
 ### Fixed
 - **Custom main menu now shows its background photo.** Vanilla's
   `blit(Identifier, x0, y0, x1, y1, …)` takes its floats as `u0, u1, v0, v1`

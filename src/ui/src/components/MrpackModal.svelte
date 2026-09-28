@@ -457,7 +457,7 @@
     font-family: var(--font-display, 'Space Grotesk', sans-serif);
     font-size: var(--text-base, 1rem);
     font-weight: 700;
-    color: var(--accent-cyan, #06b6d4);
+    color: var(--accent-cyan);
     min-width: 90px;
     text-align: right;
   }
@@ -480,7 +480,7 @@
     width: 18px;
     height: 18px;
     border: 2px solid rgba(6, 182, 212, 0.2);
-    border-top-color: var(--accent-cyan, #06b6d4);
+    border-top-color: var(--accent-cyan);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }

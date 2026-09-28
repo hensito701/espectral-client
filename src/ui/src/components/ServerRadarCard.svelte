@@ -308,24 +308,24 @@
   }
 
   .beacon-orb--online {
-    background: var(--accent-green, #22c55e);
-    box-shadow: 0 0 10px var(--accent-green, #22c55e);
+    background: var(--accent-green);
+    box-shadow: 0 0 10px var(--accent-green);
     animation: orbPulse 2.6s infinite;
   }
 
   .beacon-orb--offline {
-    background: var(--accent-red, #ef4444);
+    background: var(--accent-red);
     box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
   }
 
   @keyframes orbPulse {
     0%, 100% {
       transform: scale(1);
-      box-shadow: 0 0 8px var(--accent-green, #22c55e);
+      box-shadow: 0 0 8px var(--accent-green);
     }
     50% {
       transform: scale(1.18);
-      box-shadow: 0 0 16px var(--accent-green, #22c55e);
+      box-shadow: 0 0 16px var(--accent-green);
     }
   }
 
@@ -382,7 +382,7 @@
   }
 
   .meta-chip--software {
-    color: var(--accent-cyan, #06b6d4);
+    color: var(--accent-cyan);
     border-color: rgba(6, 182, 212, 0.3);
     font-size: 0.625rem;
   }
@@ -468,8 +468,8 @@
   }
 
   .direct-ip-btn:hover {
-    color: var(--accent-alt, #f59e0b);
-    border-color: var(--accent-alt, #f59e0b);
+    color: var(--accent-alt);
+    border-color: var(--accent-alt);
   }
 
   .copy-hint {
@@ -482,13 +482,13 @@
 
   .copy-hint-text {
     font-size: 0.625rem;
-    color: var(--accent, #10b981);
+    color: var(--accent);
     letter-spacing: 0.02em;
   }
 
   .copy-hint--copied {
-    background: rgba(16, 185, 129, 0.2);
-    border-color: var(--accent, #10b981);
+    background: rgba(var(--accent-rgb), 0.2);
+    border-color: var(--accent);
   }
 
   @media (prefers-reduced-motion: reduce) {

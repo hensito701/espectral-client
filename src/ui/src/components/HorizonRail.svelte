@@ -383,14 +383,14 @@
   }
 
   .horizon-tile-add:hover {
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.08);
-    border-color: var(--accent, #10b981);
+    background: rgba(var(--accent-rgb), 0.08);
+    border-color: var(--accent);
     transform: translateY(-4px);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4), 0 0 20px rgba(var(--accent-rgb, 16, 185, 129), 0.2);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4), 0 0 20px rgba(var(--accent-rgb), 0.2);
   }
 
   .horizon-tile-add:focus-visible {
-    box-shadow: 0 0 0 2px var(--bg, #060a14), 0 0 0 4px var(--accent, #10b981);
+    box-shadow: 0 0 0 2px var(--bg, #060a14), 0 0 0 4px var(--accent);
   }
 
   .horizon-tile-add__inner {
@@ -416,10 +416,10 @@
   }
 
   .horizon-tile-add:hover .horizon-tile-add__icon {
-    background: var(--accent, #10b981);
+    background: var(--accent);
     color: #ffffff;
-    border-color: var(--accent, #10b981);
-    box-shadow: 0 0 16px var(--accent, #10b981);
+    border-color: var(--accent);
+    box-shadow: 0 0 16px var(--accent);
   }
 
   .horizon-tile-add__title {

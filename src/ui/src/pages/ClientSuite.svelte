@@ -9,7 +9,7 @@
 -->
 <script lang="ts">
   import { instances } from '../lib/stores';
-  import { getInstanceClient, patchInstanceClient, subscribeEvents } from '../lib/api';
+  import { getInstanceClient, patchInstanceClient, patchPersonalization, subscribeEvents } from '../lib/api';
   import type { ClientInfo, ClientMacro, ClientRegistryEntry } from '../lib/types';
   import { pushToast } from '../lib/toast.svelte';
   import { t } from '../lib/i18n.svelte';
@@ -182,6 +182,27 @@
 
   // Suite master switch: absent on old payloads — schema 2 defaults to true.
   const suiteEnabled = $derived(info?.config.suite?.enabled ?? true);
+
+  // HUD theme picker (personalization.hud_theme; free feature)
+  const HUD_THEMES = ['cristal', 'oro', 'minimo', 'pixel'] as const;
+  let savingHudTheme = $state(false);
+  const hudTheme = $derived(info?.config.personalization?.hud_theme ?? 'cristal');
+
+  async function handleHudTheme(id: string) {
+    if (!targetInstance || savingHudTheme || id === hudTheme) return;
+    savingHudTheme = true;
+    patchError = '';
+    try {
+      const resp = await patchPersonalization(targetInstance, { hud_theme: id });
+      absorbPatch(resp);
+      pushToast({ kind: 'ok', text: t('perso.hudSaveOk') });
+    } catch (e) {
+      patchError = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: t('perso.hudSaveError') });
+    } finally {
+      savingHudTheme = false;
+    }
+  }
 
   // Category filter ids derive from the registry (registry order, no fixed list).
   const categories = $derived(
@@ -673,6 +694,36 @@
             {/if}
           </div>
         </GlassCard>
+
+        <!-- HUD theme (free personalization) -->
+        <GlassCard elevation="md">
+          <div class="card-header-deck">
+            <div class="card-title-group">
+              <span class="card-icon card-icon--cyan">🎨</span>
+              <div>
+                <h3 class="card-title">{t('perso.hudTitle')}</h3>
+                <p class="card-subhead muted">{t('perso.hudHint')}</p>
+              </div>
+            </div>
+          </div>
+          <div class="hud-theme-grid" role="radiogroup" aria-label={t('perso.hudTitle')}>
+            {#each HUD_THEMES as id (id)}
+              <button
+                type="button"
+                class="hud-theme-tile"
+                class:hud-theme-tile--active={hudTheme === id}
+                role="radio"
+                aria-checked={hudTheme === id}
+                disabled={savingHudTheme}
+                onclick={() => handleHudTheme(id)}
+              >
+                <span class="hud-theme-swatch hud-theme-swatch--{id}" aria-hidden="true"></span>
+                <span class="hud-theme-name">{t(`perso.hud.${id}`, id)}</span>
+                <span class="hud-theme-desc muted">{t(`perso.hud.${id}Desc`, '')}</span>
+              </button>
+            {/each}
+          </div>
+        </GlassCard>
       </section>
 
       <!-- Right Column: Macro Automation Engine -->
@@ -900,7 +951,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: var(--accent-cyan, #06b6d4);
+    color: var(--accent-cyan);
     margin-bottom: 0.25rem;
   }
 
@@ -908,8 +959,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent-cyan, #06b6d4);
-    box-shadow: 0 0 8px var(--accent-cyan, #06b6d4);
+    background: var(--accent-cyan);
+    box-shadow: 0 0 8px var(--accent-cyan);
   }
 
   .suite-title {
@@ -940,8 +991,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent, #10b981);
-    box-shadow: 0 0 6px var(--accent, #10b981);
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
   }
 
   /* Instance Strip */
@@ -994,14 +1045,14 @@
 
   .instance-chip:hover {
     background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.3);
+    border-color: rgba(var(--accent-cyan-rgb), 0.3);
   }
 
   .instance-chip.selected {
-    background: rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.12);
-    border-color: var(--accent-cyan, #06b6d4);
+    background: rgba(var(--accent-cyan-rgb), 0.12);
+    border-color: var(--accent-cyan);
     color: #ffffff;
-    box-shadow: 0 0 16px rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.2);
+    box-shadow: 0 0 16px rgba(var(--accent-cyan-rgb), 0.2);
   }
 
   .instance-chip__tag {
@@ -1018,8 +1069,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent-cyan, #06b6d4);
-    box-shadow: 0 0 6px var(--accent-cyan, #06b6d4);
+    background: var(--accent-cyan);
+    box-shadow: 0 0 6px var(--accent-cyan);
   }
 
   .instance-strip-empty {
@@ -1074,13 +1125,13 @@
   }
 
   .card-icon--cyan {
-    background: rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.15);
-    border: 1px solid rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.3);
+    background: rgba(var(--accent-cyan-rgb), 0.15);
+    border: 1px solid rgba(var(--accent-cyan-rgb), 0.3);
   }
 
   .card-icon--purple {
-    background: rgba(var(--accent-purple-rgb, 168, 85, 247), 0.15);
-    border: 1px solid rgba(var(--accent-purple-rgb, 168, 85, 247), 0.3);
+    background: rgba(var(--accent-purple-rgb), 0.15);
+    border: 1px solid rgba(var(--accent-purple-rgb), 0.3);
   }
 
   .card-title {
@@ -1114,7 +1165,7 @@
   }
 
   .feature-item--on {
-    border-color: rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.3);
+    border-color: rgba(var(--accent-cyan-rgb), 0.3);
   }
 
   .feature-item__main {
@@ -1201,8 +1252,8 @@
   }
 
   .macro-pill-btn.active {
-    background: rgba(var(--accent-purple-rgb, 168, 85, 247), 0.15);
-    border-color: var(--accent-purple, #a855f7);
+    background: rgba(var(--accent-purple-rgb), 0.15);
+    border-color: var(--accent-purple);
     color: #ffffff;
   }
 
@@ -1210,7 +1261,7 @@
     background: rgba(0, 0, 0, 0.3);
     padding: 0.1rem 0.3rem;
     border-radius: 3px;
-    color: var(--accent-gold, #ffd700);
+    color: var(--accent-gold);
   }
 
   .macro-pill-add {
@@ -1268,13 +1319,13 @@
   }
 
   .macro-input:focus {
-    border-color: var(--accent-purple, #a855f7);
+    border-color: var(--accent-purple);
     outline: none;
   }
 
   .macro-input.capturing {
-    border-color: var(--accent-cyan, #22d3ee);
-    box-shadow: 0 0 0 1px var(--accent-cyan, #22d3ee);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 1px var(--accent-cyan);
     cursor: pointer;
   }
 
@@ -1347,7 +1398,7 @@
   }
 
   .action-text-input:focus {
-    border-color: var(--accent-purple, #a855f7);
+    border-color: var(--accent-purple);
     outline: none;
   }
 
@@ -1372,7 +1423,7 @@
   }
 
   .action-remove-btn:hover:not(:disabled) {
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
   }
 
   .action-remove-btn:disabled {
@@ -1418,23 +1469,23 @@
   }
 
   .error-banner {
-    background: rgba(var(--accent-red-rgb, 239, 68, 68), 0.1);
-    border-color: rgba(var(--accent-red-rgb, 239, 68, 68), 0.3);
-    color: var(--accent-red, #ef4444);
+    background: rgba(var(--accent-red-rgb), 0.1);
+    border-color: rgba(var(--accent-red-rgb), 0.3);
+    color: var(--accent-red);
     font-size: 0.8125rem;
   }
 
   .ok-banner {
-    background: rgba(var(--accent-green-rgb, 34, 197, 94), 0.1);
-    border-color: rgba(var(--accent-green-rgb, 34, 197, 94), 0.3);
-    color: var(--accent-green, #22c55e);
+    background: rgba(var(--accent-green-rgb), 0.1);
+    border-color: rgba(var(--accent-green-rgb), 0.3);
+    color: var(--accent-green);
     font-size: 0.8125rem;
   }
 
   .spinner-pulse {
     width: 16px;
     height: 16px;
-    border: 2px solid var(--accent-cyan, #06b6d4);
+    border: 2px solid var(--accent-cyan);
     border-top-color: transparent;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -1457,24 +1508,24 @@
   }
 
   .suite-master--off {
-    border-color: rgba(var(--accent-gold-rgb, 217, 169, 59), 0.4);
+    border-color: rgba(var(--accent-gold-rgb), 0.4);
   }
 
   .suite-master__state {
     font-size: 0.875rem;
     font-weight: 700;
-    color: var(--accent-green, #22c55e);
+    color: var(--accent-green);
   }
 
   .suite-master__state--off {
-    color: var(--accent-gold, #d9a93b);
+    color: var(--accent-gold);
   }
 
   .suite-off-banner {
     padding: 0.6rem 1rem;
     margin-bottom: 0.75rem;
-    background: rgba(var(--accent-gold-rgb, 217, 169, 59), 0.08);
-    border-color: rgba(var(--accent-gold-rgb, 217, 169, 59), 0.35);
+    background: rgba(var(--accent-gold-rgb), 0.08);
+    border-color: rgba(var(--accent-gold-rgb), 0.35);
     color: var(--text, #e8ecf4);
     font-size: 0.8125rem;
     line-height: var(--leading-body, 1.6);
@@ -1529,6 +1580,109 @@
     color: var(--text, #e8ecf4);
   }
 
+  /* HUD theme picker (free personalization) */
+  .hud-theme-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: 0.65rem;
+  }
+
+  .hud-theme-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.75rem;
+    border-radius: var(--radius-md, 0.5rem);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+    background: rgba(255, 255, 255, 0.03);
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  .hud-theme-tile:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .hud-theme-tile--active {
+    border-color: var(--accent-cyan, #06b6d4);
+    box-shadow: 0 0 0 1px var(--accent-cyan, #06b6d4);
+  }
+
+  .hud-theme-tile:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  .hud-theme-swatch {
+    display: block;
+    width: 100%;
+    height: 2.6rem;
+    border-radius: 0.35rem;
+    position: relative;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  /* Preview mirrors the real in-game box: fill + frame + text colour. */
+  .hud-theme-swatch::after {
+    content: '123 · FPS 60';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+  }
+
+  .hud-theme-swatch--cristal {
+    background: rgba(0, 0, 0, 0.5);
+  }
+  .hud-theme-swatch--cristal::after {
+    color: #ffffff;
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.8);
+  }
+
+  .hud-theme-swatch--oro {
+    background: #140f08;
+    border: 1px solid rgba(217, 169, 59, 0.35);
+  }
+  .hud-theme-swatch--oro::after {
+    color: #efe6d4;
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.8);
+  }
+
+  .hud-theme-swatch--minimo {
+    background: transparent;
+  }
+  .hud-theme-swatch--minimo::after {
+    color: #ffffff;
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.8);
+  }
+
+  .hud-theme-swatch--pixel {
+    background: #000000;
+    border: 1px solid #ffffff;
+  }
+  .hud-theme-swatch--pixel::after {
+    color: #8cff6a;
+    text-shadow: none;
+  }
+
+  .hud-theme-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text, #e8ecf4);
+  }
+
+  .hud-theme-desc {
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
   /* Switch Toggle Component */
   .switch {
     position: relative;
@@ -1548,14 +1702,14 @@
   }
 
   .switch:focus-visible {
-    outline: 2px solid var(--accent-cyan, #06b6d4);
+    outline: 2px solid var(--accent-cyan);
     outline-offset: 2px;
   }
 
   .switch.on {
-    background: var(--accent-cyan, #06b6d4);
-    border-color: rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.8);
-    box-shadow: 0 0 12px rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.35);
+    background: var(--accent-cyan);
+    border-color: rgba(var(--accent-cyan-rgb), 0.8);
+    box-shadow: 0 0 12px rgba(var(--accent-cyan-rgb), 0.35);
   }
 
   .switch__thumb {

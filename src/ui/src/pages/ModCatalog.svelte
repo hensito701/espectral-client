@@ -1055,7 +1055,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: var(--accent, #10b981);
+    color: var(--accent);
     margin-bottom: 0.25rem;
   }
 
@@ -1063,8 +1063,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent, #10b981);
-    box-shadow: 0 0 8px var(--accent, #10b981);
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
   }
 
   .catalog-title {
@@ -1140,14 +1140,14 @@
 
   .instance-chip:hover {
     background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(var(--accent-rgb, 16, 185, 129), 0.3);
+    border-color: rgba(var(--accent-rgb), 0.3);
   }
 
   .instance-chip.selected {
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.12);
-    border-color: var(--accent, #10b981);
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: var(--accent);
     color: #ffffff;
-    box-shadow: 0 0 16px rgba(var(--accent-rgb, 16, 185, 129), 0.2);
+    box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.2);
   }
 
   .instance-chip__tag {
@@ -1164,8 +1164,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent, #10b981);
-    box-shadow: 0 0 6px var(--accent, #10b981);
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
   }
 
   .instance-strip-empty {
@@ -1181,8 +1181,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.08);
-    border-color: rgba(var(--accent-rgb, 16, 185, 129), 0.3);
+    background: rgba(var(--accent-rgb), 0.08);
+    border-color: rgba(var(--accent-rgb), 0.3);
   }
 
   .install-progress-info {
@@ -1228,8 +1228,8 @@
   }
 
   .catalog-tab-btn.active {
-    color: var(--accent, #10b981);
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.1);
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.1);
   }
 
   .catalog-tab-badge {
@@ -1241,8 +1241,8 @@
   }
 
   .catalog-tab-badge--warn {
-    background: rgba(var(--accent-alt-rgb, 245, 158, 11), 0.2);
-    color: var(--accent-alt, #f59e0b);
+    background: rgba(var(--accent-alt-rgb), 0.2);
+    color: var(--accent-alt);
   }
 
   /* Inventory Toolbar */
@@ -1295,8 +1295,8 @@
   }
 
   .dot--ok {
-    background: var(--accent, #10b981);
-    box-shadow: 0 0 6px var(--accent, #10b981);
+    background: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
   }
 
   .dot--muted {
@@ -1328,7 +1328,7 @@
   }
 
   .inventory-search-input:focus {
-    border-color: var(--accent, #10b981);
+    border-color: var(--accent);
     outline: none;
   }
 
@@ -1461,8 +1461,8 @@
   }
 
   .preset-icon-badge--emerald {
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.15);
-    border: 1px solid rgba(var(--accent-rgb, 16, 185, 129), 0.3);
+    background: rgba(var(--accent-green-rgb), 0.15);
+    border: 1px solid rgba(var(--accent-green-rgb), 0.3);
   }
 
 
@@ -1501,8 +1501,8 @@
   }
 
   .pinned-pill.installed {
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.1);
-    border-color: rgba(var(--accent-rgb, 16, 185, 129), 0.3);
+    background: rgba(var(--accent-green-rgb), 0.1);
+    border-color: rgba(var(--accent-green-rgb), 0.3);
     color: var(--text, #e8ecf4);
   }
 
@@ -1514,8 +1514,8 @@
   }
 
   .pinned-pill.installed .pinned-pill__dot {
-    background: var(--accent, #10b981);
-    box-shadow: 0 0 6px var(--accent, #10b981);
+    background: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
   }
 
   .preset-card-footer {
@@ -1647,8 +1647,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent, #10b981);
-    box-shadow: 0 0 8px var(--accent, #10b981);
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
   }
 
   .show-more-wrap {
@@ -1659,27 +1659,27 @@
 
   /* Light mode: darken this page's green accents/surfaces until legible. */
   :global([data-theme='light']) .mod-catalog .catalog-header__tagline {
-    color: var(--accent-ink, #047857);
+    color: var(--accent-ink);
   }
 
   :global([data-theme='light']) .mod-catalog .modrinth-chip {
-    color: var(--accent-ink, #047857);
+    color: var(--accent-ink);
   }
 
   :global([data-theme='light']) .mod-catalog .modrinth-input:focus {
-    border-color: var(--accent-ink, #047857);
+    border-color: var(--accent-ink);
     box-shadow: 0 0 12px rgba(4, 120, 87, 0.28);
   }
 
   :global([data-theme='light']) .mod-catalog .catalog-tab-btn.active {
-    color: var(--accent-ink, #047857);
-    background: rgba(var(--accent-rgb, 5, 150, 105), 0.14);
+    color: var(--accent-ink);
+    background: rgba(var(--accent-rgb), 0.14);
   }
 
   :global([data-theme='light']) .mod-catalog .instance-chip.selected {
     color: #052e21;
-    background: rgba(var(--accent-rgb, 5, 150, 105), 0.16);
-    border-color: var(--accent-ink, #047857);
+    background: rgba(var(--accent-rgb), 0.16);
+    border-color: var(--accent-ink);
   }
 
   :global([data-theme='light']) .mod-catalog .instance-chip.selected .instance-chip__tag {
@@ -1687,24 +1687,24 @@
   }
 
   :global([data-theme='light']) .mod-catalog .install-progress-deck {
-    background: rgba(var(--accent-rgb, 5, 150, 105), 0.12);
-    border-color: rgba(var(--accent-rgb, 5, 150, 105), 0.45);
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.45);
   }
 
   :global([data-theme='light']) .mod-catalog .pinned-pill.installed {
-    background: rgba(var(--accent-rgb, 5, 150, 105), 0.14);
-    border-color: rgba(var(--accent-rgb, 5, 150, 105), 0.5);
+    background: rgba(var(--accent-green-rgb), 0.14);
+    border-color: rgba(var(--accent-green-rgb), 0.5);
     color: #052e21;
   }
 
   :global([data-theme='light']) .mod-catalog .preset-icon-badge--emerald {
-    background: rgba(var(--accent-rgb, 5, 150, 105), 0.16);
-    border-color: rgba(var(--accent-rgb, 5, 150, 105), 0.5);
+    background: rgba(var(--accent-green-rgb), 0.16);
+    border-color: rgba(var(--accent-green-rgb), 0.5);
   }
 
   :global([data-theme='light']) .mod-catalog .explore-title__dot {
-    background: var(--accent-ink, #047857);
-    box-shadow: 0 0 8px var(--accent-ink, #047857);
+    background: var(--accent-ink);
+    box-shadow: 0 0 8px var(--accent-ink);
   }
 
   /* Universal Feedback States */
@@ -1725,17 +1725,17 @@
   }
 
   .error-banner {
-    background: rgba(var(--accent-red-rgb, 239, 68, 68), 0.1);
-    border-color: rgba(var(--accent-red-rgb, 239, 68, 68), 0.3);
-    color: var(--accent-red, #ef4444);
+    background: rgba(var(--accent-red-rgb), 0.1);
+    border-color: rgba(var(--accent-red-rgb), 0.3);
+    color: var(--accent-red);
     flex-direction: row;
     justify-content: center;
     padding: 0.75rem 1rem;
   }
 
   .note-banner {
-    background: rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.1);
-    border-color: rgba(var(--accent-cyan-rgb, 6, 182, 212), 0.3);
+    background: rgba(var(--accent-cyan-rgb), 0.1);
+    border-color: rgba(var(--accent-cyan-rgb), 0.3);
     color: var(--text, #e8ecf4);
     flex-direction: row;
     justify-content: flex-start;
@@ -1746,7 +1746,7 @@
   .spinner-pulse {
     width: 16px;
     height: 16px;
-    border: 2px solid var(--accent, #10b981);
+    border: 2px solid var(--accent);
     border-top-color: transparent;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -1777,14 +1777,14 @@
   }
 
   .switch:focus-visible {
-    outline: 2px solid var(--accent, #10b981);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
   .switch.on {
-    background: var(--accent, #10b981);
-    border-color: rgba(var(--accent-rgb, 16, 185, 129), 0.8);
-    box-shadow: 0 0 12px rgba(var(--accent-rgb, 16, 185, 129), 0.35);
+    background: var(--accent);
+    border-color: rgba(var(--accent-rgb), 0.8);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.35);
   }
 
   .switch__thumb {

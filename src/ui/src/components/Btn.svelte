@@ -158,18 +158,18 @@
 
   /* Variant: Primary (Emerald Glow & High-Contrast) */
   .btn--primary {
-    background: linear-gradient(135deg, var(--accent, #10b981), var(--accent-ink, #059669));
+    background: linear-gradient(135deg, var(--accent), var(--accent-ink));
     color: var(--text-inverse, #060a14);
     border-color: rgba(255, 255, 255, 0.2);
     box-shadow:
-      0 4px 16px rgba(var(--accent-rgb, 16, 185, 129), 0.28),
+      0 4px 16px rgba(var(--accent-rgb), 0.28),
       inset 0 1px 0 rgba(255, 255, 255, 0.35);
   }
 
   .btn--primary:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.01);
     box-shadow:
-      0 6px 24px rgba(var(--accent-rgb, 16, 185, 129), 0.42),
+      0 6px 24px rgba(var(--accent-rgb), 0.42),
       inset 0 1px 0 rgba(255, 255, 255, 0.5);
     filter: brightness(1.08);
   }
@@ -177,7 +177,7 @@
   .btn--primary:active:not(:disabled) {
     transform: translateY(0) scale(0.97);
     box-shadow:
-      0 2px 8px rgba(var(--accent-rgb, 16, 185, 129), 0.3),
+      0 2px 8px rgba(var(--accent-rgb), 0.3),
       inset 0 1px 0 rgba(255, 255, 255, 0.2);
   }
 
@@ -191,7 +191,7 @@
 
   .btn--secondary:hover:not(:disabled) {
     background: var(--surface-up, rgba(25, 32, 64, 0.55));
-    border-color: var(--hover-border, rgba(16, 185, 129, 0.4));
+    border-color: var(--hover-border, rgba(var(--accent-rgb), 0.4));
     color: var(--text, #e8ecf4);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md, 0 8px 28px rgba(0, 0, 0, 0.35));
@@ -222,25 +222,25 @@
 
   /* Variant: Danger (Crimson Glow) */
   .btn--danger {
-    background: linear-gradient(135deg, var(--accent-red, #ef4444), #b91c1c);
+    background: linear-gradient(135deg, var(--accent-red), #b91c1c);
     color: #ffffff;
     border-color: rgba(239, 68, 68, 0.4);
     box-shadow:
-      0 4px 16px rgba(var(--accent-red-rgb, 239, 68, 68), 0.3),
+      0 4px 16px rgba(var(--accent-red-rgb), 0.3),
       inset 0 1px 0 rgba(255, 255, 255, 0.25);
   }
 
   .btn--danger:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.01);
     box-shadow:
-      0 6px 24px rgba(var(--accent-red-rgb, 239, 68, 68), 0.45),
+      0 6px 24px rgba(var(--accent-red-rgb), 0.45),
       inset 0 1px 0 rgba(255, 255, 255, 0.35);
     filter: brightness(1.08);
   }
 
   .btn--danger:active:not(:disabled) {
     transform: translateY(0) scale(0.97);
-    box-shadow: 0 2px 8px rgba(var(--accent-red-rgb, 239, 68, 68), 0.25);
+    box-shadow: 0 2px 8px rgba(var(--accent-red-rgb), 0.25);
   }
 
   /* Focus and Disabled */

@@ -12,9 +12,11 @@
     patchConfig,
     getJvm,
     openFolder,
+    listInstances,
+    patchInstanceClient,
     API_BASE,
   } from '../lib/api';
-  import { theme as themeStore, resolveTheme } from '../lib/theme.svelte';
+  import { theme as themeStore, accent as accentStore, resolveTheme, ACCENTS } from '../lib/theme.svelte';
   import { lang as langStore, t } from '../lib/i18n.svelte';
   import { health as healthStore } from '../lib/stores';
   import { pushToast } from '../lib/toast.svelte';
@@ -48,6 +50,8 @@
   let fastBoot = $state<boolean>(false);
   let fullbright = $state<boolean>(false);
   let discordEnabled = $state<boolean>(true);
+  let reducedMotion = $state<boolean>(false);
+  let savingMotion = $state<boolean>(false);
 
   // JDK Probe states ($state)
   let probing = $state(false);
@@ -131,6 +135,7 @@
     fastBoot = cfg.fast_boot ?? false;
     fullbright = cfg.fullbright_on_launch ?? false;
     discordEnabled = cfg.discord_enabled ?? true;
+    reducedMotion = cfg.reduced_motion === true;
   }
 
   function handleResetAll() {
@@ -306,6 +311,39 @@
      ========================================================================== */
   function setThemeValue(value: Theme) {
     themeStore.set(value);
+  }
+
+  /** Accent swatch pick: instant via the store (which mirrors /api/accent). */
+  function setAccentValue(id: string) {
+    accentStore.set(id);
+  }
+
+  /**
+   * Reduced motion (personalization.reduced_motion). The global default lives
+   * in engine config.json (seed copies it into each personalization block at
+   * launch); we also PATCH every existing instance so a running game picks it
+   * up through the mod's live reload.
+   */
+  async function toggleReducedMotion() {
+    if (savingMotion) return;
+    const next = !reducedMotion;
+    savingMotion = true;
+    try {
+      await patchConfig({ reduced_motion: next });
+      const instances = await listInstances();
+      await Promise.allSettled(
+        instances.map((inst) =>
+          patchInstanceClient(inst.name, { personalization: { reduced_motion: next } })
+        )
+      );
+      reducedMotion = next;
+      pushToast({ kind: 'ok', text: t(next ? 'dash.motion.flashOn' : 'dash.motion.flashOff') });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: t('dash.saveError') + ': ' + msg });
+    } finally {
+      savingMotion = false;
+    }
   }
 
   /* ==========================================================================
@@ -582,6 +620,48 @@
                 <Badge variant="accent" size="sm">ACTIVE</Badge>
               {/if}
             </div>
+          </div>
+        </GlassCard>
+
+        <!-- Client Colour + Reduced Motion Card (Workstream 4) -->
+        <GlassCard elevation="sm" class="setting-card">
+          <div class="card-head">
+            <div class="card-head__title-wrap">
+              <span class="card-head__title">{t('dash.accent.title')}</span>
+              <span class="card-head__desc">{t('dash.accent.desc')}</span>
+            </div>
+          </div>
+
+          <div class="accent-swatches" role="radiogroup" aria-label={t('dash.accent.title')}>
+            {#each ACCENTS as a (a.id)}
+              <button
+                type="button"
+                class="accent-swatch"
+                class:accent-swatch--active={accentStore.value === a.id}
+                role="radio"
+                aria-checked={accentStore.value === a.id}
+                title={t(`dash.accent.${a.id}`)}
+                onclick={() => setAccentValue(a.id)}
+              >
+                <span class="accent-swatch__dot" style="background: {a.swatch}"></span>
+                <span class="accent-swatch__name">{t(`dash.accent.${a.id}`)}</span>
+              </button>
+            {/each}
+          </div>
+
+          <div class="motion-row">
+            <div class="motion-row__meta">
+              <span class="motion-row__title">{t('dash.motion.title')}</span>
+              <span class="motion-row__desc">{t('dash.motion.desc')}</span>
+            </div>
+            <Btn
+              variant={reducedMotion ? 'primary' : 'secondary'}
+              size="sm"
+              loading={savingMotion}
+              onclick={toggleReducedMotion}
+            >
+              {reducedMotion ? t('dash.motion.on') : t('dash.motion.off')}
+            </Btn>
           </div>
         </GlassCard>
       </div>
@@ -1280,8 +1360,8 @@
   }
 
   .status-dot--online {
-    background: var(--accent);
-    box-shadow: 0 0 8px var(--accent);
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
   }
 
   .settings-hero__title {
@@ -1441,8 +1521,8 @@
     align-items: baseline;
     gap: 0.25rem;
     padding: 0.35rem 0.75rem;
-    background: rgba(16, 185, 129, 0.12);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: rgba(var(--accent-rgb), 0.12);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
     border-radius: var(--radius-md);
   }
 
@@ -1496,7 +1576,7 @@
   .theme-choice-btn--active {
     color: var(--text);
     border-color: var(--accent);
-    background: rgba(16, 185, 129, 0.1);
+    background: rgba(var(--accent-rgb), 0.1);
   }
 
   .theme-choice-btn__icon {
@@ -1643,7 +1723,7 @@
 
   .lang-tile--active {
     border-color: var(--accent);
-    background: rgba(16, 185, 129, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
   }
 
   .lang-tile__flag {
@@ -1667,6 +1747,81 @@
   .lang-tile__sub {
     font-size: 0.75rem;
     color: var(--muted);
+  }
+
+  /* ==========================================================================
+     Client Colour Swatches + Reduced Motion (Workstream 4)
+     ========================================================================== */
+  .accent-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .accent-swatch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    background: var(--surface-up);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: border-color var(--dur-fast) ease-out, background var(--dur-fast) ease-out;
+  }
+
+  .accent-swatch:hover {
+    border-color: var(--border-focus);
+    background: var(--surface-up-solid);
+  }
+
+  .accent-swatch--active {
+    border-color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.12);
+  }
+
+  .accent-swatch__dot {
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
+  }
+
+  .accent-swatch--active .accent-swatch__dot {
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--accent);
+  }
+
+  .motion-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .motion-row__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .motion-row__title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .motion-row__desc {
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.45;
   }
 
   /* ==========================================================================
@@ -1737,7 +1892,7 @@
     border-radius: 50%;
     background: var(--accent);
     border: 2px solid #ffffff;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.5);
     cursor: pointer;
     transition: transform var(--dur-fast) ease-out;
   }
@@ -1802,9 +1957,9 @@
   }
 
   .probe-feedback-banner--ok {
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.3);
-    color: var(--accent);
+    background: rgba(var(--accent-green-rgb), 0.1);
+    border: 1px solid rgba(var(--accent-green-rgb), 0.3);
+    color: var(--accent-green);
   }
 
   .probe-feedback-banner--err {
@@ -2153,10 +2308,10 @@
     gap: 1rem;
     padding: 1.75rem;
     width: 100%;
-    background: radial-gradient(circle at center, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.04) 100%), var(--surface-up);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: radial-gradient(circle at center, rgba(var(--accent-rgb), 0.12) 0%, rgba(6, 182, 212, 0.04) 100%), var(--surface-up);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
     border-radius: var(--radius-lg);
-    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.08);
+    box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.08);
   }
 
   .vip-banner-box__icon {
@@ -2166,7 +2321,7 @@
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: rgba(16, 185, 129, 0.15);
+    background: rgba(var(--accent-rgb), 0.15);
     color: var(--accent);
   }
 

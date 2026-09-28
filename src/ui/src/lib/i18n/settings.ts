@@ -33,6 +33,21 @@ export const es: Dict = {
   'dash.appearance.themeLight': 'Claro (Sunlit Quartz)',
   'dash.appearance.themeSystem': 'Sistema (Automático)',
 
+  // Client accent palette + reduced motion (Workstream 4)
+  'dash.accent.title': 'Color del cliente',
+  'dash.accent.desc': 'Una paleta colorea el launcher, la Suite en el juego y el menú principal. Se aplica al instante.',
+  'dash.accent.oro': 'Oro',
+  'dash.accent.carmesi': 'Carmesí',
+  'dash.accent.amatista': 'Amatista',
+  'dash.accent.esmeralda': 'Esmeralda',
+  'dash.accent.glaciar': 'Glaciar',
+  'dash.motion.title': 'Movimiento reducido',
+  'dash.motion.desc': 'Desactiva la deriva del fondo, el parallax, las partículas del menú y las animaciones de entrada en el menú principal.',
+  'dash.motion.on': 'Activado',
+  'dash.motion.off': 'Desactivado',
+  'dash.motion.flashOn': 'Movimiento reducido activado.',
+  'dash.motion.flashOff': 'Movimiento reducido desactivado.',
+
   // Section 2: Engine & JVM Memory
   'dash.engine.title': 'Rendimiento y Motor JVM',
   'dash.engine.subtitle': 'Asignación de memoria RAM, concurrencia de red y tiempo de ejecución Java.',
@@ -174,8 +189,22 @@ export const en: Dict = {
   'dash.appearance.langDesc': 'Instantly switch the interface and information copy between Spanish and English.',
   'dash.appearance.previewTitle': 'Theme preview',
   'dash.appearance.themeDark': 'Dark (Horizon Dark)',
-  'dash.appearance.themeLight': 'Light (Sunlit Quartz)',
   'dash.appearance.themeSystem': 'System (Automatic)',
+
+  // Client accent palette + reduced motion (Workstream 4)
+  'dash.accent.title': 'Client colour',
+  'dash.accent.desc': 'One palette colours the launcher, the in-game Suite and the main menu. Applies instantly.',
+  'dash.accent.oro': 'Oro',
+  'dash.accent.carmesi': 'Carmesí',
+  'dash.accent.amatista': 'Amatista',
+  'dash.accent.esmeralda': 'Esmeralda',
+  'dash.accent.glaciar': 'Glaciar',
+  'dash.motion.title': 'Reduced motion',
+  'dash.motion.desc': 'Disables background drift, parallax, menu motes and entrance animations on the main menu.',
+  'dash.motion.on': 'Enabled',
+  'dash.motion.off': 'Disabled',
+  'dash.motion.flashOn': 'Reduced motion enabled.',
+  'dash.motion.flashOff': 'Reduced motion disabled.',
 
   // Section 2: Engine & JVM Memory
   'dash.engine.title': 'Performance & JVM Engine',

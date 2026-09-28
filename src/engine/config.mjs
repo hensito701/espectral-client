@@ -36,8 +36,16 @@ export const DEFAULT_CONFIG = {
   fullbright_on_launch: false,
   jdk_path_override: null,
   discord_enabled: true,
+  identity_url: 'https://id.espectral.es',
   // engine-owned state
   theme: 'dark',
+  // Client accent palette id (Workstream 4). Drives <html data-accent> in the
+  // launcher UI and is mirrored into personalization.theme at launch. Same id
+  // set as the mod's palettes.
+  accent: 'oro',
+  // Global reduced-motion choice; mirrored into personalization.reduced_motion
+  // at launch (per-instance configs also PATCH it directly for live reload).
+  reduced_motion: false,
   active_username: null,
   accounts: [],
   jvm: null,
@@ -104,6 +112,8 @@ export function appConfig() {
   const c = loadConfig();
   return {
     default_memory_mb: c.default_memory_mb,
+    accent: typeof c.accent === 'string' ? c.accent : 'oro',
+    reduced_motion: c.reduced_motion === true,
     download_concurrency: c.download_concurrency,
     aot_auto_train: c.aot_auto_train,
     fast_boot: c.fast_boot === true,

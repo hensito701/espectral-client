@@ -568,6 +568,11 @@
                   <polyline points="12 5 19 12 12 19" />
                 </svg>
               </a>
+              {#if rank.id === 'mvp' || rank.id === 'mvp-plus'}
+                <a href="#/armario" class="rank-wardrobe-link">
+                  <span>{t('pav.wardrobeLink')}</span>
+                </a>
+              {/if}
             </div>
           </GlassCard>
         {/each}
@@ -654,7 +659,7 @@
   .pavilion-hero {
     position: relative;
     border-radius: var(--radius-xl);
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(16, 185, 129, 0.06) 50%, rgba(6, 182, 212, 0.04) 100%);
+    background: linear-gradient(135deg, rgba(var(--accent-alt-rgb), 0.08) 0%, rgba(var(--accent-rgb), 0.06) 50%, rgba(6, 182, 212, 0.04) 100%);
     border: 1px solid var(--border);
     padding: 2.5rem 2.25rem;
     overflow: hidden;
@@ -669,7 +674,7 @@
     width: 480px;
     height: 480px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(255, 215, 0, 0.12) 0%, rgba(16, 185, 129, 0.06) 50%, transparent 70%);
+    background: radial-gradient(circle, rgba(var(--accent-gold-rgb), 0.12) 0%, rgba(var(--accent-rgb), 0.06) 50%, transparent 70%);
     filter: blur(48px);
     pointer-events: none;
   }
@@ -786,7 +791,7 @@
   }
 
   :global(.channel-card--paypal:hover) {
-    border-color: rgba(16, 185, 129, 0.4);
+    border-color: rgba(var(--accent-rgb), 0.4);
   }
 
   :global(.channel-card--tebex:hover) {
@@ -821,14 +826,14 @@
   }
 
   .channel-card__icon-box--paypal {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: rgba(var(--accent-rgb), 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
   }
 
   .channel-card__icon-box--tebex {
     background: rgba(6, 182, 212, 0.15);
-    color: #06b6d4;
+    color: var(--accent-cyan);
     border: 1px solid rgba(6, 182, 212, 0.3);
   }
 
@@ -1050,9 +1055,9 @@
   }
 
   :global(.rank-card--featured) {
-    border: 1px solid rgba(255, 215, 0, 0.45) !important;
-    background: linear-gradient(180deg, rgba(255, 215, 0, 0.05) 0%, var(--card-bg) 60%) !important;
-    box-shadow: 0 8px 32px rgba(255, 215, 0, 0.12);
+    border: 1px solid rgba(var(--accent-gold-rgb), 0.45) !important;
+    background: linear-gradient(180deg, rgba(var(--accent-gold-rgb), 0.05) 0%, var(--card-bg) 60%) !important;
+    box-shadow: 0 8px 32px rgba(var(--accent-gold-rgb), 0.12);
   }
 
   :global(.rank-card--diamond) {
@@ -1170,6 +1175,24 @@
 
   .rank-card__foot {
     margin-top: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .rank-wardrobe-link {
+    display: block;
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent-gold);
+    text-decoration: none;
+    transition: color var(--dur-fast) ease;
+  }
+
+  .rank-wardrobe-link:hover {
+    color: var(--accent-alt);
+    text-decoration: underline;
   }
 
   .rank-cta-btn {

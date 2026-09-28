@@ -4,6 +4,7 @@ credentials.json
 *.pem
 .env
 .env.*
+!.env.example
 .keys/
 
 # Runtime data (resolver cache, instances, downloaded runtimes, AOT caches)
@@ -42,6 +43,8 @@ logs/
 !assets/site/logo_circle.png
 !assets/site/apple-touch-icon.png
 !branding-mod/src/main/resources/assets/espectral-menu/textures/gui/sprites/*.png
+!branding-mod/src/main/resources/assets/espectral-menu/textures/cosmetics/*.png
+!branding-mod/src/main/resources/assets/espectral-menu/textures/font/*.png
 !src/ui/src/assets/logo_circle.png
 
 # Local editor / tool state
@@ -58,7 +61,9 @@ report*.md
 predicciones.html
 harness/
 deploy/
-services/
+services/*
+!services/espectral-id/
+!services/espectral-id/deploy/
 docs/HANDOVER-*.md
 docs/PROGRESS-*.md
 docs/PHASE-*.md
@@ -78,3 +83,8 @@ tests/bootlab2.test.mjs
 !tests/fixtures/*.mrpack
 scripts/publish-linux-deb.mjs
 dist-linux/
+
+# espectral-id service venv + runtime data
+services/espectral-id/.venv/
+services/espectral-id/data/
+__pycache__/

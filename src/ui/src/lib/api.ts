@@ -1,12 +1,19 @@
 import type {
+  Accent,
   Account,
   AppConfig,
   AotStatus,
   ClientInfo,
   ClientPatch,
+  BackgroundPack,
+  CosmeticsAccountState,
+  CosmeticsPatch,
+  CosmeticsState,
   CreateInstanceRequest,
   DryRunResult,
   HealthInfo,
+  IdentityAccount,
+  IdentityState,
   ImportResult,
   ImportSource,
   InstanceDetail,
@@ -130,6 +137,8 @@ const R = {
   configPatch: ['PATCH', '/api/config'] as const,
   theme: ['GET', '/api/theme'] as const,
   themePut: ['PUT', '/api/theme'] as const,
+  accent: ['GET', '/api/accent'] as const,
+  accentPut: ['PUT', '/api/accent'] as const,
   instances: ['GET', '/api/instances'] as const,
   instancesPost: ['POST', '/api/instances'] as const,
   getInstance: (n: string) => ['GET', `/api/instances/${enc(n)}`] as const,
@@ -167,12 +176,24 @@ const R = {
   train: (n: string) => ['POST', `/api/instances/${enc(n)}/train`] as const,
   client: (n: string) => ['GET', `/api/instances/${enc(n)}/client`] as const,
   clientPatch: (n: string) => ['PATCH', `/api/instances/${enc(n)}/client`] as const,
+  personalizationPatch: (n: string) => ['PATCH', `/api/instances/${enc(n)}/personalization`] as const,
+  backgrounds: ['GET', '/api/backgrounds'] as const,
+  backgroundsPost: ['POST', '/api/backgrounds'] as const,
+  backgroundsFrames: ['POST', '/api/backgrounds/frames'] as const,
+  backgroundDelete: (id: string) => ['DELETE', `/api/backgrounds/${enc(id)}`] as const,
   launch: (n: string) => ['POST', `/api/instances/${enc(n)}/launch`] as const,
   stopInstance: (n: string) => ['POST', `/api/instances/${enc(n)}/stop`] as const,
   launchLog: (k: string, c: number) => ['GET', `/api/launch/${enc(k)}/log?cursor=${c}`] as const,
   launchStats: (l: number) => ['GET', `/api/stats/launches?limit=${l}`] as const,
   shutdown: ['POST', '/api/shutdown'] as const,
   launches: ['GET', '/api/launches'] as const,
+  identity: ['GET', '/api/identity'] as const,
+  identityVerify: (u: string) => ['POST', `/api/identity/${enc(u)}/verify`] as const,
+  identityDiscordStart: (u: string) => ['GET', `/api/identity/${enc(u)}/discord/start`] as const,
+  identityDiscordUnlink: (u: string) => ['DELETE', `/api/identity/${enc(u)}/discord`] as const,
+  identityRefresh: (u: string) => ['POST', `/api/identity/${enc(u)}/refresh`] as const,
+  cosmetics: ['GET', '/api/cosmetics'] as const,
+  cosmeticsPut: (u: string) => ['PUT', `/api/cosmetics/${enc(u)}`] as const,
 } as const;
 
 /* ---------- one wrapper per endpoint ---------- */
@@ -199,6 +220,8 @@ export const getConfig = (): Promise<AppConfig> => get(R.config[1]);
 export const patchConfig = (configPatch: Partial<AppConfig>): Promise<AppConfig> => patch(R.configPatch[1], { patch: configPatch });
 export const getTheme = (): Promise<Theme> => get(R.theme[1]);
 export const setTheme = (theme: Theme): Promise<{ theme: Theme }> => put(R.themePut[1], { theme });
+export const getAccent = (): Promise<Accent> => get(R.accent[1]);
+export const setAccent = (accent: Accent): Promise<{ accent: Accent }> => put(R.accentPut[1], { accent });
 export const listInstances = (): Promise<InstanceSummary[]> => get(R.instances[1]);
 export const createInstance = (req: CreateInstanceRequest): Promise<InstanceSummary> => post(R.instancesPost[1], req);
 export const getInstance = (name: string): Promise<InstanceDetail> => get(R.getInstance(name)[1]);
@@ -437,6 +460,88 @@ export const trainAot = (name: string): Promise<{ key: string; deferred?: boolea
 export const getInstanceClient = (name: string): Promise<ClientInfo> => get(R.client(name)[1]);
 export const patchInstanceClient = (name: string, clientPatch: ClientPatch): Promise<ClientInfo> =>
   patch(R.clientPatch(name)[1], clientPatch);
+/* ---------- menu background packs (Workstream 4, free) ---------- */
+
+export const patchPersonalization = (
+  name: string,
+  patchBody: { theme?: string | null; hud_theme?: string | null; background?: string | null; reduced_motion?: boolean },
+): Promise<ClientInfo> => patch(R.personalizationPatch(name)[1], patchBody);
+
+export const listBackgroundPacks = async (): Promise<BackgroundPack[]> =>
+  (await get<{ packs: BackgroundPack[] }>(R.backgrounds[1])).packs;
+
+export const backgroundPackImageUrl = (id: string): string =>
+  `${API_BASE}/api/backgrounds/${enc(id)}/image`;
+
+export const importImageBackgroundPack = (
+  req: { name: string } & ({ image_base64: string } | { source_path: string }),
+): Promise<{ pack: BackgroundPack }> => post(R.backgroundsPost[1], req);
+
+export const importFrameBackgroundPack = (
+  req: { name: string; fps?: number } & (
+    | { frames: string[] }
+    | { frame_paths: string[] }
+    | { source_path: string }
+  ),
+): Promise<{ pack: BackgroundPack }> => post(R.backgroundsFrames[1], req);
+
+export const deleteBackgroundPack = (id: string): Promise<{ ok: true }> =>
+  del(R.backgroundDelete(id)[1]);
+
+/**
+ * Pick one PNG file for a still background pack. Mirrors pickMrpackFile:
+ * Tauri dialog off-Windows, engine PowerShell picker on Windows; null = the
+ * user canceled.
+ */
+export const pickPngFile = async (title: string): Promise<{ path: string | null }> => {
+  // Dynamic import (not static): ./dialog chain-loads the Tauri dialog
+  // plugin, absent in plain-browser builds — same split as pickMrpackFile.
+  try {
+    const { isTauri, isWindows, openFileDialog } = await import('./dialog');
+    if (isTauri() && !isWindows()) {
+      return { path: await openFileDialog({ title, extensions: ['png'] }) };
+    }
+  } catch {
+    // DialogUnavailable or any plugin failure: fall through to engine below.
+  }
+  try {
+    return await post<{ path: string | null }>(R.pickFile[1], {
+      title,
+      filter: 'PNG (*.png)|*.png|Todos los archivos (*.*)|*.*',
+    });
+  } catch (e) {
+    if (e instanceof ApiError && e.code === 'UNSUPPORTED_PLATFORM') return { path: null };
+    throw e;
+  }
+};
+
+/**
+ * Pick the PNG frames of an animated pack (native multi-select). Returns
+ * `paths === null` when the user canceled. Same Tauri/engine split as
+ * pickPngFile.
+ */
+export const pickPngFiles = async (title: string): Promise<{ paths: string[] | null }> => {
+  // Dynamic import (not static): ./dialog chain-loads the Tauri dialog
+  // plugin, absent in plain-browser builds — same split as pickMrpackFile.
+  try {
+    const { isTauri, isWindows, openMultiFileDialog } = await import('./dialog');
+    if (isTauri() && !isWindows()) {
+      return { paths: await openMultiFileDialog({ title, extensions: ['png'] }) };
+    }
+  } catch {
+    // DialogUnavailable or any plugin failure: fall through to engine below.
+  }
+  try {
+    return await post<{ paths: string[] | null }>(R.pickFile[1], {
+      title,
+      filter: 'PNG (*.png)|*.png|Todos los archivos (*.*)|*.*',
+      multi: true,
+    });
+  } catch (e) {
+    if (e instanceof ApiError && e.code === 'UNSUPPORTED_PLATFORM') return { paths: null };
+    throw e;
+  }
+};
 export const launchInstance = (
   name: string,
   options: { dry_run: boolean; account?: string },
@@ -448,6 +553,21 @@ export const shutdownEngine = (): Promise<{ ok: true }> => post(R.shutdown[1]);
 export const getLaunchLog = (key: string, cursor = 0): Promise<LogChunk> => get(R.launchLog(key, cursor)[1]);
 export const getLaunchStats = (limit = 1): Promise<{ launches: LaunchStat[] }> => get(R.launchStats(limit)[1]);
 export const getLaunches = async (): Promise<LiveLaunch[]> => (await get<{ launches: LiveLaunch[] }>(R.launches[1])).launches;
+
+/* ---------- Espectral identity & supporter cosmetics (Workstream 4) ---------- */
+
+export const getIdentity = (): Promise<IdentityState> => get(R.identity[1]);
+export const verifyIdentity = (uuid: string): Promise<IdentityAccount> =>
+  post(R.identityVerify(uuid)[1]);
+export const startIdentityDiscordLink = (uuid: string): Promise<{ url: string; state?: string }> =>
+  get(R.identityDiscordStart(uuid)[1]);
+export const unlinkIdentityDiscord = (uuid: string): Promise<{ ok: true }> =>
+  del(R.identityDiscordUnlink(uuid)[1]);
+export const refreshIdentity = (uuid: string): Promise<IdentityAccount> =>
+  post(R.identityRefresh(uuid)[1]);
+export const getCosmetics = (): Promise<CosmeticsState> => get(R.cosmetics[1]);
+export const putCosmetics = (uuid: string, cosmeticsPatch: CosmeticsPatch): Promise<CosmeticsAccountState> =>
+  put(R.cosmeticsPut(uuid)[1], cosmeticsPatch);
 
 // SSE moved to ./sse — re-export to preserve `from './api'` import path.
 export { subscribeEvents, SSE_EVENT_NAMES } from './sse';

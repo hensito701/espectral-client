@@ -151,7 +151,7 @@
   }
 
   .field__required {
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
     font-weight: 700;
   }
 
@@ -185,14 +185,14 @@
   .field__control :global(input:focus),
   .field__control :global(select:focus),
   .field__control :global(textarea:focus) {
-    border-color: var(--border-focus, rgba(16, 185, 129, 0.6));
+    border-color: var(--border-focus, rgba(var(--accent-rgb), 0.6));
     box-shadow: var(--shadow-focus, 0 0 0 2px var(--bg), 0 0 0 4px var(--accent));
   }
 
   .field--has-error .field__control :global(input),
   .field--has-error .field__control :global(select),
   .field--has-error .field__control :global(textarea) {
-    border-color: var(--accent-red, #ef4444);
+    border-color: var(--accent-red);
   }
 
   .field__hint {
@@ -206,7 +206,7 @@
     align-items: center;
     gap: var(--space-1, 4px);
     font-size: var(--text-xs, 0.75rem);
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
     font-weight: 500;
     line-height: var(--leading-snug, 1.35);
   }

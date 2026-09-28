@@ -259,7 +259,7 @@
   }
 
   .skin-viewer__spin--paused {
-    color: var(--accent, #10b981);
+    color: var(--accent);
   }
 
   .skin-viewer__fallback {

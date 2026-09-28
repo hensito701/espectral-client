@@ -612,8 +612,8 @@
   }
 
   .search-input:focus {
-    border-color: var(--accent, #10b981);
-    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.25);
   }
 
   .clear-search-btn {
@@ -655,21 +655,21 @@
   .filter-chip:hover {
     background: var(--surface-up, rgba(25, 32, 64, 0.55));
     color: var(--text, #e8ecf4);
-    border-color: var(--border-focus, rgba(16, 185, 129, 0.6));
+    border-color: var(--border-focus, rgba(var(--accent-rgb), 0.6));
   }
 
   .filter-chip--active {
-    background: rgba(16, 185, 129, 0.18);
-    border-color: var(--accent, #10b981);
-    color: var(--accent, #10b981);
+    background: rgba(var(--accent-rgb), 0.18);
+    border-color: var(--accent);
+    color: var(--accent);
     font-weight: 600;
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.25);
   }
 
   .filter-chip--installed.filter-chip--active {
     background: rgba(34, 197, 94, 0.2);
-    border-color: var(--accent-green, #22c55e);
-    color: var(--accent-green, #22c55e);
+    border-color: var(--accent-green);
+    color: var(--accent-green);
   }
 
   .controls-meta-bar {
@@ -725,7 +725,7 @@
   }
 
   .version-id-btn:hover .version-id-text {
-    color: var(--accent, #10b981);
+    color: var(--accent);
     text-decoration: underline;
   }
 
@@ -741,7 +741,7 @@
     border-radius: var(--radius-xs, 0.25rem);
     background: var(--surface-up-solid, #161e36);
     border: 1px solid var(--border, rgba(40, 58, 96, 0.45));
-    color: var(--accent-gold, #ffd700);
+    color: var(--accent-gold);
     letter-spacing: 0.02em;
   }
 
@@ -785,7 +785,7 @@
     width: 36px;
     height: 36px;
     border: 3px solid var(--border, rgba(40, 58, 96, 0.45));
-    border-top-color: var(--accent, #10b981);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }
@@ -822,7 +822,7 @@
   .error-title {
     margin: 0;
     font-size: var(--text-sm, 0.875rem);
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
   }
 
   .empty-results-card {

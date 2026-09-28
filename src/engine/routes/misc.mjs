@@ -17,6 +17,7 @@ import {
 } from '../skins.mjs';
 import * as instances from '../instances.mjs';
 import { httpError } from '../error.mjs';
+import { THEME_IDS } from '../client.mjs';
 import { VERSION } from '../server.mjs';
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -111,14 +112,17 @@ export async function register(app) {
     return { ok: true };
   });
 
-  // POST /api/pick-file -> { path } — native Windows file picker (PowerShell
-  // STA + WinForms OpenFileDialog). path === null means the user canceled.
-  // Off-Windows this build has no native picker: returns 501
-  // UNSUPPORTED_PLATFORM — the UI must use the in-app (Tauri) dialog there.
+  // POST /api/pick-file { title, filter, multi? } -> { path } or
+  // { paths: [path, ...] } when multi is set — native Windows file picker
+  // (PowerShell STA + WinForms OpenFileDialog, Multiselect for multi).
+  // path / paths === null means the user canceled. Off-Windows this build has
+  // no native picker: returns 501 UNSUPPORTED_PLATFORM — the UI must use the
+  // in-app (Tauri) dialog there.
   app.post('/api/pick-file', async (req, res, params, body) => {
     if (process.platform !== 'win32') throw httpError(501, 'UNSUPPORTED_PLATFORM', 'native OS picker is Windows-only on this build — use the in-app (Tauri) dialog');
     const title = body && typeof body.title === 'string' ? body.title : 'Choose file';
     const filter = body && typeof body.filter === 'string' ? body.filter : 'All files (*.*)|*.*';
+    const multi = Boolean(body && body.multi);
     const esc = (s) => s.replace(/'/g, "''");
     const script = [
       'Add-Type -AssemblyName System.Windows.Forms',
@@ -126,11 +130,18 @@ export async function register(app) {
       `$d.Title = '${esc(title)}'`,
       `$d.Filter = '${esc(filter)}'`,
       '$d.CheckFileExists = $true',
+      multi ? '$d.Multiselect = $true' : '',
       '$r = $d.ShowDialog()',
-      'if ($r -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.FileName }',
-    ].join('\n');
-    const path = await pickFile(script);
-    return { path };
+      'if ($r -eq [System.Windows.Forms.DialogResult]::OK) {',
+      multi
+        ? '  $d.FileNames | ForEach-Object { Write-Output $_ }'
+        : '  Write-Output $d.FileName',
+      '}',
+    ].filter(Boolean).join('\n');
+    const picked = await pickFile(script);
+    if (!multi) return { path: picked };
+    const paths = picked === null ? null : picked.split(/\r?\n/).filter(Boolean);
+    return { paths };
   });
 
   // POST /api/pick-folder -> { path } — native Windows folder picker (modern
@@ -233,6 +244,20 @@ export async function register(app) {
     }
     config.saveConfig({ theme });
     return { theme };
+  });
+
+  // Client accent palette (Workstream 4): stored in engine config.json and
+  // mirrored into personalization.theme by seedClientConfig at launch, so the
+  // launcher, Suite and title menu share one palette. Same id set as the mod.
+  app.get('/api/accent', async () => config.loadConfig().accent ?? 'oro');
+
+  app.put('/api/accent', async (req, res, params, body) => {
+    const accent = body && body.accent;
+    if (!THEME_IDS.includes(accent)) {
+      throw httpError(400, 'BAD_ACCENT', `accent must be one of ${THEME_IDS.join('|')}`);
+    }
+    config.saveConfig({ accent });
+    return { accent };
   });
 
   app.get('/api/config', async () => config.appConfig());
@@ -601,6 +626,7 @@ function sanitizeConfigPatch(patch) {
   if (patch.fast_boot !== undefined) out.fast_boot = !!patch.fast_boot;
   if (patch.aot_auto_train !== undefined) out.aot_auto_train = !!patch.aot_auto_train;
   if (patch.discord_enabled !== undefined) out.discord_enabled = !!patch.discord_enabled;
+  if (patch.reduced_motion !== undefined) out.reduced_motion = !!patch.reduced_motion;
   if (patch.jdk_path_override !== undefined) {
     if (patch.jdk_path_override !== null && typeof patch.jdk_path_override !== 'string') {
       throw httpError(400, 'BAD_JDK', 'jdk_path_override must be a path string or null');

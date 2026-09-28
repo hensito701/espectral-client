@@ -1,28 +1,107 @@
 package es.spectral.menu.ui;
 
+import net.minecraft.ChatFormatting;
+
+import es.spectral.menu.ClientConfig;
+
 /**
- * Frozen visual tokens and layout metrics for the Suite screens (dark glass +
- * gold, restrained). Rows are square with 1&nbsp;px hairlines and no textures.
+ * Visual tokens and layout metrics for the Suite screens (dark glass +
+ * accent, restrained). Rows are square with 1&nbsp;px hairlines and no
+ * textures.
  *
  * <p>Layout must work at the 854x480 window (GUI scale 2, i.e. 427x240
  * logical) and scale up gracefully: margin 8, panel width
  * {@code min(width - 16, 420)}, panel {@code y = 6 .. height - 6}.
+ *
+ * <p>Accent colours are no longer constants: {@link #accent()} and friends
+ * resolve the palette selected in {@code personalization.theme} of
+ * {@code espectral-client.json} (Workstream 4 — one palette drives the Suite,
+ * the title menu and the launcher). {@code oro} reproduces exactly the
+ * original gold palette. Layout metrics stay theme-independent constants.
  */
 public final class SuiteTheme {
 
     private SuiteTheme() {}
 
-    // Glass + gold palette (ARGB).
+    /**
+     * One accent palette per theme id (contract:
+     * {@code oro|carmesi|amatista|esmeralda|glaciar}). {@code bright} is the
+     * hover/highlight shade, {@code gradLeft}/{@code gradRight} the wordmark
+     * gradient stops and {@code chat} the nearest vanilla formatting for
+     * styled components.
+     */
+    private enum Palette {
+        ORO(0xFFD9A93B, 0xFFFFD873, 0xFFFFE3A1, 0xFFC47B1E, ChatFormatting.GOLD),
+        CARMESI(0xFFE5484D, 0xFFFF8A92, 0xFFFFB3B8, 0xFFB01E3C, ChatFormatting.RED),
+        AMATISTA(0xFFBB86FC, 0xFFD9B3FF, 0xFFF0DDFF, 0xFF7C3AED, ChatFormatting.LIGHT_PURPLE),
+        ESMERALDA(0xFF10B981, 0xFF6EE7B7, 0xFFA7F3D0, 0xFF059669, ChatFormatting.GREEN),
+        GLACIAR(0xFF38BDF8, 0xFF7DD3FC, 0xFFC9EDFF, 0xFF0284C7, ChatFormatting.AQUA);
+
+        final int accent;
+        final int bright;
+        final int gradLeft;
+        final int gradRight;
+        final ChatFormatting chat;
+
+        Palette(int accent, int bright, int gradLeft, int gradRight, ChatFormatting chat) {
+            this.accent = accent;
+            this.bright = bright;
+            this.gradLeft = gradLeft;
+            this.gradRight = gradRight;
+            this.chat = chat;
+        }
+    }
+
+    /** Palette for the configured theme id; {@code ORO} on unknown/absent. */
+    private static Palette palette() {
+        return switch (ClientConfig.getInstance().theme()) {
+            case "carmesi" -> Palette.CARMESI;
+            case "amatista" -> Palette.AMATISTA;
+            case "esmeralda" -> Palette.ESMERALDA;
+            case "glaciar" -> Palette.GLACIAR;
+            default -> Palette.ORO;
+        };
+    }
+
+    /** Primary accent (was {@code GOLD}). */
+    public static int accent() {
+        return palette().accent;
+    }
+
+    /** Bright accent for hover text/icons (was {@code GOLD_BRIGHT}). */
+    public static int accentBright() {
+        return palette().bright;
+    }
+
+    /** 25%-alpha accent hairline (was {@code GOLD_HAIRLINE}). */
+    public static int accentHairline() {
+        return (palette().accent & 0xFFFFFF) | 0x40000000;
+    }
+
+    /** 40%-alpha accent panel edge (was {@code PANEL_EDGE}). */
+    public static int panelEdge() {
+        return (palette().accent & 0xFFFFFF) | 0x66000000;
+    }
+
+    /** Wordmark gradient: light left edge (was {@code GOLD_GRADIENT_LEFT}). */
+    public static int accentGradientLeft() {
+        return palette().gradLeft;
+    }
+
+    /** Wordmark gradient: deep right edge (was {@code GOLD_GRADIENT_RIGHT}). */
+    public static int accentGradientRight() {
+        return palette().gradRight;
+    }
+
+    /** Nearest vanilla chat formatting for the accent (was hardcoded GOLD). */
+    public static ChatFormatting accentFormat() {
+        return palette().chat;
+    }
+
+    // Glass palette (ARGB) — theme-independent.
     public static final int PANEL = 0xF0121418;
-    public static final int PANEL_EDGE = 0x66D9A93B;
     public static final int ROW = 0x8C181B21;
     public static final int ROW_HOVER = 0x9C20242C;
-    public static final int GOLD = 0xFFD9A93B;
-    public static final int GOLD_BRIGHT = 0xFFFFD873;
-    public static final int GOLD_HAIRLINE = 0x40D9A93B;
-    /** Horizontal gold gradient: light left edge, deep right edge. */
-    public static final int GOLD_GRADIENT_LEFT = 0xFFFFE3A1;
-    public static final int GOLD_GRADIENT_RIGHT = 0xFFC47B1E;
     public static final int TEXT = 0xFFE8E6E1;
     public static final int TEXT_DIM = 0xFF9AA0A8;
     public static final int OK = 0xFF7FD58B;
@@ -59,7 +138,7 @@ public final class SuiteTheme {
 
     /**
      * Linear interpolation between two opaque ARGB colors ({@code t} 0..1).
-     * Pure arithmetic for the painter's per-character gold gradient.
+     * Pure arithmetic for the painter's per-character gradient.
      */
     public static int lerpArgb(int left, int right, float t) {
         float clamped = Math.min(1.0F, Math.max(0.0F, t));

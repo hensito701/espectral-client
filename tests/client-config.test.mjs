@@ -47,10 +47,10 @@ test('REGISTRY: exports Contract A feature entries', () => {
     assert.ok(typeof item.defaultEnabled === 'boolean');
     assert.ok(typeof item.category === 'string', `${item.id} has a category`);
   }
-  assert.equal(REGISTRY.length, 13);
+  assert.equal(REGISTRY.length, 15);
   assert.deepEqual(
     [...new Set(REGISTRY.map((r) => r.category))].sort(),
-    ['chat', 'controls', 'hud', 'visual'],
+    ['chat', 'controls', 'cosmetics', 'hud', 'visual'],
   );
   const zoom = REGISTRY.find((r) => r.id === 'zoom');
   assert.equal(zoom.keybind, 'key.keyboard.z');
@@ -222,4 +222,89 @@ test('bare-boolean feature entries are tolerated', async () => {
   seedClientConfig('bool-entry-inst');
   const seeded = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
   assert.equal(seeded.features.coords.enabled, true); // flag preserved through seed
+});
+
+// --- personalization (Workstream 4) -----------------------------------------
+
+test('patchClientConfig: personalization validates ids and rejects unknown keys', async () => {
+  const ok = await patchClientConfig('test-inst', {
+    personalization: { theme: 'carmesi', hud_theme: 'pixel', background: 'nebula-night', reduced_motion: true },
+  });
+  assert.equal(ok.config.personalization.theme, 'carmesi');
+  assert.equal(ok.config.personalization.hud_theme, 'pixel');
+  assert.equal(ok.config.personalization.background, 'nebula-night');
+  assert.equal(ok.config.personalization.reduced_motion, true);
+
+  // null background is the explicit "default panorama" value.
+  const cleared = await patchClientConfig('test-inst', { personalization: { background: null } });
+  assert.equal(cleared.config.personalization.background, null);
+
+  for (const [label, body] of [
+    ['bad theme id', { personalization: { theme: 'obsidiana' } }],
+    ['non-string theme', { personalization: { theme: 4 } }],
+    ['bad hud_theme id', { personalization: { hud_theme: 'neon' } }],
+    ['bad background type', { personalization: { background: 12 } }],
+    ['bad background chars', { personalization: { background: '../evil' } }],
+    ['bad reduced_motion type', { personalization: { reduced_motion: 'yes' } }],
+    ['unknown personalization key', { personalization: { sparkle: true } }],
+    ['non-object personalization', { personalization: 'gold' }],
+  ]) {
+    await assert.rejects(
+      () => patchClientConfig('test-inst', body),
+      (err) => err.code === 'BAD_PERSONALIZATION',
+      label,
+    );
+  }
+});
+
+test('loadClientConfig: personalization defaults fill and preserve stored keys', async () => {
+  const cfgPath = clientConfigPath('perso-inst');
+  fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+  fs.writeFileSync(
+    cfgPath,
+    JSON.stringify({
+      schema: 2,
+      features: {},
+      personalization: { theme: 'glaciar', future_key: 7 },
+    }),
+  );
+  const cfg = loadClientConfig('perso-inst');
+  assert.equal(cfg.personalization.theme, 'glaciar');
+  assert.equal(cfg.personalization.hud_theme, 'cristal'); // default filled
+  assert.equal(cfg.personalization.background, null);
+  assert.equal(cfg.personalization.reduced_motion, false);
+  assert.equal(cfg.personalization.future_key, 7); // unknown file keys survive
+
+  const bare = loadClientConfig('no-such-inst');
+  assert.deepEqual(bare.personalization, {
+    theme: 'oro',
+    hud_theme: 'cristal',
+    background: null,
+    reduced_motion: false,
+  });
+});
+
+test('seedClientConfig: mirrors launcher accent into personalization.theme', async () => {
+  const { saveConfig } = await import('../src/engine/config.mjs');
+  saveConfig({ accent: 'amatista', reduced_motion: true });
+
+  const cfgPath = clientConfigPath('perso-seed-inst');
+  fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+  fs.writeFileSync(
+    cfgPath,
+    JSON.stringify({
+      schema: 2,
+      features: {},
+      personalization: { hud_theme: 'minimo', background: 'aurora' },
+    }),
+  );
+
+  seedClientConfig('perso-seed-inst');
+  const seeded = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  assert.equal(seeded.personalization.theme, 'amatista'); // accent mirrored
+  assert.equal(seeded.personalization.reduced_motion, true); // global choice mirrored
+  assert.equal(seeded.personalization.hud_theme, 'minimo'); // instance choice kept
+  assert.equal(seeded.personalization.background, 'aurora'); // instance pack kept
+
+  saveConfig({ accent: 'oro', reduced_motion: false }); // restore defaults
 });

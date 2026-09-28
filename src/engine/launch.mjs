@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { getJvmInfo, parseMajor } from './jvm.mjs';
@@ -15,7 +16,7 @@ import { offlineUuid, getActiveAccount } from './accounts.mjs';
 import { cacheKey, cacheFilePath, isCacheStale } from './aot.mjs';
 import { loadConfig } from './config.mjs';
 import { parseOptionsTxt, setOptionKey, writeOptionsTxt } from './import.mjs';
-import { seedClientConfig } from './client.mjs';
+import { loadClientConfig, seedClientConfig } from './client.mjs';
 
 export const DEFAULT_MEMORY_MB = 3072;
 export const MARKER_RE = /Sound engine started/;
@@ -277,6 +278,10 @@ export function buildArgv(instance, resolved) {
     ...(javaMajor >= 21 ? FIXED_JVM_ARGS : []),
     '-Djava.library.path=' + resolved.nativesDir,
     ...(javaMajor >= 21 ? bootFlags(instance, javaMajor) : []),
+    // Mod bridge: the in-game mod reports visible uuids over loopback; the
+    // per-launch token is minted in resolveLaunch (null on dry-run previews).
+    `-Despectral.bridge.url=http://127.0.0.1:${process.env.ESPECTRAL_PORT || 4199}/api/bridge`,
+    ...(resolved.bridgeToken ? [`-Despectral.bridge.token=${resolved.bridgeToken}`] : []),
   ];
   if (Array.isArray(resolved.loader?.jvmArgs) && resolved.loader.jvmArgs.length > 0) {
     // Loader templates are expanded (rules) + placeholder-substituted. The
@@ -556,6 +561,10 @@ export async function resolveLaunch(
   // profiles split (Contract C) applies.
   const { gameDir, nativesDir } = selectGameDir(instance, launchAccount, { dryRun, warnings });
 
+  // Per-launch bridge token — minted only for real launches (dry-run argv
+  // previews carry no secret); buildArgv maps it to -Despectral.bridge.token.
+  let bridgeToken = null;
+
   if (!dryRun) {
     onProgress?.('[espectral] verificando dependencias…');
     phase('fingerprint');
@@ -627,27 +636,40 @@ export async function resolveLaunch(
     } catch {
       /* ignore profile config sync error — launch must not fail over it */
     }
-    // Same Contract-C gap for the title-menu background: the mod resolves
-    // <gameDir>/config/espectral-menu-background.png, so mirror the canonical
-    // image into the per-account profile dir on every launch.
+    // Same Contract-C gap for the title-menu background: the selected pack
+    // (store <dataDir>/backgrounds/<packId>/) is staged into
+    // <gameDir>/config/espectral-menu-bg/<packId>/ — the one on-disk
+    // convention the mod reads. Stale packs are pruned; no selection wipes
+    // the staging dir so the mod falls back to its branded gradient.
     try {
-      const srcBg = path.join(effectiveGameDir(instance), 'config', 'espectral-menu-background.png');
-      const dstBg = path.join(gameDir, 'config', 'espectral-menu-background.png');
-      if (path.resolve(srcBg) !== path.resolve(dstBg) && fs.existsSync(srcBg)) {
-        let stale = true;
-        try {
-          const s = fs.statSync(srcBg), d = fs.statSync(dstBg);
-          stale = s.size !== d.size || s.mtimeMs !== d.mtimeMs;
-        } catch {
-          stale = true;
+      const { stageBackgroundPack, migrateLegacyBackground } = await import('./backgrounds.mjs');
+      await migrateLegacyBackground(instance.name, [resolver.instanceDir(instance.name), gameDir]);
+      stageBackgroundPack(
+        loadClientConfig(instance.name).personalization?.background ?? null,
+        gameDir,
+      );
+    } catch {
+      /* ignore background staging error — launch must not fail over it */
+    }
+    // Cosmetics: refresh the account's grant within a hard 2 s budget (cached
+    // fallback inside flagsFor; never blocks/fails the launch), write
+    // <gameDir>/config/espectral-cosmetics.json (canonical effectiveGameDir
+    // gets the same bytes, mirroring espectral-client.json) and mint the
+    // per-launch bridge token the mod needs for /api/bridge/visible.
+    try {
+      const ident = await import('./identity.mjs');
+      const flatUuid = ident.normalizeUuid(launchAccount?.uuid);
+      if (flatUuid) {
+        bridgeToken = crypto.randomBytes(32).toString('hex');
+        const cos = await import('./cosmetics.mjs');
+        const refreshed = await ident.refreshGrantSoft(flatUuid, 2000);
+        if (!refreshed) {
+          warnings.push('identity grant refresh skipped/failed — using cached entitlement');
         }
-        if (stale) {
-          fs.mkdirSync(path.dirname(dstBg), { recursive: true });
-          fs.copyFileSync(srcBg, dstBg);
-        }
+        cos.writeCosmeticsFile(flatUuid, gameDir, effectiveGameDir(instance));
       }
     } catch {
-      /* ignore background sync error — launch must not fail over it */
+      /* cosmetics/identity staging must never block a launch */
     }
     // Fire-and-forget AOT proof-log pruning (lazy import to avoid circular dep with aot.mjs)
     try {
@@ -709,6 +731,7 @@ export async function resolveLaunch(
     assetsDir,
     memoryMb: instance.memory_mb ?? loadConfig().default_memory_mb ?? DEFAULT_MEMORY_MB,
     account: launchAccount,
+    bridgeToken,
     mode,
     aotKey,
     aotCachePath,
@@ -917,7 +940,9 @@ export function launchInstance(instance, resolved, { onLog, onMarker, onExit, on
 // ---------------------------------------------------------------------------
 
 function redactPreview(argv, accessToken) {
-  return argv.map((a) => (a === accessToken ? '<REDACTED>' : a));
+  return argv.map((a) =>
+    a === accessToken || a.startsWith('-Despectral.bridge.token=') ? '<REDACTED>' : a
+  );
 }
 
 function quoteArg(arg) {

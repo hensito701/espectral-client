@@ -73,3 +73,47 @@ export const openFolderDialog = async (title?: string): Promise<string | null> =
     throw new DialogUnavailable('Native folder dialog unavailable');
   }
 };
+
+/** Native single-file picker; throws DialogUnavailable when unusable. */
+export const openFileDialog = async (opts: {
+  title?: string;
+  extensions?: string[];
+} = {}): Promise<string | null> => {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const selection = await open({
+      multiple: false,
+      title: opts.title,
+      filters: opts.extensions
+        ? [{ name: opts.extensions.join('/').toUpperCase(), extensions: opts.extensions }]
+        : undefined,
+    });
+    return normalizeSelection(selection);
+  } catch {
+    throw new DialogUnavailable('Native file dialog unavailable');
+  }
+};
+
+/** Native multi-file picker (null = cancel); throws DialogUnavailable when unusable. */
+export const openMultiFileDialog = async (opts: {
+  title?: string;
+  extensions?: string[];
+} = {}): Promise<string[] | null> => {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const selection = await open({
+      multiple: true,
+      title: opts.title,
+      filters: opts.extensions
+        ? [{ name: opts.extensions.join('/').toUpperCase(), extensions: opts.extensions }]
+        : undefined,
+    });
+    if (selection === null || selection === undefined) return null;
+    if (Array.isArray(selection)) {
+      return selection.filter((s): s is string => typeof s === 'string');
+    }
+    return typeof selection === 'string' ? [selection] : null;
+  } catch {
+    throw new DialogUnavailable('Native multi-file dialog unavailable');
+  }
+};

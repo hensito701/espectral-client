@@ -24,7 +24,15 @@
     "LivingEntityRendererAccessor",
     "AvatarRendererMixin",
     "LivingEntityRendererSubmitMixin",
-    "TextureManagerMixin"
+    "TextureManagerMixin",
+    "CosmeticsTickMixin",
+    "EntityRendererBadgeMixin",
+    "PlayerTabOverlayBadgeMixin",
+    "PlayerModelEmoteMixin",
+    "EmoteWheelPaintMixin",
+    "CosmeticLayerMixin",
+    "LivingEntityLayerAccess",
+    "WingsLayerElytraMixin"
   ],
   "injectors": {
     "defaultRequire": 1

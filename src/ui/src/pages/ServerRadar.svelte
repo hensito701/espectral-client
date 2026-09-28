@@ -348,7 +348,7 @@
 
   .telemetry-card__sub {
     font-size: 0.6875rem;
-    color: var(--accent, #10b981);
+    color: var(--accent);
   }
 
   .telemetry-card__denom {
@@ -362,23 +362,23 @@
   }
 
   .text-accent {
-    color: var(--accent, #10b981);
+    color: var(--accent);
   }
 
   .text-cyan {
-    color: var(--accent-cyan, #06b6d4);
+    color: var(--accent-cyan);
   }
 
   .text-emerald {
-    color: var(--accent-green, #22c55e);
+    color: var(--accent-green);
   }
 
   .text-ok {
-    color: var(--accent-green, #22c55e);
+    color: var(--accent-green);
   }
 
   .text-warn {
-    color: var(--accent-alt, #f59e0b);
+    color: var(--accent-alt);
   }
 
   /* Server Grid */
@@ -459,7 +459,7 @@
   .error-banner__title {
     margin: 0;
     font-size: var(--text-base, 1rem);
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
   }
 
   .error-banner__desc {

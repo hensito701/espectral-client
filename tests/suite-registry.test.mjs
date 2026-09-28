@@ -8,7 +8,9 @@ import {
   buildLangMaps,
   stableStringify,
   REGISTRY_SOURCE,
+  CATALOG_SOURCE,
   DEST_REGISTRY,
+  DEST_CATALOG,
   DEST_EN,
   DEST_ES,
 } from '../scripts/sync-suite-registry.mjs';
@@ -22,12 +24,12 @@ const clientI18n = fs.readFileSync(
   'utf8',
 );
 
-test('registry shape: 13 features, 4 categories, schema 2, suite on by default', () => {
+test('registry shape: 15 features, 5 categories, schema 2, suite on by default', () => {
   assert.equal(doc.schema, 2);
   assert.equal(doc.suite?.default_enabled, true);
-  assert.equal(doc.features.length, 13);
-  assert.equal(doc.categories.length, 4);
-  assert.equal(new Set(doc.features.map((f) => f.id)).size, 13);
+  assert.equal(doc.features.length, 15);
+  assert.equal(doc.categories.length, 5);
+  assert.equal(new Set(doc.features.map((f) => f.id)).size, 15);
   for (const f of doc.features) {
     assert.ok(typeof f.name_en === 'string' && typeof f.name_es === 'string', `${f.id} both names`);
     assert.ok(
@@ -73,4 +75,5 @@ test('freshness: regenerating yields byte-identical files', () => {
   assert.equal(fs.readFileSync(DEST_EN, 'utf8'), stableStringify(freshEn));
   assert.equal(fs.readFileSync(DEST_ES, 'utf8'), stableStringify(freshEs));
   assert.equal(fs.readFileSync(DEST_REGISTRY, 'utf8'), fs.readFileSync(REGISTRY_SOURCE, 'utf8'));
+  assert.equal(fs.readFileSync(DEST_CATALOG, 'utf8'), fs.readFileSync(CATALOG_SOURCE, 'utf8'));
 });

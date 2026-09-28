@@ -618,7 +618,7 @@
     background: var(--surface-solid, #0d1222);
     border: 1px solid var(--border, rgba(40, 58, 96, 0.45));
     border-radius: var(--radius-xl, 1.25rem);
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 32px rgba(16, 185, 129, 0.1);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 32px rgba(var(--accent-rgb), 0.1);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -673,9 +673,9 @@
   }
 
   .wizard-step-pill--active {
-    background: var(--accent, #10b981);
+    background: var(--accent);
     color: #ffffff;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.4);
   }
 
   .wizard-step-pill--done {
@@ -747,20 +747,20 @@
   }
 
   .wizard-quick-btn:hover {
-    background: rgba(16, 185, 129, 0.08);
-    border-color: rgba(16, 185, 129, 0.4);
+    background: rgba(var(--accent-rgb), 0.08);
+    border-color: rgba(var(--accent-rgb), 0.4);
   }
 
   .wizard-quick-btn--active {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: var(--accent, #10b981);
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+    background: rgba(var(--accent-rgb), 0.15);
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.2);
   }
 
   .wizard-quick-tag {
     font-size: var(--text-xs, 0.75rem);
     font-weight: 600;
-    color: var(--accent, #10b981);
+    color: var(--accent);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -854,9 +854,9 @@
   }
 
   .wizard-version-card--selected {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: var(--accent, #10b981);
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+    background: rgba(var(--accent-rgb), 0.15);
+    border-color: var(--accent);
+    box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.2);
   }
 
   .wizard-ver-id {
@@ -893,9 +893,9 @@
   }
 
   .wizard-loader-card--selected {
-    background: rgba(16, 185, 129, 0.12);
-    border-color: var(--accent, #10b981);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 16px rgba(16, 185, 129, 0.2);
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: var(--accent);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 16px rgba(var(--accent-rgb), 0.2);
   }
 
   .wizard-loader-card__head {
@@ -959,7 +959,7 @@
     font-family: var(--font-display, 'Space Grotesk', sans-serif);
     font-size: var(--text-lg, 1.125rem);
     font-weight: 700;
-    color: var(--accent, #10b981);
+    color: var(--accent);
   }
 
   .wizard-memory-raw {

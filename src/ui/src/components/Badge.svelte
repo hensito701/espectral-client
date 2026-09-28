@@ -145,27 +145,27 @@
 
   /* Semantic Variants */
   .badge--ok {
-    background: rgba(16, 185, 129, 0.14);
-    color: var(--accent, #10b981);
-    border-color: rgba(16, 185, 129, 0.35);
+    background: rgba(var(--accent-green-rgb), 0.14);
+    color: var(--accent-green);
+    border-color: rgba(var(--accent-green-rgb), 0.35);
   }
 
   .badge--warn {
-    background: rgba(245, 158, 11, 0.14);
-    color: var(--accent-alt, #f59e0b);
-    border-color: rgba(245, 158, 11, 0.35);
+    background: rgba(var(--accent-alt-rgb), 0.14);
+    color: var(--accent-alt);
+    border-color: rgba(var(--accent-alt-rgb), 0.35);
   }
 
   .badge--error,
   .badge--err {
     background: rgba(239, 68, 68, 0.14);
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
     border-color: rgba(239, 68, 68, 0.35);
   }
 
   .badge--info {
     background: rgba(6, 182, 212, 0.14);
-    color: var(--accent-cyan, #06b6d4);
+    color: var(--accent-cyan);
     border-color: rgba(6, 182, 212, 0.35);
   }
 
@@ -177,68 +177,68 @@
   }
 
   .badge--accent {
-    background: rgba(16, 185, 129, 0.2);
-    color: var(--accent, #10b981);
-    border-color: rgba(16, 185, 129, 0.45);
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+    background: rgba(var(--accent-rgb), 0.2);
+    color: var(--accent);
+    border-color: rgba(var(--accent-rgb), 0.45);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.15);
   }
 
   .badge--gold {
-    background: rgba(255, 215, 0, 0.15);
-    color: var(--accent-gold, #ffd700);
-    border-color: rgba(255, 215, 0, 0.35);
+    background: rgba(var(--accent-gold-rgb), 0.15);
+    color: var(--accent-gold);
+    border-color: rgba(var(--accent-gold-rgb), 0.35);
   }
 
   .badge--purple {
     background: rgba(168, 85, 247, 0.15);
-    color: var(--accent-purple, #a855f7);
+    color: var(--accent-purple);
     border-color: rgba(168, 85, 247, 0.35);
   }
 
   /* Loader Tints */
   .badge--vanilla {
-    background: rgba(16, 185, 129, 0.15);
-    color: var(--accent, #10b981);
+    background: var(--loader-vanilla);
+    color: #ffffff;
     border-color: rgba(16, 185, 129, 0.35);
   }
 
   .badge--fabric {
     background: rgba(6, 182, 212, 0.15);
-    color: var(--accent-cyan, #06b6d4);
+    color: var(--accent-cyan);
     border-color: rgba(6, 182, 212, 0.35);
   }
 
   .badge--neoforge {
     background: rgba(249, 115, 22, 0.15);
-    color: var(--accent-alt, #f97316);
+    color: var(--accent-alt);
     border-color: rgba(249, 115, 22, 0.35);
   }
 
   .badge--quilt {
     background: rgba(168, 85, 247, 0.15);
-    color: var(--accent-purple, #a855f7);
+    color: var(--accent-purple);
     border-color: rgba(168, 85, 247, 0.35);
   }
 
   /* Light Theme Overrides */
   :global([data-theme='light']) .badge--ok {
-    color: var(--accent-ink, #047857);
+    color: var(--accent-green);
   }
 
   :global([data-theme='light']) .badge--warn {
-    color: var(--accent-alt, #d97706);
+    color: var(--accent-alt);
   }
 
   :global([data-theme='light']) .badge--error,
   :global([data-theme='light']) .badge--err {
-    color: var(--accent-red, #dc2626);
+    color: var(--accent-red);
   }
 
   :global([data-theme='light']) .badge--info {
-    color: var(--accent-cyan, #0891b2);
+    color: var(--accent-cyan);
   }
 
   :global([data-theme='light']) .badge--gold {
-    color: var(--accent-gold, #b45309);
+    color: var(--accent-gold);
   }
 </style>

@@ -307,68 +307,109 @@ Turning the suite on restores every previous granular choice exactly. This behav
 **Launcher half (Svelte).** The Client page now has a master switch with real state text (`Suite activada` / `Suite DESACTIVADA`) and an explanatory banner, accent-insensitive search, category filter derived from the registry, an explicit enabled/disabled label per feature, a results counter and a confirmed reset that PATCHes every registry default in one request; `InstanceHub` shows a suppressed-state chip and `Activado · suprimida por la Suite` text while keeping the granular toggles operable. Verified in a real browser against the running engine (accessibility tree + PATCH round-trips + on-disk file checks); `svelte-check` 566 files / 0 errors, UI build green, `node --test` 288 tests with the same three pre-existing lunar-import failures as the pristine baseline.
 
 
-## Workstream 4: Donator perks and cosmetics
+## Workstream 4: Personalization, badges, and supporter cosmetics
 
 ### Objective
 
-Let supporters express themselves through individually controllable cosmetics visible to participating Espectral clients, without creating gameplay advantage.
+Give every Espectral user a client worth personalizing, mark who plays on Espectral, and let supporters wear cosmetics that **only a client can render** — without creating gameplay advantage or duplicating what the server plugins already sell.
 
-### Tier philosophy
+### Decisions (2026-09-27)
 
-Tiers are cumulative:
+- **Free for everyone:** menu background packs, client colour themes, HUD themes, and the ⚛ Espectral badge.
+- **One supporter mark, no client tier badges.** Ranks are already shown in-game by LuckPerms prefixes (documented format `✦ [VIP]`…`✦ [MVP+]`), so the client adds only a ★ next to the ⚛ for any donor role (VIP, VIP+, MVP, MVP+): `⚛★`.
+- **One cosmetic gate: the MVP Discord role** (MVP `1190433806499446895` and MVP+ `1189380795744387182`). There are no cumulative client tiers; every cosmetic in the supporter line unlocks at MVP. The ★ comes from any donor role: VIP (`[Vip-Donador]`) `648324691659849754`, VIP+ `1190433903698268211`, MVP or MVP+. The Booster role is not a donor role.
+- **The Discord role is the source of truth** for both the ★ and the MVP line. Staff grant the roles by hand; no purchase path assigns them automatically.
+- **Emotes stay local.** Only the wearer sees their own emotes (for example in third person); there is no trigger channel and no peer sync (decided 2026-09-28).
+- **Cloaks, never capes.** No write to the vanilla cape layer, no Mojang cape URL, no elytra recolour from a cape texture; an owned Mojang cape can always be shown instead.
+- **Client-exclusive only.** A supporter cosmetic ships only if a Paper plugin with a resource pack, display entities, or ModelEngine-style rigs cannot reproduce it convincingly. Static hats, masks, ears, backpacks, static wings, shoulder pets, particle auras and trails, and nametag, tab or chat icons are all plugin-replicable and are excluded. The qualifying properties are cloth or spring physics, geometry bound to the player's bones at render time, posing the real player model, first-person rendering of your own cosmetic, per-player elytra textures, and per-viewer control.
+- **Never duplicate server perks.** The server already sells kill particles, kill sounds, walk trails, baby-mob hats, lobby fly, nicknames, join messages, shield patterns, armor trims and death-message tags (`espectral_core` `donations/*`). The client line must not overlap them.
+- **Rejected:** crosshair packs, victory screen, launcher profile banner, early access, monthly drops, creator codes, second-nametag or title cosmetics, and client tier badges.
 
-| Tier | Initial cosmetic scope |
-|---|---|
-| VIP | Headwear |
-| VIP+ | Expanded headwear and forehead bands |
-| MVP | Companions and pets |
-| MVP+ | Particles, layering, and early catalog access |
+### Free personalization (local, no backend)
 
-Exact assets and quantities remain a sustainable catalog and art-direction decision. Engineering rules are fixed:
+| Feature | Scope | Notes |
+|---|---|---|
+| Menu background packs | Curated Espectral packs, your own image, animated frame-sequence packs (PNG strip + timeline) | Video decoding is deferred: it conflicts with "no asset decoding on the render thread". The load path already exists (`MenuBackground`, `-Despectral.menu.background`). |
+| Client themes | One palette drives the Suite, the title menu and the launcher: Oro (default), Carmesí, Amatista, Esmeralda, Glaciar | Requires turning `SuiteTheme` into a lookup, adding a launcher `data-accent` token set, and purging hard-coded accent literals. |
+| HUD themes | Cristal, Oro, Mínimo, Píxel | Extract a shared `HudTheme` from the per-lane box literals. |
 
-- Benefits are cosmetic-only.
-- Higher tiers add choice, not deliberately greater render load.
-- One equipped item per slot is the safe default.
-- Every cosmetic is individually toggleable and respects the Suite master.
+All three store their choice under `features.<id>.<key>` in `espectral-client.json`, which round-trips today without an engine schema change.
+
+### ⚛ badge and ★ mark (peer-visible)
+
+- `⚛` marks any player whose Espectral client publishes presence; `⚛★` marks a presence backed by a signed grant carrying a donor role.
+- Rendered to the left of the server-sent display name in nametags and the tab list. The client never rebuilds or recolours the server name, so LuckPerms prefixes stay authoritative.
+- The glyph ships as a mod bitmap font (`espectral-menu:badge`) at Mojangles metrics. Vanilla has ★ but not ⚛, which would fall back to 16 px Unifont; U+FE0E renders as a visible "VS15" box and is never emitted.
+- Being peer-visible, the badge needs the presence path (Phase 3) even though it is free. Only other Espectral clients see it.
+
+### MVP supporter line (launch draft)
+
+Slots: **Espalda** (one cloak *or* one pair of wings), **Cuello**, **Cabeza**, **Brazos**, **Élitros**, **Gestos**. Scarf and cloak are mutually exclusive.
+
+| Item (ES / EN) | Slot | What makes it client-only |
+|---|---|---|
+| Manto Espectral / Spectral Mantle | Espalda | One-shoulder mantle, gold clasp at the collarbone, cloth simulation; hem fades into gold mist (static fade under reduced motion). |
+| Capucha Errante / Revenant Hood | Espalda | Hooded cloak with forked, tattered tails and gold piping; the hood follows head yaw and pitch, and the tails are simulated. |
+| Jirones de Ceniza / Ashen Tatters | Espalda | Three long ribbon tails with spring physics, dark smoke with a gold inner edge. |
+| Alas de Eco / Echo Wings | Espalda | Translucent wings folded at rest that open while falling or jumping, tuck while sneaking, and beat while sprinting, all driven by the render-time pose. |
+| Bufanda Llama de Alma / Soulfire Scarf | Cuello | Neck scarf with two simulated tails; the gold flame edge flickers only while moving. |
+| Orejas Vulpinas / Vulpine Ears | Cabeza | Ears that twitch on head turns, flop on landing and flatten while sneaking; static ears are plugin-replicable, the reactions are not. |
+| Vendas Rúnicas / Runic Wraps | Brazos | Cloth forearm wraps with glowing gold runes and loose ends; visible in first person on your own hands. Cloth only, never armor-like. |
+| Élitros: Vidriera, Nebulosa, Ceniza / Elytra skins | Élitros | Per-player elytra textures (Nebulosa animated); a vanilla server can only retexture the elytra for everyone. |
+| Gestos / Emotes | Gestos | Pose the real player model. Local-only: the wearer sees them, peers never do. |
+
+Shoulder pets, walking companions, hats and particle auras are deliberately absent: plugins already reproduce them. A companion returns only if it is designed around client-only behaviour.
+
+### Engineering rules (fixed)
+
+- Benefits are cosmetic-only. Fullbright, no-fog, macros, HUD data, themes, backgrounds and performance controls remain free.
+- One equipped item per slot. Every cosmetic is individually toggleable and respects the Suite master.
 - Viewers can hide all cosmetics or hide a specific player.
-- Reduced-motion behavior and global particle caps are mandatory.
-- Cosmetics never alter hitboxes, imitate armor or status effects, occlude opponents, or grant gameplay/performance functionality.
-- Fullbright, no-fog, macros, HUD data, and performance controls remain available regardless of payment.
-- Existing Minecraft-server rank perks remain separate from client cosmetics.
+- Reduced motion replaces simulation and animation with a static pose; global particle caps apply to any particle use.
+- Physics and animation run only for the nearest eight visible wearers within 24 blocks; the rest render a static pose.
+- Every item has a fixed footprint cap: nothing above the head top, wider than the shoulders plus one block, or lower than the knees, and no transparency below a minimum opacity.
+- Nothing renders when the wearer is invisible to the viewer (Invisibility, spectator) or when vanilla would hide the wearer's cape layer.
+- Reactions use only publicly visible pose state: sneak, sprint, fall, swim, glide and idle. They never react to health, damage, inventory or other state that would leak information.
+- Cosmetics never alter hitboxes, imitate armor, mob silhouettes, the Glowing outline or other status effects, occlude opponents, or add a second nametag or title text.
+- Server rank perks remain separate from client cosmetics.
 
 ### Peer visibility
 
-“Visible to other players” means **visible to participating, supported Espectral Fabric clients**. Vanilla clients and brand-only NeoForge clients see an unchanged player.
+“Visible to other players” means **visible to participating, supported Espectral Fabric clients**. Vanilla clients and brand-only NeoForge clients see an unchanged player. Unlike plugin cosmetics, this works on any server the wearer and the viewer share.
 
 No Minecraft plugin jar or configuration change is required, but a first-party HTTPS backend is required:
 
-1. The launcher links Discord identity to a proven Minecraft UUID.
-2. The backend resolves immutable Discord role IDs using a bot credential.
-3. The backend issues a short-lived signed entitlement bound to that UUID.
-4. The launcher equips only catalog items allowed by the entitlement.
-5. A viewer requests presence only for UUIDs already visible through the vanilla player/entity list.
-6. The viewer verifies the signed entitlement and signed, content-addressed catalog before rendering.
+1. The launcher proves Minecraft UUID ownership with the standard session handshake: it calls Mojang `session/minecraft/join` with a backend-issued `serverId`, and the backend confirms with `hasJoined`.
+2. The launcher links a Discord identity: it keeps the Discord client ID, while the code exchange and the client secret live in the backend.
+3. The backend resolves immutable Discord role IDs in guild `648307511648321536` using a bot credential and derives two flags: `supporter` (any donor role) and `mvp` (MVP or MVP+).
+4. The backend issues a short-lived, Ed25519-signed grant bound to that UUID and audience.
+5. The launcher equips only catalog items allowed by the grant.
+6. A viewer requests presence only for UUIDs already visible through the vanilla player list.
+7. The viewer verifies the grant itself and renders only catalog items whose models and textures ship inside the mod jar; v1 never loads remote assets.
 
-A local tier flag, forged brand, wearer-provided URL, or wearer-supplied model grants nothing. Cosmetic sharing is an affirmative choice distinct from telemetry consent. Sharing off publishes no presence.
+The backend is `espectral-id` (`services/espectral-id/` in this repository), served at `https://id.espectral.es` from OVM3.
+
+A local tier flag, forged brand, wearer-provided URL, or wearer-supplied model grants nothing. The mod never contacts Discord; entitlement is resolved by the backend and handed to the mod as signed data. Cosmetic sharing is an affirmative choice distinct from telemetry consent. Sharing off publishes no presence and shows no ⚛.
 
 ### Runtime architecture
 
 The local Node engine remains the network-policy authority. A per-launch authenticated loopback bridge allows the Fabric mod to report visible UUIDs; the engine batches HTTPS polling and stages bounded, signed cache updates for the mod.
 
-Start with batched HTTPS polling. Do not add WebSockets, P2P, custom Minecraft packets, or a plugin relay without measured need.
+Start with batched HTTPS polling. Do not add WebSockets, P2P, custom Minecraft packets, or a plugin relay without measured need. Emotes are local-only, so they need no trigger channel.
 
 ### Rollout order
 
-1. Signed catalog, role fixtures, and entitlement contract.
-2. Own-player hats and headbands.
-3. Peer-visible hats and headbands.
-4. Pets.
-5. Particles and layering only after performance, accessibility, shader, and abuse gates pass.
+1. Free local personalization: background packs, themes, HUD themes.
+2. Signed catalog, role fixtures, UUID proof, and the entitlement contract.
+3. Own-player elytra skins and cloaks from valid grants.
+4. Presence, bridge, and the ⚛/★ badge on nametags and the tab list.
+5. Peer-visible cloaks, wings, scarf, ears and wraps.
+6. Local-only emotes for MVP.
 
 ### Acceptance gate
 
-- Every role combination maps to the correct cumulative tier in fixtures.
-- Wrong UUID/audience, unknown key, tampered signature, expired grant, forged brand, local tier edit, unknown asset, or peer URL renders no paid cosmetic.
+- Role fixtures map every combination correctly: no role → ⚛ only; any donor role → `supporter`; MVP or MVP+ → `supporter` + `mvp`.
+- Wrong UUID/audience, unknown key, tampered signature, expired grant, forged brand, local tier edit, unknown asset, or peer URL renders no ★ and no MVP cosmetic.
 - Role removal and revocation are reflected within the documented entitlement lifetime.
 - Share-off produces no presence publication.
 - Presence contains only the UUID, permitted loadout/grant reference, and short expiry; it contains no coordinates, chat, or server address.
@@ -376,7 +417,8 @@ Start with batched HTTPS polling. Do not add WebSockets, P2P, custom Minecraft p
 - Vanilla packet capture contains no Espectral custom gameplay payload.
 - A healthy-service loadout becomes visible to an eligible viewer within a target p95 of five seconds.
 - Backend failure never blocks game launch or the render/game thread.
-- The initial eight-player hats/headbands scene stays inside the global boot/frame regression envelope.
+- An invisible or spectating wearer renders no cosmetic on any viewer.
+- The initial eight-player cloak scene (simulation on) stays inside the global boot/frame regression envelope.
 
 ## Workstream 5: Trust and signed telemetry
 
@@ -473,8 +515,8 @@ Do not add microservices, Kafka, queues, Redis, P2P, WebSockets, custom game pac
 Stop-ship decisions before network implementation:
 
 - Freeze the platform/version matrix and prohibited claims.
-- Confirm exact Discord guild and VIP/VIP+/MVP/MVP+ role IDs and precedence.
-- Select an approved Microsoft ownership-proof flow or documented manual UUID verification; “Microsoft signs a nonce” is not an existing capability.
+- Confirm the donor and MVP/MVP+ role IDs in guild `648307511648321536` (the guild ID is confirmed; no role ID is recorded anywhere in the ops workspace).
+- Adopt the Mojang `join`/`hasJoined` session handshake as the UUID ownership proof (Workstream 4, Peer visibility step 1).
 - Decide multi-account, gifting, offline-account, Boost expiry, role-loss, chargeback, and revocation policies.
 - Approve Spanish/English consent, retention, deletion, and minors treatment.
 - Assign backend, signing-key, catalog, privacy, and operational owners.
@@ -490,6 +532,7 @@ Stop-ship decisions before network implementation:
 - Build the title, Esc, Suite, master-toggle, recovery, and Apoyar experience. *(done 2026-09-12 on 26.2 — see Workstream 3 "Measured outcome"; the Esc additions and the 1.21.11 lane still need a rig with a world / a 1.21.11 toolchain)*
 - Put Fedora artifacts into CI with signed install, update, and rollback paths.
 - Remove unsupported fixed-percentage, competitor, and verified-client messaging.
+- Ship the free personalization set: menu background packs, client themes, and HUD themes (Workstream 4).
 
 This release remains useful without a backend.
 
@@ -498,7 +541,7 @@ This release remains useful without a backend.
 - Deploy account linking and backend Discord-role resolution.
 - Add signed entitlement/catalog issuance, cache, expiry, and revocation.
 - Build launcher equip controls.
-- Render own-player hats and headbands only from valid grants.
+- Render own-player elytra skins and cloaks only from valid grants.
 - Keep telemetry local.
 
 ### Phase 3: Peer expression
@@ -508,7 +551,7 @@ This release remains useful without a backend.
 - Poll presence only for vanilla-visible UUIDs.
 - Verify viewer-side grants and content-addressed assets.
 - Add global and per-player hide controls.
-- Expand to pets and particles only after frame-time, shader, accessibility, and abuse gates pass.
+- Add the ⚛/★ badge first, then peer-visible cloaks, wings, scarf, ears and wraps, after the frame-time, shader, accessibility, and abuse gates. Emotes stay local-only.
 
 ### Phase 4: Learning and stable operations
 
@@ -533,7 +576,7 @@ V2 stable requires all of the following:
 - Vanilla packet capture contains no Espectral custom gameplay payload.
 - Backend, DNS, signature, or cache failure never blocks launch or gameplay.
 - Zero-equipped cosmetics pass the global frame and boot regression envelope.
-- The initial eight-player hats/headbands scene adds no more than 5% to p99 frame time and performs no network or decode work on the render thread.
+- The initial eight-player cloak scene (simulation on) adds no more than 5% to p99 frame time and performs no network or decode work on the render thread.
 - Role removal, expiry, wrong UUID/audience, replay, and signing-key rotation are exercised.
 - Signed install, updater, and rollback paths pass on Windows and Fedora.
 - Beta soak and kill-switch drills complete before stable promotion.

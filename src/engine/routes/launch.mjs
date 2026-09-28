@@ -26,6 +26,7 @@ import * as aot from '../aot.mjs';
 import * as launch from '../launch.mjs';
 import * as discord from '../discord.mjs';
 import * as stats from '../stats.mjs';
+import * as presence from '../presence.mjs';
 import { emit } from '../events.mjs';
 import { loadConfig } from '../config.mjs';
 import { httpError } from '../error.mjs';
@@ -524,6 +525,18 @@ export async function register(app) {
           onSpawned: (at) => {
             const buf = buffers.get(key);
             if (buf) buf.spawned_at = at;
+            // Register the running game with the cosmetics bridge + presence
+            // publisher (per-launch token was minted by resolveLaunch).
+            try {
+              presence.launchStarted({
+                instance: params.name,
+                uuid: resolved.account?.uuid,
+                gameDir: resolved.gameDir,
+                token: resolved.bridgeToken ?? '',
+              });
+            } catch {
+              /* bridge registration must never fail a launch */
+            }
           },
           onPhase: (name, at) => {
             const buf = buffers.get(key);
@@ -580,6 +593,11 @@ export async function register(app) {
             // refcount) — concurrent launches keep the presence line.
             liveLaunches.delete(key);
             activeInstances.delete(params.name);
+            try {
+              presence.launchExited(params.name, resolved?.bridgeToken ?? '');
+            } catch {
+              /* presence teardown must never break the exit path */
+            }
             if (liveLaunches.size === 0) void pushClear();
             const summary = error
               ? `[espectral] launch error: ${error}`
@@ -645,6 +663,11 @@ export async function register(app) {
         }
         liveLaunches.delete(key);
         activeInstances.delete(params.name);
+        try {
+          presence.launchExited(params.name, resolved?.bridgeToken ?? '');
+        } catch {
+          /* ignore */
+        }
         if (liveLaunches.size === 0) void pushClear();
         try {
           const buf2 = buffers.get(key);

@@ -1,0 +1,22 @@
+{ "schema": 1,
+  "slots": ["espalda","cuello","cabeza","brazos","elitros"],
+  "exclusive": [["cuello", ["manto_espectral","capucha_errante","jirones_ceniza"]]],
+  "items": [
+    {"id":"manto_espectral","slot":"espalda","requires":"mvp","name":{"es":"Manto Espectral","en":"Spectral Mantle"}},
+    {"id":"capucha_errante","slot":"espalda","requires":"mvp","name":{"es":"Capucha Errante","en":"Revenant Hood"}},
+    {"id":"jirones_ceniza","slot":"espalda","requires":"mvp","name":{"es":"Jirones de Ceniza","en":"Ashen Tatters"}},
+    {"id":"alas_eco","slot":"espalda","requires":"mvp","name":{"es":"Alas de Eco","en":"Echo Wings"}},
+    {"id":"bufanda_llama_alma","slot":"cuello","requires":"mvp","name":{"es":"Bufanda Llama de Alma","en":"Soulfire Scarf"}},
+    {"id":"orejas_vulpinas","slot":"cabeza","requires":"mvp","name":{"es":"Orejas Vulpinas","en":"Vulpine Ears"}},
+    {"id":"vendas_runicas","slot":"brazos","requires":"mvp","name":{"es":"Vendas Rúnicas","en":"Runic Wraps"}},
+    {"id":"elitros_vidriera","slot":"elitros","requires":"mvp","name":{"es":"Élitros Vidriera","en":"Stained-Glass Elytra"}},
+    {"id":"elitros_nebulosa","slot":"elitros","requires":"mvp","name":{"es":"Élitros Nebulosa","en":"Nebula Elytra"}},
+    {"id":"elitros_ceniza","slot":"elitros","requires":"mvp","name":{"es":"Élitros Ceniza","en":"Ashen Elytra"}}
+  ],
+  "emotes": [
+    {"id":"saludo","requires":"mvp","name":{"es":"Saludo","en":"Wave"}},
+    {"id":"reverencia","requires":"mvp","name":{"es":"Reverencia","en":"Bow"}},
+    {"id":"aplauso","requires":"mvp","name":{"es":"Aplauso","en":"Clap"}},
+    {"id":"sentarse","requires":"mvp","name":{"es":"Sentarse","en":"Sit"}},
+    {"id":"invocacion","requires":"mvp","name":{"es":"Invocación","en":"Invocation"}}
+  ] }

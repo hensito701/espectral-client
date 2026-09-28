@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { EventEmitter } from 'node:events';
 import {
   cacheKey,
   pruneAotProofLogs,
@@ -18,7 +19,10 @@ import {
   metaPathFor,
   trainInstance,
   waitForMarker,
+  __testHooks,
 } from '../src/engine/aot.mjs';
+import { childProcess } from '../src/engine/launch.mjs';
+import * as bridge from '../src/engine/bridge.mjs';
 
 function sha256Hex(s) {
   return crypto.createHash('sha256').update(s).digest('hex');
@@ -434,6 +438,83 @@ test('trainInstance without isBlocked still honors the opt-in flag', async () =>
   const r = await trainInstance({ name: 'optout-inst', aot_auto_train: false }, {});
   assert.equal(r.ok, false);
   assert.equal(r.skipped, true);
+});
+
+test('trainInstance registers the trainer with the mod bridge and detaches it on exit', async (t) => {
+  // The trainer argv carries -Despectral.bridge.token; without registering
+  // (launchStarted) its bridge calls 403 for the whole run, and without a
+  // detach the dead token would keep authorizing /api/bridge/visible.
+  await withTempDataDir(async (tmp) => {
+    const gameDir = instanceDirFor(tmp, 'train-inst');
+    fs.mkdirSync(path.join(gameDir, 'logs'), { recursive: true });
+    const logFile = path.join(gameDir, 'logs', 'latest.log');
+    fs.writeFileSync(logFile, '', 'utf8');
+
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.pid = 4242;
+    child.exitCode = null;
+    child.signalCode = null;
+    child.kill = () => true;
+
+    const seenAtSpawn = [];
+    const mockedSpawn = t.mock.method(childProcess, 'spawn', () => {
+      setTimeout(() => {
+        seenAtSpawn.push(bridge.authenticate('d'.repeat(64))?.instance ?? null);
+        fs.appendFileSync(logFile, 'boot\nSound engine started\n', 'utf8');
+      }, 150);
+      setTimeout(() => {
+        child.exitCode = 0;
+        child.emit('exit', 0, null);
+        child.emit('close', 0, null);
+      }, 450);
+      return child;
+    });
+
+    const BRIDGE_TOKEN = 'd'.repeat(64);
+    const resolved = {
+      java: { path: '/jdk/bin/java.exe', major: 25, build: '25.0.4+7' },
+      account: {
+        username: 'Tester',
+        uuid: '11111111111111111111111111111111',
+        accessToken: 'tok',
+        userType: 'mojang',
+      },
+      version: { id: '1.21.11', mainClass: 'net.minecraft.client.main.Main', assetIndexId: 'x' },
+      gameDir,
+      assetsDir: path.join(tmp, 'assets'),
+      nativesDir: path.join(gameDir, 'natives'),
+      classpath: [],
+      memoryMb: 3072,
+      mode: 'train',
+      aotCachePath: null,
+      aotCacheExists: false,
+      warnings: [],
+      loader: null,
+      bridgeToken: BRIDGE_TOKEN,
+    };
+    __testHooks.resolveLaunch = async () => resolved;
+    try {
+      const r = await trainInstance(
+        { name: 'train-inst', version: '1.21.11', loader: 'fabric' },
+        { force: true },
+      );
+      assert.equal(mockedSpawn.mock.calls.length, 1);
+      assert.ok(
+        mockedSpawn.mock.calls[0].arguments[1].includes(`-Despectral.bridge.token=${BRIDGE_TOKEN}`),
+        'trainer argv carries the minted bridge token',
+      );
+      // While the trainer ran, its token authenticated against the bridge registry.
+      assert.deepEqual(seenAtSpawn, ['train-inst'], 'trainer was registered while running');
+      // After exit the registration (and its token) are gone.
+      assert.equal(bridge.authenticate(BRIDGE_TOKEN), null, 'dead trainer token must not authorize');
+      assert.equal(r.instance, 'train-inst');
+    } finally {
+      __testHooks.resolveLaunch = null;
+      bridge._reset();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

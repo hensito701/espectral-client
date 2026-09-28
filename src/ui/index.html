@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-theme="dark">
+<html lang="es" data-theme="dark" data-accent="oro">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -29,6 +29,20 @@
           document.documentElement.dataset.theme = t;
         } catch (e) {
           /* keep the dark default */
+        }
+      })();
+    </script>
+    <script>
+      // Accent FOUC guard — mirrors lib/theme.svelte.ts before first paint.
+      (function () {
+        try {
+          var saved = localStorage.getItem('espectral_accent');
+          var ids = { oro: 1, carmesi: 1, amatista: 1, esmeralda: 1, glaciar: 1 };
+          if (saved && ids[saved]) {
+            document.documentElement.dataset.accent = saved;
+          }
+        } catch (e) {
+          /* keep the oro default */
         }
       })();
     </script>
