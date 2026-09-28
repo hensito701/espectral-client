@@ -1,0 +1,21 @@
+[Unit]
+Description=espectral-id identity service (FastAPI/uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/espectral-id
+EnvironmentFile=/home/ubuntu/espectral-id/.env
+ExecStart=/home/ubuntu/espectral-id/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8091
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=/home/ubuntu/espectral-id/data
+
+[Install]
+WantedBy=multi-user.target
