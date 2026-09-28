@@ -331,11 +331,11 @@
     box-shadow: var(--shadow-lg, 0 16px 48px rgba(0, 0, 0, 0.5)), 0 0 28px rgba(var(--tile-accent-rgb, 16, 185, 129), 0.3);
   }
   .horizon-tile:focus-visible .horizon-tile__inner {
-    box-shadow: 0 0 0 2px var(--bg, #060a14), 0 0 0 4px var(--tile-accent, #10b981);
+    box-shadow: 0 0 0 2px var(--bg, #060a14), 0 0 0 4px var(--tile-accent, var(--accent));
   }
 
   .horizon-tile--selected .horizon-tile__inner {
-    border-color: var(--tile-accent, #10b981);
+    border-color: var(--tile-accent, var(--accent));
     box-shadow: var(--shadow-lg, 0 20px 50px rgba(0, 0, 0, 0.55)), 0 0 36px rgba(var(--tile-accent-rgb, 16, 185, 129), 0.45);
   }
 
@@ -539,7 +539,7 @@
 
   .horizon-tile:hover .horizon-tile__hint {
     opacity: 1;
-    color: var(--tile-accent, #10b981);
+    color: var(--tile-accent, var(--accent));
   }
 
   /* --- Bottom Select Accent Bar --- */
@@ -549,10 +549,10 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: var(--tile-accent, #10b981);
+    background: var(--tile-accent, var(--accent));
     opacity: 0;
     transition: opacity var(--dur-fast, 120ms) ease, height var(--dur-fast, 120ms) ease;
-    box-shadow: 0 0 12px var(--tile-accent, #10b981);
+    box-shadow: 0 0 12px var(--tile-accent, var(--accent));
   }
 
   .horizon-tile--selected .horizon-tile__select-bar {

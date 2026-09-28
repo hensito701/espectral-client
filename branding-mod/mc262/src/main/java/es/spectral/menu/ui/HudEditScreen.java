@@ -55,11 +55,13 @@ public class HudEditScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor extractor, int mouseX, int mouseY, float delta) {
         // Dim backdrop so the boxes read clearly over the world/title.
         extractor.fill(0, 0, this.width, this.height, 0x60000000);
+        es.spectral.menu.HudTheme hudTheme = es.spectral.menu.HudTheme.current();
         for (HudEditLogic.EditBlock b : logic.blocks()) {
             boolean hot = b == logic.dragging() || b.contains(mouseX, mouseY);
-            // Box: 50% black fill + accent outline while hovered/dragged.
-            extractor.fill(b.x, b.y, b.x + b.w, b.y + b.h, 0x80000000);
-            int outline = hot ? 0xFFFFD700 : 0x80FFFFFF;
+            // Theme fill + editor outline (accent while hovered/dragged).
+            extractor.fill(b.x, b.y, b.x + b.w, b.y + b.h,
+                    hudTheme.hasFill() ? hudTheme.fill : 0x80000000);
+            int outline = hot ? hudTheme.outlineHot : hudTheme.outlineIdle;
             extractor.fill(b.x, b.y, b.x + b.w, b.y + 1, outline);
             extractor.fill(b.x, b.y + b.h - 1, b.x + b.w, b.y + b.h, outline);
             extractor.fill(b.x, b.y, b.x + 1, b.y + b.h, outline);
@@ -76,11 +78,11 @@ public class HudEditScreen extends Screen {
                 }
                 extractor.text(this.font, row.text,
                         b.x + HudLayout.PAD + iconW, rowTop + (rowH - 9) / 2,
-                        0xFFFFFFFF, true);
+                        hudTheme.text, hudTheme.shadow);
                 rowTop += rowH;
             }
             // Feature label above the box.
-            extractor.text(this.font, b.label, b.x, b.y - 10, 0xFFAAAAAA, false);
+            extractor.text(this.font, b.label, b.x, b.y - 10, hudTheme.label, false);
         }
         // Hint line.
         extractor.centeredText(this.font,

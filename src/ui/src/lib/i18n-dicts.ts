@@ -17,7 +17,8 @@ import { es as donationsEs, en as donationsEn } from './i18n/donations';
 import { es as paletteEs, en as paletteEn } from './i18n/palette';
 import { es as piplogEs, en as piplogEn } from './i18n/piplog';
 import { es as discordEs, en as discordEn } from './i18n/discord';
-
+import { es as wardrobeEs, en as wardrobeEn } from './i18n/wardrobe';
+import { es as personalizationEs, en as personalizationEn } from './i18n/personalization';
 export type Dict = Record<string, string>;
 
 /**
@@ -38,6 +39,8 @@ export const es: Dict = {
   ...paletteEs,
   ...piplogEs,
   ...discordEs,
+  ...wardrobeEs,
+  ...personalizationEs,
   'home.capsuleTiming': 'Preparación {prep}s · JVM {jvm}s',
 };
 
@@ -59,5 +62,7 @@ export const en: Dict = {
   ...paletteEn,
   ...piplogEn,
   ...discordEn,
+  ...wardrobeEn,
+  ...personalizationEn,
   'home.capsuleTiming': 'Prep {prep}s · JVM {jvm}s',
 };

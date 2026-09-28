@@ -11,13 +11,26 @@ import * as discordAuth from '../discordAuth.mjs';
 import { httpError } from '../error.mjs';
 /**
  * HTML completion template shown in external browser popups after OAuth callback.
+ * All interpolated values are escaped — `user` fields come from the OAuth
+ * exchange (and `?error_description=` is attacker-controlled on the error
+ * page), so a crafted value must not break out of the markup or the inline
+ * <script> block.
  */
-function renderAuthSuccessHtml(user) {
-  const safeName = (user?.name || 'Usuario')
+function esc(v) {
+  return String(v ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+/** JSON safe for inline <script>: escaping '<' prevents a `</script>` breakout. */
+function escJson(v) {
+  return JSON.stringify(v).replace(/</g, '\\u003c');
+}
+function renderAuthSuccessHtml(user) {
+  const safeName = esc(user?.name || 'Usuario');
+  const safeAvatar = esc(user?.avatar || '');
+  const userJson = escJson(user ?? null);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -106,7 +119,7 @@ function renderAuthSuccessHtml(user) {
       if (window.opener) {
         window.opener.postMessage({
           type: 'discord-auth-success',
-          user: ${JSON.stringify(user)}
+          user: ${userJson}
         }, '*');
       }
     } catch (e) {}
@@ -119,7 +132,7 @@ function renderAuthSuccessHtml(user) {
 </head>
 <body>
   <div class="card">
-    ${user?.avatar ? `<img src="${user.avatar}" alt="Avatar" class="avatar" />` : ''}
+    ${safeAvatar ? `<img src="${safeAvatar}" alt="Avatar" class="avatar" />` : ''}
     <div class="badge">Identidad Espectral</div>
     <h1>¡Hola, ${safeName}!</h1>
     <p>Tu cuenta de Discord se ha vinculado correctamente con Espectral Client.</p>
@@ -170,7 +183,7 @@ export async function register(app) {
 <head><meta charset="utf-8"><title>Error de autenticación</title>
 <style>body{background:#060a14;color:#ef4444;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}h2{margin-bottom:8px;}p{color:#94a3b8;}</style>
 </head>
-<body><div><h2>Error de vinculación con Discord</h2><p>${err.message}</p></div></body>
+<body><div><h2>Error de vinculación con Discord</h2><p>${esc(err.message)}</p></div></body>
 </html>`);
         return;
       }
@@ -178,13 +191,14 @@ export async function register(app) {
     }
 
     const { sessionId, user } = result;
-    const cookieHeader = discordAuth.createSessionCookie(sessionId);
+    // Identity-link callbacks produce no launcher session — no cookie to set.
+    const cookieHeader = sessionId ? discordAuth.createSessionCookie(sessionId) : null;
 
     // If client requested Tauri protocol redirect or custom deep link:
     if (query.redirect === 'tauri' || query.redirect === 'deep') {
       res.writeHead(302, {
         Location: 'tauri://localhost/#/',
-        'Set-Cookie': cookieHeader,
+        ...(cookieHeader ? { 'Set-Cookie': cookieHeader } : {}),
       });
       res.end();
       return;
@@ -195,7 +209,7 @@ export async function register(app) {
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Length': Buffer.byteLength(html),
-      'Set-Cookie': cookieHeader,
+      ...(cookieHeader ? { 'Set-Cookie': cookieHeader } : {}),
     });
     res.end(html);
   });

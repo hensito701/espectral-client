@@ -1,0 +1,151 @@
+/* ==========================================================================
+   Espectral Horizon Glass — Wardrobe (Armario) i18n Strings
+   Spanish and English translations for identity verification, Discord link,
+   sharing consent, cosmetic slot pickers, emotes and hidden players.
+   ========================================================================== */
+
+import type { Dict } from '../i18n-dicts';
+
+export const es: Dict = {
+  'nav.wardrobe': 'Armario',
+  'command.nav.wardrobe': 'Ir al Armario',
+  'command.nav.wardrobeDesc': 'Verificación de identidad, Discord y cosméticos de supporter',
+
+  'wardrobe.title': 'Armario',
+  'wardrobe.subtitle': 'Verifica tu cuenta de Minecraft, vincula Discord y equípate los cosméticos de supporter. Solo otros clientes Espectral los ven.',
+  'wardrobe.tag': 'IDENTIDAD Y COSMÉTICOS',
+
+  'wardrobe.account.picker': 'Cuenta',
+  'wardrobe.account.none': 'No hay cuentas registradas. Añade una en la Bóveda de Cuentas.',
+  'wardrobe.account.openVault': 'Abrir Bóveda de Cuentas',
+
+  'wardrobe.identity.title': 'Identidad Espectral',
+  'wardrobe.identity.subtitle': 'Prueba de propiedad del UUID de Minecraft y vínculo con Discord.',
+  'wardrobe.identity.verified': 'Minecraft verificado',
+  'wardrobe.identity.notVerified': 'Minecraft sin verificar',
+  'wardrobe.identity.verify': 'Verificar cuenta',
+  'wardrobe.identity.verifying': 'Verificando…',
+  'wardrobe.identity.verifyHint': 'Prueba que eres dueño de este UUID mediante el handshake de sesión de Mojang. Requiere una sesión de Microsoft activa.',
+  'wardrobe.identity.refresh': 'Actualizar rangos',
+  'wardrobe.identity.refreshing': 'Actualizando…',
+  'wardrobe.identity.grantExp': 'Sello válido hasta {time}',
+
+  'wardrobe.discord.linked': 'Discord vinculado',
+  'wardrobe.discord.notLinked': 'Discord sin vincular',
+  'wardrobe.discord.link': 'Vincular Discord',
+  'wardrobe.discord.unlink': 'Desvincular',
+  'wardrobe.discord.linking': 'Esperando autorización en el navegador…',
+  'wardrobe.discord.cancel': 'Cancelar',
+  'wardrobe.discord.linkHint': 'Abre Discord en tu navegador para autorizar el vínculo. Los roles del servidor de Discord se consultan en vivo.',
+
+  'wardrobe.flags.none': '⚛ Espectral',
+  'wardrobe.flags.supporter': '⚛★ Supporter',
+  'wardrobe.flags.mvp': 'MVP',
+  'wardrobe.flags.legend': 'Otros jugadores de Espectral ven ⚛ junto a tu nombre; ★ si tienes un rango de donador.',
+
+  'wardrobe.share.title': 'Compartir mis cosméticos',
+  'wardrobe.share.desc': 'Al activarlo, otros jugadores de Espectral verán ⚛ junto a tu nombre y los cosméticos que equipes. Desactivado por defecto.',
+  'wardrobe.share.needsVerify': 'Verifica la cuenta primero para poder compartir.',
+
+  'wardrobe.slots.title': 'Cosméticos equipados',
+  'wardrobe.slots.subtitle': 'Un objeto por ranura. Algunos objetos son incompatibles entre sí.',
+  'wardrobe.slots.locked': 'Requiere el rol MVP en Discord (lo otorga el staff)',
+  'wardrobe.slots.none': 'Nada',
+  'wardrobe.slots.unequipped': 'Se desequipó {name} (incompatible)',
+  'wardrobe.slot.espalda': 'Espalda',
+  'wardrobe.slot.cuello': 'Cuello',
+  'wardrobe.slot.cabeza': 'Cabeza',
+  'wardrobe.slot.brazos': 'Brazos',
+  'wardrobe.slot.elitros': 'Élitros',
+
+  'wardrobe.emotes.title': 'Gestos',
+  'wardrobe.emotes.desc': 'Gestos locales: solo tú los ves (por ejemplo en tercera persona). Sin sincronización con otros jugadores.',
+
+  'wardrobe.hidden.title': 'Jugadores ocultos',
+  'wardrobe.hidden.desc': 'No verás el ⚛ ni los cosméticos de estos jugadores.',
+  'wardrobe.hidden.placeholder': 'Nombre del jugador',
+  'wardrobe.hidden.add': 'Ocultar',
+  'wardrobe.hidden.empty': 'No hay jugadores ocultos.',
+  'wardrobe.hidden.invalid': 'Nombre de Minecraft no válido (3-16 letras, números o _).',
+
+  'wardrobe.saved': 'Guardado',
+  'wardrobe.saveError': 'No se pudo guardar: {error}',
+  'wardrobe.loadError': 'El motor local no responde: {error}',
+  'wardrobe.retry': 'Reintentar',
+
+  'wardrobe.disclaimer': 'NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.',
+
+  'pav.wardrobeLink': 'Equípalo en el Armario →',
+};
+
+export const en: Dict = {
+  'nav.wardrobe': 'Wardrobe',
+  'command.nav.wardrobe': 'Go to Wardrobe',
+  'command.nav.wardrobeDesc': 'Identity verification, Discord link, and supporter cosmetics',
+
+  'wardrobe.title': 'Wardrobe',
+  'wardrobe.subtitle': 'Verify your Minecraft account, link Discord, and equip supporter cosmetics. Only other Espectral clients can see them.',
+  'wardrobe.tag': 'IDENTITY & COSMETICS',
+
+  'wardrobe.account.picker': 'Account',
+  'wardrobe.account.none': 'No accounts registered. Add one in the Account Vault.',
+  'wardrobe.account.openVault': 'Open Account Vault',
+
+  'wardrobe.identity.title': 'Espectral Identity',
+  'wardrobe.identity.subtitle': 'Minecraft UUID ownership proof and Discord link.',
+  'wardrobe.identity.verified': 'Minecraft verified',
+  'wardrobe.identity.notVerified': 'Minecraft not verified',
+  'wardrobe.identity.verify': 'Verify account',
+  'wardrobe.identity.verifying': 'Verifying…',
+  'wardrobe.identity.verifyHint': 'Proves you own this UUID via the Mojang session handshake. Requires an active Microsoft session.',
+  'wardrobe.identity.refresh': 'Refresh ranks',
+  'wardrobe.identity.refreshing': 'Refreshing…',
+  'wardrobe.identity.grantExp': 'Grant valid until {time}',
+
+  'wardrobe.discord.linked': 'Discord linked',
+  'wardrobe.discord.notLinked': 'Discord not linked',
+  'wardrobe.discord.link': 'Link Discord',
+  'wardrobe.discord.unlink': 'Unlink',
+  'wardrobe.discord.linking': 'Waiting for authorization in the browser…',
+  'wardrobe.discord.cancel': 'Cancel',
+  'wardrobe.discord.linkHint': 'Opens Discord in your browser to authorize the link. Guild roles are looked up live.',
+
+  'wardrobe.flags.none': '⚛ Espectral',
+  'wardrobe.flags.supporter': '⚛★ Supporter',
+  'wardrobe.flags.mvp': 'MVP',
+  'wardrobe.flags.legend': 'Other Espectral players see ⚛ next to your name; ★ if you hold a donor rank.',
+
+  'wardrobe.share.title': 'Share my cosmetics',
+  'wardrobe.share.desc': 'When on, other Espectral players see ⚛ next to your name and the cosmetics you equip. Off by default.',
+  'wardrobe.share.needsVerify': 'Verify the account first to be able to share.',
+
+  'wardrobe.slots.title': 'Equipped cosmetics',
+  'wardrobe.slots.subtitle': 'One item per slot. Some items are mutually exclusive.',
+  'wardrobe.slots.locked': 'Requires the MVP role on Discord (granted by staff)',
+  'wardrobe.slots.none': 'None',
+  'wardrobe.slots.unequipped': 'Unequipped {name} (incompatible)',
+  'wardrobe.slot.espalda': 'Back',
+  'wardrobe.slot.cuello': 'Neck',
+  'wardrobe.slot.cabeza': 'Head',
+  'wardrobe.slot.brazos': 'Arms',
+  'wardrobe.slot.elitros': 'Elytra',
+
+  'wardrobe.emotes.title': 'Emotes',
+  'wardrobe.emotes.desc': 'Local-only emotes: only you see them (e.g. in third person). No peer sync.',
+
+  'wardrobe.hidden.title': 'Hidden players',
+  'wardrobe.hidden.desc': 'You will not see the ⚛ or cosmetics of these players.',
+  'wardrobe.hidden.placeholder': 'Player name',
+  'wardrobe.hidden.add': 'Hide',
+  'wardrobe.hidden.empty': 'No hidden players.',
+  'wardrobe.hidden.invalid': 'Invalid Minecraft name (3-16 letters, digits or _).',
+
+  'wardrobe.saved': 'Saved',
+  'wardrobe.saveError': 'Could not save: {error}',
+  'wardrobe.loadError': 'Local engine unreachable: {error}',
+  'wardrobe.retry': 'Retry',
+
+  'wardrobe.disclaimer': 'NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.',
+
+  'pav.wardrobeLink': 'Equip it in the Wardrobe →',
+};

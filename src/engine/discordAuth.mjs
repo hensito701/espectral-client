@@ -2,9 +2,15 @@
  * Discord OAuth2 authorization & session management core.
  * Implements Discord OAuth2 Authorization Code flow (RFC 6749) for the client app.
  *
+ * The authorization-code exchange happens SERVER-SIDE on espectral-id since
+ * Workstream 4 — the launcher holds only the public client_id (the client
+ * secret never ships in the app). Plain logins forward the code to
+ * /v1/discord/identify; callbacks whose state was minted by
+ * /api/identity/:uuid/discord/start forward to /v1/discord/link and bind the
+ * Discord identity to that verified Minecraft uuid.
+ *
  * Security guarantees:
- * - Tokens (access_token, refresh_token) are NEVER persisted to disk.
- * - Sensitive values are kept in transient memory only.
+ * - OAuth artifacts are NEVER persisted to disk.
  * - Sessions use random opaque UUIDs.
  * - Identity upsert stores id, name, avatar, mc_accounts to <data>/discord-users.json.
  */
@@ -12,19 +18,28 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, dataDir } from './config.mjs';
+import * as identity from './identity.mjs';
 import { httpError } from './error.mjs';
 
-const REDIRECT_URI = 'http://127.0.0.1:4199/api/discord/callback';
-const DISCORD_OAUTH_TOKEN_URL = 'https://discord.com/api/v10/oauth2/token';
-const DISCORD_USER_ME_URL = 'https://discord.com/api/v10/users/@me';
+export const REDIRECT_URI = 'http://127.0.0.1:4199/api/discord/callback';
 const STATE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-/** In-memory map of active OAuth state parameters: state -> { createdAt, sessionId? } */
+/** In-memory map of active OAuth state parameters: state -> { createdAt, linkUuid?, sessionId?, linked?, user?, processing? } */
 const states = new Map();
 
 /** In-memory map of active authenticated sessions: sessionId -> { user: { id, name, avatar }, createdAt: number } */
 const sessions = new Map();
+
+const MOCK_USER = {
+  id: '718293847561829304',
+  name: 'TestPlayer',
+  avatar: 'https://cdn.discordapp.com/embed/avatars/0.png',
+};
+
+function isMockMode() {
+  return process.env.ESPECTRAL_DISCORD_MOCK === '1' || process.env.ESPECTRAL_DISCORD_MOCK === 'true';
+}
 
 /**
  * Sweep expired OAuth states from memory.
@@ -39,7 +54,9 @@ function sweepExpiredStates() {
 }
 
 /**
- * Read Discord OAuth credentials from config document or environment overrides.
+ * Read the Discord OAuth client id from config or environment overrides.
+ * The client secret is intentionally absent — the code exchange lives on
+ * espectral-id; the launcher only knows the public app id.
  */
 export function getDiscordCredentials() {
   const cfg = loadConfig();
@@ -50,42 +67,40 @@ export function getDiscordCredentials() {
     process.env.DISCORD_CLIENT_ID ||
     process.env.ESPECTRAL_DISCORD_CLIENT_ID ||
     null;
-
-  const clientSecret =
-    cfg.discord?.client_secret ||
-    cfg['discord.client_secret'] ||
-    cfg.discord_client_secret ||
-    process.env.DISCORD_CLIENT_SECRET ||
-    process.env.ESPECTRAL_DISCORD_CLIENT_SECRET ||
-    null;
-
-  return { clientId, clientSecret };
+  return { clientId };
 }
 
 /**
  * Generate a Discord OAuth2 authorization URL with a secure random state.
- * Returns { url: string }.
+ * `opts.linkUuid` (flat 32-hex) marks the state as an identity link: the
+ * callback then binds Discord to that uuid via the service instead of
+ * creating a plain launcher session.
+ * Returns { url, state }.
  */
-export function getAuthStartUrl() {
+export function getAuthStartUrl({ linkUuid = null } = {}) {
   sweepExpiredStates();
   const { clientId } = getDiscordCredentials();
-  const isMock = process.env.ESPECTRAL_DISCORD_MOCK === '1' || process.env.ESPECTRAL_DISCORD_MOCK === 'true';
 
   const state = crypto.randomBytes(16).toString('hex');
-  states.set(state, { createdAt: Date.now() });
 
   if (!clientId) {
-    if (isMock) {
+    if (isMockMode()) {
+      states.set(state, { createdAt: Date.now(), linkUuid: linkUuid ?? null });
       return {
         url: `http://127.0.0.1:4199/api/discord/callback?code=mock_code&state=${state}`,
+        state,
       };
     }
     throw httpError(
       400,
       'DISCORD_NOT_CONFIGURED',
-      'Discord client credentials are not configured in config.json (discord.client_id / discord.client_secret)',
+      'Discord client id is not configured in config.json (discord.client_id)',
     );
   }
+
+  // Register the state only on the success path — a failed start must not
+  // leave a dangling claimable entry behind.
+  states.set(state, { createdAt: Date.now(), linkUuid: linkUuid ?? null });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -103,34 +118,46 @@ export function getAuthStartUrl() {
 }
 
 /**
- * Claim the session produced by an OAuth flow the APP started (state comes
+ * Claim the result of an OAuth flow the APP started (state comes
  * from getAuthStartUrl). The authorize URL normally completes in the SYSTEM
  * browser (the Tauri webview blocks window.open), whose cookie jar is not the
  * webview's — so /api/discord/me polling can't see the session cookie. The
- * callback re-attaches the sessionId to the state entry and the app claims it
+ * callback re-attaches the outcome to the state entry and the app claims it
  * here. One-time: a successful claim deletes the state.
+ *
+ * Plain login  -> { status:'ok', sessionId, user }
+ * Identity link -> { status:'ok', linked:true, uuid, user }
  */
 export function claimSessionUser(state) {
   sweepExpiredStates();
   if (!state || !states.has(state)) return { status: 'invalid' };
   const entry = states.get(state);
-  if (!entry.sessionId) return { status: 'pending' };
-  states.delete(state);
-  const session = sessions.get(entry.sessionId);
-  if (!session) return { status: 'invalid' };
-  return { status: 'ok', sessionId: entry.sessionId, user: session.user };
+  if (entry.sessionId) {
+    states.delete(state);
+    const session = sessions.get(entry.sessionId);
+    if (!session) return { status: 'invalid' };
+    return { status: 'ok', sessionId: entry.sessionId, user: session.user };
+  }
+  if (entry.linked) {
+    states.delete(state);
+    return { status: 'ok', linked: true, uuid: entry.linkUuid, user: entry.user ?? null };
+  }
+  return { status: 'pending' };
 }
 
 /**
  * Handle the OAuth2 callback from Discord:
  * 1. Validate the state parameter.
- * 2. Exchange authorization code for an in-memory access token.
- * 3. Fetch user profile from Discord API.
- * 4. Upsert user identity in <data>/discord-users.json.
- * 5. Create an in-memory session and return { sessionId, user }.
+ * 2. Forward the code to espectral-id — /v1/discord/link when the state is an
+ *    identity link for a uuid (binds discord id + recomputes flags), else
+ *    /v1/discord/identify for a plain launcher login.
+ * 3. Plain logins additionally upsert discord-users.json and create an
+ *    in-memory launcher session; links store the identity on the uuid entry.
+ *
+ * Returns { sessionId|null, user, linked? } — sessionId is null for links.
  */
 export async function handleCallback(query = {}) {
-  const isMock = process.env.ESPECTRAL_DISCORD_MOCK === '1' || process.env.ESPECTRAL_DISCORD_MOCK === 'true';
+  const isMock = isMockMode();
   const { code, state, error, error_description } = query;
 
   if (error) {
@@ -145,84 +172,56 @@ export async function handleCallback(query = {}) {
     throw httpError(400, 'MISSING_CODE', 'No authorization code received from Discord');
   }
 
-  if (!state || !states.has(state)) {
+  const stateEntry = state ? states.get(state) : null;
+  if (!state || !stateEntry) {
     if (!isMock) {
       throw httpError(400, 'INVALID_STATE', 'OAuth state is invalid or expired. Please try logging in again.');
     }
-  }
-  states.delete(state);
-
-  let user;
-  if (isMock && (code.startsWith('mock_') || !getDiscordCredentials().clientId)) {
-    user = {
-      id: '718293847561829304',
-      name: 'TestPlayer',
-      avatar: 'https://cdn.discordapp.com/embed/avatars/0.png',
-    };
+  } else if (stateEntry.processing || stateEntry.sessionId || stateEntry.linked) {
+    // Replay protection: a state already consumed (result attached) or with an
+    // exchange in flight must not run a second code exchange — a duplicate
+    // callback would otherwise wipe the completed entry before the app claims
+    // it (or leak two Discord-side exchanges for one consent).
+    throw httpError(400, 'INVALID_STATE', 'OAuth state was already used. Please try logging in again.');
   } else {
-    const { clientId, clientSecret } = getDiscordCredentials();
-    if (!clientId || !clientSecret) {
-      throw httpError(
-        400,
-        'DISCORD_NOT_CONFIGURED',
-        'Discord credentials missing (discord.client_id / discord.client_secret) in config.json',
-      );
-    }
-
-    // Exchange code for access token (never persist this token)
-    const tokenRes = await fetch(DISCORD_OAUTH_TOKEN_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: REDIRECT_URI,
-      }),
-    });
-
-    if (!tokenRes.ok) {
-      const errText = await tokenRes.text();
-      throw httpError(400, 'TOKEN_EXCHANGE_FAILED', `Failed to exchange Discord authorization code: ${errText}`);
-    }
-
-    const tokenData = await tokenRes.json();
-    const accessToken = tokenData.access_token;
-    if (!accessToken) {
-      throw httpError(400, 'NO_ACCESS_TOKEN', 'Discord response did not contain an access token');
-    }
-
-    // Fetch user profile with in-memory access token
-    const userRes = await fetch(DISCORD_USER_ME_URL, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!userRes.ok) {
-      throw httpError(400, 'USER_FETCH_FAILED', 'Failed to fetch Discord user profile (/users/@me)');
-    }
-
-    const rawUser = await userRes.json();
-    let avatarUrl = null;
-    if (rawUser.avatar) {
-      avatarUrl = `https://cdn.discordapp.com/avatars/${rawUser.id}/${rawUser.avatar}.png?size=128`;
-    } else {
-      const defaultIndex = (BigInt(rawUser.id || '0') >> 22n) % 6n;
-      avatarUrl = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
-    }
-
-    user = {
-      id: rawUser.id,
-      name: rawUser.global_name || rawUser.username || `User#${rawUser.discriminator || '0000'}`,
-      avatar: avatarUrl,
-    };
+    // Keep the entry while the async exchange runs: a /api/discord/claim poll
+    // mid-flight must answer 'pending', not 'invalid' (deleting here produced
+    // exactly that race). Processing states read as pending in claimSessionUser.
+    stateEntry.processing = true;
   }
 
-  // Upsert user identity in discord-users.json (no tokens saved)
+  const linkUuid = stateEntry?.linkUuid ? identity.normalizeUuid(stateEntry.linkUuid) : null;
+  let user;
+  try {
+    if (isMock && (String(code).startsWith('mock_') || !getDiscordCredentials().clientId)) {
+      user = { ...MOCK_USER };
+      if (linkUuid) {
+        identity.updateEntry(linkUuid, { discord: user });
+        await identity.refreshGrant(linkUuid).catch(() => {});
+      }
+    } else if (linkUuid) {
+      // Identity link: the service exchanges the code AND binds the discord id
+      // to the session uuid, recomputing flags server-side.
+      user = await identity.discordLink(linkUuid, code, REDIRECT_URI);
+    } else {
+      user = await identity.discordIdentify(code, REDIRECT_URI);
+    }
+  } catch (err) {
+    // The flow is dead — the user restarts from /auth/start. Drop the state so
+    // the app's next claim sees 'invalid' instead of 'pending' forever.
+    states.delete(state);
+    throw err;
+  }
+
+  if (linkUuid) {
+    // Re-attach the link result to the state so the waiting app can claim it.
+    if (state && (stateEntry || isMock)) {
+      states.set(state, { createdAt: Date.now(), linkUuid, linked: true, user });
+    }
+    return { sessionId: null, user, linked: true };
+  }
+
+  // Plain login path: upsert identity in discord-users.json (no tokens saved)
   upsertDiscordUser(user);
 
   // Generate an opaque session id
@@ -235,7 +234,7 @@ export async function handleCallback(query = {}) {
   // Re-attach the session to the OAuth state so the waiting app can claim it
   // (see claimSessionUser) — the callback usually completes in the system
   // browser, whose cookie jar is invisible to the Tauri webview.
-  if (state) {
+  if (state && (stateEntry || isMock)) {
     states.set(state, { createdAt: Date.now(), sessionId });
   }
 
@@ -294,13 +293,8 @@ export function upsertDiscordUser(user) {
  * Returns { id, name, avatar } or null.
  */
 export function getSessionUser(sessionId, mockRequested = false) {
-  const isMockEnv = process.env.ESPECTRAL_DISCORD_MOCK === '1' || process.env.ESPECTRAL_DISCORD_MOCK === 'true';
-  if (mockRequested && isMockEnv) {
-    return {
-      id: '718293847561829304',
-      name: 'TestPlayer',
-      avatar: 'https://cdn.discordapp.com/embed/avatars/0.png',
-    };
+  if (mockRequested && isMockMode()) {
+    return { ...MOCK_USER };
   }
 
   if (!sessionId) return null;

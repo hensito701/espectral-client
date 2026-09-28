@@ -36,6 +36,14 @@
     fileToPngDataUrl,
     UnsupportedImageError,
     subscribeEvents,
+    listBackgroundPacks,
+    backgroundPackImageUrl,
+    importImageBackgroundPack,
+    importFrameBackgroundPack,
+    deleteBackgroundPack,
+    patchPersonalization,
+    pickPngFile,
+    pickPngFiles,
   } from '../lib/api';
   import { instances, liveLaunches, launchLog, servers as networkServers } from '../lib/stores';
   import type {
@@ -43,6 +51,7 @@
     ServerEntry,
     OptionsPair,
     AotStatus,
+    BackgroundPack,
     ClientInfo,
     JvmInfo,
     ModPresetInfo,
@@ -98,6 +107,15 @@
   let iconBust = $state(0);
   let uploadingIcon = $state(false);
   let iconError = $state('');
+  // Menu background packs (Workstream 4, free)
+  let bgPacks = $state<BackgroundPack[]>([]);
+  let bgLoading = $state(false);
+  let bgImporting = $state(false);
+  let bgSelected = $state('');
+  let bgName = $state('');
+  let bgError = $state('');
+  let bgBust = $state(0);
+  let bgConfirmDelete = $state('');
   let aotStatus = $state<AotStatus | null>(null);
   let trainingAot = $state(false);
   let trainProgress = $state<{ done: number; total: number; phase?: string } | null>(null);
@@ -200,6 +218,8 @@
       aotStatus = detail.aot;
       jvm = jvmData;
       clientInfo = clientData;
+      bgSelected = clientData?.config.personalization?.background ?? '';
+      void refreshBgPacks();
       hue = typeof detail.summary.hue === 'number' ? detail.summary.hue : null;
       gameDir = detail.summary.game_dir ?? '';
       gameDirDefault = !detail.summary.game_dir;
@@ -515,6 +535,146 @@
       pushToast({ kind: 'err', text: iconError });
     } finally {
       uploadingIcon = false;
+    }
+  }
+
+  // --- Menu background packs (Workstream 4, free) --------------------------
+  const bgThumbUrl = (id: string): string =>
+    `${backgroundPackImageUrl(id)}${bgBust ? `?v=${bgBust}` : ''}`;
+
+  async function refreshBgPacks() {
+    bgLoading = true;
+    bgError = '';
+    try {
+      bgPacks = await listBackgroundPacks();
+      bgSelected = clientInfo?.config.personalization?.background ?? '';
+    } catch (e) {
+      bgError = e instanceof Error ? e.message : String(e);
+    } finally {
+      bgLoading = false;
+    }
+  }
+
+  async function handleSelectBg(packId: string | null) {
+    if (!decodedName || bgImporting) return;
+    bgError = '';
+    try {
+      const updated = await patchPersonalization(decodedName, { background: packId });
+      if (updated?.config) clientInfo = updated;
+      bgSelected = packId ?? '';
+      pushToast({ kind: 'ok', text: t('perso.bgSaveOk') });
+    } catch (e) {
+      bgError = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: t('perso.bgSaveError') });
+    }
+  }
+
+  async function handleDeleteBg(packId: string, name: string) {
+    if (bgConfirmDelete !== packId) {
+      // Two-step: first click asks for confirmation (no modal in this card).
+      bgConfirmDelete = packId;
+      pushToast({ kind: 'info', text: t('perso.bgDeleteConfirm', { name }) });
+      return;
+    }
+    bgConfirmDelete = '';
+    bgError = '';
+    try {
+      await deleteBackgroundPack(packId);
+      if (bgSelected === packId) await handleSelectBg(null);
+      await refreshBgPacks();
+      pushToast({ kind: 'ok', text: t('perso.bgDeleteOk') });
+    } catch (e) {
+      bgError = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: t('perso.bgDeleteError') });
+    }
+  }
+
+  function requireBgName(): string | null {
+    const name = bgName.trim();
+    if (!name) {
+      bgError = t('perso.bgNameRequired');
+      pushToast({ kind: 'err', text: bgError });
+      return null;
+    }
+    return name;
+  }
+
+  async function runBgImport(action: (name: string) => Promise<{ pack: BackgroundPack } | null>) {
+    const name = requireBgName();
+    if (!name || bgImporting) return;
+    bgImporting = true;
+    bgError = '';
+    try {
+      const res = await action(name);
+      // null = the user canceled the file/folder picker; not an error.
+      if (!res) return;
+      const { pack } = res;
+      bgName = '';
+      await refreshBgPacks();
+      pushToast({ kind: 'ok', text: t('perso.bgImportOk', { name: pack.name }) });
+    } catch (e) {
+      bgError = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: bgError });
+    } finally {
+      bgImporting = false;
+    }
+  }
+
+  async function handleImportImageBg() {
+    await runBgImport(async (name) => {
+      const { path } = await pickPngFile(t('perso.bgImportImage'));
+      if (!path) return null;
+      return importImageBackgroundPack({ name, source_path: path });
+    });
+  }
+
+  async function handleImportFramesBg() {
+    await runBgImport(async (name) => {
+      const { paths } = await pickPngFiles(t('perso.bgImportFrames'));
+      if (!paths || paths.length === 0) return null;
+      return importFrameBackgroundPack({ name, frame_paths: paths });
+    });
+  }
+
+  async function handleImportFolderBg() {
+    await runBgImport(async (name) => {
+      const { path } = await pickFolder(t('perso.bgImportFolder'));
+      if (!path) return null;
+      return importFrameBackgroundPack({ name, source_path: path });
+    });
+  }
+
+  // Browser fallback: no native picker — upload PNGs as base64 (downscaled).
+  async function handleBgFileInput(e: Event, frames: boolean) {
+    const input = e.currentTarget as HTMLInputElement | null;
+    const files = input?.files ? Array.from(input.files) : [];
+    if (files.length === 0) return;
+    const name = requireBgName();
+    if (!name) {
+      if (input) input.value = '';
+      return;
+    }
+    bgImporting = true;
+    bgError = '';
+    try {
+      const pack = frames
+        ? (await importFrameBackgroundPack({
+            name,
+            frames: await Promise.all(files.map((f) => fileToPngDataUrl(f, 1280))),
+          })).pack
+        : (await importImageBackgroundPack({
+            name,
+            image_base64: await fileToPngDataUrl(files[0], 1280),
+          })).pack;
+      bgName = '';
+      await refreshBgPacks();
+      pushToast({ kind: 'ok', text: t('perso.bgImportOk', { name: pack.name }) });
+    } catch (err) {
+      bgError = err instanceof Error ? err.message : String(err);
+      pushToast({ kind: 'err', text: bgError });
+    } finally {
+      bgImporting = false;
+      if (input) input.value = '';
     }
   }
 
@@ -1128,6 +1288,112 @@
                     <p class="options-feedback">{iconError}</p>
                   {/if}
                 </Field>
+
+                <!-- Menu background pack picker (free personalization) -->
+                <Field label={t('perso.bgTitle')} hint={t('perso.bgHint')}>
+                  {#if bgLoading}
+                    <p class="options-feedback">{t('perso.bgLoading')}</p>
+                  {:else}
+                    <div class="bg-pack-grid" role="radiogroup" aria-label={t('perso.bgTitle')}>
+                      <button
+                        type="button"
+                        class="bg-pack-tile"
+                        class:bg-pack-tile--active={!bgSelected}
+                        role="radio"
+                        aria-checked={!bgSelected}
+                        title={t('perso.bgNoneHint')}
+                        onclick={() => handleSelectBg(null)}
+                      >
+                        <span class="bg-pack-thumb bg-pack-thumb--none" aria-hidden="true">✦</span>
+                        <span class="bg-pack-name">{t('perso.bgNone')}</span>
+                      </button>
+                      {#each bgPacks as pack (pack.id)}
+                        {@const isActive = bgSelected === pack.id}
+                        <div class="bg-pack-tile" class:bg-pack-tile--active={isActive}>
+                          <button
+                            type="button"
+                            class="bg-pack-pick"
+                            role="radio"
+                            aria-checked={isActive}
+                            onclick={() => handleSelectBg(pack.id)}
+                          >
+                            <img class="bg-pack-thumb" src={bgThumbUrl(pack.id)} alt="" />
+                            <span class="bg-pack-name">{pack.name}</span>
+                            {#if pack.type === 'frames'}
+                              <span class="bg-pack-badge">
+                                {t('perso.bgFrames', { count: pack.frame_count })}
+                              </span>
+                            {/if}
+                          </button>
+                          <button
+                            type="button"
+                            class="bg-pack-delete"
+                            aria-label={`${t('perso.bgDelete')} ${pack.name}`}
+                            onclick={() => handleDeleteBg(pack.id, pack.name)}
+                          >
+                            {t('perso.bgDelete')}
+                          </button>
+                        </div>
+                      {/each}
+                      {#if bgPacks.length === 0}
+                        <p class="options-feedback bg-pack-empty">{t('perso.bgEmpty')}</p>
+                      {/if}
+                    </div>
+
+                    <div class="bg-import-row">
+                      <input
+                        type="text"
+                        class="glass-input bg-name-input"
+                        placeholder={t('perso.bgNamePlaceholder')}
+                        aria-label={t('perso.bgNameLabel')}
+                        bind:value={bgName}
+                        disabled={bgImporting}
+                      />
+                      <Btn
+                        variant="secondary"
+                        size="sm"
+                        loading={bgImporting}
+                        disabled={bgImporting}
+                        onclick={handleImportImageBg}
+                      >
+                        {t('perso.bgImportImage')}
+                      </Btn>
+                      <Btn
+                        variant="secondary"
+                        size="sm"
+                        loading={bgImporting}
+                        disabled={bgImporting}
+                        onclick={handleImportFramesBg}
+                      >
+                        {t('perso.bgImportFrames')}
+                      </Btn>
+                      <Btn
+                        variant="secondary"
+                        size="sm"
+                        loading={bgImporting}
+                        disabled={bgImporting}
+                        onclick={handleImportFolderBg}
+                      >
+                        {t('perso.bgImportFolder')}
+                      </Btn>
+                      <label class="icon-upload-btn bg-file-fallback">
+                        <input
+                          type="file"
+                          accept="image/png"
+                          multiple
+                          class="icon-file-input"
+                          disabled={bgImporting}
+                          onchange={(e) => handleBgFileInput(e, true)}
+                        />
+                        {t('perso.bgImportFrames')} (PNG)
+                      </label>
+                    </div>
+                    <p class="options-hint">{t('perso.bgImportHint')}</p>
+                  {/if}
+                  {#if bgError}
+                    <p class="options-feedback">{bgError}</p>
+                  {/if}
+                </Field>
               </div>
             </GlassCard>
 
@@ -1696,7 +1962,7 @@
   }
 
   .back-link:focus-visible {
-    outline: 2px solid var(--accent, #10b981);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
@@ -1722,7 +1988,7 @@
   }
 
   .folder-btn:focus-visible {
-    outline: 2px solid var(--accent, #10b981);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
@@ -1777,7 +2043,7 @@
   }
 
   .rename-btn:focus-visible {
-    outline: 2px solid var(--accent, #10b981);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
@@ -1795,7 +2061,7 @@
   }
 
   .rename-input:focus {
-    outline: 2px solid var(--accent, #10b981);
+    outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
 
@@ -1830,7 +2096,7 @@
     width: 2.25rem;
     height: 2.25rem;
     border: 3px solid rgba(255, 255, 255, 0.1);
-    border-top-color: var(--accent, #10b981);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 750ms linear infinite;
   }
@@ -1847,7 +2113,7 @@
 
   .state-icon.error-icon {
     font-size: 2rem;
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
   }
 
   .state-title {
@@ -1904,7 +2170,7 @@
   }
 
   .tab-btn:focus-visible {
-    outline: 2px solid var(--accent, #10b981);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
@@ -1971,7 +2237,7 @@
     font-family: var(--font-display, sans-serif);
     font-size: var(--text-lg, 1.125rem);
     font-weight: 700;
-    color: var(--accent, #10b981);
+    color: var(--accent);
   }
 
   .slider-minmax {
@@ -1985,7 +2251,7 @@
     border-radius: 3px;
     background: rgba(255, 255, 255, 0.1);
     outline: none;
-    accent-color: var(--accent, #10b981);
+    accent-color: var(--accent);
     cursor: pointer;
   }
 
@@ -2013,9 +2279,9 @@
   }
 
   .preset-pill--active {
-    background: rgba(16, 185, 129, 0.18);
-    border-color: var(--accent, #10b981);
-    color: var(--accent, #10b981);
+    background: rgba(var(--accent-rgb), 0.18);
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .card-action-footer {
@@ -2101,6 +2367,124 @@
     display: none;
   }
 
+  /* Menu background packs (Workstream 4) */
+  .bg-pack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .bg-pack-tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--radius-md, 0.5rem);
+    border: 1px solid var(--border, rgba(40, 58, 96, 0.45));
+    background: rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+  }
+
+  .bg-pack-tile--active {
+    border-color: var(--accent, rgba(25, 180, 160, 0.85));
+    box-shadow: 0 0 0 1px var(--accent, rgba(25, 180, 160, 0.85));
+  }
+
+  .bg-pack-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .bg-pack-thumb {
+    width: 100%;
+    height: 4.25rem;
+    object-fit: cover;
+    display: block;
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  .bg-pack-thumb--none {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    color: var(--muted, #8b93a3);
+  }
+
+  .bg-pack-name {
+    padding: 0 0.4rem 0.45rem;
+    font-size: 0.75rem;
+    color: var(--text, #e8ecf4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
+  .bg-pack-badge {
+    position: absolute;
+    top: 0.35rem;
+    left: 0.35rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.35rem;
+    background: rgba(0, 0, 0, 0.6);
+    font-size: 0.65rem;
+    color: var(--text, #e8ecf4);
+  }
+
+  .bg-pack-delete {
+    border: 0;
+    border-top: 1px solid var(--border, rgba(40, 58, 96, 0.45));
+    background: rgba(0, 0, 0, 0.18);
+    color: var(--muted, #8b93a3);
+    font-size: 0.7rem;
+    padding: 0.3rem;
+    cursor: pointer;
+  }
+
+  .bg-pack-delete:hover {
+    background: rgba(255, 80, 80, 0.18);
+    color: var(--text, #e8ecf4);
+  }
+
+  .bg-pack-empty {
+    grid-column: 1 / -1;
+  }
+
+  .bg-import-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .bg-name-input {
+    max-width: 10rem;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border, rgba(40, 58, 96, 0.45));
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text, #e8ecf4);
+  }
+
+  .bg-file-fallback {
+    font-size: 0.75rem;
+  }
+
+  .options-hint {
+    margin-top: 0.5rem;
+    font-size: 0.72rem;
+    color: var(--muted, #8b93a3);
+  }
+
   /* JVM Specs */
   .jvm-details {
     display: flex;
@@ -2169,8 +2553,8 @@
   }
 
   .glass-input:focus, .glass-select:focus {
-    border-color: var(--accent, #10b981);
-    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
   }
 
   /* AOT Card */
@@ -2225,7 +2609,7 @@
     width: 1.15rem;
     height: 1.15rem;
     margin-top: 0.15rem;
-    accent-color: var(--accent, #10b981);
+    accent-color: var(--accent);
     cursor: pointer;
   }
 
@@ -2260,7 +2644,7 @@
 
   .options-feedback {
     font-size: var(--text-xs, 0.75rem);
-    color: var(--accent-green, #22c55e);
+    color: var(--accent-green);
     margin: 0;
   }
 
@@ -2339,9 +2723,9 @@
     padding: 0.3rem 0.65rem;
     margin-bottom: 0.65rem;
     border-radius: var(--radius-md, 0.5rem);
-    background: rgba(var(--accent-gold-rgb, 217, 169, 59), 0.1);
-    border: 1px solid rgba(var(--accent-gold-rgb, 217, 169, 59), 0.4);
-    color: var(--accent-gold, #d9a93b);
+    background: rgba(var(--accent-gold-rgb), 0.1);
+    border: 1px solid rgba(var(--accent-gold-rgb), 0.4);
+    color: var(--accent-gold);
     font-size: 0.75rem;
     font-weight: 700;
   }
@@ -2350,7 +2734,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent-gold, #d9a93b);
+    background: var(--accent-gold);
   }
 
   .client-feature-row--suppressed {
@@ -2365,7 +2749,7 @@
   .feature-keybind {
     font-size: 0.7rem;
     font-weight: 700;
-    color: var(--accent-alt, #f59e0b);
+    color: var(--accent-alt);
   }
 
   .toggle-switch {
@@ -2382,12 +2766,12 @@
   }
 
   .toggle-switch:focus-visible {
-    outline: 2px solid var(--accent, #10b981);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
   .toggle-switch--on {
-    background: var(--accent, #10b981);
+    background: var(--accent);
   }
 
   .toggle-knob {
@@ -2450,7 +2834,7 @@
   }
 
   .server-err-msg {
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
     font-size: var(--text-xs, 0.75rem);
     margin: 0;
   }
@@ -2559,7 +2943,7 @@
 
   .warning-icon {
     font-size: 1.35rem;
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
     line-height: 1;
   }
 
@@ -2615,8 +2999,8 @@
   }
 
   .live-dot--active {
-    background: var(--accent-green, #22c55e);
-    box-shadow: 0 0 8px var(--accent-green, #22c55e);
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
     animation: pulse 1.5s infinite;
   }
 
@@ -2659,7 +3043,7 @@
   }
 
   .console-output:focus-visible {
-    border-color: var(--accent, #10b981);
+    border-color: var(--accent);
   }
 
   .console-row {
@@ -2668,11 +3052,11 @@
   }
 
   .console-row--error {
-    color: var(--accent-red, #ef4444);
+    color: var(--accent-red);
   }
 
   .console-row--warn {
-    color: var(--accent-alt, #f59e0b);
+    color: var(--accent-alt);
   }
 
   .console-empty {

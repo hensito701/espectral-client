@@ -64,6 +64,7 @@ test('H2-R regression: MC access token and XBL/XSTS chain are NEVER written to d
 test('appConfig exposes only the whitelisted AppConfig subset', () => {
   const keys = Object.keys(appConfig()).sort();
   assert.deepEqual(keys, [
+    'accent',
     'aot_auto_train',
     'data_dir',
     'default_memory_mb',
@@ -72,6 +73,7 @@ test('appConfig exposes only the whitelisted AppConfig subset', () => {
     'fast_boot',
     'fullbright_on_launch',
     'jdk_path_override',
+    'reduced_motion',
   ]);
   assert.equal('access_token' in appConfig(), false);
   assert.equal('accounts' in appConfig(), false);

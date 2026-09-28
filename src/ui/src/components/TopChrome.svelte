@@ -145,6 +145,15 @@
       <span class="shortcut-link__icon" aria-hidden="true">🧩</span>
       <span>{t('mods.title')}</span>
     </a>
+    <a
+      href="#/armario"
+      class="shortcut-link"
+      class:shortcut-link--active={route.startsWith('#/armario')}
+      title={t('nav.wardrobe')}
+    >
+      <span class="shortcut-link__icon" aria-hidden="true">⚛</span>
+      <span>{t('nav.wardrobe')}</span>
+    </a>
   </nav>
 
   <!-- Right: Command trigger + Toggles + Account Chip -->
@@ -343,7 +352,7 @@
     display: grid;
     place-items: center;
     overflow: hidden;
-    box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+    box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.25);
     background: rgba(8, 13, 26, 0.6);
   }
 
@@ -416,9 +425,9 @@
   }
 
   .shortcut-link--active {
-    color: var(--accent, #10b981);
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.12);
-    border-color: rgba(var(--accent-rgb, 16, 185, 129), 0.35);
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.35);
   }
 
   .shortcut-link__icon {
@@ -446,10 +455,10 @@
     align-items: center;
     gap: var(--space-2, 8px);
     padding: 6px 12px;
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.14);
-    border: 1px solid rgba(var(--accent-rgb, 16, 185, 129), 0.45);
+    background: rgba(var(--accent-rgb), 0.14);
+    border: 1px solid rgba(var(--accent-rgb), 0.45);
     border-radius: var(--radius-md, 0.625rem);
-    color: var(--accent, #10b981);
+    color: var(--accent);
     cursor: pointer;
     font-family: var(--font-body, inherit);
     font-size: var(--text-xs, 0.75rem);
@@ -463,12 +472,12 @@
      scoped-CSS analysis prunes a plain descendant selector as unused (that is
      how the dead density CSS shipped), so the ancestor must be :global(). */
   :global([data-theme='light']) .update-chip {
-    color: var(--accent-ink, #047857);
+    color: var(--accent-ink);
   }
 
   .update-chip:not(:disabled):hover {
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.22);
-    border-color: var(--accent, #10b981);
+    background: rgba(var(--accent-rgb), 0.22);
+    border-color: var(--accent);
   }
 
   .update-chip:not(:disabled):active {
@@ -501,7 +510,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: var(--accent, #10b981);
+    background: var(--accent);
     flex-shrink: 0;
     animation: update-chip-pulse 1.6s ease-in-out infinite;
   }
@@ -510,7 +519,7 @@
   .update-chip__fill {
     position: absolute;
     inset: 0 auto 0 0;
-    background: rgba(var(--accent-rgb, 16, 185, 129), 0.3);
+    background: rgba(var(--accent-rgb), 0.3);
     transition: width 160ms ease;
     pointer-events: none;
   }
@@ -519,11 +528,11 @@
     0%,
     100% {
       opacity: 1;
-      box-shadow: 0 0 0 0 rgba(var(--accent-rgb, 16, 185, 129), 0.55);
+      box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.55);
     }
     50% {
       opacity: 0.55;
-      box-shadow: 0 0 0 4px rgba(var(--accent-rgb, 16, 185, 129), 0);
+      box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0);
     }
   }
 
@@ -551,7 +560,7 @@
 
   .cmd-trigger:hover {
     color: var(--text, #e8ecf4);
-    border-color: var(--accent, #10b981);
+    border-color: var(--accent);
     background: var(--surface-solid, rgba(255, 255, 255, 0.06));
   }
 
@@ -575,9 +584,9 @@
     font-size: 0.625rem;
     font-weight: 700;
     line-height: 1.2;
-    color: var(--accent, #10b981);
-    background: rgba(16, 185, 129, 0.12);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.12);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
     border-radius: var(--radius-xs, 0.25rem);
   }
 
@@ -606,7 +615,7 @@
 
   .account-chip:hover,
   .account-chip--active {
-    border-color: var(--accent, #10b981);
+    border-color: var(--accent);
     background: var(--surface-solid, rgba(255, 255, 255, 0.08));
   }
 
@@ -629,7 +638,7 @@
   .account-chip__initial {
     font-family: var(--font-mono-retro, monospace);
     font-size: 0.6875rem;
-    color: var(--accent, #10b981);
+    color: var(--accent);
   }
 
   .account-chip__dot {
@@ -647,7 +656,7 @@
   }
 
   .account-chip__dot--offline {
-    background: var(--mode-uhc, #10b981);
+    background: var(--mode-uhc, var(--accent));
   }
 
   .account-chip__dot--empty {

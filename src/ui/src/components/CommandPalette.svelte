@@ -337,6 +337,19 @@
           window.location.hash = '#/donaciones';
         },
       },
+      {
+        id: 'nav-wardrobe',
+        category: 'navigation',
+        title: t('command.nav.wardrobe'),
+        description: t('command.nav.wardrobeDesc'),
+        iconKind: 'nav',
+        badge: t('command.badge.nav'),
+        badgeType: 'nav',
+        keywords: ['armario', 'wardrobe', 'cosmeticos', 'cosmetics', 'capa', 'cloak', 'identidad', 'discord', 'mvp'],
+        run: () => {
+          window.location.hash = '#/armario';
+        },
+      },
     );
 
     // 4. System Actions

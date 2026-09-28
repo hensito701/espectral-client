@@ -344,7 +344,7 @@
 
   .home-account-chip:hover {
     background: var(--surface-up, rgba(25, 32, 64, 0.7));
-    border-color: var(--accent, rgba(16, 185, 129, 0.4));
+    border-color: var(--accent);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.3));
   }
@@ -521,13 +521,13 @@
   .home-servers-more-link {
     font-size: var(--text-sm, 0.875rem);
     font-weight: 600;
-    color: var(--accent, #10b981);
+    color: var(--accent);
     text-decoration: none;
     transition: color var(--dur-fast, 120ms) ease;
   }
 
   .home-servers-more-link:hover {
-    color: var(--accent-alt, #f59e0b);
+    color: var(--accent-alt);
   }
 
   .home-servers-grid {

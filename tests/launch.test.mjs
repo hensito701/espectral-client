@@ -21,6 +21,7 @@ const {
   bootFlags,
   effectiveMemoryMb,
   resolveAccountFor,
+  formatCommandPreview,
 } = await import('../src/engine/launch.mjs');
 const { loadConfig, saveConfig } = await import('../src/engine/config.mjs');
 // presenceForInstance lives in the route module; importing it is side-effect
@@ -352,4 +353,22 @@ test('resolveAccountFor msa without refresh token -> offline fallback without ne
   } finally {
     globalThis.fetch = origFetch;
   }
+});
+
+test('formatCommandPreview redacts the access token AND the per-launch bridge token', () => {
+  const resolved = makeResolved({
+    account: {
+      username: 'Tester',
+      uuid: '00000000-0000-3000-8000-000000000000',
+      accessToken: 'SECRETACCESSTOKEN',
+      userType: 'mojang',
+    },
+    bridgeToken: 'a'.repeat(64),
+  });
+  const argv = buildArgv({ name: 't' }, resolved);
+  assert.ok(argv.includes('-Despectral.bridge.token=' + 'a'.repeat(64)), 'real argv carries the token');
+  const preview = formatCommandPreview(argv, resolved.account.accessToken);
+  assert.ok(!preview.includes('SECRETACCESSTOKEN'), 'access token redacted');
+  assert.ok(!preview.includes('a'.repeat(64)), 'bridge token redacted');
+  assert.ok(preview.includes('<REDACTED>'), 'redaction marker present');
 });

@@ -349,13 +349,13 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: #10b981;
+    background: var(--accent-green);
     color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
     border: 2px solid #060a14;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    box-shadow: 0 0 8px rgba(var(--accent-green-rgb), 0.5);
   }
 
   @keyframes spin {

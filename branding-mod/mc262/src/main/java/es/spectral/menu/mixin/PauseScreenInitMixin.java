@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import net.minecraft.ChatFormatting;
+import es.spectral.menu.ui.SuiteTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -15,6 +15,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import es.spectral.menu.Compat;
+import es.spectral.menu.cosmetics.Cosmetics;
 import es.spectral.menu.ui.SuiteConfirmScreen;
 import es.spectral.menu.ui.SuiteScreen;
 
@@ -55,11 +56,11 @@ public abstract class PauseScreenInitMixin extends Screen {
         int dy = this.disconnectButton.getY();
         int pitch = espectral$rowPitch(dy);
         this.addRenderableWidget(Button.builder(
-                Component.translatable("espectral.pause.client").withStyle(ChatFormatting.GOLD),
+                Cosmetics.suiteLabel("espectral.pause.client"),
                 b -> Compat.open(minecraft, new SuiteScreen(this)))
                 .bounds(dx, dy, dw, dh).build());
         this.addRenderableWidget(Button.builder(
-                Component.translatable("espectral.pause.support").withStyle(ChatFormatting.GOLD),
+                Component.translatable("espectral.pause.support").withStyle(SuiteTheme.accentFormat()),
                 b -> Compat.open(minecraft, SuiteConfirmScreen.support(this)))
                 .bounds(dx, dy + pitch, dw, dh).build());
         this.disconnectButton.setY(dy + 2 * pitch);

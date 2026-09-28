@@ -8,7 +8,8 @@
     { "id": "visual", "name_en": "Visual", "name_es": "Visual" },
     { "id": "hud", "name_en": "HUD", "name_es": "HUD" },
     { "id": "chat", "name_en": "Chat", "name_es": "Chat" },
-    { "id": "controls", "name_en": "Controls", "name_es": "Controles" }
+    { "id": "controls", "name_en": "Controls", "name_es": "Controles" },
+    { "id": "cosmetics", "name_en": "Cosmetics", "name_es": "Cosméticos" }
   ],
   "features": [
     {
@@ -154,6 +155,28 @@
       "name_es": "Macros",
       "description_en": "Keybind macros — run chat/command sequences.",
       "description_es": "Atajos de teclado para chat y comandos."
+    },
+    {
+      "id": "cosmetics",
+      "category": "cosmetics",
+      "kind": "owned",
+      "default_enabled": true,
+      "state": {},
+      "name_en": "Cosmetics",
+      "name_es": "Cosméticos",
+      "description_en": "Renders equipped supporter cosmetics on Espectral players you can see.",
+      "description_es": "Muestra los cosméticos equipados de los jugadores de Espectral que ves."
+    },
+    {
+      "id": "badges",
+      "category": "cosmetics",
+      "kind": "owned",
+      "default_enabled": true,
+      "state": {},
+      "name_en": "Player Badges",
+      "name_es": "Insignias",
+      "description_en": "Shows the ⚛ badge (and ★ for supporters) next to Espectral players' names.",
+      "description_es": "Muestra la insignia ⚛ (y ★ para donadores) junto a los nombres de jugadores de Espectral."
     }
   ]
 }

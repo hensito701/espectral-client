@@ -42,7 +42,7 @@
   const statusColor = $derived.by(() => {
     if (!online || pingMs === null || pingMs === undefined) {
       return {
-        stroke: 'var(--accent-red, #ef4444)',
+        stroke: 'var(--accent-red)',
         fill: 'rgba(239, 68, 68, 0.15)',
         glow: 'rgba(239, 68, 68, 0.3)',
         tier: 'offline',
@@ -50,22 +50,22 @@
     }
     if (pingMs <= 65) {
       return {
-        stroke: 'var(--accent, #10b981)',
-        fill: 'rgba(16, 185, 129, 0.18)',
-        glow: 'rgba(16, 185, 129, 0.4)',
+        stroke: 'var(--accent-green)',
+        fill: 'rgba(var(--accent-green-rgb), 0.18)',
+        glow: 'rgba(var(--accent-green-rgb), 0.4)',
         tier: 'good',
       };
     }
     if (pingMs <= 140) {
       return {
-        stroke: 'var(--accent-alt, #f59e0b)',
-        fill: 'rgba(245, 158, 11, 0.18)',
-        glow: 'rgba(245, 158, 11, 0.4)',
+        stroke: 'var(--accent-alt)',
+        fill: 'rgba(var(--accent-alt-rgb), 0.18)',
+        glow: 'rgba(var(--accent-alt-rgb), 0.4)',
         tier: 'warn',
       };
     }
     return {
-      stroke: 'var(--accent-red, #ef4444)',
+      stroke: 'var(--accent-red)',
       fill: 'rgba(239, 68, 68, 0.18)',
       glow: 'rgba(239, 68, 68, 0.4)',
       tier: 'bad',
@@ -229,7 +229,7 @@
   }
 
   .wave-line {
-    filter: drop-shadow(0 0 4px var(--wave-glow, rgba(16, 185, 129, 0.4)));
+    filter: drop-shadow(0 0 4px var(--wave-glow, rgba(var(--accent-rgb), 0.4)));
     transition: stroke var(--dur-med, 200ms) var(--ease-out-expo, ease-out);
   }
 
@@ -246,11 +246,11 @@
   }
 
   .ping-waveform--good {
-    --wave-glow: rgba(16, 185, 129, 0.5);
+    --wave-glow: rgba(var(--accent-green-rgb), 0.5);
   }
 
   .ping-waveform--warn {
-    --wave-glow: rgba(245, 158, 11, 0.5);
+    --wave-glow: rgba(var(--accent-alt-rgb), 0.5);
   }
 
   .ping-waveform--bad,

@@ -6,9 +6,11 @@
  * Single source of truth: `src/engine/suite-registry.json` (frozen, owned by
  * the launcher). This script derives everything the mod ships:
  *   - `branding-mod/.../assets/espectral-menu/suite-registry.json` (verbatim copy)
+ *   - `branding-mod/.../assets/espectral-menu/cosmetics-catalog.json`
+ *     (byte-identical copy of `src/engine/cosmetics-catalog.json`)
  *   - `branding-mod/.../assets/espectral-menu/lang/en_us.json` (English strings)
  *   - `branding-mod/.../assets/espectral-menu/lang/es_es.json` (Spanish strings)
- *
+
  * The lang files hold exactly the registry-derived keys
  * (`espectral.category.<id>`, `espectral.feature.<id>.name|description`) plus
  * the fixed Suite UI strings below — no extras. Output is deterministic
@@ -24,8 +26,10 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const REGISTRY_SOURCE = path.join(REPO_ROOT, 'src/engine/suite-registry.json');
+export const CATALOG_SOURCE = path.join(REPO_ROOT, 'src/engine/cosmetics-catalog.json');
 const MENU_ASSETS = path.join(REPO_ROOT, 'branding-mod/src/main/resources/assets/espectral-menu');
 export const DEST_REGISTRY = path.join(MENU_ASSETS, 'suite-registry.json');
+export const DEST_CATALOG = path.join(MENU_ASSETS, 'cosmetics-catalog.json');
 export const DEST_EN = path.join(MENU_ASSETS, 'lang/en_us.json');
 export const DEST_ES = path.join(MENU_ASSETS, 'lang/es_es.json');
 
@@ -77,10 +81,19 @@ export const FIXED_STRINGS = {
     'espectral.common.cancel': 'Cancelar',
     'espectral.common.close': 'Cerrar',
     'espectral.narration.suite': 'Suite de Espectral: %s funciones, %s',
-    'espectral.title.client': '★ Espectral Client…',
+    'espectral.title.client': 'Espectral Client…',
     'espectral.title.support': '♥ Apoyar',
-    'espectral.pause.client': '★ Espectral Client…',
+    'espectral.pause.client': 'Espectral Client…',
     'espectral.pause.support': '♥ Apoyar',
+    'key.espectral.emotes': 'Gestos de Espectral',
+    'key.category.espectral-menu.espectral': 'Espectral',
+    'espectral.emotes.wheel.title': 'GESTOS ESPECTRALES',
+    'espectral.emotes.wheel.hint': 'Clic para usar · Esc para cerrar',
+    'espectral.emote.saludo': 'Saludo',
+    'espectral.emote.reverencia': 'Reverencia',
+    'espectral.emote.aplauso': 'Aplauso',
+    'espectral.emote.sentarse': 'Sentarse',
+    'espectral.emote.invocacion': 'Invocación',
   },
   en: {
     'espectral.suite.title': 'ESPECTRAL SUITE',
@@ -124,10 +137,19 @@ export const FIXED_STRINGS = {
     'espectral.common.cancel': 'Cancel',
     'espectral.common.close': 'Close',
     'espectral.narration.suite': 'Espectral suite: %s features, %s',
-    'espectral.title.client': '★ Espectral Client…',
+    'espectral.title.client': 'Espectral Client…',
     'espectral.title.support': '♥ Support',
-    'espectral.pause.client': '★ Espectral Client…',
+    'espectral.pause.client': 'Espectral Client…',
     'espectral.pause.support': '♥ Support',
+    'key.espectral.emotes': 'Espectral Emotes',
+    'key.category.espectral-menu.espectral': 'Espectral',
+    'espectral.emotes.wheel.title': 'ESPECTRAL EMOTES',
+    'espectral.emotes.wheel.hint': 'Click to perform · Esc to close',
+    'espectral.emote.saludo': 'Wave',
+    'espectral.emote.reverencia': 'Bow',
+    'espectral.emote.aplauso': 'Clap',
+    'espectral.emote.sentarse': 'Sit',
+    'espectral.emote.invocacion': 'Invocation',
   },
 };
 
@@ -156,18 +178,19 @@ export function stableStringify(obj) {
   return JSON.stringify(sorted, null, 2) + '\n';
 }
 
-/** Regenerate the three derived files; returns their paths. */
+/** Regenerate the derived files; returns their paths. */
 export function syncSuiteRegistry() {
   const sourceText = fs.readFileSync(REGISTRY_SOURCE, 'utf8');
   const doc = JSON.parse(sourceText);
   const { es, en } = buildLangMaps(doc);
+  const catalogText = fs.readFileSync(CATALOG_SOURCE, 'utf8');
   fs.mkdirSync(path.dirname(DEST_EN), { recursive: true });
   fs.writeFileSync(DEST_REGISTRY, sourceText.endsWith('\n') ? sourceText : sourceText + '\n', 'utf8');
   fs.writeFileSync(DEST_EN, stableStringify(en), 'utf8');
+  fs.writeFileSync(DEST_CATALOG, catalogText, 'utf8');
   fs.writeFileSync(DEST_ES, stableStringify(es), 'utf8');
-  return [DEST_REGISTRY, DEST_EN, DEST_ES];
+  return [DEST_REGISTRY, DEST_CATALOG, DEST_EN, DEST_ES];
 }
-
 const invokedAsMain = process.argv[1] !== undefined
   && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedAsMain) {

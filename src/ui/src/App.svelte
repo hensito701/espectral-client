@@ -24,6 +24,7 @@
   import AccountVault from './pages/AccountVault.svelte';
   import SettingsDashboard from './pages/SettingsDashboard.svelte';
   import DonationsPavilion from './pages/DonationsPavilion.svelte';
+  import Wardrobe from './pages/Wardrobe.svelte';
 
   import { initThemeEffect } from './lib/theme.svelte';
   import { initLangEffect } from './lib/i18n.svelte';
@@ -123,6 +124,9 @@
         {:else if parts[0] === 'donaciones'}
           <!-- #/donaciones -> Donations Pavilion -->
           <DonationsPavilion />
+        {:else if parts[0] === 'armario'}
+          <!-- #/armario -> Identity & Cosmetics Wardrobe -->
+          <Wardrobe />
         {:else}
           <!-- Fallback: Unknown route redirects to Home -->
           <Home />

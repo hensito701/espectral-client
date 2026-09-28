@@ -170,3 +170,64 @@ test('instance create/patch carry hue + game_dir over HTTP', async () => {
   assert.equal(patched.json.hue, 10);
   assert.equal(patched.json.game_dir, null);
 });
+
+// --- client accent (Workstream 4) -------------------------------------------
+
+test('GET/PUT /api/accent round-trips and validates the palette ids', async () => {
+  const initial = await api('GET', '/api/accent');
+  assert.equal(initial.res.status, 200);
+  assert.equal(initial.json, 'oro'); // default palette
+
+  const set = await api('PUT', '/api/accent', { accent: 'glaciar' });
+  assert.equal(set.res.status, 200);
+  assert.deepEqual(set.json, { accent: 'glaciar' });
+  assert.equal((await api('GET', '/api/accent')).json, 'glaciar');
+
+  // The accent also surfaces through /api/config so the settings page can
+  // reflect it without a second request.
+  const cfg = await api('GET', '/api/config');
+  assert.equal(cfg.json.accent, 'glaciar');
+
+  for (const bad of ['ruby', '', 42, null]) {
+    const r = await api('PUT', '/api/accent', { accent: bad });
+    assert.equal(r.res.status, 400, `accent ${JSON.stringify(bad)}`);
+    assert.equal(r.json?.error?.code, 'BAD_ACCENT');
+  }
+
+  // Non-GET routes require the client header.
+  const noHdr = await fetch(`${base}/api/accent`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accent: 'oro' }),
+  });
+  assert.equal(noHdr.status, 403);
+
+  await api('PUT', '/api/accent', { accent: 'oro' }); // restore
+});
+
+test('PATCH /api/config accepts reduced_motion', async () => {
+  const on = await api('PATCH', '/api/config', { patch: { reduced_motion: true } });
+  assert.equal(on.res.status, 200);
+  assert.equal(on.json.reduced_motion, true);
+  const off = await api('PATCH', '/api/config', { patch: { reduced_motion: false } });
+  assert.equal(off.json.reduced_motion, false);
+});
+
+test('PATCH /api/instances/:name/client accepts personalization over HTTP', async () => {
+  const created = await api('POST', '/api/instances', { name: 'http-perso', version: '1.21.11' });
+  assert.equal(created.res.status, 200);
+
+  const set = await api('PATCH', '/api/instances/http-perso/client', {
+    personalization: { theme: 'esmeralda', reduced_motion: true },
+  });
+  assert.equal(set.res.status, 200);
+  assert.equal(set.json.config.personalization.theme, 'esmeralda');
+  assert.equal(set.json.config.personalization.reduced_motion, true);
+  assert.equal(set.json.config.personalization.hud_theme, 'cristal'); // default filled
+
+  const bad = await api('PATCH', '/api/instances/http-perso/client', {
+    personalization: { theme: 'neon' },
+  });
+  assert.equal(bad.res.status, 400);
+  assert.equal(bad.json?.error?.code, 'BAD_PERSONALIZATION');
+});

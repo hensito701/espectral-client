@@ -63,7 +63,7 @@
     max-height: 800px;
     background: radial-gradient(
       circle at center,
-      var(--ambient-1, rgba(16, 185, 129, 0.22)) 0%,
+      var(--ambient-1, rgba(var(--accent-rgb), 0.22)) 0%,
       hsla(var(--ambient-hue, 160), 80%, 45%, 0.12) 40%,
       transparent 70%
     );
@@ -98,7 +98,7 @@
     background: radial-gradient(
       circle at center,
       hsla(var(--ambient-hue, 160), 90%, 55%, 0.1) 0%,
-      rgba(255, 215, 0, 0.04) 50%,
+      rgba(var(--accent-gold-rgb), 0.04) 50%,
       transparent 70%
     );
     animation: drift-accent 42s ease-in-out infinite alternate;

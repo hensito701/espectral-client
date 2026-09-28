@@ -5,6 +5,9 @@
 
 export const THEMES = ['dark', 'light', 'system'] as const;
 export type Theme = typeof THEMES[number];
+// Workstream 4 accent ids — same set as the engine THEME_IDS and the mod palettes.
+export const ACCENTS = ['oro', 'carmesi', 'amatista', 'esmeralda', 'glaciar'] as const;
+export type Accent = typeof ACCENTS[number];
 export const LOADERS = ['vanilla', 'fabric', 'neoforge'] as const;
 export type Loader = typeof LOADERS[number];
 export type OverwritePolicy = 'never' | 'if-older';
@@ -89,6 +92,9 @@ export interface AppConfig {
   fullbright_on_launch: boolean;
   jdk_path_override: string;
   discord_enabled: boolean;
+  /** Workstream 4: launcher accent id + global reduced-motion mirror. */
+  accent?: Accent;
+  reduced_motion?: boolean;
   data_dir: string;
 }
 
@@ -265,8 +271,18 @@ export interface ClientMacro {
   actions: ClientMacroAction[];
 }
 
+/** Top-level personalization block of espectral-client.json (Workstream 4). */
+export interface ClientPersonalization {
+  theme?: Accent;
+  hud_theme?: 'cristal' | 'oro' | 'minimo' | 'pixel';
+  background?: string | null;
+  reduced_motion?: boolean;
+  [k: string]: unknown;
+}
+
 export interface ClientConfig {
   schema: number;
+  personalization?: ClientPersonalization;
   /** Suite master switch (schema 2). Absent on old payloads — readers default to true. */
   suite?: { enabled: boolean };
   features: Record<string, ClientFeatureState>;
@@ -301,6 +317,7 @@ export type ClientPatch = Partial<{
   features: Record<string, { enabled?: boolean; [k: string]: unknown }>;
   macros: ClientMacro[];
   suite: { enabled?: boolean };
+  personalization: ClientPersonalization;
 }>;
 
 /** GET /api/launches — live/recent launch buffers, newest first. */
@@ -379,4 +396,102 @@ export interface SkinLibraryEntry {
   variant: SkinVariant;
   created_at: string;
   source: 'upload' | 'vanilla';
+}
+
+/* ---------- Espectral identity & supporter cosmetics (Workstream 4) ----------
+   Mirrors of GET /api/identity and GET/PUT /api/cosmetics. Field names match
+   the engine contract exactly. */
+
+export interface IdentityDiscord {
+  id: string;
+  username: string;
+  avatar: string | null;
+}
+
+export interface IdentityAccount {
+  /** Mojang UUID, 32 lowercase hex without dashes. */
+  uuid: string;
+  username: string;
+  /** True once the join/hasJoined handshake proved ownership. */
+  verified: boolean;
+  discord: IdentityDiscord | null;
+  /** Backend-derived flags, e.g. 'supporter', 'mvp'. */
+  flags: string[];
+  /** Unix seconds when the current signed grant expires, or null. */
+  grant_exp: number | null;
+}
+
+export interface IdentityState {
+  service_url: string;
+  accounts: IdentityAccount[];
+  error?: string;
+}
+
+export interface CosmeticItemName {
+  es: string;
+  en: string;
+}
+
+export interface CosmeticItem {
+  id: string;
+  slot: string;
+  requires: string;
+  name: CosmeticItemName;
+}
+
+export interface CosmeticEmote {
+  id: string;
+  requires: string;
+  name: CosmeticItemName;
+}
+
+/** Exclusive rule: items in `<slot>` cannot be equipped together with any listed id. */
+export type CosmeticExclusiveRule = [slot: string, itemIds: string[]];
+
+export interface CosmeticsCatalog {
+  schema: number;
+  slots: string[];
+  exclusive: CosmeticExclusiveRule[];
+  items: CosmeticItem[];
+  emotes: CosmeticEmote[];
+}
+
+export interface CosmeticsAccountState {
+  /** Affirmative consent: publish presence so peers see ⚛ + cosmetics. */
+  share: boolean;
+  /** Loadout = { slotId: itemId | null }. */
+  loadout: Record<string, string | null>;
+  /** Player names whose cosmetics/badges are hidden for this viewer. */
+  hidden_players: string[];
+  /** Local-only emotes enabled. */
+  emotes: boolean;
+  flags: string[];
+}
+
+export interface CosmeticsState {
+  catalog: CosmeticsCatalog;
+  accounts: Record<string, CosmeticsAccountState>;
+}
+
+/** PUT /api/cosmetics/:uuid — every field optional, merge semantics. */
+export interface CosmeticsPatch {
+  share?: boolean;
+  loadout?: Record<string, string | null>;
+  hidden_players?: string[];
+  emotes?: boolean;
+}
+
+/* ---------- Menu background packs (Workstream 4, free) ---------- */
+
+/** pack.json shape mirrored from <dataDir>/backgrounds/<id>/. */
+export interface BackgroundPack {
+  id: string;
+  name: string;
+  type: 'image' | 'frames';
+  /** Frames per second (0 for still images). */
+  fps: number;
+  /** 1 for still images, N for frame packs. */
+  frame_count: number;
+  width: number;
+  height: number;
 }

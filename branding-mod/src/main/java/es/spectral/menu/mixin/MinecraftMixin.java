@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 
 import es.spectral.menu.ClientConfig;
 import es.spectral.menu.EspectralClient;
+import es.spectral.menu.EmoteEngine;
 import es.spectral.menu.FogEngine;
 import es.spectral.menu.GammaEngine;
 import es.spectral.menu.HudEngine;
@@ -38,6 +39,7 @@ public abstract class MinecraftMixin {
         FogEngine.getInstance().onTick(minecraft);
         MacroEngine.getInstance().onTick(minecraft);
         HudEngine.getInstance().onTick(minecraft);
+        EmoteEngine.getInstance().onClientTick(minecraft);
         // Launcher PATCH writes the config file while the game runs; pick it
         // up live without hammering the disk. A reload right after our own
         // screen-save just re-reads identical content (harmless).

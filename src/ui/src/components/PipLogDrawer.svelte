@@ -730,7 +730,7 @@
 
   .pip-line--warn {
     color: #fbbf24;
-    background: rgba(245, 158, 11, 0.05);
+    background: rgba(var(--accent-alt-rgb), 0.05);
   }
 
   /* Animations */

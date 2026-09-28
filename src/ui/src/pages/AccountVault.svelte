@@ -1850,7 +1850,7 @@
     left: 20%;
     width: 600px;
     height: 300px;
-    background: radial-gradient(ellipse at center, var(--ambient-1, rgba(16, 185, 129, 0.15)), transparent 70%);
+    background: radial-gradient(ellipse at center, var(--ambient-1, rgba(var(--accent-rgb), 0.15)), transparent 70%);
     pointer-events: none;
     z-index: 0;
   }
@@ -1893,7 +1893,7 @@
     width: 140px;
     height: 140px;
     border-radius: 50%;
-    border: 1px dashed var(--accent, #10b981);
+    border: 1px dashed var(--accent);
     opacity: 0.35;
     animation: ring-rotate 30s linear infinite;
     pointer-events: none;
@@ -1913,7 +1913,7 @@
     bottom: -10px;
     width: 120px;
     height: 16px;
-    background: radial-gradient(ellipse at center, rgba(16, 185, 129, 0.4), transparent 70%);
+    background: radial-gradient(ellipse at center, rgba(var(--accent-rgb), 0.4), transparent 70%);
     border-radius: 50%;
     filter: blur(4px);
   }
@@ -1951,7 +1951,7 @@
   }
 
   .shield-dot {
-    color: var(--accent, #10b981);
+    color: var(--accent);
   }
 
   .pedestal-meta-grid {
@@ -2134,14 +2134,14 @@
   }
 
   .account-card:focus-visible {
-    border-color: var(--accent, #10b981);
-    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.4);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.4);
   }
 
   .account-card--active {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 24, 40, 0.7));
-    border-color: var(--accent, #10b981);
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.12);
+    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.08), rgba(16, 24, 40, 0.7));
+    border-color: var(--accent);
+    box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.12);
   }
 
   .account-card__head {
@@ -2161,8 +2161,8 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--accent, #10b981);
-    box-shadow: 0 0 8px var(--accent, #10b981);
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
     border: 2px solid #0b1320;
   }
 
@@ -2425,7 +2425,7 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: var(--accent, #10b981);
+    background: var(--accent);
     color: #060a14;
     font-size: var(--text-xs, 0.75rem);
     font-weight: 700;
@@ -2452,7 +2452,7 @@
   }
 
   .uri-link {
-    color: var(--accent, #10b981);
+    color: var(--accent);
     font-size: var(--text-sm, 0.875rem);
     text-decoration: none;
     display: flex;
@@ -2470,8 +2470,8 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3, 12px);
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(6, 182, 212, 0.1));
-    border: 1px solid var(--accent, #10b981);
+    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.15), rgba(6, 182, 212, 0.1));
+    border: 1px solid var(--accent);
     border-radius: var(--radius-md, 8px);
     padding: var(--space-3, 12px) var(--space-4, 16px);
   }
@@ -2494,22 +2494,22 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: var(--accent, #10b981);
+    background: var(--accent);
     animation: pulse 1.5s infinite;
   }
 
   @keyframes pulse {
     0% {
       transform: scale(0.95);
-      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.7);
     }
     70% {
       transform: scale(1);
-      box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+      box-shadow: 0 0 0 8px rgba(var(--accent-rgb), 0);
     }
     100% {
       transform: scale(0.95);
-      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0);
     }
   }
 
@@ -2533,8 +2533,8 @@
   }
 
   .ms-alert--pending {
-    background: rgba(245, 158, 11, 0.12);
-    border: 1px solid rgba(245, 158, 11, 0.35);
+    background: rgba(var(--accent-alt-rgb), 0.12);
+    border: 1px solid rgba(var(--accent-alt-rgb), 0.35);
     color: #fbbf24;
   }
 
@@ -2666,7 +2666,7 @@
     width: 18px;
     height: 18px;
     border: 2px solid rgba(255, 255, 255, 0.15);
-    border-top-color: var(--accent, #10b981);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -2678,7 +2678,7 @@
   }
 
   .text-ok {
-    color: var(--accent, #10b981);
+    color: var(--accent-green);
   }
 
   /* --- Skin Atelier --- */
@@ -2737,7 +2737,7 @@
   }
 
   .skin-atelier__variant input {
-    accent-color: var(--accent, #10b981);
+    accent-color: var(--accent);
   }
 
   .skin-atelier__actions {
@@ -2820,7 +2820,7 @@
   }
 
   .skin-card--previewing {
-    border-color: var(--accent, #10b981);
+    border-color: var(--accent);
   }
 
   .skin-card__art {
@@ -2834,7 +2834,7 @@
   }
 
   .skin-card__art:focus-visible {
-    outline: 2px solid var(--accent, #10b981);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 

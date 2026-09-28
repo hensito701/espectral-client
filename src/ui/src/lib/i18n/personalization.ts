@@ -1,0 +1,94 @@
+/* ==========================================================================
+   Espectral Horizon Glass — Background packs + HUD themes i18n Strings
+   Shared slice: InstanceHub Appearance card + ClientSuite personalization.
+   ========================================================================== */
+
+import type { Dict } from '../i18n-dicts';
+
+export const es: Dict = {
+  // Menu background packs (InstanceHub → Appearance)
+  'perso.bgTitle': 'Fondo del menú',
+  'perso.bgHint': 'Elige un fondo para el menú principal del juego (gratis para todos)',
+  'perso.bgNone': 'Ninguno',
+  'perso.bgNoneHint': 'Usar el fondo de marca predeterminado',
+  'perso.bgAnimated': 'Animado',
+  'perso.bgFrames': '{count} fotogramas',
+  'perso.bgSelect': 'Usar este fondo',
+  'perso.bgSelected': 'Fondo seleccionado',
+  'perso.bgSaveError': 'No se pudo guardar el fondo',
+  'perso.bgSaveOk': 'Fondo del menú actualizado',
+  'perso.bgDelete': 'Eliminar',
+  'perso.bgDeleteConfirm': '¿Eliminar el fondo "{name}"? Se borrará de la biblioteca.',
+  'perso.bgDeleteOk': 'Fondo eliminado',
+  'perso.bgDeleteError': 'No se pudo eliminar el fondo',
+  'perso.bgEmpty': 'Sin fondos importados todavía',
+  'perso.bgImportImage': 'Importar imagen…',
+  'perso.bgImportFrames': 'Importar animación…',
+  'perso.bgImportFolder': 'Importar carpeta de fotogramas…',
+  'perso.bgImporting': 'Importando…',
+  'perso.bgImportOk': 'Fondo "{name}" importado',
+  'perso.bgImportError': 'No se pudo importar el fondo',
+  'perso.bgNameLabel': 'Nombre del fondo',
+  'perso.bgNamePlaceholder': 'Mi fondo',
+  'perso.bgNameRequired': 'Escribe un nombre antes de importar',
+  'perso.bgImportHint': 'PNG (máx. 8192 px) o una secuencia de hasta 300 PNG de máx. 1280x720',
+  'perso.bgLoading': 'Cargando fondos…',
+
+  // HUD themes (ClientSuite)
+  'perso.hudTitle': 'Tema del HUD',
+  'perso.hudHint': 'Estilo de las cajas del HUD (coordenadas, pociones, vida…)',
+  'perso.hudSaveOk': 'Tema del HUD actualizado',
+  'perso.hudSaveError': 'No se pudo guardar el tema del HUD',
+  'perso.hud.cristal': 'Cristal',
+  'perso.hud.cristalDesc': 'Caja oscura translúcida con texto blanco',
+  'perso.hud.oro': 'Oro',
+  'perso.hud.oroDesc': 'Tonos cálidos dorados sobre humo oscuro',
+  'perso.hud.minimo': 'Mínimo',
+  'perso.hud.minimoDesc': 'Solo texto, sin caja',
+  'perso.hud.pixel': 'Píxel',
+  'perso.hud.pixelDesc': 'Terminal retro: caja negra, marco blanco y texto verde',
+};
+
+export const en: Dict = {
+  // Menu background packs (InstanceHub → Appearance)
+  'perso.bgTitle': 'Menu background',
+  'perso.bgHint': 'Pick the background for the game main menu (free for everyone)',
+  'perso.bgNone': 'None',
+  'perso.bgNoneHint': 'Use the default branded background',
+  'perso.bgAnimated': 'Animated',
+  'perso.bgFrames': '{count} frames',
+  'perso.bgSelect': 'Use this background',
+  'perso.bgSelected': 'Selected background',
+  'perso.bgSaveError': 'Could not save the background',
+  'perso.bgSaveOk': 'Menu background updated',
+  'perso.bgDelete': 'Delete',
+  'perso.bgDeleteConfirm': 'Delete the background "{name}"? It will be removed from your library.',
+  'perso.bgDeleteOk': 'Background deleted',
+  'perso.bgDeleteError': 'Could not delete the background',
+  'perso.bgEmpty': 'No backgrounds imported yet',
+  'perso.bgImportImage': 'Import image…',
+  'perso.bgImportFrames': 'Import animation…',
+  'perso.bgImportFolder': 'Import frame folder…',
+  'perso.bgImporting': 'Importing…',
+  'perso.bgImportOk': 'Background "{name}" imported',
+  'perso.bgImportError': 'Could not import the background',
+  'perso.bgNameLabel': 'Background name',
+  'perso.bgNamePlaceholder': 'My background',
+  'perso.bgNameRequired': 'Enter a name before importing',
+  'perso.bgImportHint': 'PNG (up to 8192 px) or a sequence of up to 300 PNGs, 1280x720 max',
+  'perso.bgLoading': 'Loading backgrounds…',
+
+  // HUD themes (ClientSuite)
+  'perso.hudTitle': 'HUD theme',
+  'perso.hudHint': 'Style of the HUD boxes (coordinates, potions, health…)',
+  'perso.hudSaveOk': 'HUD theme updated',
+  'perso.hudSaveError': 'Could not save the HUD theme',
+  'perso.hud.cristal': 'Cristal',
+  'perso.hud.cristalDesc': 'Translucent dark box with white text',
+  'perso.hud.oro': 'Gold',
+  'perso.hud.oroDesc': 'Warm golden tones over dark smoke',
+  'perso.hud.minimo': 'Minimal',
+  'perso.hud.minimoDesc': 'Text only, no box',
+  'perso.hud.pixel': 'Pixel',
+  'perso.hud.pixelDesc': 'Retro terminal: black box, white frame, green text',
+};

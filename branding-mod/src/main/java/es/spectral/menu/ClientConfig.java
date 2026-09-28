@@ -331,6 +331,56 @@ public final class ClientConfig {
         return fc != null && fc.enabled;
     }
 
+    // --- personalization (Workstream 4, free features) ----------------------
+    // Lives in the top-level "personalization" object of espectral-client.json;
+    // it round-trips untouched through save() via rawRoot, so these are
+    // read-only views with the contract defaults when absent or invalid.
+
+    private static final java.util.Set<String> THEME_IDS =
+            java.util.Set.of("oro", "carmesi", "amatista", "esmeralda", "glaciar");
+    private static final java.util.Set<String> HUD_THEME_IDS =
+            java.util.Set.of("cristal", "oro", "minimo", "pixel");
+
+    private JsonObject personalizationObj() {
+        return rawRoot != null && rawRoot.has("personalization")
+                && rawRoot.get("personalization").isJsonObject()
+                ? rawRoot.getAsJsonObject("personalization") : null;
+    }
+
+    private String personalizationString(JsonObject p, String key) {
+        if (p == null || !p.has(key) || !p.get(key).isJsonPrimitive()
+                || !p.get(key).getAsJsonPrimitive().isString()) {
+            return null;
+        }
+        return p.get(key).getAsString();
+    }
+
+    /** Client colour theme id (oro|carmesi|amatista|esmeralda|glaciar); default oro. */
+    public synchronized String theme() {
+        String v = personalizationString(personalizationObj(), "theme");
+        return v != null && THEME_IDS.contains(v) ? v : "oro";
+    }
+
+    /** HUD theme id (cristal|oro|minimo|pixel); default cristal. */
+    public synchronized String hudTheme() {
+        String v = personalizationString(personalizationObj(), "hud_theme");
+        return v != null && HUD_THEME_IDS.contains(v) ? v : "cristal";
+    }
+
+    /** Menu background pack id, or {@code null} for the default background. */
+    public synchronized String backgroundPack() {
+        String v = personalizationString(personalizationObj(), "background");
+        return v != null && !v.isEmpty() ? v : null;
+    }
+
+    /** Reduced-motion flag; default false. */
+    public synchronized boolean reducedMotion() {
+        JsonObject p = personalizationObj();
+        return p != null && p.has("reduced_motion") && p.get("reduced_motion").isJsonPrimitive()
+                && p.get("reduced_motion").getAsJsonPrimitive().isBoolean()
+                && p.get("reduced_motion").getAsBoolean();
+    }
+
     /**
      * Resets every registry feature to its canonical default. The master
      * switch and unknown (non-registry) feature ids are left untouched.
@@ -406,6 +456,7 @@ public final class ClientConfig {
             save();
         }
     }
+
 
     public synchronized List<MacroConfig> getMacros() {
         return Collections.unmodifiableList(new ArrayList<>(macros));

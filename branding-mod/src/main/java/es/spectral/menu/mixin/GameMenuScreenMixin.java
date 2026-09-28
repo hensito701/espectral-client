@@ -6,8 +6,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import es.spectral.menu.Compat;
+import es.spectral.menu.cosmetics.Cosmetics;
 import es.spectral.menu.ui.SuiteScreen;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.PauseScreen;
@@ -31,7 +31,7 @@ public abstract class GameMenuScreenMixin extends Screen {
         int x = (this.width - 204) / 2;
         int y = Math.max(4, this.height - 28);
         this.addRenderableWidget(Button.builder(
-                Component.translatable("espectral.pause.client").withStyle(ChatFormatting.GOLD),
+                Cosmetics.suiteLabel("espectral.pause.client"),
                 button -> Compat.open(Minecraft.getInstance(), new SuiteScreen(this)))
                 .bounds(x, y, 204, 20).build());
     }

@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { effectiveGameDir, getInstance } from './instances.mjs';
 import { PINS_QOL_BY_VERSION } from './mods.mjs';
+import { loadConfig } from './config.mjs';
 import { httpError } from './error.mjs';
 
 /**
@@ -102,6 +103,21 @@ function deepEqual(a, b) {
   return false;
 }
 
+// --- personalization (Workstream 4, free features) -------------------------
+// Stored under the top-level "personalization" object of espectral-client.json
+// and read by the mod through ClientConfig.theme()/hudTheme()/backgroundPack()/
+// reducedMotion(). The launcher's own accent (engine config.json `accent`)
+// mirrors into personalization.theme at launch — one palette everywhere.
+export const THEME_IDS = ['oro', 'carmesi', 'amatista', 'esmeralda', 'glaciar'];
+export const HUD_THEME_IDS = ['cristal', 'oro', 'minimo', 'pixel'];
+export const PERSONALIZATION_DEFAULTS = {
+  theme: 'oro',
+  hud_theme: 'cristal',
+  background: null,
+  reduced_motion: false,
+};
+const BACKGROUND_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
 /** Read the RAW file; `{}` when missing or unparseable (never throws). */
 function readRawConfig(instanceName) {
   try {
@@ -151,6 +167,12 @@ function normalizeConfig(raw) {
   }
   out.features = features;
   out.macros = Array.isArray(raw.macros) ? raw.macros : [];
+  // Personalization merges over its defaults the same way features do — a
+  // GET always shows the effective value; unknown file keys survive.
+  out.personalization = {
+    ...PERSONALIZATION_DEFAULTS,
+    ...(isPlainObject(raw.personalization) ? raw.personalization : {}),
+  };
   return out;
 }
 
@@ -223,6 +245,21 @@ export function seedClientConfig(instanceName) {
       merged.macros = [];
       changed = true;
     }
+    // Personalization: fill missing keys from the defaults, mirror the
+    // launcher accent into `theme` (one palette drives Suite, title menu and
+    // launcher) and the global reduced-motion choice into `reduced_motion`.
+    // hud_theme/background keep the instance's stored choice when present —
+    // the BACKGROUNDS agent owns those pickers per instance.
+    const personal = isPlainObject(merged.personalization) ? { ...merged.personalization } : {};
+    const engineCfg = loadConfig();
+    personal.theme = THEME_IDS.includes(engineCfg.accent) ? engineCfg.accent : 'oro';
+    if (!HUD_THEME_IDS.includes(personal.hud_theme)) personal.hud_theme = PERSONALIZATION_DEFAULTS.hud_theme;
+    if (!('background' in personal)) personal.background = PERSONALIZATION_DEFAULTS.background;
+    personal.reduced_motion = engineCfg.reduced_motion === true;
+    if (!isPlainObject(merged.personalization) || !deepEqual(merged.personalization, personal)) {
+      merged.personalization = personal;
+      changed = true;
+    }
     if (changed) writeConfigAtomic(instanceName, merged);
   } catch (e) {
     console.warn(`[client] could not seed espectral-client.json: ${e.message}`);
@@ -265,7 +302,7 @@ function validatePatch(patch) {
   if (!isPlainObject(patch)) {
     throw httpError(400, 'BAD_PATCH', 'PATCH body must be a JSON object');
   }
-  const { features, macros, suite, ...rest } = patch;
+  const { features, macros, suite, personalization, ...rest } = patch;
   if (Object.keys(rest).length > 0) {
     throw httpError(400, 'BAD_PATCH', `unknown PATCH fields: ${Object.keys(rest).join(', ')}`);
   }
@@ -301,6 +338,30 @@ function validatePatch(patch) {
     const seenIds = new Set();
     macros.forEach((m, i) => validateMacro(m, i, seenIds));
   }
+  if (personalization !== undefined) {
+    if (!isPlainObject(personalization)) {
+      throw httpError(400, 'BAD_PERSONALIZATION', 'personalization must be an object');
+    }
+    for (const key of Object.keys(personalization)) {
+      if (!(key in PERSONALIZATION_DEFAULTS)) {
+        throw httpError(400, 'BAD_PERSONALIZATION', `unknown personalization key: ${key}`);
+      }
+    }
+    if ('theme' in personalization && !THEME_IDS.includes(personalization.theme)) {
+      throw httpError(400, 'BAD_PERSONALIZATION', `theme must be one of ${THEME_IDS.join('|')}`);
+    }
+    if ('hud_theme' in personalization && !HUD_THEME_IDS.includes(personalization.hud_theme)) {
+      throw httpError(400, 'BAD_PERSONALIZATION', `hud_theme must be one of ${HUD_THEME_IDS.join('|')}`);
+    }
+    if ('background' in personalization
+        && personalization.background !== null
+        && (typeof personalization.background !== 'string' || !BACKGROUND_ID_RE.test(personalization.background))) {
+      throw httpError(400, 'BAD_PERSONALIZATION', 'background must be a pack id or null');
+    }
+    if ('reduced_motion' in personalization && typeof personalization.reduced_motion !== 'boolean') {
+      throw httpError(400, 'BAD_PERSONALIZATION', 'reduced_motion must be a boolean');
+    }
+  }
 }
 
 /**
@@ -317,11 +378,13 @@ async function reconcileManagedJars() {
 /**
  * PATCH /api/instances/:name/client.
  *
- * Body: `{ features?, macros?, suite? }` — all optional. `features`
- * shallow-merges per feature id into the RAW file (unknown ids and extra
- * keys preserved; a bare boolean means `{ enabled }`); `macros` replaces
+ * Body: `{ features?, macros?, suite?, personalization? }` — all optional.
+ * `features` shallow-merges per feature id into the RAW file (unknown ids and
+ * extra keys preserved; a bare boolean means `{ enabled }`); `macros` replaces
  * the array wholesale after validation; `suite` shallow-merges into the
- * schema-2 master switch. Unknown top-level fields in the file survive.
+ * schema-2 master switch; `personalization` shallow-merges into the
+ * theme/hud/background/motion block (keys and values validated). Unknown
+ * top-level fields in the file survive.
  * Reconcile is a legacy no-op (always []); the config flags record user
  * intent and the native mod applies them live.
  *
@@ -350,6 +413,12 @@ export async function patchClientConfig(instanceName, patch) {
   }
   if (patch.macros !== undefined) {
     raw.macros = patch.macros;
+  }
+  if (patch.personalization !== undefined) {
+    raw.personalization = {
+      ...(isPlainObject(raw.personalization) ? raw.personalization : {}),
+      ...patch.personalization,
+    };
   }
 
   writeConfigAtomic(instanceName, raw);

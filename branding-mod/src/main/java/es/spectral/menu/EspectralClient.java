@@ -21,12 +21,20 @@ public final class EspectralClient implements ClientModInitializer {
     /** Hold-to-zoom key for the native ZoomEngine (default Z). */
     public static net.minecraft.client.KeyMapping ZOOM_KEY;
 
+    /** Radial emote wheel key for local-only MVP emotes (default B). */
+    public static net.minecraft.client.KeyMapping EMOTE_KEY;
+
+    private static final net.minecraft.client.KeyMapping.Category ESPECTRAL_CATEGORY =
+            net.minecraft.client.KeyMapping.Category.register(
+                    net.minecraft.resources.Identifier.fromNamespaceAndPath(
+                            "espectral-menu", "espectral"));
     private static boolean clientKeyRegistered = false;
 
     @Override
     public void onInitializeClient() {
         CLIENT_KEY = new net.minecraft.client.KeyMapping("key.espectral.client", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
         ZOOM_KEY = new net.minecraft.client.KeyMapping("key.espectral.zoom", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_Z, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
+        EMOTE_KEY = new net.minecraft.client.KeyMapping("key.espectral.emotes", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_B, ESPECTRAL_CATEGORY);
         String version = EspectralBrand.modVersion();
         if (version == null) version = "dev";
         LOGGER.info("Initializing Espectral Client mod (v{})", version);
@@ -34,30 +42,46 @@ public final class EspectralClient implements ClientModInitializer {
     }
 
     /**
-     * Appends CLIENT_KEY and ZOOM_KEY to Options#keyMappings once the options
-     * instance exists, so they are listed in Controls and saved to options.txt.
-     * Idempotent; called from the client tick until it succeeds.
+     * Appends CLIENT_KEY, ZOOM_KEY and EMOTE_KEY to Options#keyMappings once
+     * the options instance exists, so they are listed in Controls and saved
+     * to options.txt. Idempotent; called from the client tick until it
+     * succeeds.
      */
     public static void ensureClientKeyRegistered() {
-        if (clientKeyRegistered || CLIENT_KEY == null || ZOOM_KEY == null) return;
+        if (clientKeyRegistered || CLIENT_KEY == null || ZOOM_KEY == null
+                || EMOTE_KEY == null) return;
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.options == null) return;
+        net.minecraft.client.KeyMapping[] all = {CLIENT_KEY, ZOOM_KEY, EMOTE_KEY};
         net.minecraft.client.KeyMapping[] current = minecraft.options.keyMappings;
-        boolean clientPresent = false;
-        boolean zoomPresent = false;
-        for (net.minecraft.client.KeyMapping mapping : current) {
-            if (mapping == CLIENT_KEY) clientPresent = true;
-            if (mapping == ZOOM_KEY) zoomPresent = true;
+        int missing = 0;
+        for (net.minecraft.client.KeyMapping key : all) {
+            boolean present = false;
+            for (net.minecraft.client.KeyMapping mapping : current) {
+                if (mapping == key) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) missing++;
         }
-        if (clientPresent && zoomPresent) {
+        if (missing == 0) {
             clientKeyRegistered = true;
             return;
         }
-        int missing = (clientPresent ? 0 : 1) + (zoomPresent ? 0 : 1);
-        net.minecraft.client.KeyMapping[] extended = Arrays.copyOf(current, current.length + missing);
+        net.minecraft.client.KeyMapping[] extended =
+                Arrays.copyOf(current, current.length + missing);
         int at = current.length;
-        if (!clientPresent) extended[at++] = CLIENT_KEY;
-        if (!zoomPresent) extended[at] = ZOOM_KEY;
+        for (net.minecraft.client.KeyMapping key : all) {
+            boolean present = false;
+            for (net.minecraft.client.KeyMapping mapping : current) {
+                if (mapping == key) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) extended[at++] = key;
+        }
         ((OptionsAccessor) minecraft.options).espectral$setKeyMappings(extended);
     }
 }

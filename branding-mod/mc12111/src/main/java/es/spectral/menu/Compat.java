@@ -57,13 +57,22 @@ public final class Compat {
         if (font == null) return;
         int guiW = graphics.guiWidth();
         int guiH = graphics.guiHeight();
+        es.spectral.menu.HudTheme hudTheme = es.spectral.menu.HudTheme.current();
         for (HudEngine.Block block : HudEngine.getInstance().blocks(minecraft)) {
             int w = blockWidth(font, block);
             int h = blockHeight(block);
             int[] pos = HudLayout.pos(block.id, guiW, guiH, w, h);
             int x = pos[0], y = pos[1];
-            // 50% black backing box, then opaque white text.
-            graphics.fill(x, y, x + w, y + h, 0x80000000);
+            // Backing box + optional 1-px frame (theme; alpha-0 disables each).
+            if (hudTheme.hasFill()) {
+                graphics.fill(x, y, x + w, y + h, hudTheme.fill);
+            }
+            if (hudTheme.hasFrame()) {
+                graphics.fill(x, y, x + w, y + 1, hudTheme.frame);
+                graphics.fill(x, y + h - 1, x + w, y + h, hudTheme.frame);
+                graphics.fill(x, y, x + 1, y + h, hudTheme.frame);
+                graphics.fill(x + w - 1, y, x + w, y + h, hudTheme.frame);
+            }
             int rowTop = y + HudLayout.PAD;
             for (HudEngine.Row row : block.rows) {
                 int rowH = HudEditLogic.rowHeight(row);
@@ -75,7 +84,7 @@ public final class Compat {
                     iconW = iconSize + 3;
                 }
                 int textY = rowTop + (rowH - 9) / 2;
-                graphics.drawString(font, row.text, x + HudLayout.PAD + iconW, textY, 0xFFFFFFFF, true);
+                graphics.drawString(font, row.text, x + HudLayout.PAD + iconW, textY, hudTheme.text, hudTheme.shadow);
                 rowTop += rowH;
             }
         }

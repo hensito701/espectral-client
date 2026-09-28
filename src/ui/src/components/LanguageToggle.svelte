@@ -120,8 +120,8 @@
 
   .lang-toggle:hover {
     background: var(--surface-up, rgba(25, 32, 64, 0.55));
-    border-color: var(--hover-border, rgba(16, 185, 129, 0.4));
-    color: var(--accent, #10b981);
+    border-color: var(--hover-border, rgba(var(--accent-rgb), 0.4));
+    color: var(--accent);
     transform: translateY(-1px);
     box-shadow: var(--shadow-sm, 0 2px 10px rgba(0, 0, 0, 0.25));
   }
@@ -177,7 +177,7 @@
 
   .lang-seg__btn--active {
     background: var(--surface-up-solid, #161e36);
-    color: var(--accent, #10b981);
+    color: var(--accent);
     box-shadow: var(--shadow-sm);
   }
 

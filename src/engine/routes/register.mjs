@@ -2,7 +2,7 @@
  * Route registry — dynamically imports every route module so a module owned by
  * a slice that has not landed yet degrades to a warning instead of failing boot.
  */
-const ROUTES = ['misc', 'instances', 'servers', 'versions', 'mods', 'import', 'launch', 'mrpack', 'client', 'discord', 'skins'];
+const ROUTES = ['misc', 'instances', 'servers', 'versions', 'mods', 'import', 'launch', 'mrpack', 'client', 'discord', 'skins', 'identity', 'cosmetics', 'backgrounds'];
 
 export async function register(app) {
   for (const r of ROUTES) {

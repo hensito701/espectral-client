@@ -162,27 +162,27 @@
 
   /* Tone Variants */
   .progress--tone-accent .progress__fill {
-    background: linear-gradient(90deg, var(--accent-ink, #059669), var(--accent, #10b981));
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+    background: linear-gradient(90deg, var(--accent-ink), var(--accent));
+    box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.4);
   }
 
   .progress--tone-cyan .progress__fill {
-    background: linear-gradient(90deg, #0284c7, var(--accent-cyan, #06b6d4));
+    background: linear-gradient(90deg, #0284c7, var(--accent-cyan));
     box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
   }
 
   .progress--tone-gold .progress__fill {
-    background: linear-gradient(90deg, var(--accent-alt, #f59e0b), var(--accent-gold, #ffd700));
-    box-shadow: 0 0 10px rgba(255, 215, 0, 0.4);
+    background: linear-gradient(90deg, var(--accent-alt), var(--accent-gold));
+    box-shadow: 0 0 10px rgba(var(--accent-gold-rgb), 0.4);
   }
 
   .progress--tone-purple .progress__fill {
-    background: linear-gradient(90deg, #7e22ce, var(--accent-purple, #a855f7));
+    background: linear-gradient(90deg, #7e22ce, var(--accent-purple));
     box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
   }
 
   .progress--tone-danger .progress__fill {
-    background: linear-gradient(90deg, #b91c1c, var(--accent-red, #ef4444));
+    background: linear-gradient(90deg, #b91c1c, var(--accent-red));
     box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
   }
 

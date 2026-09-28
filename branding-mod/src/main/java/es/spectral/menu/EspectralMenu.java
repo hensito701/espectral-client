@@ -2,12 +2,12 @@ package es.spectral.menu;
 
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
+import es.spectral.menu.cosmetics.Cosmetics;
 import es.spectral.menu.ui.SuiteConfirmScreen;
 import es.spectral.menu.ui.SuiteScreen;
 import es.spectral.menu.ui.SuiteTheme;
@@ -30,11 +30,11 @@ public final class EspectralMenu {
         int y = SuiteTheme.ACTION_Y;
         List<Button> out = new ArrayList<>(2);
         out.add(Button.builder(
-                Component.translatable("espectral.title.client").withStyle(ChatFormatting.GOLD),
+                Cosmetics.suiteLabel("espectral.title.client"),
                 b -> Compat.open(minecraft, new SuiteScreen(screen)))
                 .bounds(rowX, y, SuiteTheme.ACTION_CLIENT_W, 20).build());
         out.add(Button.builder(
-                Component.translatable("espectral.title.support").withStyle(ChatFormatting.GOLD),
+                Component.translatable("espectral.title.support").withStyle(SuiteTheme.accentFormat()),
                 b -> Compat.open(minecraft, SuiteConfirmScreen.support(screen)))
                 .bounds(rowX + SuiteTheme.ACTION_CLIENT_W + SuiteTheme.GAP, y,
                         SuiteTheme.ACTION_SUPPORT_W, 20).build());

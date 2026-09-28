@@ -58,14 +58,21 @@ public final class Compat {
         if (font == null) return;
         int guiW = extractor.guiWidth();
         int guiH = extractor.guiHeight();
+        es.spectral.menu.HudTheme hudTheme = es.spectral.menu.HudTheme.current();
         for (HudEngine.Block block : HudEngine.getInstance().blocks(minecraft)) {
             int w = blockWidth(font, block);
             int h = blockHeight(block);
             int[] pos = HudLayout.pos(block.id, guiW, guiH, w, h);
             int x = pos[0], y = pos[1];
-            // 50% black backing box, then opaque white text (ARGB — the
-            // extractor drops alpha-0 colors, so 0xFFFFFF would be invisible).
-            extractor.fill(x, y, x + w, y + h, 0x80000000);
+            // Backing box + optional 1-px frame (theme; alpha-0 disables each
+            // — the extractor drops alpha-0 fills anyway).
+            extractor.fill(x, y, x + w, y + h, hudTheme.fill);
+            if (hudTheme.hasFrame()) {
+                extractor.fill(x, y, x + w, y + 1, hudTheme.frame);
+                extractor.fill(x, y + h - 1, x + w, y + h, hudTheme.frame);
+                extractor.fill(x, y, x + 1, y + h, hudTheme.frame);
+                extractor.fill(x + w - 1, y, x + w, y + h, hudTheme.frame);
+            }
             int rowTop = y + HudLayout.PAD;
             for (HudEngine.Row row : block.rows) {
                 int rowH = HudEditLogic.rowHeight(row);
@@ -78,7 +85,7 @@ public final class Compat {
                 }
                 extractor.text(font, row.text,
                         x + HudLayout.PAD + iconW, rowTop + (rowH - 9) / 2,
-                        0xFFFFFFFF, true);
+                        hudTheme.text, hudTheme.shadow);
                 rowTop += rowH;
             }
         }
