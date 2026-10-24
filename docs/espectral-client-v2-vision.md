@@ -410,6 +410,20 @@ Start with batched HTTPS polling. Do not add WebSockets, P2P, custom Minecraft p
 5. Peer-visible cloaks, wings, scarf and ears.
 6. Local-only emotes for MVP.
 
+### Playtest status (2026-10-25, owner, 1.3.15 on 26.2)
+
+| Item | Verdict |
+|---|---|
+| Élitros (Vidriera / Nebulosa / Ceniza) | ✅ approved |
+| Orejas Felinas | ✅ approved |
+| Manto Espectral | ❌ still doesn't fit right after two passes (torso collider, one-shoulder diagonal, knee-length hem, fold texture). Needs a rethink rather than another tweak; candidates: a rigid/semi-rigid upper drape bound to the body part with cloth only below the waist, or a fresh silhouette from a reference sketch. Verify visually before shipping again. |
+| Capucha Errante, Jirones de Ceniza, Alas de Eco, Bufanda Llama de Alma | ⚠️ not approved; same cloth stack as the mantle, so expect the same fit problems |
+| Orejas Vulpinas | ⚠️ rebuilt in 1.3.15, not re-approved |
+| Vendas Rúnicas | withdrawn 2026-10-25 |
+| Emotes (B) | ⚠️ reworked in 1.3.15 with pose-geometry tests; not yet re-playtested |
+
+All cosmetic geometry and textures are procedural and first-party: boxes/quads in `CosmeticModels`/`CosmeticGeo` and textures from `scripts/generate_cosmetic_textures.py`. No third-party assets.
+
 ### Acceptance gate
 
 - Role fixtures map every combination correctly: no role → ⚛ only; any donor role → `supporter`; MVP or MVP+ → `supporter` + `mvp`.
