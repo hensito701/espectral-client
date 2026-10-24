@@ -416,11 +416,19 @@ Start with batched HTTPS polling. Do not add WebSockets, P2P, custom Minecraft p
 |---|---|
 | Élitros (Vidriera / Nebulosa / Ceniza) | ✅ approved |
 | Orejas Felinas | ✅ approved |
-| Manto Espectral | ❌ still doesn't fit right after two passes (torso collider, one-shoulder diagonal, knee-length hem, fold texture). Needs a rethink rather than another tweak; candidates: a rigid/semi-rigid upper drape bound to the body part with cloth only below the waist, or a fresh silhouette from a reference sketch. Verify visually before shipping again. |
-| Capucha Errante, Jirones de Ceniza, Alas de Eco, Bufanda Llama de Alma | ⚠️ not approved; same cloth stack as the mantle, so expect the same fit problems |
+| Manto Espectral | ❌ rejected as designed: the smooth cloth-sim sheet reads as non-Minecraft, unlike the box-built ears. Redesign per the direction below. |
+| Bufanda Llama de Alma | ❌ same verdict; redesign per the direction below. |
+| Capucha Errante, Jirones de Ceniza, Alas de Eco | ⚠️ not approved; built on the same smooth cloth stack, so expect the same verdict |
 | Orejas Vulpinas | ⚠️ rebuilt in 1.3.15, not re-approved |
 | Vendas Rúnicas | withdrawn 2026-10-25 |
 | Emotes (B) | ⚠️ reworked in 1.3.15 with pose-geometry tests; not yet re-playtested |
+
+**Design direction (owner, 2026-10-25): cosmetics must look like Minecraft.** The approved items (elytra, cat ears) are built from boxes and pixel textures at the player model's 1 px scale; the smooth cloth sheet is not. Cloaks, scarves and other fabric items get redesigned the same way:
+
+- Geometry is cuboids on the 16 px-per-block grid, like vanilla's cape (one 10×16×1 panel) and the ears, with no smooth, subdivided cloth surfaces.
+- Textures are flat pixel art at model resolution (one texel per model pixel), with no painted gradients or fine shading.
+- Motion is rigid: whole panels or a short chain of 2–3 box segments hinged at their edges and swinging like the vanilla cape and elytra, never a deforming mesh. The cloth sim and its torso collider can retire with the smooth items.
+- A scarf is a box wrapped around the neck plus one or two hanging box-segment tails; a cloak is one or two panels hinged at the shoulders.
 
 All cosmetic geometry and textures are procedural and first-party: boxes/quads in `CosmeticModels`/`CosmeticGeo` and textures from `scripts/generate_cosmetic_textures.py`. No third-party assets.
 
