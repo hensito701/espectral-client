@@ -172,7 +172,7 @@ def test_presence_roundtrip_and_drop(client, monkeypatch):
     assert r.status_code == 200
     assert r.json()["loadout"] == {
         "espalda": None, "cuello": None, "cabeza": None,
-        "brazos": None, "elitros": None}
+        "elitros": None}
 
     # nothing in query since loadout empty? presence still published.
     q = client.post("/v1/presence/query", headers=hdr,

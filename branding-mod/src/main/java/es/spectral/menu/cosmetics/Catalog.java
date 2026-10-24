@@ -89,7 +89,6 @@ public final class Catalog {
                 keep("espalda", loadout.espalda(), flags),
                 keep("cuello", loadout.cuello(), flags),
                 keep("cabeza", loadout.cabeza(), flags),
-                keep("brazos", loadout.brazos(), flags),
                 keep("elitros", loadout.elitros(), flags));
         return applyExclusivity(kept);
     }
@@ -108,9 +107,8 @@ public final class Catalog {
         String espalda = inSlot("espalda", bySlot.get("espalda"));
         String cuello = inSlot("cuello", bySlot.get("cuello"));
         String cabeza = inSlot("cabeza", bySlot.get("cabeza"));
-        String brazos = inSlot("brazos", bySlot.get("brazos"));
         String elitros = inSlot("elitros", bySlot.get("elitros"));
-        return new Loadout(espalda, cuello, cabeza, brazos, elitros);
+        return new Loadout(espalda, cuello, cabeza, elitros);
     }
 
     /** Accepts only ids that are catalog items declared for {@code slot}. */
@@ -125,24 +123,16 @@ public final class Catalog {
             if (equipped == null) continue;
             Set<String> blocked = rule.getValue();
             if (blocked.contains(loadout.espalda())) {
-                loadout = new Loadout(null, loadout.cuello(), loadout.cabeza(),
-                        loadout.brazos(), loadout.elitros());
+                loadout = new Loadout(null, loadout.cuello(), loadout.cabeza(), loadout.elitros());
             }
             if (blocked.contains(loadout.cuello())) {
-                loadout = new Loadout(loadout.espalda(), null, loadout.cabeza(),
-                        loadout.brazos(), loadout.elitros());
+                loadout = new Loadout(loadout.espalda(), null, loadout.cabeza(), loadout.elitros());
             }
             if (blocked.contains(loadout.cabeza())) {
-                loadout = new Loadout(loadout.espalda(), loadout.cuello(), null,
-                        loadout.brazos(), loadout.elitros());
-            }
-            if (blocked.contains(loadout.brazos())) {
-                loadout = new Loadout(loadout.espalda(), loadout.cuello(), loadout.cabeza(),
-                        null, loadout.elitros());
+                loadout = new Loadout(loadout.espalda(), loadout.cuello(), null, loadout.elitros());
             }
             if (blocked.contains(loadout.elitros())) {
-                loadout = new Loadout(loadout.espalda(), loadout.cuello(), loadout.cabeza(),
-                        loadout.brazos(), null);
+                loadout = new Loadout(loadout.espalda(), loadout.cuello(), loadout.cabeza(), null);
             }
         }
         return loadout;

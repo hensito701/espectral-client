@@ -6,13 +6,14 @@
 # Prerequisites (one-time, no root needed):
 #   1. Rust via rustup:            sh rustup-init.sh -y --profile minimal
 #      (must be on PATH; Tauri v2 needs Rust >= 1.77.2)
-#   2. mingw-w64 (extracted debs in ~/mingw): gcc-mingw-w64-x86-64-posix,
-#      binutils-mingw-w64-x86-64, mingw-w64-x86-64-dev (+ deps).
+#   2. mingw-w64: gcc-mingw-w64-x86-64-posix, g++-mingw-w64-x86-64-posix,
+#      binutils-mingw-w64-x86-64. Either `sudo apt-get install` them (system
+#      paths) or extract the debs into ~/mingw (no root).
 #      Provides x86_64-w64-mingw32-gcc, windres, ar, dlltool.
-#   3. NSIS 3.x (extracted debs in ~/nsis): nsis, nsis-common.
-#      Provides makensis. This script expects ~/bin/makensis to be a wrapper
-#      that sets NSISDIR to the extracted tree (the tauri bundler resolves
-#      stubs via NSISDIR inherited from the child env).
+#   3. NSIS 3.x: `sudo apt-get install nsis`, or extract nsis + nsis-common into
+#      ~/nsis (no root; ~/bin/makensis must then be a wrapper that sets NSISDIR
+#      to the extracted tree — the tauri bundler resolves stubs via NSISDIR
+#      inherited from the child env).
 #   4. Rust windows target:        rustup target add x86_64-pc-windows-gnu
 #
 # Output:
@@ -31,7 +32,10 @@ cd "$(dirname "$0")/.."
 # runtime (24.16.0 stalls extract-zip at game-launch natives extraction).
 export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$HOME/.cargo/bin:$HOME/mingw/usr/bin:$HOME/bin:$HOME/nsis/usr/bin:$PATH"
 export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc-posix
-export NSISDIR="${NSISDIR:-$HOME/nsis/usr/share/nsis}"
+if [ -z "${NSISDIR:-}" ]; then
+  if [ -d "$HOME/nsis/usr/share/nsis" ]; then NSISDIR="$HOME/nsis/usr/share/nsis"; else NSISDIR=/usr/share/nsis; fi
+fi
+export NSISDIR
 export STAGE_NODE_PLATFORM=win32
 
 # The tauri bundler invokes makensis from PATH; NSISDIR must be inherited by

@@ -23,8 +23,12 @@ import com.google.gson.JsonParser;
  * <p>Token: {@code b64url(header) "." b64url(payload) "." b64url(sig)}, the
  * signature covering the ASCII of the first two parts (no padding).
  * Header {@code {"alg":"EdDSA","kid":"eid1","typ":"ESG"}}; payload
- * {@code {"v":1,"iss":"https://id.espectral.es","aud":"espectral-client",
+ * {@code {"v":1,"iss":"https://id.uhce.top","aud":"espectral-client",
  * "sub":"<uuid32 lowercase hex>","flags":[...],"iat":s,"exp":s}}.
+ *
+ * <p>Two issuers are accepted: the canonical {@code https://id.uhce.top} and
+ * the legacy {@code https://id.espectral.es} still minted by the service until
+ * the ops {@code GRANT_ISS} flip. Nothing else is.
  *
  * <p>Rejects (returns {@code null}) on: malformed envelope, {@code alg} != EdDSA,
  * unknown {@code kid}, {@code typ} != ESG, bad signature, {@code aud} mismatch,
@@ -50,7 +54,10 @@ public final class GrantVerifier {
 
     private static final String REQUIRED_ALG = "EdDSA";
     private static final String REQUIRED_TYP = "ESG";
-    private static final String REQUIRED_ISS = "https://id.espectral.es";
+    /** Canonical issuer; the service flips GRANT_ISS to this after the client ships. */
+    private static final String REQUIRED_ISS = "https://id.uhce.top";
+    /** Issuer minted until that flip — accepted for backward compatibility. */
+    private static final String LEGACY_ISS = "https://id.espectral.es";
     private static final String REQUIRED_AUD = "espectral-client";
 
     private static volatile PublicKey pinnedKey;
@@ -112,7 +119,8 @@ public final class GrantVerifier {
             JsonObject payload = parseJson(Base64.getUrlDecoder().decode(parts[1]));
             if (payload == null) return null;
             if (num(payload, "v", -1) != 1) return null;
-            if (!REQUIRED_ISS.equals(str(payload, "iss"))) return null;
+            String iss = str(payload, "iss");
+            if (!REQUIRED_ISS.equals(iss) && !LEGACY_ISS.equals(iss)) return null;
             if (!REQUIRED_AUD.equals(str(payload, "aud"))) return null;
             if (num(payload, "exp", Long.MIN_VALUE) < nowSeconds) return null;
             if (num(payload, "iat", Long.MAX_VALUE) > nowSeconds + MAX_IAT_SKEW_S) return null;

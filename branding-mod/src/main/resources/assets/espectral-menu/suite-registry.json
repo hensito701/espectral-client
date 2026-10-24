@@ -134,6 +134,17 @@
       "description_es": "Cabezas de jugador junto a los mensajes del chat."
     },
     {
+      "id": "tabheads",
+      "category": "hud",
+      "kind": "owned",
+      "default_enabled": true,
+      "state": {},
+      "name_en": "Tab List Heads",
+      "name_es": "Cabezas en el tabulador",
+      "description_en": "Shows each player's head in the tab list, even on offline-mode servers.",
+      "description_es": "Muestra la cabeza de cada jugador en el tabulador, incluso en servidores sin modo online."
+    },
+    {
       "id": "zoom",
       "category": "controls",
       "kind": "owned",
@@ -161,7 +172,16 @@
       "category": "cosmetics",
       "kind": "owned",
       "default_enabled": true,
-      "state": {},
+      "state": {
+        "own": true,
+        "others": true,
+        "slot_espalda": true,
+        "slot_cuello": true,
+        "slot_cabeza": true,
+        "slot_elitros": true,
+        "emotes": true,
+        "physics": true
+      },
       "name_en": "Cosmetics",
       "name_es": "Cosméticos",
       "description_en": "Renders equipped supporter cosmetics on Espectral players you can see.",

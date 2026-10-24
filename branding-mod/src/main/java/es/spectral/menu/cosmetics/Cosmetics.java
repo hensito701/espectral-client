@@ -28,7 +28,7 @@ import es.spectral.menu.ClientConfig;
  *
  * <p>Badge glyphs: {@code ⚛} renders through the mod's bitmap font
  * {@code espectral-menu:badge} (vanilla would fall back to 16 px Unifont);
- * {@code ★} uses the default font. U+FE0E is never emitted.
+ * and so does {@code ★} (vanilla's default font has no ★ either). U+FE0E is never emitted.
  */
 public final class Cosmetics {
 
@@ -56,20 +56,57 @@ public final class Cosmetics {
      */
     public static Loadout loadoutFor(UUID uuid) {
         if (uuid == null || !feature(FEATURE_COSMETICS)) return null;
+        ClientConfig.CosmeticsState state = ClientConfig.getInstance().cosmeticsState();
         if (isSelf(uuid)) {
+            if (!state.own) return null;
             // Self paths only apply when espectral-cosmetics.json's uuid is
             // this local player — a stale/mismatched file must not render
             // someone else's grant/loadout on us.
             CosmeticsService.Own own = CosmeticsService.own();
             if (!ownMatches(uuid, own)) return null;
-            return own.grant() != null ? own.loadout() : null;
+            return own.grant() != null ? ownSlots(own.loadout(), state) : null;
         }
-        if (hidden(uuid)) return null;
+        if (!state.others || hidden(uuid)) return null;
         GrantVerifier.Grant grant = CosmeticsService.peerGrant(uuid);
         if (grant == null) return null;
         Loadout loadout = CosmeticsService.peerLoadout(uuid);
         return loadout != null && !loadout.isEmpty() ? loadout : null;
     }
+
+    /**
+     * Own loadout with the per-slot viewer toggles applied. Slot visibility is
+     * a viewer preference for the local player only, so peers always render
+     * their full (verified) loadout. Returns {@code null} when nothing is left
+     * to draw.
+     *
+     * <p>Allocation-free in steady state: the filtered record is memoised
+     * against the immutable {@link Loadout} instance and the slot mask, both of
+     * which only change when the launcher rewrites its file or the viewer flips
+     * a switch. With every slot visible the input record is returned as-is.
+     */
+    private static Loadout ownSlots(Loadout loadout, ClientConfig.CosmeticsState state) {
+        if (loadout == null) return null;
+        if (state.slotMask == ClientConfig.CosmeticsState.ALL_SLOTS) return loadout;
+        if (loadout == lastOwnSource && state.slotMask == lastOwnMask) {
+            return lastOwnFiltered;
+        }
+        Loadout filtered = new Loadout(
+                state.slotVisible("espalda") ? loadout.espalda() : null,
+                state.slotVisible("cuello") ? loadout.cuello() : null,
+                state.slotVisible("cabeza") ? loadout.cabeza() : null,
+                state.slotVisible("elitros") ? loadout.elitros() : null);
+        Loadout result = filtered.isEmpty() ? null : filtered;
+        lastOwnSource = loadout;
+        lastOwnMask = state.slotMask;
+        lastOwnFiltered = result;
+        return result;
+    }
+
+    // Memo for ownSlots(); written only from render/tick threads with values
+    // derived from immutable inputs, so a torn read just recomputes.
+    private static volatile Loadout lastOwnSource;
+    private static volatile int lastOwnMask = -1;
+    private static volatile Loadout lastOwnFiltered;
 
     /**
      * ⚛ presence: the uuid is backed by live Espectral presence. Own player
@@ -107,17 +144,29 @@ public final class Cosmetics {
     }
 
     /**
-     * The {@code emotes} flag from {@code espectral-cosmetics.json} (absent
-     * defaults to on), ANDed with the cosmetics feature so the Suite master
-     * and per-feature toggle still suppress it.
+     * Emotes kill switch: the cosmetics feature (Suite master AND per-feature
+     * flag), the {@code emotes} flag of {@code espectral-cosmetics.json} and
+     * the local viewer switch stored under {@code features.cosmetics.emotes}.
+     * The mod never writes that JSON — the local switch is its own key.
      */
     public static boolean emotesEnabled() {
-        return feature(FEATURE_COSMETICS) && CosmeticsService.own().emotes();
+        return feature(FEATURE_COSMETICS)
+                && ClientConfig.getInstance().cosmeticsState().emotes
+                && CosmeticsService.own().emotes();
     }
 
     /** Player-chosen reduced-motion toggle (personalization, free feature). */
     public static boolean reducedMotion() {
         return ClientConfig.getInstance().reducedMotion();
+    }
+
+    /**
+     * True when cloth/pose simulation may run: physics enabled in the Suite
+     * and reduced motion off. Off pins cloth to the same static rest pose the
+     * reduced-motion path already uses.
+     */
+    public static boolean physicsEnabled() {
+        return ClientConfig.getInstance().cosmeticsState().physics && !reducedMotion();
     }
 
     // ---------------------------------------------------------------
@@ -160,7 +209,11 @@ public final class Cosmetics {
                 .append(Component.translatable(translationKey));
     }
 
-    /** Gold ⚛ (badge font) + ★ (default font) glyph run for a badged uuid. */
+    /**
+     * Gold ⚛ + ★ glyph run for a badged uuid. Both glyphs live in the badge
+     * bitmap font: the ★ child inherits the parent's font, and vanilla's
+     * default font has no ★ (it drew a missing-glyph box).
+     */
     private static MutableComponent badgeGlyphs(UUID uuid) {
         MutableComponent out = Component.literal("⚛")
                 .setStyle(Style.EMPTY.withFont(BADGE_FONT).withColor(ChatFormatting.GOLD));

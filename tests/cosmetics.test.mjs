@@ -54,8 +54,9 @@ test('validateLoadout: a legal loadout round-trips with all slots present', () =
   assert.equal(out.espalda, 'alas_eco');
   assert.equal(out.cuello, 'bufanda_llama_alma');
   assert.equal(out.cabeza, 'orejas_vulpinas');
-  assert.equal(out.brazos, null);
   assert.equal(out.elitros, null);
+  // The withdrawn `brazos` slot is gone from the catalog entirely.
+  assert.equal('brazos' in out, false);
 });
 
 test('validateLoadout: unknown slot/item/wrong slot are rejected', () => {
@@ -92,17 +93,43 @@ test('validateLoadout: scarf + cloak exclusivity is enforced, wings are fine', (
 });
 
 test('sanitizeLoadout drops disallowed items and resolves exclusivity quietly', () => {
-  const state = { espalda: 'manto_espectral', cuello: 'bufanda_llama_alma', cabeza: 'nope', brazos: 'vendas_runicas' };
+  const state = { espalda: 'manto_espectral', cuello: 'bufanda_llama_alma', cabeza: 'nope' };
   const clean = cosmetics.sanitizeLoadout(state, MVP);
   // Exclusivity: an equipped cuello (scarf) forbids the listed cloaks — the
   // cloak drops, the scarf survives.
   assert.equal(clean.espalda, null);
   assert.equal(clean.cuello, 'bufanda_llama_alma');
   assert.equal(clean.cabeza, null); // unknown id
-  assert.equal(clean.brazos, 'vendas_runicas');
+  assert.equal('brazos' in clean, false); // slot withdrawn 2026-10-25
   // No flags at all -> everything gated drops.
   const empty = cosmetics.sanitizeLoadout(state, []);
   assert.ok(Object.values(empty).every((v) => v === null));
+});
+
+test('sanitizeLoadout tolerates a stored loadout that still names the withdrawn brazos slot', () => {
+  // Installs that equipped Vendas Rúnicas before 2026-10-25 keep the id in
+  // their persisted loadout. The slot no longer exists, so sanitizing drops it
+  // instead of throwing, and the surviving slots are untouched.
+  const stored = {
+    espalda: 'alas_eco',
+    cuello: null,
+    cabeza: 'orejas_felinas',
+    brazos: 'vendas_runicas',
+    elitros: null,
+  };
+  const clean = cosmetics.sanitizeLoadout(stored, MVP);
+  assert.deepEqual(clean, {
+    espalda: 'alas_eco',
+    cuello: null,
+    cabeza: 'orejas_felinas',
+    elitros: null,
+  });
+  // validateLoadout, by contrast, rejects it: a client sending the slot today
+  // is out of date, and the engine says so explicitly.
+  assert.throws(
+    () => cosmetics.validateLoadout(stored, MVP),
+    (e) => e.code === 'BAD_LOADOUT' && /brazos/.test(e.message),
+  );
 });
 
 // --- cosmetics file ---------------------------------------------------------
@@ -128,7 +155,6 @@ test('writeCosmeticsFile writes the contract document (grant carried, loadout sa
     espalda: 'alas_eco',
     cuello: 'bufanda_llama_alma',
     cabeza: null,
-    brazos: null,
     elitros: null,
   });
   assert.deepEqual(doc.hidden_players, ['Griefer_1']);

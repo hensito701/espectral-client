@@ -141,37 +141,6 @@ def vertical_bands(img, x0, x1, rgba, spacing, thick=1, k=0.5):
         x += spacing
 
 
-def runes(img, x0, y0, x1, y1, rgba, seed=7, k=0.9):
-    """Small geometric glyph strokes (runic wraps)."""
-    rnd = seed
-    y = y0
-    while y < y1:
-        x = x0
-        while x < x1:
-            rnd = (rnd * 1103515245 + 12345) & 0x7FFFFFFF
-            kind = (rnd >> 7) % 4
-            if kind == 0:
-                for i in range(4):
-                    img.blend(x + i, y, rgba, k)
-                    img.blend(x + i, y + 3, rgba, k * 0.8)
-            elif kind == 1:
-                for i in range(4):
-                    img.blend(x, y + i, rgba, k)
-                img.blend(x + 2, y + 1, rgba, k)
-                img.blend(x + 3, y + 2, rgba, k)
-            elif kind == 2:
-                for i in range(3):
-                    img.blend(x + i, y + i, rgba, k)
-                    img.blend(x + i, y + 3 - i, rgba, k * 0.8)
-            else:
-                img.blend(x, y, rgba, k)
-                img.blend(x + 1, y, rgba, k)
-                img.blend(x + 1, y + 1, rgba, k)
-                img.blend(x + 2, y + 2, rgba, k * 0.8)
-            x += 7
-        y += 9
-
-
 # ----------------------------------------------------------------------------
 # Palette
 # ----------------------------------------------------------------------------
@@ -192,28 +161,79 @@ EMBER = (214, 120, 52, 255)
 
 
 def mantle(out):
+    """One-shoulder mantle, 64x64 (u across the back, v from shoulder to hem).
+
+    Reads as fabric rather than a slab because of three shading layers: broad
+    vertical folds (a wavy displacement, so no fold is ruler-straight) with a
+    real dark-to-light range, a cross-body light falloff from the clasp
+    shoulder, and a woven twill grain. The hem is a gold-mist fade whose alpha
+    never drops below the cosmetic minimum, so the cloth dissolves into light
+    instead of ending on a hard line.
+    """
     img = Img(64, 64)
     img.vgrad(DARK2, DARK)
-    # Diagonal gold sash across the sheet (the one-shoulder drape).
+    FOLD_HI = (58, 60, 80, 255)
+    FOLD_LO = (8, 9, 14, 255)
     for y in range(img.h):
         for x in range(img.w):
-            band = abs((x - y * 0.55) - 26)
-            if band < 7:
-                img.blend(x, y, GOLD_DIM, (7 - band) / 7 * 0.85)
-            if band < 2.2:
-                img.blend(x, y, GOLD, 0.9)
-    grain(img, seed=3, strength=12)
-    # Gold clasp motif near the top-right (collarbone).
-    img.glow(52, 10, 7, GOLD_HI, 0.8)
-    img.rect(49, 7, 55, 13, GOLD, 0.85)
-    img.rect(50, 8, 54, 12, GOLD_HI, 0.9)
-    # Hem band with gold mist.
-    img.rect(0, 54, 64, 58, GOLD_DIM, 0.55)
-    img.rect(0, 58, 64, 64, GOLD, 0.35)
-    for x in range(64):
-        for y in range(54, 64):
-            img.blend(x, y, GOLD_HI, (y - 54) / 10 * 0.25)
-    edge_trim(img, GOLD_DIM, thick=2)
+            # Three fold systems: one slow, one medium, one tight.
+            primary = math.sin(x * 0.42 + y * 0.05 + 0.6)
+            secondary = math.sin(x * 0.95 - y * 0.09 + 2.1) * 0.7
+            tight = math.sin(x * 1.9 + y * 0.15) * 0.35
+            fold = primary + secondary + tight
+            # Soft-clip so the crests stay rounded cloth, not posterised bands.
+            if fold > 0:
+                img.blend(x, y, FOLD_HI, min(1.0, fold * 0.42))
+            else:
+                img.blend(x, y, FOLD_LO, min(1.0, -fold * 0.46))
+            # Cross-body light: brightest at the clasp shoulder (top-left).
+            light = 1.0 - 0.6 * math.hypot((x - 4) / img.w, (y - 2) / img.h)
+            img.blend(x, y, (52, 54, 72, 255), max(0.0, light) * 0.30)
+    grain(img, seed=3, strength=10, scale=0.75)
+    # Woven twill: one-pixel diagonal ribs, weak enough to read as texture.
+    for y in range(img.h):
+        for x in range(img.w):
+            if (x + y) % 4 == 0:
+                img.blend(x, y, SHADE, 0.20)
+            elif (x - y) % 6 == 0:
+                img.blend(x, y, (10, 11, 16, 255), 0.14)
+    # Gold piping down both selvedges only (u = 0 / u = 1 are the sheet's sides).
+    for y in range(48):
+        for x in range(img.w):
+            d = min(x, img.w - 1 - x)
+            if d < 2:
+                img.blend(x, y, GOLD, (2 - d) / 2 * 0.75)
+    # The clasp: a small round gold boss on the clasp shoulder, top-left.
+    img.glow(6, 8, 7, GOLD_HI, 0.42)
+    for y in range(5, 12):
+        for x in range(3, 10):
+            d = math.hypot((x - 6.5) / 3.4, (y - 8.5) / 3.4)
+            if d <= 1.0:
+                k = 1.0 - d * 0.75
+                img.blend(x, y, GOLD, 0.55 + k * 0.4)
+                if d < 0.55:
+                    img.blend(x, y, (255, 246, 222, 255), 0.75)
+    # Short strap running back over the shoulder from the boss.
+    for i in range(9):
+        img.blend(9 + i, 7 + i // 3, GOLD_DIM, 0.45 - i * 0.035)
+    # Hem: gold mist rising through the last fifth of the sheet.
+    hem_from = 50
+    for x in range(img.w):
+        wob = 1.8 * math.sin(x * 0.42) + 1.3 * math.sin(x * 0.17 + 1.3)
+        for y in range(hem_from, img.h):
+            t = (y - hem_from) / (img.h - 1 - hem_from)
+            edge = max(0.0, 1.0 - (y - hem_from - 2 - wob) / 3.0)
+            k = min(1.0, t * 0.9 + edge * 0.55)
+            img.blend(x, y, GOLD, 0.12 + k * 0.5)
+            if t > 0.55:
+                img.blend(x, y, GOLD_HI, (t - 0.55) * 1.4)
+    # Let the very hem dissolve: alpha ramps down but never below the minimum
+    # cosmetic opacity (the renderer clamps too; this keeps the art honest).
+    for x in range(img.w):
+        for y in range(img.h - 9, img.h):
+            r, g, b, a = img.get(x, y)
+            fade = (y - (img.h - 10)) / 9.0
+            img.set(x, y, (r, g, b, max(200, int(a - fade * 55))))
     write_png(os.path.join(out, "manto_espectral.png"), img.w, img.h, img.px)
 
 
@@ -325,34 +345,82 @@ def scarf_tail(out):
     write_png(os.path.join(out, "bufanda_llama_alma_tail.png"), img.w, img.h, img.px)
 
 
+# Ear atlas layout (must match CosmeticModels UV_* constants). Vanilla unwraps
+# a box as `2*(d+w)` wide by `d+h` tall, so each island is painted implicitly:
+#   seg0 (3w x 2h x 3d) -> 12 x 5 at (0, 0)
+#   seg1 (2w x 2h x 2d) ->  8 x 4 at (16, 0)
+#   tip  (1w x 1.4h x 1d) -> 4 x 2.4 at (28, 0)
+#   inner panel          -> 4 x 2 at (36, 0) and (36, 4)
+#   tuft cuff (feline)   -> 13 x 3.5 at (48, 0)
+EAR_MAIN = (0, 0, 32, 8)      # seg0 + seg1 outer fur
+EAR_TIP = (28, 0, 32, 4)      # dark tip cap
+EAR_INNER = (36, 0, 42, 8)    # inner-ear panel
+EAR_TUFT = (48, 0, 62, 4)     # base cuff
+
+
+def ear_sheet(out, name, outer_top, outer_bottom, tip, inner, seed, streaks):
+    """Paints one ear atlas: a shaded fur body, a dark tip, a bright inner ear
+    and a fur cuff. Both ear items share the layout, only the palette differs."""
+    img = Img(64, 32)
+    # Fur body: vertical gradient (light at the base, dark toward the tip) plus
+    # grain so it does not read as flat plastic.
+    x0, y0, x1, y1 = EAR_MAIN
+    for y in range(y0, y1):
+        t = y / max(1, y1 - 1)
+        col = tuple(int(outer_top[i] * (1 - t) + outer_bottom[i] * t) for i in range(4))
+        for x in range(x0, x1):
+            img.set(x, y, col)
+    grain(img, seed=seed, strength=12, scale=0.9)
+    # Fur streaks running base -> tip.
+    for i in range(streaks):
+        sx = (i * 7 + 1) % (x1 - x0)
+        for y in range(y0, y1):
+            img.blend(x0 + (sx + y // 3) % (x1 - x0), y, outer_top, 0.16)
+    # Tip: near black, slightly cooler toward the very point.
+    tx0, ty0, tx1, ty1 = EAR_TIP
+    for y in range(ty0, ty1):
+        t = (y - ty0) / max(1, ty1 - ty0 - 1)
+        col = tuple(int(tip[i] * (1 - t * 0.35)) for i in range(4))
+        for x in range(tx0, tx1):
+            img.set(x, y, col)
+    # Inner ear: bright fur/skin with a soft centre glow and a darker rim, so
+    # it reads as a hollow even at 4 px wide.
+    ix0, iy0, ix1, iy1 = EAR_INNER
+    for y in range(iy0, iy1):
+        for x in range(ix0, ix1):
+            img.set(x, y, inner)
+    img.glow(ix0 + (ix1 - ix0) / 2 - 0.5, iy0 + 2, 3.0, (255, 255, 255, 255), 0.25)
+    edge_trim_rect(img, (ix0, iy0, ix1, iy1), (0, 0, 0, 255), 0.45)
+    # Tuft cuff shares the outer fur so it blends into the ear base.
+    gx0, gy0, gx1, gy1 = EAR_TUFT
+    for y in range(gy0, gy1):
+        for x in range(gx0, gx1):
+            img.set(x, y, outer_bottom)
+    for y in range(gy0, gy1):
+        for x in range(gx0, gx1):
+            img.blend(x, y, outer_top, 0.12 if (x + y) % 3 else 0.3)
+    write_png(os.path.join(out, name), img.w, img.h, img.px)
+
+
+def edge_trim_rect(img, rect, rgba, k):
+    x0, y0, x1, y1 = rect
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            if x in (x0, x1 - 1) or y in (y0, y1 - 1):
+                img.blend(x, y, rgba, k)
+
+
 def ears(out):
-    img = Img(64, 32)
-    img.vgrad((44, 36, 32, 255), (28, 24, 26, 255))
-    grain(img, seed=37, strength=14, scale=0.9)
-    # Fur streaks.
-    for i in range(14):
-        x = (i * 17) % 64
-        for y in range(img.h):
-            img.blend((x + int(y * 0.35)) % 64, y, GOLD_DIM, 0.12)
-    # Gold inner-ear glow.
-    img.glow(16, 12, 9, GOLD, 0.55)
-    img.glow(48, 12, 9, GOLD, 0.55)
-    edge_trim(img, GOLD_DIM, thick=1)
-    write_png(os.path.join(out, "orejas_vulpinas.png"), img.w, img.h, img.px)
-
-
-def wraps(out):
-    img = Img(64, 32)
-    img.vgrad((38, 34, 30, 255), (24, 22, 24, 255))
-    grain(img, seed=41, strength=12)
-    # Cloth wrap ridges.
-    for y in range(img.h):
-        for x in range(img.w):
-            if ((x + y * 2) % 9) < 2:
-                img.blend(x, y, GOLD_DIM, 0.22)
-    runes(img, 4, 4, 60, 28, GOLD_HI, seed=5, k=0.85)
-    edge_trim(img, GOLD_DIM, thick=1)
-    write_png(os.path.join(out, "vendas_runicas.png"), img.w, img.h, img.px)
+    """Vulpine: orange-red fur, cream inner fur, dark tips."""
+    ear_sheet(out, "orejas_vulpinas.png",
+              (214, 118, 58, 255), (150, 66, 34, 255),
+              (30, 22, 22, 255), (246, 232, 208, 255),
+              seed=37, streaks=9)
+    """Feline: dark charcoal fur, pink inner ear, near-black tips."""
+    ear_sheet(out, "orejas_felinas.png",
+              (74, 72, 84, 255), (34, 32, 42, 255),
+              (18, 16, 22, 255), (226, 146, 158, 255),
+              seed=53, streaks=7)
 
 
 def stained_glass(out, name, seed, palette, animated_frames=1):
@@ -401,7 +469,6 @@ def main():
     scarf(out)
     scarf_tail(out)
     ears(out)
-    wraps(out)
     stained_glass(out, "elitros_vidriera", 101,
                   [(38, 30, 22, 255), (120, 84, 40, 255), (198, 152, 66, 255), (255, 214, 130, 255)])
     stained_glass(out, "elitros_nebulosa", 211,

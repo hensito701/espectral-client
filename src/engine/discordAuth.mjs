@@ -22,6 +22,17 @@ import * as identity from './identity.mjs';
 import { httpError } from './error.mjs';
 
 export const REDIRECT_URI = 'http://127.0.0.1:4199/api/discord/callback';
+
+/**
+ * Public Discord application id of the Espectral identity app
+ * (https://discord.com/developers/applications). The secret stays server-side
+ * on espectral-id, which exchanges the code, so this id MUST match the one the
+ * service is configured with — `/v1/discord/link` and `/v1/discord/identify`
+ * exchange the code against that application. A config/env override still wins
+ * (self-hosted / staging apps).
+ */
+export const DEFAULT_DISCORD_CLIENT_ID = '1454618588659843072';
+
 const STATE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -57,6 +68,10 @@ function sweepExpiredStates() {
  * Read the Discord OAuth client id from config or environment overrides.
  * The client secret is intentionally absent — the code exchange lives on
  * espectral-id; the launcher only knows the public app id.
+ *
+ * Precedence: config.json → env → DEFAULT_DISCORD_CLIENT_ID. The default is
+ * the production Espectral app, so a stock install links Discord with no
+ * setup; self-hosted/staging apps override it.
  */
 export function getDiscordCredentials() {
   const cfg = loadConfig();
@@ -66,7 +81,7 @@ export function getDiscordCredentials() {
     cfg.discord_client_id ||
     process.env.DISCORD_CLIENT_ID ||
     process.env.ESPECTRAL_DISCORD_CLIENT_ID ||
-    null;
+    DEFAULT_DISCORD_CLIENT_ID;
   return { clientId };
 }
 
@@ -76,27 +91,23 @@ export function getDiscordCredentials() {
  * callback then binds Discord to that uuid via the service instead of
  * creating a plain launcher session.
  * Returns { url, state }.
+ *
+ * Mock mode (ESPECTRAL_DISCORD_MOCK) short-circuits to the local callback with
+ * a synthetic code — deterministic and browser-free for tests/dev.
  */
 export function getAuthStartUrl({ linkUuid = null } = {}) {
   sweepExpiredStates();
-  const { clientId } = getDiscordCredentials();
-
   const state = crypto.randomBytes(16).toString('hex');
 
-  if (!clientId) {
-    if (isMockMode()) {
-      states.set(state, { createdAt: Date.now(), linkUuid: linkUuid ?? null });
-      return {
-        url: `http://127.0.0.1:4199/api/discord/callback?code=mock_code&state=${state}`,
-        state,
-      };
-    }
-    throw httpError(
-      400,
-      'DISCORD_NOT_CONFIGURED',
-      'Discord client id is not configured in config.json (discord.client_id)',
-    );
+  if (isMockMode()) {
+    states.set(state, { createdAt: Date.now(), linkUuid: linkUuid ?? null });
+    return {
+      url: `http://127.0.0.1:4199/api/discord/callback?code=mock_code&state=${state}`,
+      state,
+    };
   }
+
+  const { clientId } = getDiscordCredentials();
 
   // Register the state only on the success path — a failed start must not
   // leave a dangling claimable entry behind.
@@ -193,7 +204,10 @@ export async function handleCallback(query = {}) {
   const linkUuid = stateEntry?.linkUuid ? identity.normalizeUuid(stateEntry.linkUuid) : null;
   let user;
   try {
-    if (isMock && (String(code).startsWith('mock_') || !getDiscordCredentials().clientId)) {
+    // Mock mode only short-circuits the synthetic code minted by
+    // getAuthStartUrl — a real code still goes to the service even under
+    // ESPECTRAL_DISCORD_MOCK, so dev mock mode can be toggled per flow.
+    if (isMock && String(code).startsWith('mock_')) {
       user = { ...MOCK_USER };
       if (linkUuid) {
         identity.updateEntry(linkUuid, { discord: user });

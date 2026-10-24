@@ -150,7 +150,10 @@
   ];
 
   const PAYPAL_URL = 'https://paypal.me/uhcespectral';
-  const TEBEX_URL = 'https://espectral.es/donaciones';
+  const TEBEX_URL = 'https://espectral.uhce.top/donaciones';
+  // Shown under the store title — derived so the label can never drift from
+  // the link it copies/opens.
+  const TEBEX_LABEL = TEBEX_URL.replace(/^https?:\/\//, '');
   const DISCORD_URL = 'https://discord.gg/espectral';
 
   let selectedCategory = $state<RankCategory>('all');
@@ -316,7 +319,7 @@
             </div>
             <div>
               <h3 class="channel-card__title">{t('pav.tebexTitle')}</h3>
-              <span class="channel-card__url">espectral.es/donaciones</span>
+              <span class="channel-card__url">{TEBEX_LABEL}</span>
             </div>
           </div>
           <Badge variant="neutral" size="sm">{t('pav.tebexBadge')}</Badge>

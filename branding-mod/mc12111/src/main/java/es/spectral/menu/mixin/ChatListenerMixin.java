@@ -19,8 +19,14 @@ import es.spectral.menu.ClientConfig;
 
 /**
  * 1.21.11: captures the signature -&gt; sender link for every signed player
- * message. Unsigned messages carry a null signature and are skipped (known
- * limitation: those lines get no head). Never nickname-matches.
+ * message. This is the preferred, exact sender path; the intake never
+ * nickname-matches.
+ *
+ * <p>Unsigned messages carry a null signature and are skipped here. If such a
+ * line still reaches the chat display, {@code ChatComponentMixin} falls back
+ * to {@link ChatHeads#senderForText}, which only accepts an exact name from
+ * the current tab list inside the line's sender prefix — the shape chat
+ * plugins produce when they broadcast player chat as a system message.
  */
 @Mixin(ChatListener.class)
 public abstract class ChatListenerMixin {

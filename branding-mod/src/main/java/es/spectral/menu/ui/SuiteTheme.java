@@ -121,6 +121,8 @@ public final class SuiteTheme {
     public static final int CAT_H = 14;
     public static final int ROW_H = 22;
     public static final int TOGGLE_W = 86;
+    /** Width of the per-row "⚙" settings button (Macros, Cosméticos). */
+    public static final int CONFIG_W = 20;
     public static final int MASTER_W = 118;
     public static final int FOOTER_H = 20;
     public static final int PAGER_H = 20;

@@ -40,7 +40,7 @@ public class SuiteScreen extends Screen {
     /** QA hook: {@code -Despectral.suite.search=<text>} prefills search. */
     public static final String QA_SEARCH_PROPERTY = "espectral.suite.search";
     /** Canonical support URL, quoted without parameters. */
-    public static final String SUPPORT_URL = "https://espectral.es/donaciones";
+    public static final String SUPPORT_URL = "https://espectral.uhce.top/donaciones";
 
     private static final Logger LOGGER = LoggerFactory.getLogger("espectral-menu");
     private static final String CATEGORY_ALL = "all";
@@ -59,6 +59,7 @@ public class SuiteScreen extends Screen {
     private Button masterChip;
     private final List<StringWidget> rowLabels = new ArrayList<>();
     private final List<Button> rowToggles = new ArrayList<>();
+    private final List<Button> rowConfigs = new ArrayList<>();
     private final List<Button> categoryButtons = new ArrayList<>();
     private final List<String> categoryButtonIds = new ArrayList<>();
     private StringWidget emptyLabel;
@@ -93,6 +94,7 @@ public class SuiteScreen extends Screen {
         this.clearWidgets();
         this.rowLabels.clear();
         this.rowToggles.clear();
+        this.rowConfigs.clear();
         this.categoryButtons.clear();
         this.categoryButtonIds.clear();
         this.slotFeatures.clear();
@@ -157,7 +159,8 @@ public class SuiteScreen extends Screen {
         // the last feature row whatever the filter state becomes after init.
         int rowsBottom = footerY - SuiteTheme.GAP - SuiteTheme.PAGER_H - 2;
         this.pageSize = Math.max(1, (rowsBottom - rowsTop) / SuiteTheme.ROW_H);
-        int labelW = innerW - SuiteTheme.TOGGLE_W - SuiteTheme.GAP;
+        int labelW = innerW - SuiteTheme.TOGGLE_W - SuiteTheme.CONFIG_W
+                - 2 * SuiteTheme.GAP;
         for (int i = 0; i < this.pageSize; i++) {
             final int slot = i;
             int rowY = rowsTop + i * SuiteTheme.ROW_H;
@@ -165,6 +168,13 @@ public class SuiteScreen extends Screen {
                     Component.empty(), this.font);
             this.rowLabels.add(label);
             this.addRenderableWidget(label);
+            Button gear = Button.builder(Component.literal("\u2699"), b -> this.openConfig(slot))
+                    .bounds(innerX + innerW - SuiteTheme.TOGGLE_W - SuiteTheme.CONFIG_W
+                            - SuiteTheme.GAP, rowY, SuiteTheme.CONFIG_W, SuiteTheme.FOOTER_H)
+                    .tooltip(Tooltip.create(Component.translatable("espectral.suite.config")))
+                    .build();
+            this.rowConfigs.add(gear);
+            this.addRenderableWidget(gear);
             Button toggle = Button.builder(Component.translatable("espectral.suite.state.off"), b -> {
                 if (slot < this.slotFeatures.size()) {
                     FeatureRegistry.Feature feature = this.slotFeatures.get(slot);
@@ -280,6 +290,7 @@ public class SuiteScreen extends Screen {
         for (int i = 0; i < this.pageSize; i++) {
             StringWidget label = this.rowLabels.get(i);
             Button toggle = this.rowToggles.get(i);
+            Button gear = this.rowConfigs.get(i);
             if (i < this.slotFeatures.size()) {
                 FeatureRegistry.Feature feature = this.slotFeatures.get(i);
                 boolean on = config.isFeatureEnabledRaw(feature.id());
@@ -290,9 +301,13 @@ public class SuiteScreen extends Screen {
                 toggle.setTooltip(Tooltip.create(Component.translatable(
                         FeatureRegistry.descriptionKey(feature.id()))));
                 toggle.visible = true;
+                boolean configurable = hasConfigScreen(feature.id());
+                gear.visible = configurable;
+                gear.active = configurable;
             } else {
                 label.visible = false;
                 toggle.visible = false;
+                gear.visible = false;
             }
         }
 
@@ -308,6 +323,28 @@ public class SuiteScreen extends Screen {
 
         for (int i = 0; i < this.categoryButtons.size(); i++) {
             this.categoryButtons.get(i).active = !this.categoryButtonIds.get(i).equals(this.category);
+        }
+    }
+
+    /** Features whose row carries a "⚙" button opening a settings sub-screen. */
+    private static boolean hasConfigScreen(String featureId) {
+        return "cosmetics".equals(featureId) || "macros".equals(featureId);
+    }
+
+    /**
+     * Opens the settings sub-screen for the row in {@code slot}, if that
+     * feature has one. The sub-screen keeps this Suite as its parent, so its
+     * Volver/Esc returns here with the row list intact.
+     */
+    private void openConfig(int slot) {
+        if (slot >= this.slotFeatures.size()) return;
+        String id = this.slotFeatures.get(slot).id();
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) return;
+        switch (id) {
+            case "cosmetics" -> Compat.open(minecraft, new SuiteCosmeticsScreen(this));
+            case "macros" -> Compat.open(minecraft, new SuiteMacrosScreen(this));
+            default -> { }
         }
     }
 

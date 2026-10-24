@@ -148,27 +148,46 @@ public final class CosmeticGeo {
         public int goldTint = 0xFFFFC864;
         public float fadeFrom = 0.7f;
         public int light;
+        /**
+         * Per-column depth relief in blocks, applied at draw time only. The
+         * solver flattens any rest-shape bulge it is given (the in-plane links
+         * win), so a garment that must read as hanging cloth — the mantle —
+         * gets its folds here instead: the simulation stays honest and the
+         * silhouette is still corrugated. Empty = flat, and then nothing is
+         * added at all.
+         */
+        public float[] relief;
+        /** Relief strength at the shoulder line (1 = full, 0 = flush). */
+        public float reliefTop = 0.35f;
 
         @Override
         public void render(PoseStack.Pose pose, VertexConsumer buf) {
             ClothSim.Sheet s = sheet;
             int cols = s.cols, rows = s.rows;
             float p = partial;
+            float[] rel = relief;
+            boolean bump = rel != null && rel.length == cols;
             for (int r = 0; r < rows - 1; r++) {
                 float v0 = r / (float) (rows - 1);
                 float v1 = (r + 1) / (float) (rows - 1);
                 int c0 = hemColor(color, goldTint, fadeFrom, v0);
                 int c1 = hemColor(color, goldTint, fadeFrom, v1);
+                float g0 = reliefTop + (1f - reliefTop) * v0;
+                float g1 = reliefTop + (1f - reliefTop) * v1;
                 for (int c = 0; c < cols - 1; c++) {
                     float u0 = c / (float) (cols - 1);
                     float u1 = (c + 1) / (float) (cols - 1);
+                    float z00 = bump ? rel[c] * g0 : 0f;
+                    float z01 = bump ? rel[c + 1] * g0 : 0f;
+                    float z11 = bump ? rel[c + 1] * g1 : 0f;
+                    float z10 = bump ? rel[c] * g1 : 0f;
                     int i00 = r * cols + c, i01 = r * cols + c + 1;
                     int i10 = (r + 1) * cols + c, i11 = (r + 1) * cols + c + 1;
                     quad(pose, buf,
-                            at(s, i00, 0, p), at(s, i00, 1, p), at(s, i00, 2, p),
-                            at(s, i01, 0, p), at(s, i01, 1, p), at(s, i01, 2, p),
-                            at(s, i11, 0, p), at(s, i11, 1, p), at(s, i11, 2, p),
-                            at(s, i10, 0, p), at(s, i10, 1, p), at(s, i10, 2, p),
+                            at(s, i00, 0, p), at(s, i00, 1, p), at(s, i00, 2, p) + z00,
+                            at(s, i01, 0, p), at(s, i01, 1, p), at(s, i01, 2, p) + z01,
+                            at(s, i11, 0, p), at(s, i11, 1, p), at(s, i11, 2, p) + z11,
+                            at(s, i10, 0, p), at(s, i10, 1, p), at(s, i10, 2, p) + z10,
                             u0, v0, u1, v0, u1, v1, u0, v1,
                             c0, c0, c1, c1, light);
                 }

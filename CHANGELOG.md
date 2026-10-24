@@ -2,9 +2,92 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.3.15] - 2026-10-25
+
+### Changed
+- **Arm wraps withdrawn (2026-10-25).** Playtest found the cloth forearm wraps
+  read as clutter over the arms rather than a cosmetic. `vendas_runicas`, the
+  whole `brazos` slot and its plumbing are gone: the three catalog copies (still
+  byte-identical, now 10 items), the first-person `CosmeticHand` layer, the
+  arm-band model, the wrist chains in `WearerSims`, the `ClientConfig` slot bit,
+  the Suite submenu's slot button, `suite-registry`'s `slot_brazos` state key
+  (regenerated), the `espectral.slot.brazos` / `wardrobe.slot.brazos` strings and
+  the texture. Persisted loadouts that still name the slot are sanitized to drop
+  it instead of erroring (covered by a test); `validateLoadout` still rejects a
+  client that sends it.
+- **Manto Espectral redesigned.** The mantle was a flat dark slab from shoulders
+  to calves with a painted diagonal strap. It is now a real one-shoulder drape:
+  the sheet is pinned high on the left shoulder (clasp side) and sweeps down to
+  the opposite hip, its hem ends between hip and knee instead of past the knees,
+  and it is drawn with three soft fold ridges that deepen toward the hem, so it
+  reads as cloth from behind and from the side. The folds are applied at draw
+  time rather than as a rest shape: the solver's in-plane links flatten any
+  rest bulge, which is exactly why the old mantle resolved to a slab. The
+  texture carries matching vertical fold shading, a woven twill grain, a round
+  gold clasp boss on the clasp shoulder and a gold-mist hem that dissolves into
+  light. `tools/MantleShapeTest.java` replays the sheet simulation and asserts
+  the length, footprint, torso clearance and fold depth (29 checks).
+- **Support/donations URL is `https://espectral.uhce.top/donaciones`.** The
+  Donaciones page's store button, its "copy link" action and the label under
+  the store title all use the `uhce.top` host now (the `espectral.es` name
+  301-redirects to it). The label is derived from the link itself, so the two
+  can no longer drift.
+- **Cosmetic sharing is on by default.** New accounts show `⚛` (and their
+  equipped cosmetics) without opting in; the Armario switch turns it off and
+  no longer requires a verified account to toggle. Presence is still only
+  published to `espectral-id` for verified accounts.
+- **In-game Suite support URL moved to `uhce.top`.** `SuiteScreen.SUPPORT_URL`
+  is `https://espectral.uhce.top/donaciones`, so the in-game *Apoyar ♥*
+  confirmation opens the live host instead of the lapsed `espectral.es` zone.
+- **Title menu polish.** The background PNG is decoded off the render thread
+  (`MenuBackground`), uploaded once per session with linear filtering, and
+  fades in when it is ready. It drifts in a smooth sub-pixel Ken Burns motion
+  with a light mouse parallax. The hard-edged half-screen scrim is now a soft
+  horizontal gradient, with bottom and top vignettes. The logo floats slowly
+  over a breathing gold halo and a dark pool that keeps it readable. Other
+  additions: gold motes, a localized tagline ("Tu juego, a tu manera"),
+  animated hover (accent bar, chevron), Up/Down/Tab + Enter keyboard
+  navigation, and icon tooltips. The camera icon opens the screenshots
+  folder (it was a no-op before), and Esc no longer closes the root title
+  screen.
+- `assets/branding/branding.json` now pins the jars that actually ship. Its
+  sha1s were stale, so the engine logged `branding_sha1_mismatch` on every
+  launch and the pin test failed.
 
 ### Added
+- **Orejas Felinas (`orejas_felinas`), a new head cosmetic.** Shorter and
+  rounder than the vulpine pair: near-black fur with a pink inner ear, a fur
+  cuff at the base, a gentle flick on head turns, a perk-up while sprinting and
+  a flatter fold than the fox ears while sneaking. It ships in all three
+  catalog copies (mod resources, engine, `espectral-id`) and its texture in the
+  mod jar, so `espectral-id` needs a redeploy before the live service accepts
+  the new id.
+- **Fox ears are real ears.** `orejas_vulpinas` was two flat boxes on the
+  skull. It is now three stacked, tapering boxes per ear (3 → 2 → 1 px wide)
+  splayed outward from the top corners of the head with a proud cream inner-ear
+  panel and a near-black tip: a tapered triangle from the front, an ear from the
+  side. Rest splay, twitch on head turns, landing flop and the sneak flatten are
+  all preserved.
+- **Suite sub-screens: Cosméticos and Macros.** The Cosméticos and Macros
+  feature rows now carry a `⚙` button that opens an in-game settings screen
+  (same dark-glass sheet, keyboard navigable, `Volver`/Esc returns to the
+  list). Cosméticos holds viewer-side toggles — show my cosmetics, show other
+  players', per-slot visibility for Espalda/Cuello/Cabeza/Brazos/Élitros,
+  emotes and cloth physics — stored under `features.cosmetics.*` in
+  `config/espectral-client.json`; the emotes switch is ANDed with the
+  launcher's `espectral-cosmetics.json` flag (that file is never written by
+  the mod), and physics-off renders the same static pose as reduced motion.
+  Macros gains a full editor: paginated list, add/edit/delete, a
+  "Pulsa una tecla…" capture button (Esc cancels), layout-aware key labels
+  (`ñ`, `ç`), a conflict check against `Options.keyMappings`, the Suite
+  registry keybinds and other macros (duplicates are refused, vanilla/mod
+  clashes need a second confirm), Esc/Right Shift rejected, 32 macros and 256
+  chars per action. Each action still only ever sends chat or a vanilla
+  command.
+- **`branding-mod/lang-extra.json`.** Hand-maintained Suite UI strings (ES/EN)
+  merged by `scripts/sync-suite-registry.mjs` on top of the generated lang
+  files, so new screen text no longer has to live in registry-owned keys. The
+  script hard-fails if an extra key redeclares a registry-derived one.
 - **Free personalization for everyone.** Five client themes (Oro, Carmesí,
   Amatista, Esmeralda, Glaciar) recolour the launcher, the Suite and the title
   menu from one setting (`/api/accent`, `personalization.theme`). Menu
@@ -56,30 +139,100 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   follows running instances: `PUT /v1/presence` every 240 s while `share` is
   on, `DELETE` on exit or share-off. Grant refresh at launch is capped at 2 s
   and never blocks or fails the launch.
+- **Tab list heads (`tabheads`, on by default).** Vanilla only draws the face
+  column when the server runs Mojang authentication (26.2:
+  `ClientPacketListener#onlineMode`; 1.21.11: `isLocalServer() ||
+  Connection#isEncrypted()`), so offline-mode servers behind AuthMe never got
+  one. The new Suite feature forces that check on, which also widens each
+  column by the 9 px face so names and the ⚛/★ badge shift together instead of
+  overlapping. Skins come from each `PlayerInfo`, never from a network fetch of
+  our own.
 
 ### Fixed
+- **Sneaking no longer hides cosmetics.** `CosmeticLayer` bailed out on
+  `AvatarRenderState.isDiscrete`, and in 26.2 `Entity#isDiscrete()` is defined
+  as `isShiftKeyDown()` — so every cloak, ear and wrap vanished the moment the
+  wearer held shift. The guard is now only invisible-to-viewer and spectator;
+  sneaking renders everything, and the crouched body pose (0.5 rad torso tilt,
+  lowered head) carries the cosmetics with it because each piece is entered
+  from its real `ModelPart` transform. Ears still visibly flatten on sneak.
+- **Cloaks no longer clip into the body.** The cloth sim now collides with the
+  torso: an armor-aware box (2 px half depth + 0.4 px skin offset, plus 1 px
+  chestplate inflation and vanilla's 1.1 px cape-layer offset when a chestplate
+  is worn) pushes every non-anchor point to the nearer face, run inside the
+  constraint iterations so the cloth slides along the chest instead of
+  collapsing, and the box stops at the hip line once the torso hinged away
+  (bow). Gravity and wind are rotated into the body frame before stepping, so a
+  crouching wearer's cloak still hangs along world-down instead of along the
+  tilted torso. The mantle sheet's top row is pinned to the shoulders, so the
+  neck seam never detaches.
+- **Cosmetics follow the emote pose.** The layer used to draw everything at a
+  fixed model-root offset. It now starts from `model.root()` and enters the
+  wearer's head (ears, hood), body (cloak, scarf, tatters, wings) or arm
+  (runic bands) `ModelPart` before emitting, so the sit root drop (−11 px), the
+  bow's hip hinge and the sneak drop move the cloth and ears with the posed
+  body instead of leaving them at standing height.
+- **Emotes read naturally and no longer clip the body.** The five local emotes
+  are re-derived from the player model's real pivots in a new Minecraft-free
+  `EmotePose` class (head at the neck, arms at (±5,2), hips at (±1.9,12)) and
+  cross-fade in and out over 250 ms: *Saludo* raises the right arm out to the
+  side (the old pose rotated it to −π+0.45 rad, i.e. across the face, so the
+  hand waved inside the head) and looks towards it; *Aplauso* swings both arms
+  forward so the palms actually meet on the centre line (solved contact angle)
+  three times a second; *Reverencia* hinges at the hips (head, chest and arms
+  rotate about the invariant hip point, so nothing folds); *Sentarse* drops the
+  whole model 11 px through the root — cosmetics anchored to the part
+  transforms follow — with the legs forward on the ground and arms on the lap;
+  *Invocación* swings the arms forward then opens a V clear of the head with a
+  0.5 px hover bob. Head and chest offsets stay additive so the player can keep
+  looking around mid-emote. `branding-mod/tools/EmotePoseTest.java` samples
+  every frame of every emote and asserts the clearances (532 checks).
+
+- **"Vincular Discord" works on a stock install.** The engine had no default
+  OAuth client id, so every real install failed with *Discord client id is not
+  configured in config.json*. It now falls back to the public Espectral
+  application id `1454618588659843072` — the same app `espectral-id` exchanges
+  the code with, so `/v1/discord/link` accepts it. `config.json`
+  (`discord.client_id`), `DISCORD_CLIENT_ID` and `ESPECTRAL_DISCORD_CLIENT_ID`
+  still override it.
+- **Identity service points at `id.uhce.top`.** The `espectral.es` zone lapsed
+  around 2026-10-22 and `identity_url` still defaulted to
+  `https://id.espectral.es` — including the literal value every existing
+  install had persisted. The default is now `https://id.uhce.top`, and a
+  persisted legacy value (with or without trailing slash) is migrated on config
+  load. A custom self-hosted URL is left untouched and `ESPECTRAL_ID_URL` still
+  wins.
+- **Grants verify across the issuer flip.** Both `https://id.uhce.top` and the
+  legacy `https://id.espectral.es` are accepted by the engine verifier and the
+  mod's `GrantVerifier`; aud, kid, typ, alg, sub, exp and iat skew are
+  unchanged. The service can flip `GRANT_ISS` on its own schedule without
+  invalidating grants held by already-shipped clients.
 - **Custom main menu now shows its background photo.** Vanilla's
   `blit(Identifier, x0, y0, x1, y1, …)` takes its floats as `u0, u1, v0, v1`
   (checked in the 26.2 and 1.21.11 bytecode). The mod passed `0, 0, 1, 1`,
   which drew one texel of the image (its dark bottom-left corner) across the
   whole screen. The helper is now `Compat.uiBlitUv`, which uses the correct
   order in both lanes.
-
-### Changed
-- **Title menu polish.** The background PNG is decoded off the render thread
-  (`MenuBackground`), uploaded once per session with linear filtering, and
-  fades in when it is ready. It drifts in a smooth sub-pixel Ken Burns motion
-  with a light mouse parallax. The hard-edged half-screen scrim is now a soft
-  horizontal gradient, with bottom and top vignettes. The logo floats slowly
-  over a breathing gold halo and a dark pool that keeps it readable. Other
-  additions: gold motes, a localized tagline ("Tu juego, a tu manera"),
-  animated hover (accent bar, chevron), Up/Down/Tab + Enter keyboard
-  navigation, and icon tooltips. The camera icon opens the screenshots
-  folder (it was a no-op before), and Esc no longer closes the root title
-  screen.
-- `assets/branding/branding.json` now pins the jars that actually ship. Its
-  sha1s were stale, so the engine logged `branding_sha1_mismatch` on every
-  launch and the pin test failed.
+- **Chat heads show up on plugin-formatted servers.** Servers running a chat
+  plugin (the Espectral ones among them) broadcast player chat as a *system*
+  message — `<[ADMIN] henMV> asd` — and the feature only mapped signed
+  `PlayerChatMessage`s, so those lines never got a head. System lines now
+  resolve a sender by matching an exact, whole-word tab-list profile name
+  inside the line's sender prefix (the text before the first `>`, `:`, `»` or
+  `|`), ignoring bracketed rank tags. Broadcasts with no separator
+  (`¡Bienvenido a ESPECTRAL, henMV!`), names that only appear in the message
+  body, and names that are a mere substring of a longer word stay headless,
+  and signed player messages still take the exact path.
+- **Chat heads stay visible while the chat is open.** The heads were drawn only
+  in the unfocused HUD pass, so pressing T made them disappear while the text
+  stayed. The focused pass (`DrawingFocusedGraphicsAccess`) now draws the head
+  and shifts its line by the same 10 px, restoring the pose per line, so
+  scrolled lines keep their own heads. The click/tooltip capture pass applies
+  the same shift, so links stay clickable where they are drawn.
+- **The ★ supporter mark renders as a star.** It inherited the badge font,
+  which had no ★ glyph, so it showed as a missing-glyph box after the ⚛ in the
+  tab list and nametags. ★ now ships in the badge bitmap font next to a
+  redrawn 16 px ⚛ (nucleus and three orbits instead of a crossed circle).
 
  ## [1.3.14] - 2026-09-06
 

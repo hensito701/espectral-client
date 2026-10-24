@@ -24,6 +24,7 @@ test('loadConfig creates the document from defaults when missing', () => {
   assert.equal(cfg.default_memory_mb, DEFAULT_CONFIG.default_memory_mb);
   assert.equal(cfg.theme, 'dark');
   assert.equal(cfg.accounts.length, 0);
+  assert.equal(cfg.identity_url, 'https://id.uhce.top');
   assert.equal(fs.existsSync(configPath()), true); // lazily created
 });
 

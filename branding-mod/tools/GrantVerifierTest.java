@@ -59,6 +59,19 @@ public final class GrantVerifierTest {
                 sub, kp.getPublic(), now, "typ != ESG");
 
         // payload rules
+        ok(GrantVerifier.verify(
+                sign(header("EdDSA", "eid1", "ESG"),
+                        payloadIss("https://id.uhce.top", sub, now, now + 86400, "[\"mvp\"]"),
+                        kp.getPrivate()),
+                sub, kp.getPublic(), now) != null, "canonical issuer id.uhce.top accepted");
+        ok(GrantVerifier.verify(
+                sign(header("EdDSA", "eid1", "ESG"),
+                        payloadIss("https://id.espectral.es", sub, now, now + 86400, "[\"mvp\"]"),
+                        kp.getPrivate()),
+                sub, kp.getPublic(), now) != null, "legacy issuer id.espectral.es accepted");
+        rej(sign(header("EdDSA", "eid1", "ESG"),
+                payloadIss("https://id.uhce.top.evil.example", sub, now, now + 100, "[]"),
+                kp.getPrivate()), sub, kp.getPublic(), now, "unknown issuer rejected");
         rej(sign(header("EdDSA", "eid1", "ESG"),
                 payloadRaw("{\"v\":1,\"iss\":\"https://id.espectral.es\",\"aud\":\"other\",\"sub\":\""
                         + sub + "\",\"flags\":[],\"iat\":" + now + ",\"exp\":" + (now + 100) + "}"),
@@ -120,7 +133,11 @@ public final class GrantVerifierTest {
     }
 
     private static String payload(String sub, long iat, long exp, String flags) {
-        return payloadRaw("{\"v\":1,\"iss\":\"https://id.espectral.es\",\"aud\":\"espectral-client\",\"sub\":\""
+        return payloadIss("https://id.uhce.top", sub, iat, exp, flags);
+    }
+
+    private static String payloadIss(String iss, String sub, long iat, long exp, String flags) {
+        return payloadRaw("{\"v\":1,\"iss\":\"" + iss + "\",\"aud\":\"espectral-client\",\"sub\":\""
                 + sub + "\",\"flags\":" + flags + ",\"iat\":" + iat + ",\"exp\":" + exp + "}");
     }
 

@@ -6,11 +6,11 @@ import org.slf4j.LoggerFactory;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
+import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
-import net.minecraft.util.Mth;
 
 import es.spectral.menu.cosmetics.Cosmetics;
 import es.spectral.menu.ui.EmoteWheelScreen;
@@ -19,24 +19,35 @@ import es.spectral.menu.ui.EmoteWheelScreen;
  * Local-only emotes (MVP cosmetics). The wearer picks one of the five catalog
  * emotes from the {@link EmoteWheelScreen} radial wheel (default {@code B});
  * the pose is applied to the <b>local player's model only</b> at TAIL of
- * {@code PlayerModel#setupAnim(AvatarRenderState)} — the same "pose after
- * setupAnim" point the 3D skin feature uses, which matters because the
- * deferred render pipeline re-runs {@code setupAnim} at draw time
- * ({@code ModelFeatureRenderer#prepareModel}), so a pose injected inside
- * {@code submit} would be overwritten before rasterisation.
+ * {@code PlayerModel#setupAnim(AvatarRenderState)}.
  *
- * <p>Only the wearer sees the emote (e.g. in third person): the pose is
- * gated on {@code state.id == player.getId()}, never touches other avatars,
- * and no packet is sent. Cancellation: any movement input, attack, damage
- * ({@code hurtTime} increase) or a screen opening stops it — this engine
- * owns the wheel screen lifecycle so the wheel itself cannot cancel an
- * emote. With {@code personalization.reduced_motion} the same emote renders
- * as its held (static) pose with all sine/bob motion frozen.</p>
+ * <p>The actual angles live in {@link EmotePose} (Minecraft-free, unit-tested
+ * by {@code tools/EmotePoseTest.java}); this class only decides <em>whether</em>
+ * an emote runs, samples it, and blends the result onto the model. Because
+ * {@code Model#setupAnim} calls {@code resetPose()} and the humanoid setup
+ * rebuilds the vanilla pose every time — including the draw-time call inside
+ * {@code ModelFeatureRenderer#prepareModel} — the values read at TAIL are
+ * always the vanilla pose, so a lerp against them is a clean cross-fade in
+ * both directions ({@link EmotePose#BLEND_SECONDS}). Root translation is reset
+ * by that same {@code resetPose()}, so the sit/invocation offsets simply
+ * disappear with the emote.</p>
+ *
+ * <p>Only the wearer sees the emote (e.g. in third person): the pose is gated
+ * on {@code state.id == player.getId()}, never touches other avatars, and no
+ * packet is sent. Cancellation: any movement input, jump/sneak, attack, use,
+ * damage ({@code hurtTime} increase) or a screen opening stops it — this engine
+ * owns the wheel screen lifecycle so the wheel itself cannot cancel an emote.
+ * With {@code personalization.reduced_motion} the same emote renders as its
+ * held pose with every sine/bob motion frozen.</p>
+ *
+ * <p>Worn cosmetics are drawn by {@code CosmeticLayer} from the real
+ * {@code ModelPart} transforms (head/body/arms/root), so ears, cloak and wraps
+ * follow a bow, a sit and a wave without any extra plumbing.</p>
  *
  * <p>Gate: {@link Cosmetics#ownMvp()} AND {@link Cosmetics#emotesEnabled()}
  * (the {@code emotes} flag of {@code espectral-cosmetics.json}). The dev
- * property {@code -Despectral.emotes.preview=true} forces the MVP half of
- * the gate in {@link FabricLoader#isDevelopmentEnvironment() development}
+ * property {@code -Despectral.emotes.preview=true} forces the MVP half of the
+ * gate in {@link FabricLoader#isDevelopmentEnvironment() development}
  * environments only, so dev builds can preview poses without a grant.</p>
  */
 public final class EmoteEngine {
@@ -48,28 +59,18 @@ public final class EmoteEngine {
 
     /** Emote catalog ids in wheel order (catalog: cosmetics-catalog.json). */
     public static final String[] EMOTES = {
-            "saludo", "reverencia", "aplauso", "sentarse", "invocacion"};
-
-    /** Duration (seconds) of the one-shot emotes; loops run until cancelled. */
-    private static final double SALUDO_SECONDS = 1.8;
-    private static final double REVERENCIA_SECONDS = 2.4;
-    private static final double APLAUSO_SECONDS = 3.2;
+            EmotePose.WAVE, EmotePose.BOW, EmotePose.CLAP, EmotePose.SIT, EmotePose.INVOCATION};
 
     private static final EmoteEngine INSTANCE = new EmoteEngine();
+
+    /** Reusable pose scratch — never allocated while rendering. */
+    private final float[] pose = new float[EmotePose.PARTS * EmotePose.STRIDE];
 
     /** Active emote id, or {@code null}. Render thread reads it via {@link #pose}. */
     private volatile String active;
     private volatile long startedMillis;
     /** Last observed hurtTime, so a damage tick cancels the emote. */
     private int lastHurtTime;
-    /**
-     * Set while {@code sentarse} offsets {@code root().y}: vanilla
-     * {@code setupAnim} rewrites rotations but never translations, and the
-     * deferred draw path does not call {@code resetPose()}, so the flag
-     * makes {@link #pose} restore the root pose exactly once when the emote
-     * ends instead of the offset sticking forever.
-     */
-    private boolean rootTouched;
     /** Wall-clock when the wheel last closed; suppresses click re-opens. */
     private long wheelClosedAt;
 
@@ -182,114 +183,63 @@ public final class EmoteEngine {
      */
     public void pose(PlayerModel model, AvatarRenderState state) {
         String id = active;
+        if (id == null) return;
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
-        boolean own = player != null && !state.isSpectator && state.id == player.getId();
-        if (!own) return;
-        // Root translation isn't rewritten by setupAnim and prepareModel
-        // never calls resetPose(): undo the sit offset exactly once.
-        if (rootTouched) {
-            model.root().resetPose();
-            rootTouched = false;
-        }
-        if (id == null || !canEmote()) return;
+        if (player == null || state.isSpectator || state.id != player.getId()) return;
+        if (!canEmote()) return;
 
-        float t = (float) ((System.currentTimeMillis() - startedMillis) / 1000.0);
-        boolean still = Cosmetics.reducedMotion();
-        switch (id) {
-            case "saludo" -> poseWave(model, t, still);
-            case "reverencia" -> poseBow(model, t, still);
-            case "aplauso" -> poseClap(model, t, still);
-            case "sentarse" -> { poseSit(model, still); rootTouched = true; }
-            case "invocacion" -> poseInvocation(model, t, still);
-            default -> { return; }
-        }
-
-        if (("saludo".equals(id) && t > SALUDO_SECONDS)
-                || ("reverencia".equals(id) && t > REVERENCIA_SECONDS)
-                || ("aplauso".equals(id) && t > APLAUSO_SECONDS)) {
+        float t = (System.currentTimeMillis() - startedMillis) / 1000.0f;
+        float d = EmotePose.duration(id);
+        if (d > 0.0f && t >= d) {
             stop();
+            return;
+        }
+        float weight = EmotePose.blendWeight(id, t);
+        if (weight <= 0.0f) return;
+        if (!EmotePose.write(id, t, Cosmetics.reducedMotion(), pose)) return;
+
+        for (int part = 0; part < EmotePose.PARTS; part++) {
+            int i = part * EmotePose.STRIDE;
+            if (pose[i] == 0.0f && pose[i + 1] == 0.0f && pose[i + 2] == 0.0f
+                    && pose[i + 3] == 0.0f && pose[i + 4] == 0.0f && pose[i + 5] == 0.0f) {
+                continue; // untouched: keep the vanilla animation for this part
+            }
+            ModelPart p = partOf(model, part);
+            if (p == null) continue;
+            // Translations are always deltas on the pivot. Rotations are
+            // targets for the limbs (the player is standing still, so the idle
+            // swing is irrelevant) but offsets for head and chest, which keep
+            // following the player's look direction during the emote.
+            p.x += pose[i] * weight;
+            p.y += pose[i + 1] * weight;
+            p.z += pose[i + 2] * weight;
+            if (EmotePose.additiveRotation(part)) {
+                p.xRot += pose[i + 3] * weight;
+                p.yRot += pose[i + 4] * weight;
+                p.zRot += pose[i + 5] * weight;
+            } else {
+                p.xRot = lerp(p.xRot, pose[i + 3], weight);
+                p.yRot = lerp(p.yRot, pose[i + 4], weight);
+                p.zRot = lerp(p.zRot, pose[i + 5], weight);
+            }
         }
     }
 
-    /**
-     * Saludo / Wave: right arm raised overhead, swaying side to side; slight
-     * head tilt. Reduced motion holds the arm up with a fixed tilt.
-     */
-    private static void poseWave(PlayerModel m, float t, boolean still) {
-        float sway = still ? 0.0f : Mth.sin(t * 7.0f) * 0.35f;
-        m.rightArm.xRot = 0.0f;
-        m.rightArm.zRot = -(float) Math.PI + 0.45f + sway;
-        m.rightArm.yRot = 0.0f;
-        m.head.zRot = still ? 0.0f : Mth.sin(t * 3.5f) * 0.06f;
-        m.head.xRot = -0.15f;
+    private static ModelPart partOf(PlayerModel model, int part) {
+        return switch (part) {
+            case EmotePose.BODY -> model.body;
+            case EmotePose.HEAD -> model.head;
+            case EmotePose.RIGHT_ARM -> model.rightArm;
+            case EmotePose.LEFT_ARM -> model.leftArm;
+            case EmotePose.RIGHT_LEG -> model.rightLeg;
+            case EmotePose.LEFT_LEG -> model.leftLeg;
+            case EmotePose.ROOT -> model.root();
+            default -> null;
+        };
     }
 
-    /**
-     * Reverencia / Bow: torso folds forward (head + arms follow), eases in,
-     * holds, releases. Reduced motion holds the deepest point.
-     */
-    private static void poseBow(PlayerModel m, float t, boolean still) {
-        float phase;
-        if (still) {
-            phase = 1.0f;
-        } else if (t < 0.4f) {
-            phase = t / 0.4f;                       // bend in
-        } else if (t < 1.6f) {
-            phase = 1.0f;                           // hold
-        } else {
-            phase = Math.max(0.0f, 1.0f - (t - 1.6f) / 0.6f); // release
-        }
-        phase = phase * phase * (3.0f - 2.0f * phase); // smoothstep
-        float bend = 0.9f * phase;
-        m.body.xRot = bend;
-        m.head.xRot = bend * 0.7f;
-        m.leftArm.xRot = bend;
-        m.rightArm.xRot = bend;
-        m.leftLeg.xRot = -bend * 0.3f;
-        m.rightLeg.xRot = -bend * 0.3f;
-    }
-
-    /**
-     * Aplauso / Clap: both arms raised forward at shoulder height, swinging
-     * together/apart so the hands meet. Reduced motion holds them apart.
-     */
-    private static void poseClap(PlayerModel m, float t, boolean still) {
-        float gap = still ? 0.35f : 0.18f + 0.30f * (0.5f + 0.5f * Mth.sin(t * 9.0f));
-        m.leftArm.xRot = -1.45f;
-        m.rightArm.xRot = -1.45f;
-        m.leftArm.yRot = -0.55f + gap;
-        m.rightArm.yRot = 0.55f - gap;
-        m.leftArm.zRot = 0.15f;
-        m.rightArm.zRot = -0.15f;
-    }
-
-    /**
-     * Sentarse / Sit: whole model drops 10 px (model space +y is down-world
-     * because submit applies scale(-1,-1,1) + translate(0,-1.501,0)), legs
-     * fold forward horizontally. Loops until cancelled.
-     */
-    private static void poseSit(PlayerModel m, boolean still) {
-        m.root().y = 10.0f;
-        m.leftLeg.xRot = -1.5f;
-        m.rightLeg.xRot = -1.5f;
-        m.leftArm.xRot = -0.35f;
-        m.rightArm.xRot = -0.35f;
-    }
-
-    /**
-     * Invocación / Invocation: both arms straight up in a V, head tipped
-     * back, a slow bob. Reduced motion holds the V without the bob.
-     */
-    private static void poseInvocation(PlayerModel m, float t, boolean still) {
-        float bob = still ? 0.0f : Mth.sin(t * 2.4f) * 0.06f;
-        m.leftArm.zRot = (float) Math.PI - 0.55f;
-        m.rightArm.zRot = -((float) Math.PI - 0.55f);
-        m.leftArm.xRot = 0.0f;
-        m.rightArm.xRot = 0.0f;
-        m.leftArm.yRot = -0.15f;
-        m.rightArm.yRot = 0.15f;
-        m.head.xRot = -0.35f + bob;
-        m.body.xRot = -0.06f + bob;
+    private static float lerp(float from, float to, float weight) {
+        return from + (to - from) * weight;
     }
 }

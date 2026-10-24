@@ -35,7 +35,7 @@ test('REGISTRY: exports Contract A feature entries', () => {
   for (const id of ['potionstatus', 'coords', 'healthstatus', 'armorstatus', 'fpsping', 'lowfire', 'clearwater']) {
     assert.ok(ids.includes(id), `missing registry entry: ${id}`);
   }
-  for (const id of ['chatheads', 'skin3d']) {
+  for (const id of ['chatheads', 'skin3d', 'tabheads']) {
     assert.ok(ids.includes(id), `missing registry entry: ${id}`);
   }
 
@@ -47,7 +47,7 @@ test('REGISTRY: exports Contract A feature entries', () => {
     assert.ok(typeof item.defaultEnabled === 'boolean');
     assert.ok(typeof item.category === 'string', `${item.id} has a category`);
   }
-  assert.equal(REGISTRY.length, 15);
+  assert.equal(REGISTRY.length, 16);
   assert.deepEqual(
     [...new Set(REGISTRY.map((r) => r.category))].sort(),
     ['chat', 'controls', 'cosmetics', 'hud', 'visual'],
@@ -307,4 +307,107 @@ test('seedClientConfig: mirrors launcher accent into personalization.theme', asy
   assert.equal(seeded.personalization.background, 'aurora'); // instance pack kept
 
   saveConfig({ accent: 'oro', reduced_motion: false }); // restore defaults
+});
+
+// --- cosmetics viewer state (Suite → Cosméticos sub-screen) -----------------
+
+test('FEATURE_DEFAULTS: cosmetics carries the viewer state keys', () => {
+  const cosmetics = FEATURE_DEFAULTS.cosmetics;
+  assert.equal(cosmetics.enabled, true);
+  for (const key of [
+    'own',
+    'others',
+    'slot_espalda',
+    'slot_cuello',
+    'slot_cabeza',
+    'slot_elitros',
+    'emotes',
+    'physics',
+  ]) {
+    assert.equal(cosmetics[key], true, `cosmetics.${key} defaults on`);
+  }
+});
+
+test('patchClientConfig: cosmetics state keys round-trip inside the feature', async () => {
+  const instDir = path.join(dataDir, 'instances', 'cosmetics-inst');
+  fs.mkdirSync(instDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(instDir, 'instance.json'),
+    JSON.stringify({ name: 'cosmetics-inst', version: '1.21.11', loader: 'vanilla' }),
+  );
+  const patched = await patchClientConfig('cosmetics-inst', {
+    features: { cosmetics: { physics: false, slot_cabeza: false } },
+  });
+  assert.equal(patched.config.features.cosmetics.physics, false);
+  assert.equal(patched.config.features.cosmetics.slot_cabeza, false);
+  // Untouched sibling keys keep their defaults — the mod writes one key at a time.
+  assert.equal(patched.config.features.cosmetics.own, true);
+  assert.equal(patched.config.features.cosmetics.slot_espalda, true);
+
+  // The raw file only carries what PATCH wrote (defaults are filled by the
+  // normalizer, and by the mod's ClientConfig when the game writes them).
+  const raw = JSON.parse(fs.readFileSync(clientConfigPath('cosmetics-inst'), 'utf8'));
+  assert.equal(raw.features.cosmetics.physics, false);
+  assert.equal(raw.features.cosmetics.slot_cabeza, false);
+
+  const reloaded = loadClientConfig('cosmetics-inst');
+  assert.equal(reloaded.features.cosmetics.own, true); // default filled
+  assert.equal(reloaded.features.cosmetics.physics, false);
+  assert.equal(reloaded.features.cosmetics.emotes, true);
+});
+
+// --- macros written by the in-game editor (Suite → Macros sub-screen) -------
+
+test('patchClientConfig: accepts macros in the shape the in-game editor writes', async () => {
+  const instDir = path.join(dataDir, 'instances', 'macro-inst');
+  fs.mkdirSync(instDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(instDir, 'instance.json'),
+    JSON.stringify({ name: 'macro-inst', version: '1.21.11', loader: 'vanilla' }),
+  );
+
+  // Exactly what ClientConfig.putMacro writes: sanitized id, one action whose
+  // type follows the text, vanilla keybind strings (incl. layout keysyms).
+  const macros = [
+    {
+      id: 'macro-helpop',
+      name: 'macro-helpop',
+      keybind: 'key.keyboard.semicolon', // Ñ on an ES layout
+      actions: [{ type: 'command', text: '/helpop ayuda' }],
+    },
+    {
+      id: 'saludo',
+      name: 'saludo',
+      keybind: 'key.keyboard.231', // Ç: keysym with no vanilla name entry
+      actions: [{ type: 'chat', text: 'hola a todos' }],
+    },
+    {
+      id: 'tl',
+      name: 'tl',
+      keybind: 'key.keyboard.t',
+      actions: [{ type: 'command', text: '/tl' }],
+    },
+  ];
+
+  const res = await patchClientConfig('macro-inst', { macros });
+  assert.deepEqual(res.errors, []);
+  assert.equal(res.config.macros.length, 3);
+  for (const macro of res.config.macros) {
+    assert.match(macro.id, /^[A-Za-z0-9_-]{1,32}$/);
+    assert.ok(macro.name.length > 0 && macro.name.length <= 40);
+    assert.ok(macro.keybind.length > 0 && macro.keybind.length <= 32);
+    assert.equal(macro.actions.length, 1);
+    assert.ok(['chat', 'command'].includes(macro.actions[0].type));
+    assert.ok(macro.actions[0].text.length <= 256);
+  }
+
+  const reloaded = loadClientConfig('macro-inst');
+  assert.deepEqual(
+    reloaded.macros.map((m) => [m.id, m.keybind]),
+    [
+      ['macro-helpop', 'key.keyboard.semicolon'],
+      ['saludo', 'key.keyboard.231'],
+      ['tl', 'key.keyboard.t'],
+    ],
+  );
 });

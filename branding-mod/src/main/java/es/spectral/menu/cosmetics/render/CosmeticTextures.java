@@ -23,7 +23,7 @@ public final class CosmeticTextures {
     public static final Identifier SCARF = tex("bufanda_llama_alma");
     public static final Identifier SCARF_TAIL = tex("bufanda_llama_alma_tail");
     public static final Identifier EARS = tex("orejas_vulpinas");
-    public static final Identifier WRAPS = tex("vendas_runicas");
+    public static final Identifier CAT_EARS = tex("orejas_felinas");
 
     public static final Identifier ELYTRA_VIDRIERA = tex("elitros_vidriera");
     /** Animated skins: {@link #FRAME_COUNT} files per skin. */

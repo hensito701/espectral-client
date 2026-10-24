@@ -11,10 +11,12 @@
  *   - `branding-mod/.../assets/espectral-menu/lang/en_us.json` (English strings)
  *   - `branding-mod/.../assets/espectral-menu/lang/es_es.json` (Spanish strings)
 
- * The lang files hold exactly the registry-derived keys
- * (`espectral.category.<id>`, `espectral.feature.<id>.name|description`) plus
- * the fixed Suite UI strings below — no extras. Output is deterministic
- * (sorted keys, 2-space indent, trailing newline); the freshness test in
+ * The lang files hold the registry-derived keys
+ * (`espectral.category.<id>`, `espectral.feature.<id>.name|description`), the
+ * fixed Suite UI strings below, and the hand-maintained
+ * `branding-mod/lang-extra.json` blocks (screen chrome that changes with the
+ * UI rather than with the registry data). Output is deterministic (sorted
+ * keys, 2-space indent, trailing newline); the freshness test in
  * `tests/suite-registry.test.mjs` regenerates the same bytes.
  *
  * Run with the bundled node:
@@ -32,6 +34,8 @@ export const DEST_REGISTRY = path.join(MENU_ASSETS, 'suite-registry.json');
 export const DEST_CATALOG = path.join(MENU_ASSETS, 'cosmetics-catalog.json');
 export const DEST_EN = path.join(MENU_ASSETS, 'lang/en_us.json');
 export const DEST_ES = path.join(MENU_ASSETS, 'lang/es_es.json');
+/** Hand-maintained extra UI strings, merged on top of the generated keys. */
+export const EXTRA_LANG_SOURCE = path.join(REPO_ROOT, 'branding-mod/lang-extra.json');
 
 /**
  * Fixed Suite UI strings (ES/EN). Why here and not in the registry JSON: the
@@ -153,22 +157,49 @@ export const FIXED_STRINGS = {
   },
 };
 
-/** Build the per-language key maps from the parsed registry document. */
-export function buildLangMaps(doc) {
+/** Reads the hand-maintained extra-strings file (`es`/`en` blocks). */
+export function readExtraStrings() {
+  const doc = JSON.parse(fs.readFileSync(EXTRA_LANG_SOURCE, 'utf8'));
+  return { es: doc.es ?? {}, en: doc.en ?? {} };
+}
+
+/**
+ * Builds the per-language key maps from the parsed registry document, then
+ * layers the fixed chrome strings and the hand-maintained extras on top.
+ * A key repeated between the registry and the extra file is a hard error:
+ * registry data must stay the single source of truth for feature strings.
+ */
+export function buildLangMaps(doc, extra = readExtraStrings()) {
   const es = {};
   const en = {};
+  const registryKeys = new Set();
   for (const c of doc.categories ?? []) {
     es[`espectral.category.${c.id}`] = c.name_es;
     en[`espectral.category.${c.id}`] = c.name_en;
+    registryKeys.add(`espectral.category.${c.id}`);
   }
   for (const f of doc.features ?? []) {
     es[`espectral.feature.${f.id}.name`] = f.name_es;
     es[`espectral.feature.${f.id}.description`] = f.description_es;
     en[`espectral.feature.${f.id}.name`] = f.name_en;
     en[`espectral.feature.${f.id}.description`] = f.description_en;
+    registryKeys.add(`espectral.feature.${f.id}.name`);
+    registryKeys.add(`espectral.feature.${f.id}.description`);
   }
   Object.assign(es, FIXED_STRINGS.es);
   Object.assign(en, FIXED_STRINGS.en);
+  for (const [lang, block] of [['es', extra?.es ?? {}], ['en', extra?.en ?? {}]]) {
+    for (const key of Object.keys(block)) {
+      if (registryKeys.has(key)) {
+        throw new Error(
+          `branding-mod/lang-extra.json redeclares registry-owned key '${key}' (${lang}); ` +
+            'edit src/engine/suite-registry.json instead',
+        );
+      }
+    }
+  }
+  Object.assign(es, extra?.es ?? {});
+  Object.assign(en, extra?.en ?? {});
   return { es, en };
 }
 
