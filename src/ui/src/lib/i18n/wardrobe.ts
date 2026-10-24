@@ -44,8 +44,8 @@ export const es: Dict = {
   'wardrobe.flags.legend': 'Otros jugadores de Espectral ven ⚛ junto a tu nombre; ★ si tienes un rango de donador.',
 
   'wardrobe.share.title': 'Compartir mis cosméticos',
-  'wardrobe.share.desc': 'Al activarlo, otros jugadores de Espectral verán ⚛ junto a tu nombre y los cosméticos que equipes. Desactivado por defecto.',
-  'wardrobe.share.needsVerify': 'Verifica la cuenta primero para poder compartir.',
+  'wardrobe.share.desc': 'Otros jugadores de Espectral verán ⚛ junto a tu nombre y los cosméticos que equipes. Activado por defecto.',
+  'wardrobe.share.needsVerify': 'Verás tu ⚛ al instante; los demás lo verán cuando verifiques la cuenta.',
 
   'wardrobe.slots.title': 'Cosméticos equipados',
   'wardrobe.slots.subtitle': 'Un objeto por ranura. Algunos objetos son incompatibles entre sí.',
@@ -55,7 +55,6 @@ export const es: Dict = {
   'wardrobe.slot.espalda': 'Espalda',
   'wardrobe.slot.cuello': 'Cuello',
   'wardrobe.slot.cabeza': 'Cabeza',
-  'wardrobe.slot.brazos': 'Brazos',
   'wardrobe.slot.elitros': 'Élitros',
 
   'wardrobe.emotes.title': 'Gestos',
@@ -116,8 +115,8 @@ export const en: Dict = {
   'wardrobe.flags.legend': 'Other Espectral players see ⚛ next to your name; ★ if you hold a donor rank.',
 
   'wardrobe.share.title': 'Share my cosmetics',
-  'wardrobe.share.desc': 'When on, other Espectral players see ⚛ next to your name and the cosmetics you equip. Off by default.',
-  'wardrobe.share.needsVerify': 'Verify the account first to be able to share.',
+  'wardrobe.share.desc': 'Other Espectral players see ⚛ next to your name and the cosmetics you equip. On by default.',
+  'wardrobe.share.needsVerify': 'You see your ⚛ right away; others see it once you verify the account.',
 
   'wardrobe.slots.title': 'Equipped cosmetics',
   'wardrobe.slots.subtitle': 'One item per slot. Some items are mutually exclusive.',
@@ -127,7 +126,6 @@ export const en: Dict = {
   'wardrobe.slot.espalda': 'Back',
   'wardrobe.slot.cuello': 'Neck',
   'wardrobe.slot.cabeza': 'Head',
-  'wardrobe.slot.brazos': 'Arms',
   'wardrobe.slot.elitros': 'Elytra',
 
   'wardrobe.emotes.title': 'Emotes',

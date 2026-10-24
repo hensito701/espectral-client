@@ -58,6 +58,15 @@ public final class SuitePainter {
         paintPanel(gfx, width, height);
     }
 
+    /**
+     * Suite sub-screen backdrop (Cosméticos, Macros): the same dim + glass
+     * panel + hairlines as the main Suite screen, without the feature list.
+     * Shared by every {@link SuiteSheet} implementation.
+     */
+    public static void paintSheet(Object gfx, int width, int height) {
+        paintPanel(gfx, width, height);
+    }
+
     /** Confirm-dialog backdrop: dim plus the small centred glass panel. */
     public static void paintConfirm(Object gfx, SuiteConfirmScreen screen, int width, int height, Font font) {
         if (gfx == null || font == null || screen == null) return;

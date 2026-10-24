@@ -9,8 +9,13 @@
  * production pin is never overridden.
  *
  * Header:  {"alg":"EdDSA","kid":"eid1","typ":"ESG"}
- * Payload: {"v":1,"iss":"https://id.espectral.es","aud":"espectral-client",
+ * Payload: {"v":1,"iss":"https://id.uhce.top","aud":"espectral-client",
  *           "sub":"<32 lowercase hex uuid>","flags":[...],"iat":s,"exp":s}
+ *
+ * BOTH issuers verify: the canonical `https://id.uhce.top` and the legacy
+ * `https://id.espectral.es` minted before the zone lapsed (2026-10-22). The
+ * service's GRANT_ISS flip is an ops step that can follow this build, so a
+ * client upgrade must never orphan grants already in the wild.
  *
  * verifyGrant() throws GrantError on ANY mismatch — a missing/invalid grant
  * means "no ★ and no cosmetics", never a soft pass.
@@ -18,7 +23,12 @@
 import crypto from 'node:crypto';
 
 export const DEFAULT_KID = 'eid1';
-export const GRANT_ISS = 'https://id.espectral.es';
+/** Canonical issuer — what espectral-id mints after the GRANT_ISS flip. */
+export const GRANT_ISS = 'https://id.uhce.top';
+/** Issuer minted by espectral-id until the ops GRANT_ISS flip. */
+export const LEGACY_GRANT_ISS = 'https://id.espectral.es';
+/** Every `iss` value accepted; anything else is GRANT_BAD_ISS. */
+export const GRANT_ISS_ACCEPTED = Object.freeze([GRANT_ISS, LEGACY_GRANT_ISS]);
 export const GRANT_AUD = 'espectral-client';
 /** Leeway on iat so a freshly minted grant on a fast server clock verifies. */
 export const MAX_IAT_SKEW_S = 300;
@@ -127,7 +137,7 @@ export function verifyGrant(token, { sub = null, now = Math.floor(Date.now() / 1
   if (payload.v !== 1) {
     throw new GrantError('GRANT_BAD_VERSION', `grant v must be 1 (got ${JSON.stringify(payload.v)})`);
   }
-  if (payload.iss !== GRANT_ISS) {
+  if (!GRANT_ISS_ACCEPTED.includes(payload.iss)) {
     throw new GrantError('GRANT_BAD_ISS', `grant iss mismatch (got ${JSON.stringify(payload.iss)})`);
   }
   if (payload.aud !== GRANT_AUD) {

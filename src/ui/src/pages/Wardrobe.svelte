@@ -583,7 +583,7 @@
           role="switch"
           aria-checked={draftShare}
           aria-label={t('wardrobe.share.title')}
-          disabled={!account.verified || saving}
+          disabled={saving}
           onclick={() => toggleShare(!draftShare)}
         >
           <span class="switch__thumb"></span>

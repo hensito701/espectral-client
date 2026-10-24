@@ -14,6 +14,7 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import es.spectral.menu.ui.SuiteConfirmScreen;
 import es.spectral.menu.ui.SuitePainter;
 import es.spectral.menu.ui.SuiteScreen;
+import es.spectral.menu.ui.SuiteSheet;
 
 /**
  * 26.2 only: paints the dark-glass Suite backdrop behind widgets but over the
@@ -43,6 +44,9 @@ public abstract class ScreenBackgroundMixin {
         Object self = this;
         if (self instanceof SuiteScreen suite) {
             SuitePainter.paintSuite(gfx, suite, screen.width, screen.height, font);
+        } else if (self instanceof SuiteSheet sheet) {
+            // Sub-screens (Cosméticos, Macros) draw the same glass sheet.
+            sheet.paintSheet(gfx, screen.width, screen.height, font);
         } else if (self instanceof SuiteConfirmScreen confirm) {
             SuitePainter.paintConfirm(gfx, confirm, screen.width, screen.height, font);
         } else if (self instanceof TitleScreen) {

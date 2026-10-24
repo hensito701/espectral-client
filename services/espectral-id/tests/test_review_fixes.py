@@ -160,7 +160,7 @@ def test_validate_loadout_non_string_values():
         {"espalda": ["manto_espectral"],   # unhashable → would TypeError
          "cuello": {"x": 1},
          "cabeza": 42,
-         "brazos": True,
+         "brazos": True,          # withdrawn slot, must be ignored too
          "elitros": ""},
         ["supporter", "mvp"])
     assert all(v is None for v in result.values())

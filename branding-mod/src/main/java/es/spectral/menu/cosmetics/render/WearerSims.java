@@ -65,13 +65,30 @@ public final class WearerSims {
     private static boolean previewResolved;
 
     // Model-frame rest anchors (blocks, model root = neck line).
+    /**
+     * Mantle shoulder line: the sheet is pinned high on the wearer's LEFT
+     * shoulder (x = +0.30, the clasp) and sweeps down across the back to the
+     * right hip, so it reads as a mantle thrown over one shoulder rather than a
+     * symmetric cape. Anchors are (x, y, z) in blocks from the neck line.
+     */
     private static final float[][] MANTLE_TOP = {
-            {-0.32f, -0.34f, -0.12f},
-            {-0.26f, -0.24f,  0.12f},
-            {-0.02f, -0.10f,  0.17f},
-            { 0.22f,  0.02f,  0.12f},
-            { 0.30f,  0.10f, -0.10f},
+            { 0.28f, -0.04f, 0.20f},   // wearer's left deltoid: the clasp
+            { 0.25f,  0.01f, 0.21f},
+            { 0.12f,  0.05f, 0.21f},
+            {-0.05f,  0.09f, 0.21f},   // spine
+            {-0.21f,  0.13f, 0.20f},
+            {-0.28f,  0.16f, 0.18f},   // opposite shoulder blade: the long corner
     };
+    /**
+     * Mantle fold relief (blocks of depth per column, applied at draw time).
+     * Alternating in and out gives the sheet three soft folds down its length,
+     * and because the relief only reaches full strength at the hem it also
+     * flares the bottom away from the body — shoulders close, hem standing off.
+     * ~0.08 blocks at the proudest column is 1.3 px: enough to catch the light
+     * on the ridge normals, not so much that the cloth looks pleated cardboard.
+     */
+    static final float[] MANTLE_RELIEF = {0.012f, 0.052f, 0.026f, 0.080f, 0.030f, 0.010f};
+
     private static final float[][] CLOAK_TOP = {
             {-0.30f, -0.10f, -0.14f},
             {-0.24f, -0.06f,  0.14f},
@@ -272,7 +289,6 @@ public final class WearerSims {
         public ClothSim.Chain[] hoodTails = new ClothSim.Chain[2];
         public ClothSim.Chain[] tatters = new ClothSim.Chain[3];
         public ClothSim.Chain[] scarfTails = new ClothSim.Chain[2];
-        public ClothSim.Chain[] wrapEnds = new ClothSim.Chain[2];
 
         // Reusable deferred renderers, one per submitted piece.
         public final CosmeticGeo.Sheet mantleRenderer = new CosmeticGeo.Sheet();
@@ -280,11 +296,16 @@ public final class WearerSims {
         public final CosmeticGeo.Ribbon[] hoodTailRenderers = ribbons(2);
         public final CosmeticGeo.Ribbon[] tatterRenderers = ribbons(3);
         public final CosmeticGeo.Ribbon[] scarfTailRenderers = ribbons(2);
-        public final CosmeticGeo.Ribbon[] wrapEndRenderers = ribbons(2);
 
-        // Motion bookkeeping (model frame).
+        // Motion bookkeeping (body-local frame).
         float prevBodyRot, prevHeadRot;
-        float tilt;               // smoothed body tilt (rad) for anchors
+        /**
+         * Pose pitch the render anchor inverts: the vanilla crouch tilt plus
+         * whatever an emote adds to {@code body.xRot}. The cloth simulates in
+         * the body part's own (already pitched) frame, so the renderer only
+         * has to undo the part rotation to get back to that frame.
+         */
+        float bodyPitch;
         float flyBlend, swimBlend, flyTicks;
         float walkPos, walkSpeed, swingR, swingL;
         float vySmooth;
@@ -292,6 +313,8 @@ public final class WearerSims {
         public float earTwitch;
         /** Ear landing flop impulse, decaying. */
         public float earFlop;
+        /** Cat ear perk 0..1 while sprinting (smoothed per tick). */
+        public float catPerk;
         /** Wing open amount 0..1 (smoothed per tick). */
         public float wingOpen = 0.12f;
 
@@ -300,9 +323,11 @@ public final class WearerSims {
         float lastSteppedBodyRot;
         double distSq;
 
-        // Static per-item anchor state (rest pose).
-        float[] anchorX, anchorY, anchorZ;      // sheet top rows (rotated)
-        float[] wrapX = new float[2], wrapY = new float[2], wrapZ = new float[2];
+        // Static per-item anchor state (body-local rest pose).
+        float[] anchorX, anchorY, anchorZ;      // sheet top rows
+
+        /** Torso collider, configured once per tick (never allocated later). */
+        final ClothSim.Body body = new ClothSim.Body();
 
         private final float[] vtmp = new float[3];
 
@@ -345,9 +370,15 @@ public final class WearerSims {
             flyTicks = gliding ? flyTicks + 1f : 0f;
             flyBlend += ((gliding ? 1f : 0f) - flyBlend) * (gliding ? 0.12f : 0.08f);
             swimBlend += ((p.getPose() == net.minecraft.world.entity.Pose.SWIMMING ? 1f : 0f) - swimBlend) * 0.18f;
-            tilt += ((p.isCrouching() ? CROUCH_TILT : 0f) - tilt) * 0.35f;
+            // Forward pitch the vanilla pose carries this tick (crouch). The
+            // cloth simulates in this already-pitched body frame; the render
+            // anchor undoes exactly this much rotation, so gravity and wind stay
+            // world-aligned while emote pitches (bow, invocation) — applied on
+            // top of it by the model parts — ride along untouched.
+            bodyPitch += ((p.isCrouching() ? CROUCH_TILT : 0f) - bodyPitch) * 0.35f;
             earTwitch *= 0.9f;
             earFlop *= 0.82f;
+            catPerk += ((p.isSprinting() && !p.isCrouching() ? 1f : 0f) - catPerk) * 0.18f;
 
             walkPos = p.walkAnimation.position();
             walkSpeed = p.walkAnimation.speed();
@@ -366,106 +397,100 @@ public final class WearerSims {
 
         // ---------------- simulation ----------------
 
+        /**
+         * Simulates every cloth piece in the <b>body part's local frame</b>:
+         * origin at the neck root (the body part's pivot), +Y down, +Z behind
+         * the wearer, already pitched by the vanilla crouch tilt. The layer
+         * enters exactly that frame when drawing, so the crouch, an emote's
+         * bow/invocation torso pitch and the sit root drop all carry the cloth
+         * without the simulation having to know about them.
+         *
+         * <p>Down and wind arrive as world-space directions, so they are rotated
+         * into the pitched frame here — otherwise a crouching wearer's cloak
+         * would fall along the torso instead of along gravity. The collider is
+         * axis-aligned in this frame for free.
+         */
         void step(Player p) {
-            boolean still = Cosmetics.reducedMotion();
+            boolean still = !Cosmetics.physicsEnabled();
             float bodyRot = p.yBodyRot;
             // Carry the stored cloth through the body's yaw change since the
-            // previous tick (points live in the body-rotating model frame).
+            // previous tick (points live in the body-rotating frame).
             float delta = (float) Math.toRadians(Mth.wrapDegrees(bodyRot - lastSteppedBodyRot));
             if (delta != 0) yawCarry(-delta);
             lastSteppedBodyRot = bodyRot;
 
-            // Frame tilt (glide / swim) — gravity expressed in the model frame.
+            // Frame tilt (glide / swim) — gravity expressed in the body frame.
             float theta = flyBlend * (float) Math.toRadians(-90f - p.getXRot())
                     * Mth.clamp(flyTicks * flyTicks / 100f, 0f, 1f)
                     + swimBlend * (float) Math.toRadians(-90f);
             float downY = Mth.cos(theta);
             float downZ = Mth.sin(theta);
 
-            // Wearer velocity expressed in the model frame drives the wind.
+            // Wearer velocity expressed in the body frame drives the wind.
             worldToModel(p, vtmp);
             float wx = -vtmp[0] * WIND_K, wy = -vtmp[1] * WIND_K, wz = -vtmp[2] * WIND_K;
 
+            // Rotate gravity and wind out of world space into the body frame,
+            // which the crouch pitch has already rotated. Without this the cloak
+            // would hang along the tilted torso while sneaking.
+            float cp = Mth.cos(bodyPitch), sp = Mth.sin(bodyPitch);
+            float gy = downY * cp + downZ * sp, gz = -downY * sp + downZ * cp;
+            float wyR = wy * cp + wz * sp, wzR = -wy * sp + wz * cp;
+            downY = gy;
+            downZ = gz;
+            wy = wyR;
+            wz = wzR;
+
             float damp = still ? 1f : ClothSim.DAMP;
 
-            // Anchor rows/points, tilted with the body (crouch).
-            float ct = Mth.cos(tilt), st = Mth.sin(tilt);
+            // Torso collider: depth clears a chestplate, and the box follows the
+            // body part's pitch (it shares this frame) to the hip line.
+            boolean armor = p.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST)
+                    .is(net.minecraft.tags.ItemTags.CHEST_ARMOR);
+            body.set(ClothSim.bodyBack(armor ? ClothSim.ARMOR_CLEARANCE : 0f), bodyPitch);
 
             if (mantle != null) {
-                anchors(MANTLE_TOP, ct, st);
+                anchors(MANTLE_TOP);
                 if (still) {
                     mantle.reset(anchorX, anchorY, anchorZ, 0, 1, 0);
                 } else {
                     mantle.step(anchorX, anchorY, anchorZ,
                             0, downY, downZ, wx, wy, wz,
-                            damp, 0.004f, 0.0f, p.tickCount, -0.30f, CAP_Y);
+                            damp, 0.004f, 0.0f, p.tickCount, -0.30f, CAP_Y, body);
                 }
-
             }
             if (cloak != null) {
-                anchors(CLOAK_TOP, ct, st);
+                anchors(CLOAK_TOP);
                 if (still) {
                     cloak.reset(anchorX, anchorY, anchorZ, 0, 1, 0);
                 } else {
                     cloak.step(anchorX, anchorY, anchorZ,
                             0, downY, downZ, wx, wy, wz,
-                            damp, 0.004f, 1.7f, p.tickCount, -0.18f, CAP_Y);
+                            damp, 0.004f, 1.7f, p.tickCount, -0.18f, CAP_Y, body);
                 }
-
-                stepChains(hoodTails, HEM_TOP, ct, st, downY, downZ, wx, wy, wz, damp, still, p, 0.06f, 0.006f);
+                stepChains(hoodTails, HEM_TOP, downY, downZ, wx, wy, wz, damp, still, p, 0.06f, 0.006f);
             }
-            stepChains(tatters, TATTER_TOP, ct, st, downY, downZ, wx, wy, wz, damp, still, p, 0.05f, 0.008f);
-            stepChains(scarfTails, SCARF_TOP, ct, st, downY, downZ, wx, wy, wz, damp, still, p, 0.04f, 0.007f);
-            stepWrapEnds(p, downY, downZ, wx, wy, wz, damp, still);
+            stepChains(tatters, TATTER_TOP, downY, downZ, wx, wy, wz, damp, still, p, 0.05f, 0.008f);
+            stepChains(scarfTails, SCARF_TOP, downY, downZ, wx, wy, wz, damp, still, p, 0.04f, 0.007f);
         }
 
-        private void stepChains(ClothSim.Chain[] chains, float[][] top, float ct, float st,
+        private void stepChains(ClothSim.Chain[] chains, float[][] top,
                 float downY, float downZ, float wx, float wy, float wz,
                 float damp, boolean still, Player p, float minZ, float flutter) {
             for (int i = 0; i < chains.length; i++) {
                 ClothSim.Chain c = chains[i];
                 if (c == null) continue;
                 float ax = top[i][0], ay = top[i][1], az = top[i][2];
-                float ry = ay * ct - az * st;
-                float rz = ay * st + az * ct;
-                if (still) {
-                    c.reset(ax, ry, rz, 0, 1, 0);
-                } else {
-                    c.step(ax, ry, rz, 0, downY, downZ, wx, wy, wz,
-                            damp, flutter, i * 2.1f, p.tickCount, minZ, CAP_Y);
-                }
-            }
-        }
-
-        private void stepWrapEnds(Player p, float downY, float downZ,
-                float wx, float wy, float wz, float damp, boolean still) {
-            for (int i = 0; i < 2; i++) {
-                ClothSim.Chain c = wrapEnds[i];
-                if (c == null) continue;
-                updateWrapAnchor(p, i);
-                float ax = wrapX[i], ay = wrapY[i], az = wrapZ[i];
                 if (still) {
                     c.reset(ax, ay, az, 0, 1, 0);
                 } else {
-                    c.step(ax, ay, az, 0, downY, downZ, wx * 0.6f, wy * 0.6f, wz * 0.6f,
-                            damp, 0.004f, i * 1.9f, p.tickCount, -1000f, CAP_Y);
+                    c.step(ax, ay, az, 0, downY, downZ, wx, wy, wz,
+                            damp, flutter, i * 2.1f, p.tickCount, minZ, CAP_Y, body);
                 }
             }
         }
 
-        /** Wrist anchor in the model frame; follows the vanilla arm swing. */
-        private void updateWrapAnchor(Player p, int side) {
-            boolean right = side == 0;
-            float swing = right ? swingR : swingL;
-            float shoulderX = right ? -0.3125f : 0.3125f;
-            float armY = 0.125f + 0.5f * Mth.cos(swing);
-            float armZ = 0.5f * Mth.sin(swing);
-            wrapX[side] = shoulderX;
-            wrapY[side] = armY;
-            wrapZ[side] = armZ;
-        }
-
-        private void anchors(float[][] rest, float ct, float st) {
+        private void anchors(float[][] rest) {
             int n = rest.length;
             if (anchorX == null || anchorX.length != n) {
                 anchorX = new float[n];
@@ -473,10 +498,9 @@ public final class WearerSims {
                 anchorZ = new float[n];
             }
             for (int i = 0; i < n; i++) {
-                float ax = rest[i][0], ay = rest[i][1], az = rest[i][2];
-                anchorX[i] = ax;
-                anchorY[i] = ay * ct - az * st;
-                anchorZ[i] = ay * st + az * ct;
+                anchorX[i] = rest[i][0];
+                anchorY[i] = rest[i][1];
+                anchorZ[i] = rest[i][2];
             }
         }
 
@@ -487,7 +511,6 @@ public final class WearerSims {
             freezeChains(hoodTails);
             freezeChains(tatters);
             freezeChains(scarfTails);
-            freezeChains(wrapEnds);
         }
 
         private static void freezeChains(ClothSim.Chain[] chains) {
@@ -501,7 +524,6 @@ public final class WearerSims {
             yawChains(rad, hoodTails);
             yawChains(rad, tatters);
             yawChains(rad, scarfTails);
-            yawChains(rad, wrapEnds);
         }
 
         private static void yawChains(float rad, ClothSim.Chain[] chains) {
@@ -540,7 +562,11 @@ public final class WearerSims {
             String espalda = l.espalda();
             if ("manto_espectral".equals(espalda)) {
                 if (mantle == null) {
-                    mantle = new ClothSim.Sheet(5, 7, 0.27f, 0.15f);
+                    // 6 columns across the back, 7 rows down: the top edge is
+                    // the diagonal shoulder line, the hem lands between hip and
+                    // knee on both sides, so it reads as a mantle rather than a
+                    // cape reaching the calves.
+                    mantle = new ClothSim.Sheet(6, 7, 0.112f, 0.13f);
                     mantle.reset(MANTLE_TOP, 0, 1, 0);
                 }
             } else {
@@ -580,16 +606,6 @@ public final class WearerSims {
                 }
             } else if (scarfTails[0] != null) {
                 scarfTails[0] = scarfTails[1] = null;
-            }
-            if ("vendas_runicas".equals(l.brazos())) {
-                if (wrapEnds[0] == null) {
-                    for (int i = 0; i < 2; i++) {
-                        wrapEnds[i] = new ClothSim.Chain(3, 0.08f);
-                        wrapEnds[i].reset(0, 0.6f, 0, 0, 1, 0);
-                    }
-                }
-            } else if (wrapEnds[0] != null) {
-                wrapEnds[0] = wrapEnds[1] = null;
             }
         }
     }

@@ -9,9 +9,10 @@
  *       flags: [..], grant: <jws>, grant_exp: <unix s> } } }
  *
  * The service base URL comes from config.identity_url (default
- * https://id.espectral.es, env ESPECTRAL_ID_URL override) so tests point at a
- * local stub. The Mojang session server can be stubbed the same way via
- * ESPECTRAL_SESSION_SERVER (tests only; the real endpoint is the default).
+ * https://id.uhce.top, env ESPECTRAL_ID_URL override) so tests point at a
+ * local stub. Legacy configs naming https://id.espectral.es are migrated by
+ * config.loadConfig(). The Mojang session server can be stubbed the same way
+ * via ESPECTRAL_SESSION_SERVER (tests only; the real endpoint is the default).
  *
  * NOTHING here may throw into a launch path — callers that need soft failure
  * use refreshGrantSoft().
@@ -22,12 +23,15 @@ import { dataDir, loadConfig } from './config.mjs';
 import { verifyGrant } from './grant.mjs';
 import { httpError } from './error.mjs';
 
-export const DEFAULT_IDENTITY_URL = 'https://id.espectral.es';
+export const DEFAULT_IDENTITY_URL = 'https://id.uhce.top';
 
 const STATE_SCHEMA = 1;
 let cachedState = null;
 
-/** Service base URL (no trailing slash). Env override wins. */
+/**
+ * Service base URL (no trailing slash). Env override wins; config.identity_url
+ * is already migrated off the dead id.espectral.es host by config.loadConfig().
+ */
 export function identityUrl() {
   const env = process.env.ESPECTRAL_ID_URL;
   if (env && env.trim()) return env.trim().replace(/\/+$/, '');

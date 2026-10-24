@@ -8,6 +8,8 @@ import {
   registerGrantKey,
   GrantError,
   GRANT_ISS,
+  LEGACY_GRANT_ISS,
+  GRANT_ISS_ACCEPTED,
   GRANT_AUD,
   DEFAULT_KID,
 } from '../src/engine/grant.mjs';
@@ -68,6 +70,29 @@ test('wrong aud / iss / version are rejected', () => {
   assert.throws(() => verifyGrant(grant({ aud: 'minecraft' }), { sub: SUB }), (e) => e.code === 'GRANT_BAD_AUD');
   assert.throws(() => verifyGrant(grant({ iss: 'https://evil.example' }), { sub: SUB }), (e) => e.code === 'GRANT_BAD_ISS');
   assert.throws(() => verifyGrant(grant({ v: 2 }), { sub: SUB }), (e) => e.code === 'GRANT_BAD_VERSION');
+});
+
+test('both the canonical and the legacy issuer verify', () => {
+  // The service still mints iss=https://id.espectral.es until the ops
+  // GRANT_ISS flip; the client must validate grants across that change.
+  assert.equal(GRANT_ISS, 'https://id.uhce.top');
+  assert.equal(LEGACY_GRANT_ISS, 'https://id.espectral.es');
+  assert.deepEqual(GRANT_ISS_ACCEPTED, [GRANT_ISS, LEGACY_GRANT_ISS]);
+  assert.equal(verifyGrant(grant({ iss: GRANT_ISS }), { sub: SUB }).iss, GRANT_ISS);
+  assert.equal(verifyGrant(grant({ iss: LEGACY_GRANT_ISS }), { sub: SUB }).iss, LEGACY_GRANT_ISS);
+});
+
+test('issuer matching is exact — look-alikes and a bare host are rejected', () => {
+  for (const iss of [
+    'https://id.uhce.top.evil.example',
+    'https://id.uhce.top/',
+    'http://id.uhce.top',
+    'https://ID.UHCE.TOP',
+    'https://id.espectral.es/',
+    'id.uhce.top',
+  ]) {
+    assert.throws(() => verifyGrant(grant({ iss }), { sub: SUB }), (e) => e.code === 'GRANT_BAD_ISS', iss);
+  }
 });
 
 test('grant bound to another uuid is rejected for this sub', () => {

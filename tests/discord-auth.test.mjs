@@ -133,20 +133,57 @@ test('failed exchange drops the state so the next claim reports invalid', async 
 });
 
 test('mock mode still mints a state and completes the flow', async () => {
-  const prevId = process.env.DISCORD_CLIENT_ID;
-  delete process.env.DISCORD_CLIENT_ID;
+  // Mock mode must not depend on credentials at all: the synthetic code
+  // short-circuits before any Discord round-trip even when a client id is
+  // configured (DISCORD_CLIENT_ID is set for the whole suite).
   process.env.ESPECTRAL_DISCORD_MOCK = '1';
   try {
     const { url, state } = discordAuth.getAuthStartUrl();
-    assert.ok(url.includes('/api/discord/callback'));
+    assert.ok(url.includes('/api/discord/callback'), url);
+    assert.ok(url.includes('code=mock_code'), url);
     const r = await discordAuth.handleCallback({ code: 'mock_code', state });
     assert.equal(r.user.name, 'TestPlayer');
     assert.ok(r.sessionId);
     assert.equal(discordAuth.claimSessionUser(state).status, 'ok');
   } finally {
     delete process.env.ESPECTRAL_DISCORD_MOCK;
-    process.env.DISCORD_CLIENT_ID = prevId;
   }
+});
+
+test('a stock install uses the public Espectral app id with no config', () => {
+  const prevDiscord = process.env.DISCORD_CLIENT_ID;
+  const prevEspectral = process.env.ESPECTRAL_DISCORD_CLIENT_ID;
+  delete process.env.DISCORD_CLIENT_ID;
+  delete process.env.ESPECTRAL_DISCORD_CLIENT_ID;
+  try {
+    assert.equal(discordAuth.DEFAULT_DISCORD_CLIENT_ID, '1454618588659843072');
+    assert.equal(discordAuth.getDiscordCredentials().clientId, '1454618588659843072');
+    const { url } = discordAuth.getAuthStartUrl({ linkUuid: LINK_UUID });
+    const parsed = new URL(url);
+    assert.equal(parsed.origin + parsed.pathname, 'https://discord.com/oauth2/authorize');
+    assert.equal(parsed.searchParams.get('client_id'), '1454618588659843072');
+    assert.equal(parsed.searchParams.get('redirect_uri'), discordAuth.REDIRECT_URI);
+    assert.equal(parsed.searchParams.get('response_type'), 'code');
+    assert.equal(parsed.searchParams.get('scope'), 'identify');
+    assert.equal(parsed.searchParams.get('state').length, 32);
+  } finally {
+    if (prevDiscord !== undefined) process.env.DISCORD_CLIENT_ID = prevDiscord;
+    if (prevEspectral !== undefined) process.env.ESPECTRAL_DISCORD_CLIENT_ID = prevEspectral;
+  }
+});
+
+test('config.json discord.client_id overrides the env and the built-in default', async () => {
+  const { saveConfig } = await import('../src/engine/config.mjs');
+  saveConfig({ discord: { client_id: 'config-app-id' } });
+  try {
+    assert.equal(discordAuth.getDiscordCredentials().clientId, 'config-app-id');
+    const { url } = discordAuth.getAuthStartUrl();
+    assert.equal(new URL(url).searchParams.get('client_id'), 'config-app-id');
+  } finally {
+    saveConfig({ discord: null });
+  }
+  // Back to the env override the suite set up.
+  assert.equal(discordAuth.getDiscordCredentials().clientId, 'test-client-id');
 });
 
 test('unknown or missing state claims invalid', () => {

@@ -76,21 +76,47 @@ public final class MacroEngine {
     }
 
     public static int getGlfwKeyCode(String keybindStr) {
-        if (keybindStr == null || keybindStr.isEmpty()) return -1;
-        String lower = keybindStr.toLowerCase(Locale.ROOT);
+        if (keybindStr == null) return -1;
+        String trimmed = keybindStr.trim();
+        if (trimmed.isEmpty()) return -1;
+        String lower = trimmed.toLowerCase(Locale.ROOT);
 
         if (lower.startsWith("key.keyboard.")) {
             String name = lower.substring("key.keyboard.".length());
             return getGlfwKeyFromName(name);
         }
 
-        if (lower.length() == 1) {
-            char c = lower.charAt(0);
-            if (c >= 'a' && c <= 'z') return GLFW.GLFW_KEY_A + (c - 'a');
-            if (c >= '0' && c <= '9') return GLFW.GLFW_KEY_0 + (c - '0');
+        // A single non-ASCII character ("ñ", "ç", "ß"): the literal key label a
+        // hand-written config may carry. Resolved against the live keyboard
+        // layout so it means the same key the user types.
+        if (trimmed.codePointCount(0, trimmed.length()) == 1) {
+            int cp = trimmed.codePointAt(0);
+            if (cp > 0x7F) {
+                int resolved = glfwKeyForCharacter(cp);
+                if (resolved > 0) return resolved;
+            }
         }
 
         return getGlfwKeyFromName(lower);
+    }
+
+    /**
+     * Reverse lookup for a printed character in the current layout: scans the
+     * GLFW key range for the physical key whose unshifted name is that
+     * character (Windows/GLFW reports the layout name). Returns -1 when the
+     * character is not a plain key on this keyboard (accented letters are
+     * dead-key compositions, so a macro for "á" cannot exist — that is a
+     * keyboard limitation, not a config one).
+     */
+    private static int glfwKeyForCharacter(int codePoint) {
+        String wanted = new String(Character.toChars(codePoint)).toLowerCase(Locale.ROOT);
+        for (int code = GLFW.GLFW_KEY_SPACE; code <= GLFW.GLFW_KEY_LAST; code++) {
+            String name = GLFW.glfwGetKeyName(code, 0);
+            if (name != null && name.toLowerCase(Locale.ROOT).equals(wanted)) {
+                return code;
+            }
+        }
+        return -1;
     }
 
     private static int getGlfwKeyFromName(String name) {
@@ -100,6 +126,17 @@ public final class MacroEngine {
             if (c == ' ') return GLFW.GLFW_KEY_SPACE;
             if (c >= 'a' && c <= 'z') return GLFW.GLFW_KEY_A + (c - 'a');
             if (c >= '0' && c <= '9') return GLFW.GLFW_KEY_0 + (c - '0');
+        }
+        // Numeric keysym ("key.keyboard.341"): the name vanilla fabricates for
+        // a key absent from its name table. Storing it keeps exotic/layout keys
+        // round-trippable without inventing names.
+        if (name.length() > 1 && name.chars().allMatch(ch -> ch >= '0' && ch <= '9')) {
+            try {
+                int code = Integer.parseInt(name);
+                return code >= 0 && code <= GLFW.GLFW_KEY_LAST ? code : -1;
+            } catch (NumberFormatException e) {
+                return -1;
+            }
         }
         // Numpad digits accept the common spellings ("numpad.0", "keypad.0",
         // "kp.0", "numpad 0") since configs vary.
@@ -178,6 +215,11 @@ public final class MacroEngine {
         };
     }
 
+    /**
+     * Executes one macro: a leading {@code /} goes through the vanilla
+     * command API, everything else through the vanilla chat API, so a macro
+     * can never reach a network path the player could not type by hand.
+     */
     private void executeMacro(ClientConfig.MacroConfig macro, Minecraft minecraft) {
         LOGGER.info("Executing macro: {} ({})", macro.name, macro.id);
         for (ClientConfig.MacroAction action : macro.actions) {
@@ -189,5 +231,100 @@ public final class MacroEngine {
                 Compat.sendChat(minecraft, text);
             }
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Keybind format (shared with the Macros editor screen)
+    // ---------------------------------------------------------------
+
+    /** Maximum stored keybind length; the launcher rejects longer ones. */
+    public static final int MAX_KEYBIND_LENGTH = 32;
+
+    /**
+     * Canonical keybind string for a GLFW key code, in the same
+     * {@code key.keyboard.<name>} form the launcher and {@code options.txt}
+     * write: {@link InputConstants} resolves the name from its own table and,
+     * for keys it has no entry for (e.g. {@code Ç} on a Spanish layout,
+     * keysym 231), fabricates {@code key.keyboard.<keysym>} — which vanilla's
+     * {@link InputConstants#getKey(String)} and {@link #getGlfwKeyCode(String)}
+     * both parse back to the same code. Empty string for an unknown code.
+     */
+    public static String keybindFor(int glfwKey) {
+        if (glfwKey <= 0) return "";
+        return InputConstants.Type.KEYSYM.getOrCreate(glfwKey).getName();
+    }
+
+    /**
+     * Layout-aware label for a stored keybind (e.g. {@code ñ}, {@code Ç},
+     * {@code Z}, {@code Page Down}). Resolved through the vanilla display name
+     * so the label matches the Controls screen; memoised per key by vanilla.
+     * Falls back to the raw keybind when it cannot be parsed.
+     */
+    public static net.minecraft.network.chat.Component keyDisplayName(String keybind) {
+        int code = getGlfwKeyCode(keybind);
+        if (code <= 0) {
+            return net.minecraft.network.chat.Component.literal(
+                    keybind == null ? "" : keybind);
+        }
+        return InputConstants.Type.KEYSYM.getOrCreate(code).getDisplayName();
+    }
+
+    /** Reserved key: Esc always closes screens, so it can never be a macro. */
+    public static boolean isReserved(int glfwKey) {
+        return glfwKey == GLFW.GLFW_KEY_ESCAPE
+                || glfwKey == GLFW.GLFW_KEY_RIGHT_SHIFT;
+    }
+
+    /**
+     * An already-bound key that a new macro would shadow. {@code fromMacro} is
+     * true for a clash with another macro (the editor refuses those outright);
+     * false for a vanilla/mod/suite binding (warned, then confirmable).
+     */
+    public record Conflict(boolean fromMacro, net.minecraft.network.chat.Component label) {}
+
+    /**
+     * Finds the binding already using {@code keybind}, or {@code null} when
+     * the key is free. Checked in this order: another macro
+     * ({@code ignoreMacroId} excluded), every entry of
+     * {@code Minecraft.options.keyMappings} (vanilla and mod keys — the same
+     * list the Controls screen shows, and the one Right Shift / Z / B land in
+     * once {@code EspectralClient.ensureClientKeyRegistered} ran), and the
+     * Suite registry's own {@code keybind} values.
+     */
+    public static Conflict findConflict(String keybind, String ignoreMacroId) {
+        int code = getGlfwKeyCode(keybind);
+        if (code <= 0) return null;
+        String canonical = keybindFor(code);
+
+        ClientConfig config = ClientConfig.getInstance();
+        for (ClientConfig.MacroConfig other : config.getMacros()) {
+            if (other.id.equals(ignoreMacroId)) continue;
+            if (getGlfwKeyCode(other.keybind) != code) continue;
+            String name = other.name == null || other.name.isBlank() ? other.id : other.name;
+            return new Conflict(true, net.minecraft.network.chat.Component.literal(name));
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft != null && minecraft.options != null) {
+            net.minecraft.client.KeyMapping[] mappings = minecraft.options.keyMappings;
+            if (mappings != null) {
+                for (net.minecraft.client.KeyMapping mapping : mappings) {
+                    if (mapping == null || mapping.isUnbound()) continue;
+                    if (!canonical.equals(mapping.saveString())) continue;
+                    return new Conflict(false,
+                            net.minecraft.network.chat.Component.translatable(mapping.getName()));
+                }
+            }
+        }
+
+        for (FeatureRegistry.Feature feature : FeatureRegistry.all()) {
+            String suiteKey = feature.keybind();
+            if (suiteKey == null || suiteKey.isEmpty()) continue;
+            if (getGlfwKeyCode(suiteKey) != code) continue;
+            return new Conflict(false,
+                    net.minecraft.network.chat.Component.translatable(
+                            FeatureRegistry.nameKey(feature.id())));
+        }
+        return null;
     }
 }

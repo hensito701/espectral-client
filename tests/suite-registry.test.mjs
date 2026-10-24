@@ -13,6 +13,7 @@ import {
   DEST_CATALOG,
   DEST_EN,
   DEST_ES,
+  readExtraStrings,
 } from '../scripts/sync-suite-registry.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,12 +25,12 @@ const clientI18n = fs.readFileSync(
   'utf8',
 );
 
-test('registry shape: 15 features, 5 categories, schema 2, suite on by default', () => {
+test('registry shape: 16 features, 5 categories, schema 2, suite on by default', () => {
   assert.equal(doc.schema, 2);
   assert.equal(doc.suite?.default_enabled, true);
-  assert.equal(doc.features.length, 15);
+  assert.equal(doc.features.length, 16);
   assert.equal(doc.categories.length, 5);
-  assert.equal(new Set(doc.features.map((f) => f.id)).size, 15);
+  assert.equal(new Set(doc.features.map((f) => f.id)).size, 16);
   for (const f of doc.features) {
     assert.ok(typeof f.name_en === 'string' && typeof f.name_es === 'string', `${f.id} both names`);
     assert.ok(
@@ -76,4 +77,45 @@ test('freshness: regenerating yields byte-identical files', () => {
   assert.equal(fs.readFileSync(DEST_ES, 'utf8'), stableStringify(freshEs));
   assert.equal(fs.readFileSync(DEST_REGISTRY, 'utf8'), fs.readFileSync(REGISTRY_SOURCE, 'utf8'));
   assert.equal(fs.readFileSync(DEST_CATALOG, 'utf8'), fs.readFileSync(CATALOG_SOURCE, 'utf8'));
+});
+
+// --- extra (hand-maintained) lang keys --------------------------------------
+
+test('extra lang file: both languages carry the same keys and no registry key', () => {
+  const extra = readExtraStrings();
+  const esKeys = Object.keys(extra.es).sort();
+  const enKeys = Object.keys(extra.en).sort();
+  assert.deepEqual(esKeys, enKeys, 'ES and EN blocks must stay in sync');
+  assert.ok(esKeys.length > 0, 'extra lang file has strings');
+
+  const registryKeys = new Set();
+  for (const f of doc.features) {
+    registryKeys.add(`espectral.feature.${f.id}.name`);
+    registryKeys.add(`espectral.feature.${f.id}.description`);
+  }
+  for (const c of doc.categories) registryKeys.add(`espectral.category.${c.id}`);
+  for (const key of esKeys) {
+    assert.ok(!registryKeys.has(key), `extra file must not redeclare registry key ${key}`);
+  }
+});
+
+test('cosmetics feature carries the viewer state defaults', () => {
+  const cosmetics = doc.features.find((f) => f.id === 'cosmetics');
+  assert.deepEqual(cosmetics.state, {
+    own: true,
+    others: true,
+    slot_espalda: true,
+    slot_cuello: true,
+    slot_cabeza: true,
+    slot_elitros: true,
+    emotes: true,
+    physics: true,
+  });
+});
+
+test('buildLangMaps: a registry-owned key in the extra file is a hard error', () => {
+  assert.throws(
+    () => buildLangMaps(doc, { es: { 'espectral.feature.cosmetics.name': 'x' }, en: {} }),
+    /redeclares registry-owned key/,
+  );
 });

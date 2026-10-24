@@ -1,6 +1,6 @@
 # Espectral Client
 
-Open-source Minecraft launcher for [espectral.es](https://espectral.es). Windows desktop app
+Open-source Minecraft launcher for [Espectral](https://espectral.uhce.top). Windows desktop app
 (Tauri 2 shell) around a plain-Node engine, with a Svelte 5 interface in Spanish and English.
 
 Licensed **GPL-3.0** (see [LICENSE](LICENSE)).
@@ -46,7 +46,7 @@ It is deliberately small and still early — the launcher is the mature half of 
 
 ## Install
 
-**Users:** download the installer from [espectral.es/client](https://espectral.es/client) and run it.
+**Users:** download the installer from [espectral.uhce.top/client](https://espectral.uhce.top/client) and run it.
 The app is self-contained; it bundles its own Node runtime and manages its own Java.
 
 The installer is not code-signed, so Windows SmartScreen may warn on first run.

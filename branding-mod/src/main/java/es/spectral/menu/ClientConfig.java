@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -22,6 +23,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import net.fabricmc.loader.api.FabricLoader;
+
+import es.spectral.menu.cosmetics.Loadout;
 
 /**
  * Versioned config store for &lt;instanceDir&gt;/config/espectral-client.json (schema 2).
@@ -92,9 +95,93 @@ public final class ClientConfig {
         }
     }
 
+    // --- cosmetics viewer state (Suite → Cosméticos sub-screen) -------------
+    // Stored flattened inside the cosmetics feature object
+    // (features.cosmetics.own, .others, .slot_espalda, …), which is exactly how
+    // the registry's `state` block lands in the file (see FEATURE_DEFAULTS in
+    // the engine): every key survives a save() untouched because it lives in
+    // the feature's rawObject.
+
+    /** Show the local player's own cosmetics. */
+    public static final String COSMETICS_OWN = "own";
+    /** Show other players' cosmetics. */
+    public static final String COSMETICS_OTHERS = "others";
+    /** Local emotes switch, ANDed with espectral-cosmetics.json's `emotes`. */
+    public static final String COSMETICS_EMOTES = "emotes";
+    /** Cloth/spring simulation; off = the reduced-motion static pose. */
+    public static final String COSMETICS_PHYSICS = "physics";
+
+    /** Config key of the per-slot visibility flag for a {@link Loadout} slot. */
+    public static String cosmeticsSlotKey(String slot) {
+        return "slot_" + slot;
+    }
+
+    /**
+     * Immutable O(1) snapshot of the cosmetics viewer toggles. Rebuilt only
+     * when the config loads or a toggle changes, so the render thread never
+     * touches Gson, the file or the lock.
+     */
+    public static final class CosmeticsState {
+        /** Slot bit indices, in {@link Loadout} field order. */
+        public static final int BIT_ESPALDA = 1;
+        public static final int BIT_CUELLO = 1 << 1;
+        public static final int BIT_CABEZA = 1 << 2;
+        public static final int BIT_ELITROS = 1 << 4;
+        /** Every slot visible. */
+        public static final int ALL_SLOTS = BIT_ESPALDA | BIT_CUELLO | BIT_CABEZA
+                | BIT_ELITROS;
+
+        public final boolean own;
+        public final boolean others;
+        public final boolean emotes;
+        public final boolean physics;
+        /** Bitmask of the own slots that are visible; {@link #ALL_SLOTS} = all. */
+        public final int slotMask;
+
+        public CosmeticsState(boolean own, boolean others, boolean emotes,
+                boolean physics, int slotMask) {
+            this.own = own;
+            this.others = others;
+            this.emotes = emotes;
+            this.physics = physics;
+            this.slotMask = slotMask & ALL_SLOTS;
+        }
+
+        /** Contract defaults: everything on. */
+        public static final CosmeticsState DEFAULTS =
+                new CosmeticsState(true, true, true, true, ALL_SLOTS);
+
+        public boolean slotVisible(String slot) {
+            int bit = bitOf(slot);
+            return bit != 0 && (slotMask & bit) != 0;
+        }
+
+        /** Slot bit for a {@link Loadout} slot id, or 0 for an unknown slot. */
+        public static int bitOf(String slot) {
+            if (slot == null) return 0;
+            return switch (slot) {
+                case "espalda" -> BIT_ESPALDA;
+                case "cuello" -> BIT_CUELLO;
+                case "cabeza" -> BIT_CABEZA;
+                case "elitros" -> BIT_ELITROS;
+                default -> 0;
+            };
+        }
+    }
+
+    /** True when {@code key} is a cosmetics state key this screen can write. */
+    public static boolean isCosmeticsStateKey(String key) {
+        if (key == null) return false;
+        return COSMETICS_OWN.equals(key) || COSMETICS_OTHERS.equals(key)
+                || COSMETICS_EMOTES.equals(key) || COSMETICS_PHYSICS.equals(key)
+                || (key.startsWith("slot_") && CosmeticsState.bitOf(key.substring(5)) != 0);
+    }
+
     private int schema = SCHEMA_VERSION;
     /** Master switch; gates every owned feature through {@link #isFeatureEnabled}. */
     private boolean suiteEnabled = true;
+    /** Cosmetics viewer toggles; volatile so the render thread reads lock-free. */
+    private volatile CosmeticsState cosmeticsState = CosmeticsState.DEFAULTS;
     private final Map<String, FeatureConfig> features = new HashMap<>();
     private final List<MacroConfig> macros = new ArrayList<>();
     private JsonObject rawRoot = new JsonObject();
@@ -206,11 +293,50 @@ public final class ClientConfig {
                 this.features.putAll(parsedFeatures);
                 this.macros.clear();
                 this.macros.addAll(parsedMacros);
+                this.cosmeticsState = readCosmeticsState();
             }
         } catch (Exception e) {
             LOGGER.warn("Failed to parse config {}: {}; preserving memory state", path, e.getMessage());
         }
         refreshLastModified();
+    }
+
+    /** Rebuilds the cosmetics snapshot from the current feature raw objects. */
+    private CosmeticsState readCosmeticsState() {
+        FeatureConfig fc = features.get("cosmetics");
+        JsonObject obj = fc != null ? fc.rawObject : null;
+        int mask = 0;
+        for (int bit : new int[] {CosmeticsState.BIT_ESPALDA, CosmeticsState.BIT_CUELLO,
+                CosmeticsState.BIT_CABEZA, CosmeticsState.BIT_ELITROS}) {
+            if (stateFlag(obj, "slot_" + slotOf(bit), true)) mask |= bit;
+        }
+        return new CosmeticsState(
+                stateFlag(obj, COSMETICS_OWN, true),
+                stateFlag(obj, COSMETICS_OTHERS, true),
+                stateFlag(obj, COSMETICS_EMOTES, true),
+                stateFlag(obj, COSMETICS_PHYSICS, true),
+                mask);
+    }
+
+    /** {@link Loadout} slot id for a cosmetics slot bit. */
+    public static String slotOf(int bit) {
+        return switch (bit) {
+            case CosmeticsState.BIT_ESPALDA -> "espalda";
+            case CosmeticsState.BIT_CUELLO -> "cuello";
+            case CosmeticsState.BIT_CABEZA -> "cabeza";
+            case CosmeticsState.BIT_ELITROS -> "elitros";
+            default -> "";
+        };
+    }
+
+    /** Boolean state key inside a feature object, with a contract default. */
+    private static boolean stateFlag(JsonObject obj, String key, boolean fallback) {
+        if (obj == null || !obj.has(key)) return fallback;
+        JsonElement el = obj.get(key);
+        if (el == null || !el.isJsonPrimitive() || !el.getAsJsonPrimitive().isBoolean()) {
+            return fallback;
+        }
+        return el.getAsBoolean();
     }
 
     /**
@@ -397,6 +523,7 @@ public final class ClientConfig {
                 features.put(f.id(), new FeatureConfig(f.defaultEnabled(), null));
             }
         }
+        this.cosmeticsState = readCosmeticsState();
         save();
     }
     /**
@@ -460,5 +587,148 @@ public final class ClientConfig {
 
     public synchronized List<MacroConfig> getMacros() {
         return Collections.unmodifiableList(new ArrayList<>(macros));
+    }
+
+    // --- cosmetics viewer state -------------------------------------------
+
+    /**
+     * Lock-free cosmetics toggles for the render/tick threads. Never touches
+     * the file, Gson or this instance's monitor: the snapshot is rebuilt on
+     * load and on every {@link #setCosmeticsState}, so a render-thread read is
+     * one volatile field load.
+     */
+    public CosmeticsState cosmeticsState() {
+        return cosmeticsState;
+    }
+
+    /**
+     * Contract default for one cosmetics state key (everything on). Reads the
+     * volatile snapshot only — no monitor, no file access — so the render
+     * thread can call it.
+     */
+    public boolean getCosmeticsState(String key) {
+        CosmeticsState s = cosmeticsState;
+        if (COSMETICS_OWN.equals(key)) return s.own;
+        if (COSMETICS_OTHERS.equals(key)) return s.others;
+        if (COSMETICS_EMOTES.equals(key)) return s.emotes;
+        if (COSMETICS_PHYSICS.equals(key)) return s.physics;
+        if (key != null && key.startsWith("slot_")) return s.slotVisible(key.substring(5));
+        return true;
+    }
+
+    /**
+     * Stores one cosmetics toggle inside {@code features.cosmetics.<key>} and
+     * persists immediately (the Suite screens reload from disk on open).
+     * Unknown keys are ignored so the launcher's schema stays the contract.
+     */
+    public synchronized void setCosmeticsState(String key, boolean value) {
+        if (!isCosmeticsStateKey(key)) return;
+        FeatureConfig fc = features.get("cosmetics");
+        if (fc == null) {
+            fc = new FeatureConfig(defaultFeatureEnabled("cosmetics"), null);
+            features.put("cosmetics", fc);
+        }
+        fc.rawObject.addProperty(key, value);
+        this.cosmeticsState = readCosmeticsState();
+        save();
+    }
+
+    private static boolean defaultFeatureEnabled(String id) {
+        FeatureRegistry.Feature feature = FeatureRegistry.findById(id);
+        return feature != null && feature.defaultEnabled();
+    }
+
+    // --- macro list mutations (Suite → Macros sub-screen) ------------------
+
+    /** Upper bound the launcher accepts ({@code MAX_MACROS} in client.mjs). */
+    public static final int MAX_MACROS = 32;
+    /** Upper bound for the macro label; launcher limit is 40. */
+    public static final int MAX_MACRO_NAME = 40;
+    /** Chat limit, and the launcher's per-action text cap. */
+    public static final int MAX_MACRO_TEXT = 256;
+
+    /**
+     * Inserts or replaces a macro, matched by id. Callers pass a sanitized id
+     * ({@code [A-Za-z0-9_-]{1,32}}); the launcher's PATCH validation owns
+     * that rule and this only keeps the file parseable. Persists immediately.
+     * Returns false when the list is at {@link #MAX_MACROS} and the id is new.
+     */
+    public synchronized boolean putMacro(String id, String name, String keybind,
+            String actionType, String text) {
+        if (id == null || id.isEmpty()) return false;
+        String cleanText = clamp(text, MAX_MACRO_TEXT);
+        // The launcher rejects empty action text (BAD_MACRO): refuse rather
+        // than write a file the launcher can no longer PATCH.
+        if (cleanText.isEmpty()) return false;
+        // The launcher rejects empty names too; derive one from the text.
+        String cleanName = clamp(name, MAX_MACRO_NAME);
+        if (cleanName.isEmpty()) {
+            String base = cleanText.startsWith("/") ? cleanText.substring(1) : cleanText;
+            cleanName = clamp(base, MAX_MACRO_NAME);
+            if (cleanName.isEmpty()) cleanName = id;
+        }
+        ClientConfig.MacroAction action = new MacroAction(
+                cleanText.startsWith("/") ? "command" : actionType, cleanText);
+
+        for (int i = 0; i < macros.size(); i++) {
+            MacroConfig existing = macros.get(i);
+            if (!existing.id.equals(id)) continue;
+            // The editor owns the FIRST action; any further actions a launcher
+            // macro carried are kept verbatim instead of being dropped.
+            List<MacroAction> actions = new ArrayList<>();
+            actions.add(action);
+            for (int a = 1; a < existing.actions.size(); a++) {
+                actions.add(existing.actions.get(a));
+            }
+            MacroConfig updated = new MacroConfig(id, cleanName, keybind,
+                    actions, existing.rawObject);
+            macros.set(i, updated);
+            save();
+            return true;
+        }
+        if (macros.size() >= MAX_MACROS) return false;
+        macros.add(new MacroConfig(id, cleanName, keybind, List.of(action), null));
+        save();
+        return true;
+    }
+
+    /** Removes a macro by id; persists immediately. Returns true when found. */
+    public synchronized boolean removeMacro(String id) {
+        if (id == null) return false;
+        boolean removed = macros.removeIf(macro -> macro.id.equals(id));
+        if (removed) save();
+        return removed;
+    }
+
+    /**
+     * Unique macro id derived from {@code seed}: lowercased ASCII word chars,
+     * numeric suffix when it would collide. Always matches the launcher's
+     * {@code ^[A-Za-z0-9_-]{1,32}$} so a config written here passes PATCH.
+     */
+    public synchronized String newMacroId(String seed) {
+        String base = seed == null ? "" : seed.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9_-]", "-")
+                .replaceAll("^-+|-+$", "");
+        if (base.isEmpty()) base = "macro";
+        if (base.length() > 28) base = base.substring(0, 28);
+        String candidate = base;
+        int n = 2;
+        while (macroIdTaken(candidate)) {
+            candidate = base + "-" + n++;
+        }
+        return candidate;
+    }
+
+    private boolean macroIdTaken(String id) {
+        for (MacroConfig macro : macros) {
+            if (macro.id.equals(id)) return true;
+        }
+        return false;
+    }
+
+    private static String clamp(String value, int max) {
+        if (value == null) return "";
+        String trimmed = value.trim();
+        return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
     }
 }

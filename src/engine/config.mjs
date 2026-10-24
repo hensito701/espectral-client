@@ -36,7 +36,9 @@ export const DEFAULT_CONFIG = {
   fullbright_on_launch: false,
   jdk_path_override: null,
   discord_enabled: true,
-  identity_url: 'https://id.espectral.es',
+  // espectral-id service base URL. Canonical host since the espectral.es zone
+  // lapsed (2026-10-22); LEGACY_IDENTITY_URLS below are migrated on load.
+  identity_url: 'https://id.uhce.top',
   // engine-owned state
   theme: 'dark',
   // Client accent palette id (Workstream 4). Drives <html data-accent> in the
@@ -55,6 +57,20 @@ export const DEFAULT_CONFIG = {
 
 let cached = null;
 
+/**
+ * Identity-service hosts that predate the `uhce.top` move (the espectral.es
+ * zone lapsed ~2026-10-22). A persisted config.json carrying one of these is
+ * migrated to `DEFAULT_CONFIG.identity_url` on load, so existing installs keep
+ * working without hand-editing JSON. Trailing slashes are tolerated.
+ */
+export const LEGACY_IDENTITY_URLS = ['https://id.espectral.es'];
+
+/** True when `url` is exactly a bare legacy identity host. */
+export function isLegacyIdentityUrl(url) {
+  if (typeof url !== 'string') return false;
+  return LEGACY_IDENTITY_URLS.includes(url.trim().replace(/\/+$/, '').toLowerCase());
+}
+
 /** Load (and lazily create) the config document. Returns the live object. */
 export function loadConfig() {
   if (cached) return cached;
@@ -66,7 +82,12 @@ export function loadConfig() {
   }
   cached = { ...DEFAULT_CONFIG, ...raw };
   if (!Array.isArray(cached.accounts)) cached.accounts = [];
-  if (!fs.existsSync(configPath())) persist(cached);
+  // Only a *legacy* value is rewritten — any other custom identity_url is the
+  // user's own (self-hosted service) and is left alone. Persist immediately so
+  // the file stops naming a dead host even if nothing else is ever saved.
+  const migratedIdentity = isLegacyIdentityUrl(cached.identity_url);
+  if (migratedIdentity) cached.identity_url = DEFAULT_CONFIG.identity_url;
+  if (migratedIdentity || !fs.existsSync(configPath())) persist(cached);
   return cached;
 }
 

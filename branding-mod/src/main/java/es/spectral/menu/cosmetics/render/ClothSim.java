@@ -7,9 +7,11 @@ package es.spectral.menu.cosmetics.render;
  * {@code RenderLayer} (or {@code submitCustomGeometry} callback) writes into
  * while submitting an avatar. In that space +X is the wearer's RIGHT, +Y is
  * DOWN (the model is drawn flipped), +Z is BEHIND the wearer, the origin sits
- * at the feet and one unit is one block. Gravity and wind are handed in
- * pre-rotated by the caller, so the same code serves upright, sneaking,
- * swimming and gliding poses.
+ * on the model root (the neck line of the humanoid) and one unit is one block —
+ * exactly the space {@code ModelPart#translateAndRotate} leaves the pose stack
+ * in. Gravity and wind are handed in already rotated into the frame the caller
+ * simulates in, so the same code serves upright, sneaking, bowing, swimming and
+ * gliding poses.
  *
  * <p>Chains keep a render copy ({@code q*}) of the previous tick so the layer
  * can interpolate per frame; simulation itself happens once per client tick.
@@ -30,6 +32,101 @@ public final class ClothSim {
     public static final float CAP_KNEES = 1.12f;
     /** Nothing wider than the shoulders plus one block. */
     public static final float CAP_X = 0.78f;
+
+    // ---------------------------------------------------------------
+    // Body collision (the torso and upper legs are not penetrable)
+    // ---------------------------------------------------------------
+
+    /** Torso surface: 2 px behind/in front of the neck line. */
+    public static final float BODY_HALF_Z = 0.125f;
+    /** Torso half width (4 px). */
+    public static final float BODY_HALF_X = 0.25f;
+    /** Skin offset: cloth floats 0.4 px clear of the surface it drapes on. */
+    public static final float BODY_PAD = 0.025f;
+    /**
+     * Extra clearance a chestplate needs: the outer armor deformation inflates
+     * the torso by 1 px, and vanilla's own cape layer adds another 1.1 px on
+     * top of that ({@code CapeLayer} translates its model 0.06875 blocks).
+     */
+    public static final float ARMOR_CLEARANCE = 0.0625f + 0.06875f;
+    /** Bottom of the collidable volume: the knee cap (upper legs share the torso's z span). */
+    public static final float BODY_BOTTOM = CAP_KNEES;
+
+    /**
+     * Plane distance for cloth: {@code BODY_HALF_Z + BODY_PAD} plus the armor
+     * clearance when the wearer has a chestplate.
+     */
+    public static float bodyBack(float armorClearance) {
+        return BODY_HALF_Z + BODY_PAD + armorClearance;
+    }
+
+    /**
+     * Pushes one cloth point out of the torso volume to whichever z face it is
+     * closest to (behind for cloaks, in front for a mantle's chest drape). The
+     * point keeps its x and y, so the sheet slides along the body instead of
+     * collapsing. Cheap: a handful of compares and at most one store.
+     *
+     * @param half   half depth of the torso box along z (see {@link #bodyBack})
+     * @param top    y of the shoulder line in the sim frame (0 = neck root)
+     * @param bottom y of the bottom of the collidable volume
+     */
+    static void pushOutOfBody(float[] px, float[] py, float[] pz, int i,
+            float half, float top, float bottom) {
+        if (half <= 0f) return;
+        float y = py[i];
+        if (y <= top || y >= bottom) return;
+        float x = px[i];
+        if (x >= BODY_HALF_X || x <= -BODY_HALF_X) return;
+        float z = pz[i];
+        if (z < half) pz[i] = z >= 0f ? half : -half;
+    }
+
+    /**
+     * The wearer's torso as a collidable box in the <b>body part's local
+     * frame</b> — the frame the cloth simulates in, so the box is axis-aligned
+     * and never needs rotating: the crouch pitch, an emote's bow and the sit
+     * drop are all part of the frame itself. One reusable instance per
+     * {@code WearerSims.Entry}; {@link #set} runs once per tick, so the
+     * simulation path allocates nothing.
+     *
+     * <p>A point inside the box is clamped to the nearer z face and keeps its
+     * x/y, so a sheet slides along the chest instead of collapsing. Row 0 is
+     * never pushed — it is pinned to the shoulders by definition.
+     */
+    public static final class Body {
+        /** Half depth (z) of the torso volume, armor-aware. */
+        public float halfZ = bodyBack(0f);
+        /** Hip line in body-local units (12 px below the neck pivot). */
+        public static final float HIP = 0.75f;
+
+        /**
+         * @param zHalf     torso half depth including the armor clearance
+         * @param bodyPitch the part's {@code xRot}: while upright the upper legs
+         *                  sit in the same z span, once it hinges at the hip
+         *                  they swing away and the box stops at the hip line
+         */
+        public void set(float zHalf, float bodyPitch) {
+            this.halfZ = zHalf;
+            this.legs = bodyPitch > -0.25f && bodyPitch < 0.25f;
+        }
+
+        /** True while the upper legs share the torso's z span. */
+        private boolean legs = true;
+
+        /** Clamps points {@code [from, n)} out of the torso (and upper legs). */
+        void push(float[] px, float[] py, float[] pz, int from, int n) {
+            float half = halfZ;
+            float botY = legs ? BODY_BOTTOM : HIP;
+            for (int i = from; i < n; i++) {
+                float y = py[i];
+                if (y <= 0f || y >= botY) continue;
+                float x = px[i];
+                if (x >= BODY_HALF_X || x <= -BODY_HALF_X) continue;
+                float z = pz[i];
+                if (z < half && z > -half) pz[i] = z >= 0f ? half : -half;
+            }
+        }
+    }
 
     /** Keeps one cloth point inside the cosmetic footprint cap. */
     static void clampFootprint(float[] px, float[] py, float[] pz, int i,
@@ -110,12 +207,15 @@ public final class ClothSim {
          *                    value to disable
          * @param capY        low end of the footprint (knees); points are kept
          *                    at {@code y <= capY}
+         * @param body        torso collider; points are pushed out of its
+         *                    volume after every constraint pass, or
+         *                    {@code null} to disable collision
          */
         public void step(float ax, float ay, float az,
                          float dx, float dy, float dz,
                          float wx, float wy, float wz,
                          float damp, float flutter, float phase, int tick,
-                         float minZ, float capY) {
+                         float minZ, float capY, Body body) {
             // Keep the pre-step state as the render-lerp source: at partial
             // tick 0 the wearer renders at its previous-tick position, so the
             // cloth interpolates between the same two tick states.
@@ -135,7 +235,10 @@ public final class ClothSim {
                 py[i] += vy + dy * GRAVITY + wy + fl * 0.15f;
                 pz[i] += vz + dz * GRAVITY + wz + fl;
             }
-            // Distance constraints, pin 0.
+            // Distance constraints, pin 0. The torso collider runs inside the
+            // iteration so the cloth resolves against the body and the
+            // distance links together, instead of the body winning the last
+            // word and leaving the chain stretched.
             for (int it = 0; it < 3; it++) {
                 px[0] = ax; py[0] = ay; pz[0] = az;
                 for (int i = 1; i < n; i++) {
@@ -149,10 +252,12 @@ public final class ClothSim {
                     py[i] -= ey * diff;
                     pz[i] -= ez * diff;
                 }
+                if (body != null) body.push(px, py, pz, 1, n);
             }
             for (int i = 1; i < n; i++) {
                 clampFootprint(px, py, pz, i, minZ, capY);
             }
+            if (body != null) body.push(px, py, pz, 1, n);
         }
 
         /**
@@ -259,7 +364,7 @@ public final class ClothSim {
                          float dx, float dy, float dz,
                          float wx, float wy, float wz,
                          float damp, float flutter, float phase, int tick,
-                         float minZ, float capY) {
+                         float minZ, float capY, Body body) {
             int total = cols * rows;
             System.arraycopy(px, 0, qx, 0, total);
             System.arraycopy(py, 0, qy, 0, total);
@@ -297,10 +402,12 @@ public final class ClothSim {
                         constrain(idx(c, r), idx(c - 1, r), segX, 0.5f);
                     }
                 }
+                if (body != null) body.push(px, py, pz, cols, n);
             }
             for (int i = cols; i < n; i++) {
                 clampFootprint(px, py, pz, i, minZ, capY);
             }
+            if (body != null) body.push(px, py, pz, cols, n);
         }
 
         private void constrain(int i, int j, float rest, float share) {

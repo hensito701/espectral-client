@@ -256,7 +256,7 @@ Make the client unmistakably Espectral while preserving the familiar Minecraft i
 - Preserve keyboard navigation, narration, resizing, and correct parent-screen behavior.
 - Add append-only **Espectral Client…** and **Apoyar** actions to the Esc screen without replacing vanilla pause behavior.
 - Keep Right Shift as the recovery shortcut.
-- Confirm before opening the canonical support URL: `https://espectral.es/donaciones`.
+- Confirm before opening the canonical support URL: `https://espectral.uhce.top/donaciones`.
 - Never append a Minecraft UUID, account token, or tracking query to the support URL.
 
 ### Suite master-toggle contract
@@ -339,12 +339,12 @@ All three store their choice under `features.<id>.<key>` in `espectral-client.js
 
 - `⚛` marks any player whose Espectral client publishes presence; `⚛★` marks a presence backed by a signed grant carrying a donor role.
 - Rendered to the left of the server-sent display name in nametags and the tab list. The client never rebuilds or recolours the server name, so LuckPerms prefixes stay authoritative.
-- The glyph ships as a mod bitmap font (`espectral-menu:badge`) at Mojangles metrics. Vanilla has ★ but not ⚛, which would fall back to 16 px Unifont; U+FE0E renders as a visible "VS15" box and is never emitted.
+- Both glyphs ship as a mod bitmap font (`espectral-menu:badge`) at Mojangles metrics. Vanilla's default font has neither ⚛ nor ★ (⚛ would fall back to 16 px Unifont; ★ drew a missing-glyph box until it moved into the badge font); U+FE0E renders as a visible "VS15" box and is never emitted.
 - Being peer-visible, the badge needs the presence path (Phase 3) even though it is free. Only other Espectral clients see it.
 
 ### MVP supporter line (launch draft)
 
-Slots: **Espalda** (one cloak *or* one pair of wings), **Cuello**, **Cabeza**, **Brazos**, **Élitros**, **Gestos**. Scarf and cloak are mutually exclusive.
+Slots: **Espalda** (one cloak *or* one pair of wings), **Cuello**, **Cabeza**, **Élitros**, **Gestos**. Scarf and cloak are mutually exclusive. The **Brazos** slot and its only item, *Vendas Rúnicas*, were **withdrawn on 2026-10-25** after playtest (the wraps read as clutter over the arms and the hair-thin first-person ends clipped the hand); stored loadouts that still name the slot lose the entry on the next sanitize.
 
 | Item (ES / EN) | Slot | What makes it client-only |
 |---|---|---|
@@ -353,8 +353,8 @@ Slots: **Espalda** (one cloak *or* one pair of wings), **Cuello**, **Cabeza**, *
 | Jirones de Ceniza / Ashen Tatters | Espalda | Three long ribbon tails with spring physics, dark smoke with a gold inner edge. |
 | Alas de Eco / Echo Wings | Espalda | Translucent wings folded at rest that open while falling or jumping, tuck while sneaking, and beat while sprinting, all driven by the render-time pose. |
 | Bufanda Llama de Alma / Soulfire Scarf | Cuello | Neck scarf with two simulated tails; the gold flame edge flickers only while moving. |
-| Orejas Vulpinas / Vulpine Ears | Cabeza | Ears that twitch on head turns, flop on landing and flatten while sneaking; static ears are plugin-replicable, the reactions are not. |
-| Vendas Rúnicas / Runic Wraps | Brazos | Cloth forearm wraps with glowing gold runes and loose ends; visible in first person on your own hands. Cloth only, never armor-like. |
+| Orejas Vulpinas / Vulpine Ears | Cabeza | Tapered fox ears (orange-red, cream inner, dark tips) that twitch on head turns, flop on landing and flatten while sneaking; static ears are plugin-replicable, the reactions are not. |
+| Orejas Felinas / Cat Ears | Cabeza | Shorter, rounder cat ears (near-black fur, pink inner) that flick on head turns, sweep back while sprinting and flatten further than the fox pair while sneaking. |
 | Élitros: Vidriera, Nebulosa, Ceniza / Elytra skins | Élitros | Per-player elytra textures (Nebulosa animated); a vanilla server can only retexture the elytra for everyone. |
 | Gestos / Emotes | Gestos | Pose the real player model. Local-only: the wearer sees them, peers never do. |
 
@@ -367,7 +367,7 @@ Shoulder pets, walking companions, hats and particle auras are deliberately abse
 - Viewers can hide all cosmetics or hide a specific player.
 - Reduced motion replaces simulation and animation with a static pose; global particle caps apply to any particle use.
 - Physics and animation run only for the nearest eight visible wearers within 24 blocks; the rest render a static pose.
-- Every item has a fixed footprint cap: nothing above the head top, wider than the shoulders plus one block, or lower than the knees, and no transparency below a minimum opacity.
+- Every item has a fixed footprint cap: nothing above the head top, wider than the shoulders plus one block, or lower than the knees, and no transparency below a minimum opacity. **Single recorded exception:** the two ear items (`orejas_vulpinas`, `orejas_felinas`) may rise up to 5 px (0.31 block) above the head top — no taller than vanilla's own extra-ears model — because an ear that stays under the skull silhouette reads as a flat box instead of an ear. The ears add no collision, stay inside the width cap, and never render above that bound at any reachable reaction angle.
 - Nothing renders when the wearer is invisible to the viewer (Invisibility, spectator) or when vanilla would hide the wearer's cape layer.
 - Reactions use only publicly visible pose state: sneak, sprint, fall, swim, glide and idle. They never react to health, damage, inventory or other state that would leak information.
 - Cosmetics never alter hitboxes, imitate armor, mob silhouettes, the Glowing outline or other status effects, occlude opponents, or add a second nametag or title text.
@@ -387,9 +387,13 @@ No Minecraft plugin jar or configuration change is required, but a first-party H
 6. A viewer requests presence only for UUIDs already visible through the vanilla player list.
 7. The viewer verifies the grant itself and renders only catalog items whose models and textures ship inside the mod jar; v1 never loads remote assets.
 
-The backend is `espectral-id` (`services/espectral-id/` in this repository), served at `https://id.espectral.es` from OVM3.
+The backend is `espectral-id` (`services/espectral-id/` in this repository), served at `https://id.uhce.top` from OVM3 (`https://id.uhce.top/v1/healthz` → `{"ok":true,"kid":"eid1"}`). The `espectral.es` zone lapsed around 2026-10-22, so `https://id.espectral.es` is no longer the canonical name; installs that persisted it are migrated to the `uhce.top` host on config load.
 
-A local tier flag, forged brand, wearer-provided URL, or wearer-supplied model grants nothing. The mod never contacts Discord; entitlement is resolved by the backend and handed to the mod as signed data. Cosmetic sharing is an affirmative choice distinct from telemetry consent. Sharing off publishes no presence and shows no ⚛.
+**Issuer migration.** Grants carry an `iss` claim. As of this change the launcher engine (`src/engine/grant.mjs`) and the mod (`cosmetics/GrantVerifier.java`) accept **both** `https://id.uhce.top` and the legacy `https://id.espectral.es`; every other claim check (aud, kid, typ, alg, sub, exp, iat skew) is unchanged. The service still signs with `GRANT_ISS=https://id.espectral.es`; flipping that constant to `https://id.uhce.top` (`services/espectral-id/app/config.py`) is a separate ops step that can follow once this build is out, and it is safe in either order — the clients accept both issuers.
+
+**Discord.** The launcher authorizes with the public application id `1454618588659843072` (built-in default, overridable from `config.json`/env), which is the same application `espectral-id` uses for its server-side code exchange; only the secret stays on the service.
+
+A local tier flag, forged brand, wearer-provided URL, or wearer-supplied model grants nothing. The mod never contacts Discord; entitlement is resolved by the backend and handed to the mod as signed data. Cosmetic sharing is a choice distinct from telemetry consent; it is **on by default** (decided 2026-10-24) and can be turned off in Armario at any time. Presence is published only for verified accounts. Sharing off publishes no presence and shows no ⚛.
 
 ### Runtime architecture
 
@@ -403,7 +407,7 @@ Start with batched HTTPS polling. Do not add WebSockets, P2P, custom Minecraft p
 2. Signed catalog, role fixtures, UUID proof, and the entitlement contract.
 3. Own-player elytra skins and cloaks from valid grants.
 4. Presence, bridge, and the ⚛/★ badge on nametags and the tab list.
-5. Peer-visible cloaks, wings, scarf, ears and wraps.
+5. Peer-visible cloaks, wings, scarf and ears.
 6. Local-only emotes for MVP.
 
 ### Acceptance gate
@@ -478,7 +482,7 @@ Never reuse an offline release key in an online service.
 
 ### Privacy requirements
 
-- Telemetry and cosmetic sharing use separate consent flows, default off.
+- Telemetry and cosmetic sharing use separate consent flows. Telemetry defaults off; cosmetic sharing defaults on (2026-10-24) and stays one switch away from off.
 - Spanish and English notices state purpose, fields, retention, deletion, and processors.
 - Local launch statistics continue without upload consent.
 - Users can inspect, export, withdraw, delete, unlink, and rotate the install identity.
@@ -551,7 +555,7 @@ This release remains useful without a backend.
 - Poll presence only for vanilla-visible UUIDs.
 - Verify viewer-side grants and content-addressed assets.
 - Add global and per-player hide controls.
-- Add the ⚛/★ badge first, then peer-visible cloaks, wings, scarf, ears and wraps, after the frame-time, shader, accessibility, and abuse gates. Emotes stay local-only.
+- Add the ⚛/★ badge first, then peer-visible cloaks, wings, scarf and ears, after the frame-time, shader, accessibility, and abuse gates. Emotes stay local-only.
 
 ### Phase 4: Learning and stable operations
 

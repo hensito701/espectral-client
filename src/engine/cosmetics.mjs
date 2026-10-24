@@ -3,7 +3,7 @@
  *
  * Per-uuid state lives at <dataDir>/cosmetics.json:
  *   { schema:1, accounts: { <uuid>: {
- *       share: bool,            // publish presence (⚛ + loadout) — default OFF
+ *       share: bool,            // publish presence (⚛ + loadout) — default ON
  *       emotes: bool,           // allow local emotes — default ON
  *       loadout: {slot: itemId|null},
  *       hidden_players: [names] } } }
@@ -85,7 +85,9 @@ function persist(state) {
 }
 
 function emptyAccountState() {
-  return { share: false, emotes: true, loadout: {}, hidden_players: [] };
+  // Sharing defaults ON (product decision 2026-10-24). Presence still only
+  // publishes under a verified identity session (presence.mjs token gate).
+  return { share: true, emotes: true, loadout: {}, hidden_players: [] };
 }
 
 function isPlainObject(v) {

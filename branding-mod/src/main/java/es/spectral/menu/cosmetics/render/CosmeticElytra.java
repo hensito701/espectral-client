@@ -27,8 +27,11 @@ public final class CosmeticElytra {
      */
     public static Identifier skinFor(HumanoidRenderState state) {
         if (!(state instanceof AvatarRenderState avatar)) return null;
-        if (avatar.isInvisible || avatar.isInvisibleToPlayer
-                || avatar.isSpectator || avatar.isDiscrete) {
+        // Same guard set as CosmeticLayer: the design only forbids cosmetics on
+        // invisible and spectating wearers. `isDiscrete` is `isShiftKeyDown()`
+        // in 26.2, so testing it here silently dropped the elytra skin to the
+        // vanilla one whenever the wearer crouched.
+        if (avatar.isInvisible || avatar.isInvisibleToPlayer || avatar.isSpectator) {
             return null;
         }
         UUID uuid = WearerSims.uuidOf(avatar);

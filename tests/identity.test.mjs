@@ -172,7 +172,7 @@ test('GET /api/cosmetics returns catalog + per-account state with verified flags
   assert.equal(r.json.catalog.items.length, 10);
   const acc = r.json.accounts[UUID];
   assert.ok(acc);
-  assert.equal(acc.share, false);
+  assert.equal(acc.share, true, 'sharing defaults on for an account with no stored state');
   assert.deepEqual(acc.flags, ['supporter', 'mvp']);
 });
 
