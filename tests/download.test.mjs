@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { downloadFile, fetchJson } from '../src/engine/download.mjs';
+import { downloadFile, fetchJson, resetMirrorPreference } from '../src/engine/download.mjs';
 
 /**
  * download.mjs identity preservation.
@@ -96,7 +96,7 @@ test('fetchJson survives a transient connection reset', async (t) => {
     if (calls === 1) throw networkError('ECONNRESET');
     return new Response('{"ok":true}');
   });
-  assert.deepEqual(await fetchJson('https://meta.fabricmc.net/v2/versions/loader'), { ok: true });
+  assert.deepEqual(await fetchJson('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'), { ok: true });
   assert.equal(calls, 2);
 });
 
@@ -107,9 +107,9 @@ test('fetchJson names the host and the network reason when every attempt fails',
     throw networkError('UND_ERR_CONNECT_TIMEOUT');
   });
   await assert.rejects(
-    fetchJson('https://meta.fabricmc.net/v2/versions/loader/26.2'),
+    fetchJson('https://piston-meta.mojang.com/v1/packages/x/26.2.json'),
     (err) => {
-      assert.match(err.message, /meta\.fabricmc\.net/);
+      assert.match(err.message, /piston-meta\.mojang\.com/);
       assert.match(err.message, /UND_ERR_CONNECT_TIMEOUT/);
       assert.notEqual(err.message, 'fetch failed');
       return true;
@@ -124,6 +124,64 @@ test('fetchJson does not retry a 404', async (t) => {
     calls++;
     return new Response('nope', { status: 404 });
   });
-  await assert.rejects(fetchJson('https://meta.fabricmc.net/v2/versions/loader/9.9'), (err) => err.status === 404);
+  await assert.rejects(fetchJson('https://piston-meta.mojang.com/v1/packages/x/9.9.json'), (err) => err.status === 404);
   assert.equal(calls, 1);
+});
+
+// Spanish ISPs block Cloudflare IPs during LaLiga matches; meta/maven.fabricmc.net
+// are behind Cloudflare, Fabric's meta2./maven2. hosts are not.
+test('Fabric meta falls back to meta2 when the primary is unreachable, and sticks to it', async (t) => {
+  resetMirrorPreference();
+  t.after(resetMirrorPreference);
+  const hosts = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const host = new URL(url).host;
+    hosts.push(host);
+    if (host === 'meta.fabricmc.net') throw networkError('UND_ERR_CONNECT_TIMEOUT');
+    return new Response(JSON.stringify({ from: host, path: new URL(url).pathname }));
+  });
+  assert.deepEqual(await fetchJson('https://meta.fabricmc.net/v2/versions/loader/26.2'),
+    { from: 'meta2.fabricmc.net', path: '/v2/versions/loader/26.2' });
+  // One fast primary try (the mirror is the retry), then the mirror.
+  assert.deepEqual(hosts, ['meta.fabricmc.net', 'meta2.fabricmc.net']);
+  // The next request goes straight to the mirror — no second connect timeout.
+  hosts.length = 0;
+  await fetchJson('https://meta.fabricmc.net/v2/versions/loader');
+  assert.deepEqual(hosts, ['meta2.fabricmc.net']);
+});
+
+test('a 4xx from Fabric meta is a real answer, not an outage: no mirror', async (t) => {
+  resetMirrorPreference();
+  t.after(resetMirrorPreference);
+  const hosts = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    hosts.push(new URL(url).host);
+    return new Response('no loader', { status: 400 });
+  });
+  await assert.rejects(fetchJson('https://meta.fabricmc.net/v2/versions/loader/1.0'), (err) => err.status === 400);
+  assert.deepEqual(hosts, ['meta.fabricmc.net']);
+});
+
+test('both Fabric hosts down: the error names both', async (t) => {
+  resetMirrorPreference();
+  t.after(resetMirrorPreference);
+  t.mock.method(globalThis, 'fetch', async () => { throw networkError('UND_ERR_CONNECT_TIMEOUT'); });
+  await assert.rejects(fetchJson('https://meta.fabricmc.net/v2/versions/loader'), (err) => {
+    assert.match(err.message, /meta\.fabricmc\.net nor its mirror meta2\.fabricmc\.net/);
+    return true;
+  });
+});
+
+test('Fabric maven jars download from maven2 when maven is unreachable', async (t) => {
+  resetMirrorPreference();
+  t.after(resetMirrorPreference);
+  await withTempDir(async (tmp) => {
+    const dest = path.join(tmp, 'fabric-loader-0.20.1.jar');
+    t.mock.method(globalThis, 'fetch', async (url) => {
+      if (new URL(url).host === 'maven.fabricmc.net') throw networkError('UND_ERR_CONNECT_TIMEOUT');
+      return new Response(Buffer.from('loader-bytes'));
+    });
+    await downloadFile('https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar', dest);
+    assert.equal(fs.readFileSync(dest, 'utf8'), 'loader-bytes');
+  });
 });

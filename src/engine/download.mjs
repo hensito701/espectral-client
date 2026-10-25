@@ -164,7 +164,87 @@ function networkReason(err) {
   return cause?.code ?? cause?.message ?? err?.message ?? String(err);
 }
 
-export async function fetchText(url, { headers = {}, timeoutMs = 60000 } = {}) {
+// ---------------------------------------------------------------------------
+// Mirror fallback for hosts behind Cloudflare
+// ---------------------------------------------------------------------------
+// meta.fabricmc.net and maven.fabricmc.net sit behind Cloudflare, whose IPs
+// Spanish ISPs block during LaLiga matches (court order, weekends) — every
+// Fabric launch then died with "could not reach meta.fabricmc.net". Fabric's
+// own meta2./maven2. hosts serve the same API and artifacts from a non-
+// Cloudflare origin. A primary outage (network error or 5xx — never a 4xx,
+// which is a real answer, nor a sha1 mismatch) falls through to the mirror,
+// and the mirror is then preferred for MIRROR_STICKY_MS so later requests do
+// not pay the primary's connect timeout again.
+const HOST_MIRRORS = new Map([
+  ['meta.fabricmc.net', 'meta2.fabricmc.net'],
+  ['maven.fabricmc.net', 'maven2.fabricmc.net'],
+]);
+const MIRROR_STICKY_MS = 10 * 60_000;
+/** host -> epoch ms until which its mirror is tried first. */
+const preferMirrorUntil = new Map();
+
+/** Forget learned mirror preferences (tests; a fresh engine starts clean). */
+export function resetMirrorPreference() {
+  preferMirrorUntil.clear();
+}
+
+/** Same URL on the host's mirror, or null when the host has none. */
+function mirrorUrl(url) {
+  try {
+    const u = new URL(url);
+    const mirror = HOST_MIRRORS.get(u.host);
+    if (!mirror) return null;
+    u.host = mirror;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function isOutage(err) {
+  if (err?.code === 'sha1_mismatch') return false;
+  const status = err?.status;
+  return status === undefined || status === null || status >= 500;
+}
+
+/**
+ * Run `attempt(url, failFast)` against the primary, falling back to the
+ * mirror on an outage. `failFast` is true when another host will be tried
+ * afterwards, so the caller can skip its own retries.
+ */
+async function viaMirror(url, attempt) {
+  const alt = mirrorUrl(url);
+  if (!alt) return attempt(url, false);
+  const host = new URL(url).host;
+  const mirrorHost = new URL(alt).host;
+  const [first, second] = (preferMirrorUntil.get(host) ?? 0) > Date.now() ? [alt, url] : [url, alt];
+  try {
+    return await attempt(first, true);
+  } catch (err) {
+    if (!isOutage(err)) throw err;
+    if (first === url) {
+      preferMirrorUntil.set(host, Date.now() + MIRROR_STICKY_MS);
+      console.warn(`[download] ${host} unreachable (${err.message}) — using ${mirrorHost}`);
+    } else {
+      preferMirrorUntil.delete(host);
+    }
+    try {
+      return await attempt(second, false);
+    } catch (err2) {
+      if (!isOutage(err2)) throw err2;
+      throw Object.assign(
+        new Error(`could not reach ${host} nor its mirror ${mirrorHost}: ${err.message}; ${err2.message}`),
+        { cause: err2, url, status: err2.status },
+      );
+    }
+  }
+}
+
+export function fetchText(url, opts = {}) {
+  return viaMirror(url, (u, failFast) => fetchTextOnce(u, opts, failFast ? 1 : FETCH_TEXT_ATTEMPTS));
+}
+
+async function fetchTextOnce(url, { headers = {}, timeoutMs = 60000 } = {}, maxAttempts = FETCH_TEXT_ATTEMPTS) {
   const host = (() => { try { return new URL(url).host; } catch { return url; } })();
   for (let attempt = 1; ; attempt++) {
     const ac = new AbortController();
@@ -177,7 +257,7 @@ export async function fetchText(url, { headers = {}, timeoutMs = 60000 } = {}) {
         redirect: 'follow',
       });
     } catch (err) {
-      if (attempt < FETCH_TEXT_ATTEMPTS) {
+      if (attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, FETCH_TEXT_BACKOFF_MS[attempt - 1]));
         continue;
       }
@@ -194,7 +274,7 @@ export async function fetchText(url, { headers = {}, timeoutMs = 60000 } = {}) {
       } catch {
         /* best-effort cleanup */
       }
-      if (RETRYABLE_STATUS.has(res.status) && attempt < FETCH_TEXT_ATTEMPTS) {
+      if (RETRYABLE_STATUS.has(res.status) && attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, FETCH_TEXT_BACKOFF_MS[attempt - 1]));
         continue;
       }
@@ -242,7 +322,7 @@ function withDestLock(dest, fn) {
 }
 
 export function downloadFile(url, dest, opts = {}) {
-  return withDestLock(dest, () => downloadFileInner(url, dest, opts));
+  return withDestLock(dest, () => viaMirror(url, (u) => downloadFileInner(u, dest, opts)));
 }
 
 async function downloadFileInner(url, dest, opts = {}) {
