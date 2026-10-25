@@ -2,6 +2,15 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **"Vincular Discord" works in one click.** The button stayed greyed out
+  until the Minecraft account was verified, so players who had signed in to
+  the launcher with Discord thought it was linked and stuck at "Discord sin
+  vincular". Linking now runs the verification first when needed, and the
+  hint says the launcher's Discord sign-in is a separate identity.
+
 ## [1.3.17] - 2026-10-25
 
 ### Fixed
