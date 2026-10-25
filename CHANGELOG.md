@@ -2,6 +2,16 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **"launch error: fetch failed" now says what failed, and retries first.**
+  Metadata fetches (Fabric loader list, Mojang manifests, maven checksums)
+  retry twice with backoff on connection errors, timeouts and 429/502/503/504.
+  When every attempt fails, the error names the host and the network reason
+  (for example `could not reach meta.fabricmc.net (UND_ERR_CONNECT_TIMEOUT)`)
+  instead of Node's bare `fetch failed`.
+
 ## [1.3.15] - 2026-10-25
 
 ### Changed

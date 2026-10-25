@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { downloadFile } from '../src/engine/download.mjs';
+import { downloadFile, fetchJson } from '../src/engine/download.mjs';
 
 /**
  * download.mjs identity preservation.
@@ -82,4 +82,48 @@ test('downloadFile with a matching sha1 never issues a request at all', async (t
     await downloadFile('https://maven.example/asm.jar', dest, { sha1 });
     assert.equal(calls, 0);
   });
+});
+
+/** Undici's shape for every network failure: a bare message, reason in `cause`. */
+function networkError(code) {
+  return Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) });
+}
+
+test('fetchJson survives a transient connection reset', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    if (calls === 1) throw networkError('ECONNRESET');
+    return new Response('{"ok":true}');
+  });
+  assert.deepEqual(await fetchJson('https://meta.fabricmc.net/v2/versions/loader'), { ok: true });
+  assert.equal(calls, 2);
+});
+
+test('fetchJson names the host and the network reason when every attempt fails', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    throw networkError('UND_ERR_CONNECT_TIMEOUT');
+  });
+  await assert.rejects(
+    fetchJson('https://meta.fabricmc.net/v2/versions/loader/26.2'),
+    (err) => {
+      assert.match(err.message, /meta\.fabricmc\.net/);
+      assert.match(err.message, /UND_ERR_CONNECT_TIMEOUT/);
+      assert.notEqual(err.message, 'fetch failed');
+      return true;
+    },
+  );
+  assert.equal(calls, 3);
+});
+
+test('fetchJson does not retry a 404', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    return new Response('nope', { status: 404 });
+  });
+  await assert.rejects(fetchJson('https://meta.fabricmc.net/v2/versions/loader/9.9'), (err) => err.status === 404);
+  assert.equal(calls, 1);
 });
