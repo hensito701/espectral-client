@@ -2,9 +2,14 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.3.18] - 2026-10-25
 
 ### Fixed
+- **26.2 no longer launches on Java 24.** Modern instances accepted any JDK
+  21 or newer found on the machine, so a player with Java 24 installed saw
+  Fabric refuse every mod ("necesita la versión 25 o posterior … tienes 24").
+  The launcher now picks a runtime that meets the version's own requirement
+  (26.2 → Java 25) and downloads Temurin 25 when the machine has none.
 - **"Vincular Discord" works in one click.** The button stayed greyed out
   until the Minecraft account was verified, so players who had signed in to
   the launcher with Discord thought it was linked and stuck at "Discord sin

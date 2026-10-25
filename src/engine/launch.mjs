@@ -459,6 +459,25 @@ export function selectGameDir(instance, launchAccount, { dryRun = false, warning
   return { gameDir: base, nativesDir: resolver.instanceNativesDir(instance.name) };
 }
 
+/**
+ * The JDK a launch runs on.
+ *
+ * - A per-instance `jdk_path_override` wins (any parseable JDK).
+ * - NeoForge 1.21.x needs an EXACT Java 21.
+ * - Everything else gets a runtime that satisfies the version's own
+ *   `javaVersion.majorVersion` (26.2 -> 25, 1.21.11 -> 21, 1.16.5 -> 8, ...),
+ *   downloading Temurin when the machine has nothing that fits.
+ *
+ * The modern tier used to call getJvmInfo(), which accepts any JDK >= 21 and
+ * caches it: a player with Java 24 on PATH launched 26.2 on it and Fabric
+ * refused every mod ("necesita la versión 25 o posterior ... tienes 24").
+ */
+export async function javaForLaunch(instance, versionJavaMajor) {
+  if (instance.jdk_path_override) return getJvmInfo({ override: instance.jdk_path_override });
+  if (instance.loader === 'neoforge') return javaForMajorExact(21);
+  return javaForVersion(versionJavaMajor);
+}
+
 export async function resolveLaunch(
   instance,
   { mode = 'normal', account = null, dryRun = false, forceVerify = false, onProgress = null, onPhase = null } = {}
@@ -510,21 +529,7 @@ export async function resolveLaunch(
   const assetIndexId = versionJson.assetIndex?.id ?? null;
   const versionMain = versionJson.mainClass ?? 'net.minecraft.client.main.Main';
 
-  let java;
-  const versionJavaMajor = Number(versionJson.javaVersion?.majorVersion ?? 8);
-  if (instance.jdk_path_override) {
-    java = await getJvmInfo({ override: instance.jdk_path_override });
-  } else if (instance.loader === 'neoforge') {
-    // NeoForge 1.21.x must boot on an EXACT Java 21 runtime (a newer major
-    // breaks bootstraplauncher module resolution); no tier upgrade allowed.
-    java = await javaForMajorExact(21);
-  } else if (versionJavaMajor <= 21) {
-    // Old-tier versions (1.15.2 – 1.20.4): provision a Temurin runtime for the
-    // version's required major. AOT stays a JDK 25+ feature.
-    java = await javaForVersion(versionJavaMajor);
-  } else {
-    java = await getJvmInfo();
-  }
+  const java = await javaForLaunch(instance, Number(versionJson.javaVersion?.majorVersion ?? 8));
   onProgress?.(`[espectral] JDK ${java.major} listo`);
   phase('jdk');
 

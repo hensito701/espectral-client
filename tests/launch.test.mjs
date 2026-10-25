@@ -22,7 +22,9 @@ const {
   effectiveMemoryMb,
   resolveAccountFor,
   formatCommandPreview,
+  javaForLaunch,
 } = await import('../src/engine/launch.mjs');
+const runtimes = await import('../src/engine/runtimes.mjs');
 const { loadConfig, saveConfig } = await import('../src/engine/config.mjs');
 // presenceForInstance lives in the route module; importing it is side-effect
 // free (server bootstrap lives in cli.mjs).
@@ -32,6 +34,36 @@ after(() => {
   if (originalDataDir === undefined) delete process.env.ESPECTRAL_DATA_DIR;
   else process.env.ESPECTRAL_DATA_DIR = originalDataDir;
   fs.rmSync(dataDir, { recursive: true, force: true });
+});
+
+// Field report 2026-10-25: a player with Java 24 on PATH launched 26.2 and
+// Fabric refused every mod ("necesita la versión 25 o posterior ... 24"). The
+// modern tier accepted any JDK >= 21; it must satisfy the version's own major.
+test('javaForLaunch never runs a 26.2 instance on a cached/PATH Java 24', async (t) => {
+  const java24 = path.join(dataDir, 'jdk24', 'bin', 'java.exe');
+  const java25 = path.join(dataDir, 'runtimes', 'jdk-25', 'bin', 'java.exe');
+  for (const p of [java24, java25]) {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, 'fake');
+  }
+  const info25 = { path: java25, version: '25.0.4', build: '25.0.4+7', vendor: 'Eclipse Temurin', source: 'adoptium', major: 25 };
+  fs.writeFileSync(path.join(dataDir, 'runtimes', 'jdk-25', 'info.json'), JSON.stringify(info25));
+  const prevJvm = loadConfig().jvm;
+  saveConfig({ jvm: { path: java24, version: '24.0.2', build: '24.0.2+12', vendor: 'Oracle', source: 'path', major: 24 } });
+  // Every probe (FastClient, PATH java) reports Java 24.
+  runtimes.__setProbeOverride(() => ({ ok: true, major: 24, version: '24.0.2', build: '24.0.2+12', vendor: 'Oracle' }));
+  t.after(() => {
+    runtimes.__clearProbeOverride();
+    saveConfig({ jvm: prevJvm ?? null });
+  });
+
+  const modern = await javaForLaunch({ name: 'UHC', loader: 'fabric' }, 25);
+  assert.equal(modern.major, 25);
+  assert.equal(modern.path, java25);
+
+  // The 21 tier may still use the newer Java 24.
+  const older = await javaForLaunch({ name: 'old', loader: 'fabric' }, 21);
+  assert.equal(older.major, 24);
 });
 
 /** A minimal resolveLaunch result with everything buildArgv reads. */
