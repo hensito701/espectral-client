@@ -45,7 +45,8 @@ import es.spectral.menu.ClientConfig;
  *       prefix.</li>
  * </ol>
  *
- * <p>Only {@code endOfEntry} lines (message first lines) are mapped, so
+ * <p>Only each message's first visual line is mapped (vanilla's
+ * {@code endOfEntry} marks the LAST one), so
  * continuation lines never draw heads. Lines that resolve to nothing
  * (broadcasts, unknown names, unsigned player chat) stay unmapped and render
  * vanilla. The line map is rebuilt wholesale by
@@ -84,11 +85,16 @@ public abstract class ChatComponentMixin {
             senderId = ChatHeads.senderForText(message.content().getString());
         }
         if (senderId == null) return;
+        // This message's lines were queued newest-first ahead of `stop`, and
+        // vanilla flags the LAST visual line as endOfEntry; the deepest new
+        // line is the first visual line, which is where the head belongs.
+        GuiMessage.Line first = null;
         for (GuiMessage.Line line : this.trimmedMessages) {
             if (line == stop) break;
-            if (line.endOfEntry()) {
-                ChatHeads.mapFirstLine(senderId, line.content());
-            }
+            first = line;
+        }
+        if (first != null) {
+            ChatHeads.mapFirstLine(senderId, first.content());
         }
     }
 

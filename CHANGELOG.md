@@ -2,6 +2,22 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.2] - 2026-10-25
+
+### Fixed
+- **Chat heads on wrapped messages** sat on the message's last line instead
+  of its first (vanilla flags the last visual line as the "end of entry",
+  which was mistaken for the first). The head now always opens the message.
+- **Fullbright did nothing** for anyone already at the vanilla maximum
+  brightness: it only pushed the gamma option to 1.0 ("Bright"), which leaves
+  caves dark. It now lights the lightmap like Night Vision — caves and nights
+  fully lit — without touching your brightness setting.
+- **No Fog did nothing with Sodium** (every Espectral instance): it flipped
+  vanilla's global fog switch, which Sodium's terrain renderer ignores. It
+  now pushes the atmospheric fog (Overworld/Nether/End haze, rain fog, sky
+  and cloud fade) past the view distance through the same per-frame fog data
+  Clear Water uses. Blindness, Darkness, lava and powder-snow fog stay.
+
 ## [1.5.1] - 2026-10-25
 
 ### Added

@@ -20,8 +20,8 @@
       "state": { "gamma": 1.0 },
       "name_en": "Fullbright",
       "name_es": "Fullbright",
-      "description_en": "Built-in fullbright — gamma driven live by the mod. No jars, no restart.",
-      "description_es": "Brillo total integrado — gamma controlado en vivo por el mod. Sin jars, sin reinicio."
+      "description_en": "Built-in fullbright — caves and nights fully lit, like night vision. No jars, no restart.",
+      "description_es": "Brillo total integrado — cuevas y noches iluminadas, como con visión nocturna. Sin jars, sin reinicio."
     },
     {
       "id": "nofog",

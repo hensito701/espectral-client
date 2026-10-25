@@ -1,64 +1,42 @@
 package es.spectral.menu;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import es.spectral.menu.mixin.FogRendererAccessor;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.fog.FogRenderer;
+import net.minecraft.client.renderer.fog.FogData;
 
 /**
  * Native no-fog (Contract A "nofog", owned/live feature).
  *
- * While the feature is enabled, vanilla's own fog switch
- * ({@link FogRenderer} {@code fogEnabled}, the same flag the vanilla F3+F
- * debug {@code toggleFog()} flips) is held off every client tick. The user's
- * prior state is captured once per session on the first override and restored
- * exactly on the enabled-&gt;disabled transition.
+ * <p>While enabled, {@link #applyAtmosphericFog(FogData)} pushes the
+ * atmospheric fog (the Overworld/Nether/End distance haze, rain fog, sky and
+ * cloud fade) beyond any view distance at the tail of
+ * {@code AtmosphericFogEnvironment#setupFog}. It edits the per-frame
+ * {@code FogData} — the same path clear water uses — so Sodium/Iris terrain
+ * honours it; the old approach of flipping vanilla's global {@code fogEnabled}
+ * switch only affected vanilla's own fog buffer and did nothing under Sodium.
  *
- * When the feature is off and was never overridden this session, vanilla
- * state is never touched: the default-off path is behavior-identical to an
- * unmodded client. Driven from the client tick ({@code MinecraftMixin}); the
- * tick and rendering live on the main client thread, so plain fields need no
- * synchronization.
+ * <p>Gameplay fogs (blindness, darkness, lava, powder snow, underwater — the
+ * latter owned by clear water) are separate environments and stay vanilla, as
+ * does the short fade at the render-distance edge that hides chunk loading.
+ * {@code FogData} is rebuilt every frame, so there is nothing to restore.
  */
 public final class FogEngine {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger("espectral-client");
-
-    private static final FogEngine INSTANCE = new FogEngine();
-
-    public static FogEngine getInstance() {
-        return INSTANCE;
-    }
+    /** Fog distances while no-fog is on: past the 32-chunk (512 block) maximum. */
+    public static final float FAR = 1024.0f;
 
     private FogEngine() {}
 
-    /** Vanilla fog state before our first override; null until then. */
-    private Boolean capturedFogEnabled;
+    public static boolean isEnabled() {
+        return ClientConfig.getInstance().isFeatureEnabled("nofog");
+    }
 
-    /**
-     * Polled every client tick via MinecraftMixin: state-ensures fog off
-     * while enabled, restores the captured state once on disable.
-     */
-    public void onTick(Minecraft minecraft) {
-        if (minecraft == null) return;
-        if (!ClientConfig.getInstance().isFeatureEnabled("nofog")) {
-            if (capturedFogEnabled != null) {
-                boolean restored = capturedFogEnabled;
-                capturedFogEnabled = null;
-                FogRendererAccessor.espectral$setFogEnabled(restored);
-                LOGGER.info("NoFog off: restored vanilla fog to {}", restored ? "on" : "off");
-            }
+    /** Called at the tail of {@code AtmosphericFogEnvironment#setupFog}; no-op unless enabled. */
+    public static void applyAtmosphericFog(FogData fog) {
+        if (fog == null || !isEnabled()) {
             return;
         }
-        if (capturedFogEnabled == null) {
-            capturedFogEnabled = FogRendererAccessor.espectral$getFogEnabled();
-            LOGGER.info("NoFog on: captured prior vanilla fog {}",
-                    capturedFogEnabled ? "on" : "off");
-        }
-        if (FogRendererAccessor.espectral$getFogEnabled()) {
-            FogRendererAccessor.espectral$setFogEnabled(false);
-        }
+        fog.environmentalStart = FAR;
+        fog.environmentalEnd = FAR;
+        fog.skyEnd = FAR;
+        fog.cloudEnd = FAR;
     }
 }

@@ -29,7 +29,8 @@ import net.minecraft.world.entity.player.PlayerSkin;
  *   <li>{@code LINES}: identity map from the split
  *       {@link FormattedCharSequence} instance of a message's first line to
  *       the sender UUID, populated when {@code ChatComponent} queues display
- *       lines. Only first lines ({@code endOfEntry}) are mapped, so
+ *       lines. Only first visual lines are mapped (not {@code endOfEntry},
+ *       which vanilla sets on the last line), so
  *       continuation lines never draw heads.</li>
  * </ol>
  *
