@@ -10,6 +10,7 @@
   import { onDestroy } from 'svelte';
   import {
     API_BASE,
+    ApiError,
     getModsDir,
     getModsPresetInfo,
     installModrinthMod,
@@ -19,7 +20,7 @@
     setModEnabled,
     subscribeEvents,
   } from '../lib/api';
-  import type { ModEntry, ModPreset, ModPresetInfo, ModrinthProject } from '../lib/types';
+  import type { ModEntry, ModInstallPlan, ModPreset, ModPresetInfo, ModRef, ModrinthProject } from '../lib/types';
   import { pushToast } from '../lib/toast.svelte';
   import { formatBytes } from '../lib/format';
   import { t } from '../lib/i18n.svelte';
@@ -81,7 +82,11 @@
   // unless we mark it. The pending record lets the SSE terminal event below
   // attribute completion to the exact project; confirmedIds keeps the mark
   // sticky across re-searches when the server filename heuristic misses.
-  let pendingSingleInstall = $state<{ projectId: string; instance: string } | null>(null);
+  let pendingSingleInstall = $state<{ projectId: string; instance: string; plan: ModInstallPlan | null } | null>(null);
+  // Card-level dependency state: a declared conflict awaiting "install anyway",
+  // and the optional dependencies offered after an install.
+  let conflictFor = $state<{ projectId: string; mods: string } | null>(null);
+  let optionalFor = $state<Record<string, ModRef[]>>({});
   let singleInstallFallback: ReturnType<typeof setTimeout> | null = null;
   let confirmedInstalledIds = $state<string[]>([]);
   function markProjectInstalled(projectId: string) {
@@ -240,6 +245,7 @@
         clearTerminal();
         if (isSingleEvent) {
           const doneId = pendingSingleInstall!.projectId;
+          const plan = pendingSingleInstall!.plan;
           pendingSingleInstall = null;
           installingProjectId = null;
           if (singleInstallFallback) {
@@ -247,12 +253,25 @@
             singleInstallFallback = null;
           }
           markProjectInstalled(doneId);
+          for (const dep of plan?.dependencies ?? []) markProjectInstalled(dep.project_id);
+          if (plan?.optional.length) optionalFor = { ...optionalFor, [doneId]: plan.optional };
           loadMods();
           loadPresetInfo();
           pushToast({
             kind: 'ok',
-            text: filename ? `${filename} ${t('mods.installed') || 'instalado'}` : t('mods.installed') || 'Mods actualizados',
+            text: plan?.dependencies.length
+              ? t('mods.installedWithDeps', {
+                  name: plan.project.title,
+                  deps: plan.dependencies.map((d) => d.title).join(', '),
+                })
+              : `${plan?.project.title ?? filename} ${t('mods.installed')}`,
           });
+          if (plan?.missing.length) {
+            pushToast({
+              kind: 'err',
+              text: t('mods.depsMissing', { deps: plan.missing.map((d) => d.title).join(', ') }),
+            });
+          }
           return;
         }
         if (wasActive) {
@@ -466,19 +485,24 @@
     }
   }
 
-  async function handleInstallFromModrinth(project: ModrinthProject) {
+  async function handleInstallFromModrinth(project: Pick<ModrinthProject, 'project_id' | 'title'>, force = false) {
     if (!targetInstance) return;
     installingProjectId = project.project_id;
-    pendingSingleInstall = { projectId: project.project_id, instance: targetInstance };
+    pendingSingleInstall = { projectId: project.project_id, instance: targetInstance, plan: null };
     try {
-      // Returns { queued: true } immediately; the sha1-verified download
-      // finishes in the background and completion arrives via the terminal
-      // mod-progress SSE event above (which marks the card installed). The
-      // timer below is purely a fallback for a lost terminal event.
-      await installModrinthMod(targetInstance, project.project_id);
+      // Returns the plan (mod + required dependencies) immediately; the
+      // sha1-verified downloads finish in the background and completion
+      // arrives via the terminal mod-progress SSE event above (which marks
+      // the card installed). The timer below is purely a fallback for a lost
+      // terminal event.
+      const plan = await installModrinthMod(targetInstance, project.project_id, force);
+      if (pendingSingleInstall?.projectId === project.project_id) pendingSingleInstall.plan = plan;
+      if (conflictFor?.projectId === project.project_id) conflictFor = null;
       pushToast({
         kind: 'info',
-        text: `${t('mods.installingMod')} ${project.title}…`,
+        text: plan.dependencies.length
+          ? t('mods.installingWithDeps', { name: plan.project.title, count: plan.dependencies.length })
+          : `${t('mods.installingMod')} ${plan.project.title}…`,
       });
       if (singleInstallFallback) clearTimeout(singleInstallFallback);
       const pendingId = project.project_id;
@@ -500,11 +524,15 @@
         singleInstallFallback = null;
       }
       pendingSingleInstall = null;
+      installingProjectId = null;
+      if (e instanceof ApiError && e.code === 'mod_conflicts') {
+        conflictFor = { projectId: project.project_id, mods: e.message };
+        return;
+      }
       pushToast({
         kind: 'err',
         text: e instanceof Error ? e.message : 'Error installing mod',
       });
-      installingProjectId = null;
     }
   }
   function modDisplayName(mod: { filename: string; project_slug?: string }): string {
@@ -981,6 +1009,16 @@
                 <div class="modrinth-card__footer">
                   {#if project.installed}
                     <Badge tone="ok">{t('mods.alreadyInstalled')}</Badge>
+                  {:else if conflictFor?.projectId === project.project_id}
+                    <span class="modrinth-card__warn">{t('mods.conflictWarn', { mods: conflictFor.mods })}</span>
+                    <Btn
+                      variant="secondary"
+                      size="sm"
+                      onclick={() => handleInstallFromModrinth(project, true)}
+                      disabled={installingProjectId !== null}
+                    >
+                      {t('mods.installAnyway')}
+                    </Btn>
                   {:else}
                     <Btn
                       variant="secondary"
@@ -993,6 +1031,21 @@
                     </Btn>
                   {/if}
                 </div>
+                {#if optionalFor[project.project_id]?.length}
+                  <div class="modrinth-card__optional">
+                    <span class="muted">{t('mods.optionalDeps')}</span>
+                    {#each optionalFor[project.project_id] as opt (opt.project_id)}
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        onclick={() => handleInstallFromModrinth(opt)}
+                        disabled={installingProjectId !== null}
+                      >
+                        + {opt.title}
+                      </Btn>
+                    {/each}
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
@@ -1627,8 +1680,24 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
+    gap: 0.5rem;
     border-top: 1px solid var(--border, rgba(255, 255, 255, 0.06));
     padding-top: 0.6rem;
+  }
+
+  .modrinth-card__warn {
+    flex: 1;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    color: var(--warning, #f5b041);
+  }
+
+  .modrinth-card__optional {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
   }
 
   .explore-title {

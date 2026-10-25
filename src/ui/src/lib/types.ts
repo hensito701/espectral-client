@@ -150,6 +150,21 @@ export interface ModrinthProject {
   installed?: boolean;
 }
 
+export interface ModRef {
+  project_id: string;
+  title: string;
+}
+
+/** What a single-mod install brings along (POST install-modrinth reply). */
+export interface ModInstallPlan {
+  queued: true;
+  project: ModRef;
+  dependencies: (ModRef & { filename: string })[];
+  missing: ModRef[];
+  optional: ModRef[];
+  conflicts: ModRef[];
+}
+
 export interface ServerEntry {
   name: string;
   ip: string;
