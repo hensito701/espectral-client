@@ -6,7 +6,10 @@
  *   POST /api/instances/:name/mods/:filename/disable    -> { filename, enabled }
  *   POST /api/instances/:name/mods/install { preset }   -> { queued: true }
  *   GET  /api/modrinth/search?q=&version=&loader=&instance=&offset= -> { results, total, offset, limit }
- *   POST /api/instances/:name/mods/install-modrinth { project_id } -> { queued: true }
+ *   POST /api/instances/:name/mods/install-modrinth { project_id, force? }
+ *        -> { queued: true, project, dependencies, missing, optional, conflicts }
+ *        409 mod_conflicts when an installed mod is declared incompatible and
+ *        force is not set.
  * The install endpoints validate + queue immediately and run the
  * sha1-verified install in the background, streaming mod-progress SSE events
  * (B1's events.mjs registry).
@@ -21,6 +24,8 @@ import {
   pinNoteForVersion,
   searchModrinth,
   installModrinthMod,
+  planModInstall,
+  summarizePlan,
 } from '../mods.mjs';
 import { loadInstanceMeta } from '../resolver.mjs';
 import { effectiveModsDir, getInstance } from '../instances.mjs';
@@ -143,7 +148,10 @@ export async function register(app) {
     }
   });
 
-  // POST /api/instances/:name/mods/install-modrinth { project_id } -> { queued: true }
+  // POST /api/instances/:name/mods/install-modrinth { project_id, force? }
+  // The plan (mod + required dependencies, optional ones, conflicts) is
+  // resolved before queuing so a missing build or a conflict is reported to
+  // the caller instead of failing silently in the background.
   app.post('/api/instances/:name/mods/install-modrinth', async (req, res, params, body) => {
     try {
       const name = params.name;
@@ -155,10 +163,19 @@ export async function register(app) {
       }
       const inst = await loadInstanceMeta(name); // 404 before queuing background work
       const loader = inst.loader === 'neoforge' ? 'neoforge' : 'fabric';
-      installModrinthMod(name, projectId, loader).catch((err) => {
+      const plan = await planModInstall(inst, projectId, loader);
+      if (plan.conflicts.length > 0 && body?.force !== true) {
+        return app.sendJson(res, 409, {
+          error: {
+            code: 'mod_conflicts',
+            message: plan.conflicts.map((c) => c.title).join(', '),
+          },
+        });
+      }
+      installModrinthMod(name, projectId, loader, { plan }).catch((err) => {
         console.error(`[mods] install-modrinth failed for ${name}: ${err?.message ?? err}`);
       });
-      return { queued: true };
+      return { queued: true, ...summarizePlan(plan) };
     } catch (err) {
       return sendError(app, res, err, 500, 'mod_install_modrinth_failed');
     }

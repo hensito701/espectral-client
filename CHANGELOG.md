@@ -2,6 +2,20 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.19] - 2026-10-25
+
+### Added
+- **Installing a mod installs what it needs.** Installing from the Modrinth
+  tab now also downloads the mod's required dependencies (and theirs), each
+  for the instance's Minecraft version and loader — Sodium Extra brings
+  Sodium, AppleSkin brings Fabric API. Mods already in the folder are
+  recognised by file hash, so a hand-added Fabric API is not downloaded
+  again. Embedded (jar-in-jar) dependencies are skipped. Afterwards the card
+  offers the mod's optional dependencies one click each, a dependency with no
+  build for your version is reported instead of crashing the game later, and
+  a mod declared incompatible with one you already have asks before
+  installing ("Instalar igualmente").
+
 ## [1.3.18] - 2026-10-25
 
 ### Fixed

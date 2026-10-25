@@ -18,6 +18,8 @@ import {
   listMods,
   isFilenameForSlug,
   slugifyTitle,
+  planModInstall,
+  installModrinthMod,
 } from '../src/engine/mods.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -192,4 +194,105 @@ test('slugifyTitle: Modrinth titles collapse to slug-style ids', () => {
   assert.equal(slugifyTitle('Sodium Extra'), 'sodium-extra');
   assert.equal(slugifyTitle('  X Y Z  '), 'x-y-z');
   assert.equal(slugifyTitle(null), '');
+});
+
+// --- single-mod install with dependencies (Modrinth mocked) ---
+
+function modrinthVersion(projectId, versionId, deps = []) {
+  return {
+    id: versionId,
+    project_id: projectId,
+    version_number: '1.0.0',
+    status: 'listed',
+    dependencies: deps,
+    files: [{ primary: true, filename: `${projectId}-1.0.0.jar`, url: `https://cdn.test/${projectId}.jar`, hashes: {}, size: null }],
+  };
+}
+
+/** Fake Modrinth: versions per project, pinned versions, installed-by-hash, titles. */
+function fakeModrinth({ versions, pinned = {}, installedByHash = {} }) {
+  return async (url, opts) => {
+    const u = String(url);
+    if (u.startsWith('https://cdn.test/')) return new Response(Buffer.from(`jar:${u}`));
+    if (u.endsWith('/version_files') && opts?.method === 'POST') {
+      const { hashes } = JSON.parse(opts.body);
+      const out = {};
+      for (const h of hashes) if (installedByHash[h]) out[h] = { project_id: installedByHash[h] };
+      return new Response(JSON.stringify(out));
+    }
+    const proj = u.match(/\/project\/([^/]+)\/version\?/);
+    if (proj) return new Response(JSON.stringify(versions[decodeURIComponent(proj[1])] ?? []));
+    const ver = u.match(/\/version\/([^/?]+)$/);
+    if (ver && pinned[ver[1]]) return new Response(JSON.stringify(pinned[ver[1]]));
+    if (u.includes('/projects?ids=')) {
+      const ids = JSON.parse(decodeURIComponent(u.split('ids=')[1]));
+      return new Response(JSON.stringify(ids.map((id) => ({ id, title: `Title ${id}`, slug: id.toLowerCase() }))));
+    }
+    return new Response('not found', { status: 404 });
+  };
+}
+
+async function withInstance(name, fn) {
+  const old = process.env.ESPECTRAL_DATA_DIR;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'espectral-moddeps-'));
+  process.env.ESPECTRAL_DATA_DIR = tmp;
+  try {
+    const instDir = path.join(tmp, 'instances', name);
+    const modsDir = path.join(instDir, 'mods');
+    fs.mkdirSync(modsDir, { recursive: true });
+    const instance = { name, version: '26.2', loader: 'fabric' };
+    fs.writeFileSync(path.join(instDir, 'instance.json'), JSON.stringify(instance));
+    await fn({ instance, modsDir });
+  } finally {
+    if (old === undefined) delete process.env.ESPECTRAL_DATA_DIR;
+    else process.env.ESPECTRAL_DATA_DIR = old;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+const sha1Of = (s) => createHash('sha1').update(s).digest('hex');
+
+test('planModInstall: required deps resolve transitively; installed, embedded, missing, optional and conflicts are classified', async (t) => {
+  await withInstance('deps-plan', async ({ instance, modsDir }) => {
+    // Two jars already in the mods dir, identified by sha1 (filenames are arbitrary).
+    fs.writeFileSync(path.join(modsDir, 'whatever-api.jar'), 'installed-api');
+    fs.writeFileSync(path.join(modsDir, 'old.jar'), 'installed-enemy');
+    t.mock.method(globalThis, 'fetch', fakeModrinth({
+      versions: {
+        PROOT1: [modrinthVersion('PROOT1', 'root-v', [
+          { project_id: 'PDEPB1', dependency_type: 'required' },
+          { project_id: 'PAPI01', dependency_type: 'required' },
+          { project_id: 'PEMB01', dependency_type: 'embedded' },
+          { project_id: 'PMISS1', dependency_type: 'required' },
+          { project_id: 'POPT01', dependency_type: 'optional' },
+          { project_id: 'PENEMY', dependency_type: 'incompatible' },
+        ])],
+        PDEPB1: [modrinthVersion('PDEPB1', 'b-v', [{ project_id: 'PDEPC1', version_id: 'c-pinned', dependency_type: 'required' }])],
+        PMISS1: [],
+      },
+      pinned: { 'c-pinned': modrinthVersion('PDEPC1', 'c-pinned') },
+      installedByHash: { [sha1Of('installed-api')]: 'PAPI01', [sha1Of('installed-enemy')]: 'PENEMY' },
+    }));
+
+    const plan = await planModInstall(instance, 'PROOT1', 'fabric');
+    assert.deepEqual(plan.installs.map((i) => i.project_id), ['PROOT1', 'PDEPB1', 'PDEPC1']);
+    assert.deepEqual(plan.dependencies.map((d) => d.title), ['Title PDEPB1', 'Title PDEPC1']);
+    assert.deepEqual(plan.missing.map((d) => d.project_id), ['PMISS1']);
+    assert.deepEqual(plan.optional.map((d) => d.project_id), ['POPT01']);
+    assert.deepEqual(plan.conflicts.map((d) => d.project_id), ['PENEMY']);
+  });
+});
+
+test('installModrinthMod: downloads the mod and its missing dependencies into the mods dir', async (t) => {
+  await withInstance('deps-install', async ({ modsDir }) => {
+    t.mock.method(globalThis, 'fetch', fakeModrinth({
+      versions: {
+        PROOT2: [modrinthVersion('PROOT2', 'root2-v', [{ project_id: 'PDEPB2', dependency_type: 'required' }])],
+        PDEPB2: [modrinthVersion('PDEPB2', 'b2-v')],
+      },
+    }));
+    const result = await installModrinthMod('deps-install', 'PROOT2', 'fabric');
+    assert.deepEqual(result.installed.sort(), ['PDEPB2-1.0.0.jar', 'PROOT2-1.0.0.jar']);
+    assert.deepEqual(fs.readdirSync(modsDir).sort(), ['PDEPB2-1.0.0.jar', 'PROOT2-1.0.0.jar']);
+  });
 });

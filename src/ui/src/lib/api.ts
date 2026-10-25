@@ -25,6 +25,7 @@ import type {
   LiveLaunch,
   LogChunk,
   ModEntry,
+  ModInstallPlan,
   ModPreset,
   ModPresetInfo,
   ModrinthProject,
@@ -444,8 +445,9 @@ export const searchModrinth = (
   if (instance) qs += `&instance=${encodeURIComponent(instance)}`;
   return get(`${R.modrinthSearch[1]}?${qs}`);
 };
-export const installModrinthMod = (name: string, projectId: string): Promise<{ queued: true }> =>
-  post(R.modrinthInstall(name)[1], { project_id: projectId });
+/** Queues the mod + its required dependencies; 409 `mod_conflicts` unless `force`. */
+export const installModrinthMod = (name: string, projectId: string, force = false): Promise<ModInstallPlan> =>
+  post(R.modrinthInstall(name)[1], { project_id: projectId, force });
 export const getInstanceServers = async (name: string): Promise<ServerEntry[]> => {
   const data = await get<{ servers: ServerEntry[] } | ServerEntry[]>(R.instanceServers(name)[1]);
   return Array.isArray(data) ? data : (data.servers ?? []);

@@ -12,6 +12,7 @@ import {
   emitEvent,
   fetchJson,
   sha1File,
+  USER_AGENT,
 } from './download.mjs';
 import { assertValidInstanceName, loadInstanceMeta } from './resolver.mjs';
 import { effectiveModsDir } from './instances.mjs';
@@ -825,67 +826,209 @@ export async function searchModrinth(query, gameVersion, loader = 'fabric', inst
 }
 
 // ---------------------------------------------------------------------------
-// Install a single Modrinth mod (background; sha1-verified, mod-progress)
+// Install a single Modrinth mod plus its required dependencies
+// (background; sha1-verified, mod-progress)
 // ---------------------------------------------------------------------------
-export async function installModrinthMod(instanceName, projectId, loader = null) {
-  assertValidInstanceName(instanceName);
-  const instance = await loadInstanceMeta(instanceName);
-  loader = loader ?? (instance.loader === 'neoforge' ? 'neoforge' : 'fabric');
-  const meta = await bestVersionForCached(projectId, instance.version, loader);
-  if (!meta) {
-    const err = new Error(
-      `no ${loader} build of project ${projectId} for ${instance.version}`
+
+/**
+ * Modrinth project ids of the jars already in the mods dir, looked up by sha1
+ * (POST /version_files), so a hand-added Fabric API counts as installed
+ * whatever its filename. Returns null when the lookup fails; callers then fall
+ * back to filename matching.
+ */
+async function installedProjectIds(modsDir, files) {
+  const hashes = [];
+  for (const f of files) {
+    try {
+      hashes.push(await sha1File(path.join(modsDir, f)));
+    } catch {
+      /* file raced away */
+    }
+  }
+  if (hashes.length === 0) return new Set();
+  try {
+    const res = await fetch(`${MODRINTH_API}/version_files`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': USER_AGENT },
+      body: JSON.stringify({ hashes, algorithm: 'sha1' }),
+    });
+    if (!res.ok) return null;
+    const byHash = await res.json();
+    return new Set(Object.values(byHash ?? {}).map((v) => v?.project_id).filter(Boolean));
+  } catch {
+    return null;
+  }
+}
+
+/** project id -> { title, slug } for display; never throws. */
+async function projectInfo(ids) {
+  const out = new Map();
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return out;
+  try {
+    const list = await fetchJsonWithRetry(
+      `${MODRINTH_API}/projects?ids=${encodeURIComponent(JSON.stringify(unique))}`,
+      { retries: 1 }
     );
+    for (const p of list ?? []) out.set(p.id, { title: p.title, slug: p.slug });
+  } catch {
+    /* titles are cosmetic; ids are shown instead */
+  }
+  return out;
+}
+
+/**
+ * Work out what installing `projectId` into `instance` means:
+ *   installs   — the mod plus every required dependency (transitively) that is
+ *                not already in the mods dir, each resolved for the instance's
+ *                game version and loader
+ *   missing    — required dependencies with no build for this version/loader
+ *   optional   — the mod's optional dependencies that are not installed
+ *   conflicts  — installed mods the new mod declares incompatible
+ * Embedded (jar-in-jar) dependencies ship inside the parent and are skipped.
+ */
+export async function planModInstall(instance, projectId, loader) {
+  const root = await bestVersionForCached(projectId, instance.version, loader);
+  if (!root) {
+    const err = new Error(`no ${loader} build of project ${projectId} for ${instance.version}`);
     err.status = 404;
     err.code = 'MOD_NOT_FOUND_FOR_VERSION';
     throw err;
   }
-  const file = primaryFile(meta);
-  if (!file) {
+  if (!primaryFile(root)) {
     const err = new Error(`project ${projectId} has no downloadable file`);
     err.status = 404;
     err.code = 'MOD_NOT_FOUND_FOR_VERSION';
     throw err;
   }
   const modsDir = modsDirOf(instance);
+  let files = [];
+  try {
+    files = (await readdir(modsDir)).filter((f) => f.endsWith('.jar') || f.endsWith('.jar.disabled'));
+  } catch {
+    /* no mods dir yet */
+  }
+  const installedIds = await installedProjectIds(modsDir, files);
+  const onDisk = new Set(files.map((f) => f.replace(/\.disabled$/, '')));
+  const alreadyInstalled = (pid, meta) =>
+    installedIds ? installedIds.has(pid) : onDisk.has(primaryFile(meta)?.filename);
+
+  const rootId = root.project_id ?? projectId;
+  const installs = new Map([[rootId, root]]);
+  const missing = new Set();
+  const optional = new Set();
+  const conflicts = new Set();
+  const queue = [root];
+  for (let qi = 0; qi < queue.length; qi++) {
+    const meta = queue[qi];
+    for (const dep of meta.dependencies ?? []) {
+      const pid = dep.project_id ?? null;
+      if (dep.dependency_type === 'incompatible') {
+        if (pid && installedIds?.has(pid)) conflicts.add(pid);
+        continue;
+      }
+      if (dep.dependency_type === 'optional') {
+        if (meta === root && pid && !installs.has(pid) && !installedIds?.has(pid)) optional.add(pid);
+        continue;
+      }
+      if (dep.dependency_type !== 'required') continue; // embedded ships inside the parent
+      if (pid && (installs.has(pid) || JAR_IN_JAR.has(pid) || installedIds?.has(pid))) continue;
+      let depMeta = null;
+      if (dep.version_id) depMeta = await versionMeta(dep.version_id).catch(() => null);
+      if (!depMeta && pid) depMeta = await bestVersionForCached(pid, instance.version, loader);
+      if (!depMeta || !primaryFile(depMeta)) {
+        missing.add(pid ?? dep.version_id);
+        continue;
+      }
+      const depId = depMeta.project_id ?? pid;
+      if (installs.has(depId) || alreadyInstalled(depId, depMeta)) continue;
+      installs.set(depId, depMeta);
+      queue.push(depMeta);
+    }
+  }
+  for (const pid of missing) optional.delete(pid);
+
+  const info = await projectInfo([...installs.keys(), ...missing, ...optional, ...conflicts]);
+  const label = (pid) => ({ project_id: pid, title: info.get(pid)?.title ?? pid });
+  return {
+    root,
+    installs: [...installs.entries()].map(([pid, meta]) => ({ project_id: pid, meta })),
+    project: label(rootId),
+    dependencies: [...installs.entries()]
+      .filter(([pid]) => pid !== rootId)
+      .map(([pid, meta]) => ({ ...label(pid), filename: primaryFile(meta).filename })),
+    missing: [...missing].map(label),
+    optional: [...optional].map(label),
+    conflicts: [...conflicts].map(label),
+  };
+}
+
+/** The JSON-safe part of a plan (what the route returns to the UI). */
+export function summarizePlan(plan) {
+  return {
+    project: plan.project,
+    dependencies: plan.dependencies,
+    missing: plan.missing,
+    optional: plan.optional,
+    conflicts: plan.conflicts,
+  };
+}
+
+export async function installModrinthMod(instanceName, projectId, loader = null, { plan = null } = {}) {
+  assertValidInstanceName(instanceName);
+  const instance = await loadInstanceMeta(instanceName);
+  loader = loader ?? (instance.loader === 'neoforge' ? 'neoforge' : 'fabric');
+  plan = plan ?? (await planModInstall(instance, projectId, loader));
+  const modsDir = modsDirOf(instance);
   await mkdir(modsDir, { recursive: true });
 
+  const rootFile = primaryFile(plan.root);
+  const total = plan.installs.length;
   emitEvent('mod-progress', {
     instance: instanceName,
     phase: 'start',
-    filename: file.filename,
+    filename: rootFile.filename,
     index: 0,
-    total: 1,
-    message: `installing ${file.filename}`,
+    total,
+    message: `installing ${rootFile.filename}${total > 1 ? ` + ${total - 1} dependencies` : ''}`,
   });
 
-  await downloadAll(
-    [
-      {
-        url: file.url,
-        dest: path.join(modsDir, file.filename),
-        sha1: file.hashes?.sha1 ?? null,
-        size: file.size ?? null,
-        eventName: 'mod-progress',
-        context: {
-          instance: instanceName,
-          filename: file.filename,
-          index: 0,
-          total: 1,
-        },
-      },
-    ],
-    { concurrency: downloadConcurrency() }
-  );
+  try {
+    await downloadAll(
+      plan.installs.map(({ meta }, i) => {
+        const file = primaryFile(meta);
+        return {
+          url: file.url,
+          dest: path.join(modsDir, file.filename),
+          sha1: file.hashes?.sha1 ?? null,
+          size: file.size ?? null,
+          eventName: 'mod-progress',
+          context: { instance: instanceName, filename: file.filename, index: i, total },
+        };
+      }),
+      { concurrency: downloadConcurrency() }
+    );
+  } catch (err) {
+    emitEvent('mod-progress', {
+      instance: instanceName,
+      phase: 'error',
+      filename: rootFile.filename,
+      error: err?.message ?? String(err),
+    });
+    throw err;
+  }
 
   emitEvent('mod-progress', {
     instance: instanceName,
     phase: 'done',
-    filename: file.filename,
-    index: 1,
-    total: 1,
-    message: `installed ${file.filename}`,
+    filename: rootFile.filename,
+    index: total,
+    total,
+    message: `installed ${rootFile.filename}`,
   });
 
-  return { installed: file.filename };
+  return {
+    installed: plan.installs.map(({ meta }) => primaryFile(meta).filename),
+    ...summarizePlan(plan),
+  };
 }
