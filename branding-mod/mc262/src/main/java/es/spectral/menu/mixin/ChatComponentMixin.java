@@ -35,8 +35,10 @@ import es.spectral.menu.ClientConfig;
  * </ol>
  *
  * <p>{@code GuiMessage$Line#parent()} ties every queued line back to its
- * message, so only this message's {@code endOfEntry} (first) lines are
- * mapped. The line map is rebuilt wholesale by
+ * message. Vanilla queues a message's lines newest-first ({@code addFirst})
+ * and flags the LAST visual line as {@code endOfEntry}, so the first visual
+ * line is the deepest queued line of this message — that one gets the head.
+ * The line map is rebuilt wholesale by
  * {@code refreshTrimmedMessages} and dropped on {@code clearMessages}.
  */
 @Mixin(ChatComponent.class)
@@ -57,11 +59,15 @@ public abstract class ChatComponentMixin {
             senderId = ChatHeads.senderForText(message.content().getString());
         }
         if (senderId == null) return;
+        // Lines of this message sit at the head of the queue, last visual line
+        // first; the deepest one is the first visual line (where the head goes).
+        GuiMessage.Line first = null;
         for (GuiMessage.Line line : this.trimmedMessages) {
             if (line.parent() != message) break;
-            if (line.endOfEntry()) {
-                ChatHeads.mapFirstLine(senderId, line.content());
-            }
+            first = line;
+        }
+        if (first != null) {
+            ChatHeads.mapFirstLine(senderId, first.content());
         }
     }
 

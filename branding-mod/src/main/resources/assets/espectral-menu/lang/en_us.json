@@ -36,7 +36,7 @@
   "espectral.feature.cosmetics.name": "Cosmetics",
   "espectral.feature.fpsping.description": "Frames per second and latency on screen.",
   "espectral.feature.fpsping.name": "FPS / Ping",
-  "espectral.feature.fullbright.description": "Built-in fullbright — gamma driven live by the mod. No jars, no restart.",
+  "espectral.feature.fullbright.description": "Built-in fullbright — caves and nights fully lit, like night vision. No jars, no restart.",
   "espectral.feature.fullbright.name": "Fullbright",
   "espectral.feature.healthstatus.description": "Numeric health and absorption on screen.",
   "espectral.feature.healthstatus.name": "Health",

@@ -10,8 +10,6 @@ import net.minecraft.client.Minecraft;
 import es.spectral.menu.ClientConfig;
 import es.spectral.menu.EspectralClient;
 import es.spectral.menu.EmoteEngine;
-import es.spectral.menu.FogEngine;
-import es.spectral.menu.GammaEngine;
 import es.spectral.menu.HudEngine;
 import es.spectral.menu.MacroEngine;
 import es.spectral.menu.SkinModelCache;
@@ -19,8 +17,8 @@ import es.spectral.menu.SuiteShortcut;
 import es.spectral.menu.ZoomEngine;
 
 /**
- * Hooks into Minecraft.tick() to handle the Right Shift GUI keybind, the
- * native zoom/fullbright/nofog engines, macro triggers, and the live
+ * Hooks into Minecraft.tick() to handle the Right Shift GUI keybind, native
+ * zoom, macro triggers, visual-feature transition logs, and the live
  * launcher-patch config reload.
  */
 @Mixin(Minecraft.class)
@@ -35,8 +33,6 @@ public abstract class MinecraftMixin {
         Minecraft minecraft = (Minecraft) (Object) this;
         SuiteShortcut.onClientTick(minecraft);
         ZoomEngine.getInstance().onTick(minecraft);
-        GammaEngine.getInstance().onTick(minecraft);
-        FogEngine.getInstance().onTick(minecraft);
         MacroEngine.getInstance().onTick(minecraft);
         HudEngine.getInstance().onTick(minecraft);
         EmoteEngine.getInstance().onClientTick(minecraft);

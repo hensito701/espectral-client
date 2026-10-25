@@ -41,18 +41,20 @@ public final class HudEngine {
 
     private HudEngine() {}
 
-    /** Last observed lowfire/clearwater states; drives transition logging. */
+    /** Last observed visual-feature states; drives transition logging. */
     private boolean lastLowFire;
     private boolean lastClearWater;
+    private boolean lastFullbright;
+    private boolean lastNoFog;
 
     public static boolean isEnabled(String id) {
         return ClientConfig.getInstance().isFeatureEnabled(id);
     }
 
     /**
-     * Polled every client tick via MinecraftMixin: logs the lowfire/clearwater
-     * enable/disable transitions (the render hooks themselves are stateless, so
-     * this is the only tick-side work the HUD needs).
+     * Polled every client tick via MinecraftMixin: logs the visual features'
+     * enable/disable transitions (lowfire, clearwater, fullbright, nofog —
+     * their render hooks are stateless, so this is the only tick-side work).
      */
     public void onTick(Minecraft minecraft) {
         if (minecraft == null) return;
@@ -66,6 +68,16 @@ public final class HudEngine {
             lastClearWater = clearWater;
             LOGGER.info("ClearWater {}", clearWater ? "on: underwater overlay + water fog cleared"
                     : "off: vanilla water rendering restored");
+        }
+        boolean fullbright = FullbrightEngine.isEnabled();
+        if (fullbright != lastFullbright) {
+            lastFullbright = fullbright;
+            LOGGER.info("Fullbright {}", fullbright ? "on: lightmap at full night vision" : "off: vanilla lightmap");
+        }
+        boolean noFog = FogEngine.isEnabled();
+        if (noFog != lastNoFog) {
+            lastNoFog = noFog;
+            LOGGER.info("NoFog {}", noFog ? "on: atmospheric fog pushed past view distance" : "off: vanilla fog");
         }
     }
 
