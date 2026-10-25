@@ -53,7 +53,7 @@ public final class TitleMenu {
     private static final int MOTE_WHITE = 0xFFF4EEDF;
     private static final int MOTES = 28;
     private static final Component CHEVRON = Component.literal("›");
-    private static final Component TAGLINE = Component.translatable("espectral.menu.tagline");
+    private static final Component DEFAULT_TAGLINE = Component.translatable("espectral.menu.tagline");
 
     /** Hot-state button edge: 80%-alpha accent (theme-driven, was a constant). */
     private static int btnEdgeHot() {
@@ -72,6 +72,8 @@ public final class TitleMenu {
     private int width;
     private int height;
     private Component footer;
+    private String taglineSource;
+    private Component taglineText;
 
     // Interaction + animation state (per screen instance).
     private int focused = -1;
@@ -341,9 +343,25 @@ public final class TitleMenu {
         Compat.uiFill(gfx, cx + half - seg, dy, cx + half, dy + 1, argb(0.18f * a, accentRgb));
         float tagA = fade(t, 0.7f, 0.8f);
         if (tagA > 0.02f) {
-            Compat.uiTextCentered(gfx, font, TAGLINE,
-                    cx, dy + 7, withAlpha(0xFFD8D2C4, tagA), true);
+            // Custom lines can be wider than the wordmark: keep them on screen.
+            Component tag = tagline();
+            int tcx = Math.min(cx, width - 8 - font.width(tag) / 2);
+            Compat.uiTextCentered(gfx, font, tag,
+                    tcx, dy + 7, withAlpha(0xFFD8D2C4, tagA), true);
         }
+    }
+
+    /** Instance's custom tagline (launcher → Appearance), else the localized default. */
+    private Component tagline() {
+        String custom = ClientConfig.getInstance().tagline();
+        if (custom == null) {
+            return DEFAULT_TAGLINE;
+        }
+        if (!custom.equals(taglineSource)) {
+            taglineSource = custom;
+            taglineText = Component.literal(custom);
+        }
+        return taglineText;
     }
 
     // ── Buttons & icons ─────────────────────────────────────────────────────

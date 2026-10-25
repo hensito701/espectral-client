@@ -239,6 +239,13 @@ test('patchClientConfig: personalization validates ids and rejects unknown keys'
   const cleared = await patchClientConfig('test-inst', { personalization: { background: null } });
   assert.equal(cleared.config.personalization.background, null);
 
+  // tagline: 40 characters (code points) is the limit; null restores the default.
+  const forty = 'á'.repeat(39) + '!';
+  const tagged = await patchClientConfig('test-inst', { personalization: { tagline: forty } });
+  assert.equal(tagged.config.personalization.tagline, forty);
+  const reset = await patchClientConfig('test-inst', { personalization: { tagline: null } });
+  assert.equal(reset.config.personalization.tagline, null);
+
   for (const [label, body] of [
     ['bad theme id', { personalization: { theme: 'obsidiana' } }],
     ['non-string theme', { personalization: { theme: 4 } }],
@@ -247,6 +254,11 @@ test('patchClientConfig: personalization validates ids and rejects unknown keys'
     ['bad background chars', { personalization: { background: '../evil' } }],
     ['bad reduced_motion type', { personalization: { reduced_motion: 'yes' } }],
     ['unknown personalization key', { personalization: { sparkle: true } }],
+    ['tagline over 40 chars', { personalization: { tagline: 'x'.repeat(41) } }],
+    ['blank tagline', { personalization: { tagline: '   ' } }],
+    ['tagline with § color code', { personalization: { tagline: '§cRojo' } }],
+    ['tagline with newline', { personalization: { tagline: 'a\nb' } }],
+    ['non-string tagline', { personalization: { tagline: 7 } }],
     ['non-object personalization', { personalization: 'gold' }],
   ]) {
     await assert.rejects(
@@ -281,6 +293,7 @@ test('loadClientConfig: personalization defaults fill and preserve stored keys',
     hud_theme: 'cristal',
     background: null,
     reduced_motion: false,
+    tagline: null,
   });
 });
 

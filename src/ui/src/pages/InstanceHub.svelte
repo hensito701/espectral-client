@@ -116,6 +116,10 @@
   let bgError = $state('');
   let bgBust = $state(0);
   let bgConfirmDelete = $state('');
+  // Title-screen tagline (personalization.tagline; '' = default)
+  const TAGLINE_MAX = 40;
+  let tagline = $state('');
+  let savingTagline = $state(false);
   let aotStatus = $state<AotStatus | null>(null);
   let trainingAot = $state(false);
   let trainProgress = $state<{ done: number; total: number; phase?: string } | null>(null);
@@ -128,6 +132,7 @@
 
   // Client Suite state
   let clientInfo = $state<ClientInfo | null>(null);
+  const savedTagline = $derived(clientInfo?.config.personalization?.tagline ?? '');
   let togglingFeature = $state('');
   // Suite master switch (schema 2, absent on old payloads defaults to true).
   const suiteEnabled = $derived(clientInfo?.config.suite?.enabled ?? true);
@@ -219,6 +224,7 @@
       jvm = jvmData;
       clientInfo = clientData;
       bgSelected = clientData?.config.personalization?.background ?? '';
+      tagline = clientData?.config.personalization?.tagline ?? '';
       void refreshBgPacks();
       hue = typeof detail.summary.hue === 'number' ? detail.summary.hue : null;
       gameDir = detail.summary.game_dir ?? '';
@@ -566,6 +572,22 @@
     } catch (e) {
       bgError = e instanceof Error ? e.message : String(e);
       pushToast({ kind: 'err', text: t('perso.bgSaveError') });
+    }
+  }
+
+  async function handleSaveTagline(value: string) {
+    if (!decodedName || savingTagline) return;
+    const next = value.trim();
+    savingTagline = true;
+    try {
+      const updated = await patchPersonalization(decodedName, { tagline: next === '' ? null : next });
+      if (updated?.config) clientInfo = updated;
+      tagline = next;
+      pushToast({ kind: 'ok', text: t('perso.taglineSaveOk') });
+    } catch (e) {
+      pushToast({ kind: 'err', text: `${t('perso.taglineSaveError')}: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      savingTagline = false;
     }
   }
 
@@ -1288,6 +1310,39 @@
                     <p class="options-feedback">{iconError}</p>
                   {/if}
                 </Field>
+
+                <Field label={t('perso.taglineTitle')} hint={t('perso.taglineHint', { max: TAGLINE_MAX })}>
+                  <div class="tagline-row">
+                    <input
+                      type="text"
+                      class="tagline-input"
+                      maxlength={TAGLINE_MAX}
+                      placeholder={t('perso.taglinePlaceholder')}
+                      bind:value={tagline}
+                      onkeydown={(e) => {
+                        if (e.key === 'Enter') void handleSaveTagline(tagline);
+                      }}
+                      aria-label={t('perso.taglineTitle')}
+                    />
+                    <span class="tagline-count">{[...tagline].length}/{TAGLINE_MAX}</span>
+                  </div>
+                </Field>
+                <div class="card-action-footer">
+                  {#if savedTagline}
+                    <Btn variant="ghost" size="sm" disabled={savingTagline} onclick={() => handleSaveTagline('')}>
+                      {t('perso.taglineReset')}
+                    </Btn>
+                  {/if}
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    loading={savingTagline}
+                    disabled={savingTagline || tagline.trim() === savedTagline}
+                    onclick={() => handleSaveTagline(tagline)}
+                  >
+                    {t('perso.taglineSave')}
+                  </Btn>
+                </div>
 
                 <!-- Menu background pack picker (free personalization) -->
                 <Field label={t('perso.bgTitle')} hint={t('perso.bgHint')}>
@@ -2287,6 +2342,7 @@
   .card-action-footer {
     display: flex;
     justify-content: flex-end;
+    gap: 0.5rem;
     margin-top: 0.5rem;
   }
 
@@ -2322,6 +2378,36 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
     color: var(--text, #e8ecf4);
+  }
+
+  .tagline-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .tagline-input {
+    flex: 1;
+    min-width: 0;
+    color: var(--text, #e8ecf4);
+    background: var(--surface, rgba(16, 22, 42, 0.65));
+    border: 1px solid var(--border-specular, rgba(255, 255, 255, 0.16));
+    border-radius: var(--radius-md, 0.5rem);
+    padding: 0.45rem 0.75rem;
+    font: inherit;
+  }
+
+  .tagline-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .tagline-count {
+    min-width: 3rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
+    color: var(--muted, #8e9eb8);
   }
 
   .icon-row {

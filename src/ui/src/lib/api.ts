@@ -466,7 +466,13 @@ export const patchInstanceClient = (name: string, clientPatch: ClientPatch): Pro
 
 export const patchPersonalization = (
   name: string,
-  patchBody: { theme?: string | null; hud_theme?: string | null; background?: string | null; reduced_motion?: boolean },
+  patchBody: {
+    theme?: string | null;
+    hud_theme?: string | null;
+    background?: string | null;
+    reduced_motion?: boolean;
+    tagline?: string | null;
+  },
 ): Promise<ClientInfo> => patch(R.personalizationPatch(name)[1], patchBody);
 
 export const listBackgroundPacks = async (): Promise<BackgroundPack[]> =>
