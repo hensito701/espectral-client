@@ -150,28 +150,58 @@ async function finalizePart(part, dest, sha1, size) {
 // ---------------------------------------------------------------------------
 // JSON / text fetches (small payloads, generous timeout)
 // ---------------------------------------------------------------------------
+// Transient failures (connection reset/refused, DNS hiccup, timeout, gateway
+// errors) get two more tries with backoff. Undici reports every network
+// failure as a bare `TypeError: fetch failed` with the real reason in `cause`,
+// which reached the launch log verbatim and named neither the host nor the
+// reason; the final error now carries both.
+const FETCH_TEXT_ATTEMPTS = 3;
+const FETCH_TEXT_BACKOFF_MS = [500, 1500];
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+
+function networkReason(err) {
+  const cause = err?.cause;
+  return cause?.code ?? cause?.message ?? err?.message ?? String(err);
+}
+
 export async function fetchText(url, { headers = {}, timeoutMs = 60000 } = {}) {
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(new Error('request timeout')), timeoutMs);
-  let res;
-  try {
-    res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT, ...headers },
-      signal: ac.signal,
-      redirect: 'follow',
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-  if (!res.ok) {
+  const host = (() => { try { return new URL(url).host; } catch { return url; } })();
+  for (let attempt = 1; ; attempt++) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(new Error('request timeout')), timeoutMs);
+    let res;
     try {
-      await res.body?.cancel(); // release the undici connection; never swallow the HTTP error
-    } catch {
-      /* best-effort cleanup */
+      res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT, ...headers },
+        signal: ac.signal,
+        redirect: 'follow',
+      });
+    } catch (err) {
+      if (attempt < FETCH_TEXT_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, FETCH_TEXT_BACKOFF_MS[attempt - 1]));
+        continue;
+      }
+      throw Object.assign(
+        new Error(`could not reach ${host} (${networkReason(err)}) after ${attempt} attempts`),
+        { cause: err, url },
+      );
+    } finally {
+      clearTimeout(timer);
     }
-    throw Object.assign(new Error(`GET ${url} -> HTTP ${res.status}`), { status: res.status });
+    if (!res.ok) {
+      try {
+        await res.body?.cancel(); // release the undici connection; never swallow the HTTP error
+      } catch {
+        /* best-effort cleanup */
+      }
+      if (RETRYABLE_STATUS.has(res.status) && attempt < FETCH_TEXT_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, FETCH_TEXT_BACKOFF_MS[attempt - 1]));
+        continue;
+      }
+      throw Object.assign(new Error(`GET ${url} -> HTTP ${res.status}`), { status: res.status });
+    }
+    return await res.text();
   }
-  return await res.text();
 }
 
 export async function fetchJson(url, opts) {
