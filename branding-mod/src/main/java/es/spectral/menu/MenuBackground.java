@@ -48,9 +48,10 @@ import org.slf4j.LoggerFactory;
  * decoding on the render thread, no unbounded resident frame set.
  * {@code reducedMotion()} renders only the first frame.
  *
- * <p>{@link #release()} (called from the title screen's {@code removed()})
- * frees every texture and pending decode so the pack's GPU/native memory is
- * bounded by the screen's lifetime, not the session's.
+ * <p>The texture outlives the title screen: every out-of-world menu draws it
+ * ({@code MenuSkin}). {@link #releaseIfHeld()} — called each client tick
+ * while a world is loaded — frees every texture and pending decode, so the
+ * pack's GPU/native memory is held only while menus are on screen.
  *
  * <p>Both supported versions expose identical texture APIs, so this lives in
  * the shared source set; only the blit call is version-specific
@@ -519,14 +520,20 @@ public final class MenuBackground {
 
     /**
      * Frees every texture this loader owns and any decoded frames still in
-     * the ring. Called on screen close ({@code Screen.removed}) — render
-     * thread only.
+     * the ring — render thread only.
      */
     public static void release() {
         releaseInternal(Minecraft.getInstance());
         sourceId = null;
         sourceResolved = false;
         cachedSource = null;
+    }
+
+    /** {@link #release()} when anything is loaded or loading; a field read otherwise. */
+    public static void releaseIfHeld() {
+        if (state != State.IDLE || sourceId != null || resolvePending || cachedSource != null) {
+            release();
+        }
     }
 
     private static void releaseInternal(Minecraft minecraft) {

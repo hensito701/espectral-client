@@ -14,6 +14,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 import org.lwjgl.glfw.GLFW;
 
+import es.spectral.menu.ui.MenuSkin;
 import es.spectral.menu.ui.SuiteTheme;
 
 /**
@@ -47,9 +48,8 @@ public final class TitleMenu {
     /** Horizontal near-black → transparent readability gradient. */
     private static final Identifier SCRIM = Identifier.fromNamespaceAndPath("espectral-menu", "scrim");
 
-    private static final int BASE = 0xFF0B0D10;
-    private static final int BTN_FILL = 0x8C090B0E;
-    private static final int BTN_FILL_HOT = 0xC8151A21;
+    private static final int BTN_FILL = MenuSkin.BTN_FILL;
+    private static final int BTN_FILL_HOT = MenuSkin.BTN_FILL_HOT;
     private static final int MOTE_WHITE = 0xFFF4EEDF;
     private static final int MOTES = 28;
     private static final Component CHEVRON = Component.literal("›");
@@ -244,38 +244,9 @@ public final class TitleMenu {
     // ── Background ──────────────────────────────────────────────────────────
 
     private void drawBackground(Object gfx, long now, boolean reduced) {
-        // Drives the async pack resolution/upload and advances animated
-        // packs; per-frame cost is an id compare when nothing changed.
-        MenuBackground.request(minecraft);
-        Compat.uiFill(gfx, 0, 0, width, height, BASE);
-        if (MenuBackground.ready() && MenuBackground.width() > 0 && MenuBackground.height() > 0) {
-            float bw = MenuBackground.width();
-            float bh = MenuBackground.height();
-            // Under reduced motion the Ken Burns clock is frozen at t = 0 so
-            // the cover-fit UV window stays put; only the upload reveal fades.
-            float t = reduced ? 0f : (now - MenuBackground.readyAtMs()) / 1000f;
-            // Cover-fit, then crop a UV window that breathes (~±3% zoom over
-            // 28 s) and drifts (40 s / 52 s Lissajous) plus a light parallax.
-            // UVs are floats, so the motion is sub-pixel smooth at any GUI scale.
-            float zoom = 1.08f + 0.03f * (float) Math.sin(t * (Math.PI * 2 / 28.0));
-            float scale = Math.max(width / bw, height / bh) * zoom;
-            float uw = Math.min(1f, width / scale / bw);
-            float vh = Math.min(1f, height / scale / bh);
-            float px = clamp01(0.5f + 0.32f * (float) Math.sin(t * (Math.PI * 2 / 40.0)) + 0.14f * parX);
-            float py = clamp01(0.5f + 0.32f * (float) Math.cos(t * (Math.PI * 2 / 52.0)) + 0.14f * parY);
-            float u0 = (1f - uw) * px;
-            float v0 = (1f - vh) * py;
-            Compat.uiBlitUv(gfx, MenuBackground.texture(), 0, 0, width, height, u0, v0, u0 + uw, v0 + vh);
-            // Reveal: a one-shot fade-in once the upload lands. Under reduced
-            // motion the background simply appears (reveal = 1).
-            float reveal = reduced ? 1f
-                    : easeOutCubic(clamp01(((now - MenuBackground.readyAtMs()) / 1000f) / 0.9f));
-            if (reveal < 1f) {
-                Compat.uiFill(gfx, 0, 0, width, height, withAlpha(BASE, 1f - reveal));
-            }
-        } else {
-            Compat.uiFillGradient(gfx, 0, 0, width, height, 0x00000000, 0x66000000);
-        }
+        // Shared with every out-of-world menu (MenuSkin), so the drift carries
+        // on seamlessly into Multiplayer/Options; parallax is title-only.
+        MenuSkin.paintArt(gfx, width, height, now, reduced, parX, parY);
 
         // Readability: soft left scrim behind the buttons, a bottom vignette
         // for the footer, and a thin top shade for the icon row.
