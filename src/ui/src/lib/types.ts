@@ -292,6 +292,8 @@ export interface ClientPersonalization {
   hud_theme?: 'cristal' | 'oro' | 'minimo' | 'pixel';
   background?: string | null;
   reduced_motion?: boolean;
+  /** Title-screen line under the wordmark; null = default ("Good luck, have fun!"). */
+  tagline?: string | null;
   [k: string]: unknown;
 }
 

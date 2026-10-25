@@ -106,7 +106,7 @@ function deepEqual(a, b) {
 // --- personalization (Workstream 4, free features) -------------------------
 // Stored under the top-level "personalization" object of espectral-client.json
 // and read by the mod through ClientConfig.theme()/hudTheme()/backgroundPack()/
-// reducedMotion(). The launcher's own accent (engine config.json `accent`)
+// reducedMotion()/tagline(). The launcher's own accent (engine config.json `accent`)
 // mirrors into personalization.theme at launch — one palette everywhere.
 export const THEME_IDS = ['oro', 'carmesi', 'amatista', 'esmeralda', 'glaciar'];
 export const HUD_THEME_IDS = ['cristal', 'oro', 'minimo', 'pixel'];
@@ -115,8 +115,11 @@ export const PERSONALIZATION_DEFAULTS = {
   hud_theme: 'cristal',
   background: null,
   reduced_motion: false,
+  // Title-screen line under the wordmark; null = the localized default.
+  tagline: null,
 };
 const BACKGROUND_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+export const TAGLINE_MAX = 40;
 
 /** Read the RAW file; `{}` when missing or unparseable (never throws). */
 function readRawConfig(instanceName) {
@@ -360,6 +363,14 @@ function validatePatch(patch) {
     }
     if ('reduced_motion' in personalization && typeof personalization.reduced_motion !== 'boolean') {
       throw httpError(400, 'BAD_PERSONALIZATION', 'reduced_motion must be a boolean');
+    }
+    if ('tagline' in personalization && personalization.tagline !== null) {
+      const v = personalization.tagline;
+      // eslint-disable-next-line no-control-regex
+      if (typeof v !== 'string' || v.trim() === '' || [...v].length > TAGLINE_MAX || /[\u0000-\u001f\u007f\u00a7]/.test(v)) {
+        throw httpError(400, 'BAD_PERSONALIZATION',
+          `tagline must be null or 1-${TAGLINE_MAX} characters without control codes or §`);
+      }
     }
   }
 }

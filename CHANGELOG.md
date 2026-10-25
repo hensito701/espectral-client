@@ -2,7 +2,14 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [1.3.20] - 2026-10-25
+## [1.5.1] - 2026-10-25
+
+### Added
+- **Your own main-menu tagline.** Instance → Apariencia de la instancia →
+  "Frase del menú" sets the line under the ESPECTRAL logo (up to 40
+  characters; § colour codes and control characters are refused). Leave it
+  empty for the default, which is now **"Good luck, have fun!"** (was "Your
+  game, your way"). A running game picks the change up within a second.
 
 ### Changed
 - **The main-menu look follows you into every menu.** Multiplayer,

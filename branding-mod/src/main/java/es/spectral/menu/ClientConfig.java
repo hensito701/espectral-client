@@ -499,6 +499,35 @@ public final class ClientConfig {
         return v != null && !v.isEmpty() ? v : null;
     }
 
+    /** Longest custom title-screen tagline (matches the launcher's limit). */
+    public static final int TAGLINE_MAX = 40;
+
+    /** Raw value {@link #taglineClean} was derived from (read every frame). */
+    private String taglineRaw;
+    private String taglineClean;
+
+    /**
+     * Custom title-screen tagline, or {@code null} for the localized default.
+     * Hand-edited files are sanitised the same way the launcher validates:
+     * trimmed, § codes and control characters dropped, capped in length.
+     * Cached per raw value — the title screen asks every frame.
+     */
+    public synchronized String tagline() {
+        String v = personalizationString(personalizationObj(), "tagline");
+        if (v == null) {
+            return null;
+        }
+        if (!v.equals(taglineRaw)) {
+            String clean = v.replaceAll("[\\p{Cntrl}\u00a7]", "").trim();
+            if (clean.codePointCount(0, clean.length()) > TAGLINE_MAX) {
+                clean = clean.substring(0, clean.offsetByCodePoints(0, TAGLINE_MAX)).trim();
+            }
+            taglineRaw = v;
+            taglineClean = clean.isEmpty() ? null : clean;
+        }
+        return taglineClean;
+    }
+
     /** Reduced-motion flag; default false. */
     public synchronized boolean reducedMotion() {
         JsonObject p = personalizationObj();

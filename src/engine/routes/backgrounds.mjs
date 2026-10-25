@@ -10,7 +10,7 @@
  *   DELETE /api/backgrounds/:id                 -> { ok }
  *   GET    /api/backgrounds/:id/image           -> image/png preview bytes
  *   PATCH  /api/instances/:name/personalization -> ClientInfo
- *           { theme?, hud_theme?, background?, reduced_motion? }
+ *           { theme?, hud_theme?, background?, reduced_motion?, tagline? }
  *           (write goes through patchClientConfig — the THEMES slice owns
  *           the personalization whitelist; this route adds pack existence)
  */
@@ -51,7 +51,7 @@ export async function register(app) {
   });
 
   // PATCH /api/instances/:name/personalization { theme?, hud_theme?,
-  // background?, reduced_motion? } -> ClientInfo. `background` additionally
+  // background?, reduced_motion?, tagline? } -> ClientInfo. `background` additionally
   // requires the pack to exist in the store.
   app.patch('/api/instances/:name/personalization', async (req, res, params, body) => {
     if (body === null || body === undefined || typeof body !== 'object' || Array.isArray(body)) {

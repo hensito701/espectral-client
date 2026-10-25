@@ -6,6 +6,14 @@
 import type { Dict } from '../i18n-dicts';
 
 export const es: Dict = {
+  // Title-screen tagline (InstanceHub → Appearance)
+  'perso.taglineTitle': 'Frase del menú',
+  'perso.taglineHint': 'Texto bajo el logo de ESPECTRAL en el menú principal del juego (máx. {max} caracteres). Vacío = predeterminado.',
+  'perso.taglinePlaceholder': 'Good luck, have fun!',
+  'perso.taglineSave': 'Guardar frase',
+  'perso.taglineReset': 'Restablecer',
+  'perso.taglineSaveOk': 'Frase guardada — se ve al volver al menú principal',
+  'perso.taglineSaveError': 'No se pudo guardar la frase',
   // Menu background packs (InstanceHub → Appearance)
   'perso.bgTitle': 'Fondo del menú',
   'perso.bgHint': 'Elige un fondo para el menú principal del juego (gratis para todos)',
@@ -50,6 +58,14 @@ export const es: Dict = {
 };
 
 export const en: Dict = {
+  // Title-screen tagline (InstanceHub → Appearance)
+  'perso.taglineTitle': 'Menu tagline',
+  'perso.taglineHint': 'Text under the ESPECTRAL logo on the game main menu (max {max} characters). Empty = default.',
+  'perso.taglinePlaceholder': 'Good luck, have fun!',
+  'perso.taglineSave': 'Save tagline',
+  'perso.taglineReset': 'Reset',
+  'perso.taglineSaveOk': 'Tagline saved — shows on the game main menu',
+  'perso.taglineSaveError': 'Could not save the tagline',
   // Menu background packs (InstanceHub → Appearance)
   'perso.bgTitle': 'Menu background',
   'perso.bgHint': 'Pick the background for the game main menu (free for everyone)',
