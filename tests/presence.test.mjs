@@ -13,7 +13,7 @@ test('presenceForInstance: modpack wins over server-key heuristics', () => {
   assert.equal(p.state, 'Jugando Pack 24h');
   // manual server instances (no modpack) still get the server line
   const pServer = presenceForInstance({ name: 'uhc2', version: '1.21.11', loader: 'fabric' });
-  assert.equal(pServer.state, 'Jugando en uhc2.espectral.es');
+  assert.equal(pServer.state, 'Jugando en main.uhce.top');
   assert.equal(pServer.image, 'uhc');
 });
 

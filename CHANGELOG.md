@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.3.16] - 2026-10-25
 
 ### Fixed
 - **"launch error: fetch failed" now says what failed, and retries first.**
@@ -11,6 +11,12 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   When every attempt fails, the error names the host and the network reason
   (for example `could not reach meta.fabricmc.net (UND_ERR_CONNECT_TIMEOUT)`)
   instead of Node's bare `fetch failed`.
+- **Server radar and Discord status use the live server names.** The radar
+  pinged `uhc.espectral.es`, `uhc2.espectral.es` and `24h.espectral.es`, which
+  stopped resolving with the zone, so every card showed offline. It now shows
+  MAIN (`main.uhce.top`, UHC and every swapper mode) and the 24/7 Meetups
+  server (`24h.uhce.top`), and the Discord status says "Jugando en
+  main.uhce.top" / "24h.uhce.top".
 
 ## [1.3.15] - 2026-10-25
 

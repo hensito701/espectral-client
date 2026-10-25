@@ -187,7 +187,7 @@ test('M2: modern-format versions are multiplayer; snapshots are singleplayer', (
   assert.equal(presenceForInstance({ name: 'snap', version: '24w11a' }).state, 'Jugando singleplayer');
   assert.equal(presenceForInstance({ name: 'snap', version: '25w11a' }).state, 'Jugando singleplayer');
   // a known Espectral host in the name still wins over the version rule
-  assert.equal(presenceForInstance({ name: 'uhc2', version: '26.2' }).state, 'Jugando en uhc2.espectral.es');
+  assert.equal(presenceForInstance({ name: 'uhc2', version: '26.2' }).state, 'Jugando en main.uhce.top');
 });
 
 test('buildArgv memory fallback order and MARKER_RE', () => {

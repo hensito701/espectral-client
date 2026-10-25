@@ -1,5 +1,5 @@
 /**
- * Server status for the three Espectral hosts via mcsrvstat v3.
+ * Server status for the Espectral hosts via mcsrvstat v3.
  *
  * - User-Agent header is REQUIRED (the API returns 403 without it).
  * - 150s in-memory cache per host. A cache shorter than 2x the UI poll
@@ -12,7 +12,9 @@
  */
 import { USER_AGENT } from './download.mjs';
 
-export const HOSTS = ['uhc.espectral.es', 'uhc2.espectral.es', '24h.espectral.es'];
+// MAIN (UHC + every swapper mode) and the 24/7 Meetups server. The old
+// uhc/uhc2/24h.espectral.es names died with the zone (~2026-10-22).
+export const HOSTS = ['main.uhce.top', '24h.uhce.top'];
 const CACHE_TTL_MS = 150_000;
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -27,7 +29,7 @@ export async function getServerStatus(host) {
   return status;
 }
 
-/** Status for all three hosts, in HOSTS order. */
+/** Status for every host, in HOSTS order. */
 export async function getAllServerStatuses() {
   return Promise.all(HOSTS.map((h) => getServerStatus(h)));
 }

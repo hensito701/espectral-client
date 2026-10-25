@@ -1,6 +1,6 @@
 /**
  * Server status route: GET /api/servers -> { servers: ServerStatus[] }
- * (the three Espectral hosts, 60s server-side cache in engine/servers.mjs).
+ * (MAIN + 24/7 Meetups, 150s server-side cache in engine/servers.mjs).
  */
 import * as servers from '../servers.mjs';
 

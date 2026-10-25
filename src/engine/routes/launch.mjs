@@ -265,11 +265,14 @@ function autoTrain(instance, estimateKey, force = false) {
  * Discord Rich Presence
  * ------------------------------------------------------------------------- */
 
-/** Known Espectral hosts → the presence "state" line shown while playing. */
+/**
+ * Known Espectral hosts → the presence "state" line shown while playing.
+ * uhc/uhc2 instance names predate the swapper merge; both now play on MAIN.
+ */
 const SERVER_STATE = new Map([
-  ['uhc2', 'Jugando en uhc2.espectral.es'],
-  ['uhc', 'Jugando en uhc.espectral.es'],
-  ['24h', 'Jugando en 24h.espectral.es'],
+  ['uhc2', 'Jugando en main.uhce.top'],
+  ['uhc', 'Jugando en main.uhce.top'],
+  ['24h', 'Jugando en 24h.uhce.top'],
 ]);
 
 /** True when the global `discord_enabled` config flag is set (default on). */
