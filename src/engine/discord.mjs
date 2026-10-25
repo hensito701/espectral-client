@@ -276,7 +276,8 @@ let lastNoDiscordWarn = 0;
  * Set the presence. `state`/`details` are the two visible text lines;
  * optional `startTimestamp` (ms epoch) renders an elapsed clock and a second
  * timestamp may be passed for "ends". `image`/`smallImage` are Art Asset keys
- * registered on the Discord application (e.g. `espectral_logo`, `uhc`, `24h`).
+ * registered on the Discord application (`espectral_logo`, `24h`); `largeText`
+ * is the big image's hover text (default "Espectral Client").
  *
  * Discord rejects the whole activity when a referenced asset key does not
  * exist, so when SET_ACTIVITY errors and images were requested, this retries
@@ -284,7 +285,7 @@ let lastNoDiscordWarn = 0;
  * as the asset is uploaded (restart Discord after uploading new assets; the
  * client caches the asset list).
  */
-export async function setPresence({ details, state, startTimestamp = null, endTimestamp = null, image = null, smallImage = null }) {
+export async function setPresence({ details, state, startTimestamp = null, endTimestamp = null, image = null, smallImage = null, largeText = 'Espectral Client' }) {
   if (!(await ensureConnected())) {
     if (Date.now() - lastNoDiscordWarn > 60_000) {
       lastNoDiscordWarn = Date.now();
@@ -300,7 +301,7 @@ export async function setPresence({ details, state, startTimestamp = null, endTi
   if (image) assets.large_image = image;
   if (smallImage) assets.small_image = smallImage;
   if (Object.keys(assets).length > 0) {
-    activity.assets = { ...assets, large_text: 'Espectral Client' };
+    activity.assets = { ...assets, large_text: largeText };
   }
   if (startTimestamp) activity.timestamps = { start: startTimestamp };
   else if (endTimestamp) activity.timestamps = { end: endTimestamp };

@@ -211,11 +211,11 @@ test('M2: modern-format versions are multiplayer; snapshots are singleplayer', (
   // regex, so every modern-format launch (26.2, 25.1, 21.0) was mislabeled
   // "Jugando singleplayer". Singleplayer is now detected explicitly — only a
   // snapshot build has no server focus.
-  assert.equal(presenceForInstance({ name: 'modern', version: '26.2' }).state, 'Jugando servidor multijugador');
-  assert.equal(presenceForInstance({ name: 'modern', version: '25.1' }).state, 'Jugando servidor multijugador');
-  assert.equal(presenceForInstance({ name: 'modern', version: '21.0' }).state, 'Jugando servidor multijugador');
-  assert.equal(presenceForInstance({ name: 'classic', version: '1.21.11' }).state, 'Jugando servidor multijugador');
-  assert.equal(presenceForInstance({ name: 'classic', version: '1.21' }).state, 'Jugando servidor multijugador');
+  assert.equal(presenceForInstance({ name: 'modern', version: '26.2' }).state, 'En el menú principal');
+  assert.equal(presenceForInstance({ name: 'modern', version: '25.1' }).state, 'En el menú principal');
+  assert.equal(presenceForInstance({ name: 'modern', version: '21.0' }).state, 'En el menú principal');
+  assert.equal(presenceForInstance({ name: 'classic', version: '1.21.11' }).state, 'En el menú principal');
+  assert.equal(presenceForInstance({ name: 'classic', version: '1.21' }).state, 'En el menú principal');
   assert.equal(presenceForInstance({ name: 'snap', version: '24w11a' }).state, 'Jugando singleplayer');
   assert.equal(presenceForInstance({ name: 'snap', version: '25w11a' }).state, 'Jugando singleplayer');
   // a known Espectral host in the name still wins over the version rule

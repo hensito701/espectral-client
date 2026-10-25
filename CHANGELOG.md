@@ -4,6 +4,15 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [1.5.2] - 2026-10-25
 
+### Added
+- **Discord presence knows which Espectral server you're on.** The launcher
+  follows the game log live: joining MAIN shows "Espectral UHC · MAIN",
+  MiniUHC "Espectral UHC · Mini" and Meetups 24/7 "Espectral Meetups 24/7"
+  (with its own art), each with its address; worlds show "Jugando
+  singleplayer", and leaving returns to "En el menú principal" (was
+  "Jugando servidor multijugador" no matter what). Other servers stay
+  generic so private addresses never reach your profile.
+
 ### Fixed
 - **Chat heads on wrapped messages** sat on the message's last line instead
   of its first (vanilla flags the last visual line as the "end of entry",

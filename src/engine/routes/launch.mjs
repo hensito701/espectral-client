@@ -266,14 +266,78 @@ function autoTrain(instance, estimateKey, force = false) {
  * ------------------------------------------------------------------------- */
 
 /**
- * Known Espectral hosts → the presence "state" line shown while playing.
- * uhc/uhc2 instance names predate the swapper merge; both now play on MAIN.
+ * Known Espectral instance names → the presence shown before the player has
+ * joined anything. uhc/uhc2 names predate the swapper merge; both play MAIN.
  */
 const SERVER_STATE = new Map([
   ['uhc2', 'Jugando en main.uhce.top'],
   ['uhc', 'Jugando en main.uhce.top'],
   ['24h', 'Jugando en 24h.uhce.top'],
 ]);
+
+/**
+ * Espectral servers by the host the game connects to (vanilla logs
+ * `Connecting to <host>, <port>`). Legacy espectral.es names and the raw
+ * node addresses still route to the same servers. Art assets on the Discord
+ * app: `espectral_logo` and `24h` (there is no dedicated MAIN/Mini asset).
+ */
+const ESPECTRAL_SERVERS = [
+  {
+    hosts: ['main.uhce.top', 'uhc.espectral.es', 'uhc2.espectral.es', 'uhc3.espectral.es',
+      'bingo.espectral.es', '2.27.233.26'],
+    details: 'Espectral UHC · MAIN',
+    state: 'main.uhce.top',
+    image: 'espectral_logo',
+    largeText: 'Espectral UHC',
+  },
+  {
+    hosts: ['mini.uhce.top', '150.136.181.209'],
+    details: 'Espectral UHC · Mini',
+    state: 'mini.uhce.top',
+    image: 'espectral_logo',
+    largeText: 'Espectral UHC Mini',
+  },
+  {
+    hosts: ['24h.uhce.top', '24h.espectral.es', '247.espectral.es'],
+    details: 'Espectral Meetups 24/7',
+    state: '24h.uhce.top',
+    image: '24h',
+    largeText: 'Espectral Meetups 24/7',
+  },
+];
+
+/**
+ * Presence for a server the game is connected to. Espectral servers get
+ * their own line; any other server stays generic (never leak a private
+ * server's address into a public profile).
+ */
+export function presenceForServer(host) {
+  const h = String(host ?? '').trim().toLowerCase().replace(/\.$/, '');
+  const known = ESPECTRAL_SERVERS.find((s) => s.hosts.includes(h));
+  if (known) {
+    const { details, state, image, largeText } = known;
+    return { details, state, image, largeText };
+  }
+  return { state: 'Jugando servidor multijugador', image: 'espectral_logo' };
+}
+
+/** Mod marker logged when the client leaves a server/world (MinecraftMixin). */
+export const PRESENCE_MENU_MARKER = '[espectral] presence: menu';
+
+/**
+ * Map one game-log line to a presence transition, or null for no change:
+ *   { server: host }        vanilla `Connecting to <host>, <port>`
+ *   { singleplayer: true }  the integrated server starting (a world opened)
+ *   { menu: true }          our mod's leave marker, or a failed connection
+ */
+export function presenceEventFromLog(line) {
+  const text = String(line ?? '');
+  const connecting = /\bConnecting to ([^\s,]+), \d+/.exec(text);
+  if (connecting) return { server: connecting[1] };
+  if (text.includes('Starting integrated minecraft server')) return { singleplayer: true };
+  if (text.includes(PRESENCE_MENU_MARKER) || text.includes("Couldn't connect to server")) return { menu: true };
+  return null;
+}
 
 /** True when the global `discord_enabled` config flag is set (default on). */
 function discordEnabled() {
@@ -285,12 +349,12 @@ function discordEnabled() {
 }
 
 /**
- * Map a launched instance to the presence text. A known Espectral host in the
- * instance name wins; otherwise a single-player-friendly instance (snapshot
- * build, e.g. 25w11a — a version with no server focus) gets the singleplayer
- * line; everything else is treated as multiplayer (Fabric/vanilla installs
- * without a server prefix in the name). All strings stay below Discord's
- * 128-char per-field limit.
+ * Map a launched instance to the presence shown before the game has joined
+ * anything (launch click, main menu). A known Espectral host in the instance
+ * name wins; a snapshot build (no server focus) gets the singleplayer line;
+ * everything else is at the main menu — joins are tracked live from the game
+ * log (`presenceEventFromLog`). All strings stay below Discord's 128-char
+ * per-field limit.
  */
 export function presenceForInstance(instance) {
   if (!instance || !instance.name) return { state: 'En el launcher' };
@@ -304,8 +368,8 @@ export function presenceForInstance(instance) {
   const name = String(instance.name).toLowerCase();
   for (const [key, state] of SERVER_STATE) {
     if (name.includes(key)) {
-      // Espectral server logos uploaded as Rich Presence assets with these keys.
-      const image = key === '24h' ? '24h' : 'uhc';
+      // `24h` is a Discord art asset; there is none for MAIN, so the logo.
+      const image = key === '24h' ? '24h' : 'espectral_logo';
       return { state, image };
     }
   }
@@ -324,7 +388,7 @@ export function presenceForInstance(instance) {
   const isSingleplayer = isSnapshot;
   return isSingleplayer
     ? { state: 'Jugando singleplayer', image: 'espectral_logo' }
-    : { state: 'Jugando servidor multijugador', image: 'espectral_logo' };
+    : { state: 'En el menú principal', image: 'espectral_logo' };
 }
 
 /**
@@ -332,17 +396,24 @@ export function presenceForInstance(instance) {
  * `startTimestamp` is the moment the game was launched, so Discord's native
  * elapsed clock counts up from the same instant on every refresh.
  */
-async function pushPresence(instance, startTimestamp = Date.now()) {
+async function pushPresence(instance, startTimestamp = Date.now(), override = null) {
   if (__testHooks.emit !== null) return;
   if (!discordEnabled()) return;
   try {
     await discord.setPresence({
-      ...presenceForInstance(instance),
+      ...(override ?? presenceForInstance(instance)),
       startTimestamp,
     });
   } catch {
     /* presence is cosmetic — ignore */
   }
+}
+
+/** Presence for a parsed log event; null = keep the instance's base line. */
+function presenceForEvent(event) {
+  if (event.server) return presenceForServer(event.server);
+  if (event.singleplayer) return { state: 'Jugando singleplayer', image: 'espectral_logo' };
+  return null;
 }
 
 /** Best-effort presence clear (game closed); never throws. */
@@ -512,6 +583,9 @@ export async function register(app) {
       // through this exact path (one launch-exit emit, one stats row).
       let exitSeen = false;
       let handleExit = null;
+      // Live presence: what the game log says the player is doing right now
+      // (null = at the menu → the instance's base line).
+      let livePresence = null;
 
       try {
         const _launchInstance = __testHooks.launchInstance ?? launch.launchInstance;
@@ -522,6 +596,11 @@ export async function register(app) {
                 routeEmit('launch-log', { key, seq, line });
               } catch {
                 /* SSE registry unavailable */
+              }
+              const event = presenceEventFromLog(line);
+              if (event) {
+                livePresence = presenceForEvent(event);
+                void pushPresence(instance, presenceStart, livePresence);
               }
             }
           },
@@ -560,7 +639,7 @@ export async function register(app) {
               }
             }
             // Presence refreshes at the main menu with the same elapsed clock.
-            void pushPresence(instance, presenceStart);
+            void pushPresence(instance, presenceStart, livePresence);
             // AOT auto-train on first launch — and on a cache the JVM refused
             // (classpath identity drifted): without this a stale cache is never
             // replaced and every boot silently loses the AOT win.
