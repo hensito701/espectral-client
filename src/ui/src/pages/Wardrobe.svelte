@@ -208,6 +208,14 @@
     if (!account || linking) return;
     linking = true;
     try {
+      // Linking needs a verified Minecraft identity. Players reasonably expect
+      // one click here (signing in to the launcher with Discord is a separate
+      // identity), so run the Mojang handshake first instead of greying the
+      // button out until they find "Verificar".
+      if (!account.verified) {
+        await verifyIdentity(account.uuid);
+        await reloadIdentity();
+      }
       const { url } = await startIdentityDiscordLink(account.uuid);
       const opened = await openExternal(url);
       if (!opened) {
@@ -551,8 +559,8 @@
               <Btn
                 variant="secondary"
                 size="sm"
-                disabled={!account.verified}
-                title={!account.verified ? t('wardrobe.share.needsVerify') : undefined}
+                disabled={isOfflineAccount}
+                title={isOfflineAccount ? t('wardrobe.identity.verifyHint') : undefined}
                 onclick={() => void linkDiscord()}
               >
                 {t('wardrobe.discord.link')}
@@ -560,7 +568,7 @@
             {/if}
           </div>
         </div>
-        {#if !account.discord && account.verified}
+        {#if !account.discord && !isOfflineAccount}
           <p class="identity-note">{t('wardrobe.discord.linkHint')}</p>
         {/if}
       </div>

@@ -36,7 +36,7 @@ export const es: Dict = {
   'wardrobe.discord.unlink': 'Desvincular',
   'wardrobe.discord.linking': 'Esperando autorización en el navegador…',
   'wardrobe.discord.cancel': 'Cancelar',
-  'wardrobe.discord.linkHint': 'Abre Discord en tu navegador para autorizar el vínculo. Los roles del servidor de Discord se consultan en vivo.',
+  'wardrobe.discord.linkHint': 'Vincula Discord a esta cuenta de Minecraft (verifica la cuenta automáticamente si hace falta). Iniciar sesión en el launcher con Discord no la vincula. Los roles del servidor de Discord se consultan en vivo.',
 
   'wardrobe.flags.none': '⚛ Espectral',
   'wardrobe.flags.supporter': '⚛★ Supporter',
@@ -107,7 +107,7 @@ export const en: Dict = {
   'wardrobe.discord.unlink': 'Unlink',
   'wardrobe.discord.linking': 'Waiting for authorization in the browser…',
   'wardrobe.discord.cancel': 'Cancel',
-  'wardrobe.discord.linkHint': 'Opens Discord in your browser to authorize the link. Guild roles are looked up live.',
+  'wardrobe.discord.linkHint': 'Links Discord to this Minecraft account (verifying it first if needed). Signing in to the launcher with Discord does not link it. Guild roles are looked up live.',
 
   'wardrobe.flags.none': '⚛ Espectral',
   'wardrobe.flags.supporter': '⚛★ Supporter',
