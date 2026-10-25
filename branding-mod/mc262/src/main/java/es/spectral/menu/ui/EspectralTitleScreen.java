@@ -67,15 +67,4 @@ public class EspectralTitleScreen extends Screen {
     public boolean isPauseScreen() {
         return false;
     }
-
-    /**
-     * Navigating away frees the menu background's textures (still image +
-     * animated frame pool); the next title screen re-decodes via
-     * {@code MenuBackground.request}.
-     */
-    @Override
-    public void removed() {
-        es.spectral.menu.MenuBackground.release();
-        super.removed();
-    }
 }

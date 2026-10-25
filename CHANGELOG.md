@@ -2,6 +2,20 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.20] - 2026-10-25
+
+### Changed
+- **The main-menu look follows you into every menu.** Multiplayer,
+  Singleplayer, Options (and its sub-screens), add/edit server and the other
+  menus outside a world now show your menu background — or the Espectral
+  default — with the same slow drift as the title screen, instead of the
+  blurred panorama and dirt texture. Buttons and sliders use the title
+  screen's dark-glass style with the accent hover bar, server/world/option
+  lists sit on a dark glass band between accent hairlines, and the selected
+  row is outlined in the accent. Layout and controls are untouched vanilla;
+  in a world every menu stays vanilla. The background stays loaded while you
+  move between menus and is freed once you join a world.
+
 ## [1.3.19] - 2026-10-25
 
 ### Added
