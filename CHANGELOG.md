@@ -2,6 +2,16 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.17] - 2026-10-25
+
+### Fixed
+- **Microsoft sign-in works again for new accounts.** Since 1.3.15 the
+  launcher opened `microsoft.com/link?otc=<code>` with the code pre-filled,
+  and Microsoft rejects that link for personal accounts ("The application is
+  a first party application … users are not permitted to consent", 
+  `invalid_request`). The launcher now opens the plain `microsoft.com/link`
+  page and shows the code to type in, which signs in normally.
+
 ## [1.3.16] - 2026-10-25
 
 ### Fixed
