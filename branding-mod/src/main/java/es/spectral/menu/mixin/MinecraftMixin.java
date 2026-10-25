@@ -45,14 +45,17 @@ public abstract class MinecraftMixin {
         }
     }
     /**
-     * Drops baked 3D Skin Layers voxel models on disconnect. The 2-arg
-     * overload delegates to this 3-arg one in both supported versions, so a
-     * single hook covers every leave/kick path; entries rebuild lazily on the
-     * next world join.
+     * Leaving a server or world. Drops baked 3D Skin Layers voxel models
+     * (they rebuild lazily on the next join) and logs the marker the
+     * launcher watches to put Discord presence back to "main menu"
+     * ({@code PRESENCE_MENU_MARKER} in routes/launch.mjs — keep in sync).
+     * The 2-arg overload delegates to this 3-arg one in both supported
+     * versions, so a single hook covers every leave/kick path.
      */
     @Inject(method = "disconnect(Lnet/minecraft/client/gui/screens/Screen;ZZ)V", at = @At("TAIL"))
     private void espectral$onDisconnect(net.minecraft.client.gui.screens.Screen screen,
             boolean showDisconnectScreen, boolean teleporting, CallbackInfo ci) {
         SkinModelCache.clear();
+        org.slf4j.LoggerFactory.getLogger("espectral-client").info("[espectral] presence: menu");
     }
 }
