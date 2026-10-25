@@ -12,7 +12,7 @@ import path from 'node:path';
 const originalDataDir = process.env.ESPECTRAL_DATA_DIR;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'espectral-msauth-test-'));
 process.env.ESPECTRAL_DATA_DIR = dataDir;
-const { exchangeForMinecraft, exchangeLunarForMinecraft, timers, prewarmMsaToken } = await import('../src/engine/msauth.mjs');
+const { exchangeForMinecraft, exchangeLunarForMinecraft, timers, prewarmMsaToken, startDeviceLogin } = await import('../src/engine/msauth.mjs');
 const { loadConfig, saveConfig } = await import('../src/engine/config.mjs');
 after(() => {
   if (originalDataDir === undefined) delete process.env.ESPECTRAL_DATA_DIR;
@@ -34,6 +34,24 @@ function jsonResponse(body, status = 200, headers = {}) {
     text: async () => JSON.stringify(body),
   };
 }
+
+// Microsoft rejects microsoft.com/link?otc=<code> for consumer accounts with
+// "The application is a first party application ... invalid_request"; the
+// plain page with the code typed in works. 1.3.15 shipped a synthesized
+// pre-filled link and every new Microsoft sign-in failed on it.
+test('startDeviceLogin never builds a pre-filled ?otc= link Microsoft did not return', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => jsonResponse({
+    device_code: 'dev-code',
+    user_code: 'ABCD1234',
+    verification_uri: 'https://www.microsoft.com/link',
+    expires_in: 900,
+    interval: 5,
+  }));
+  const flow = await startDeviceLogin();
+  assert.equal(flow.verification_uri, 'https://www.microsoft.com/link');
+  assert.equal(flow.user_code, 'ABCD1234');
+  assert.equal(flow.verification_uri_complete, null);
+});
 
 test('exchangeForMinecraft: full happy path with the real SNAKE_CASE API shape', async (t) => {
   const calls = [];

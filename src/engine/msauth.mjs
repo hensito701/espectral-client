@@ -229,20 +229,18 @@ export async function startDeviceLogin() {
       : `could not start device login (HTTP ${status}${data.error ? `: ${data.error}${data.error_description ? ` — ${data.error_description}` : ''}` : ''})`;
     throw httpError(502, 'MSA_DEVICE_FAILED', message);
   }
-  // RFC 8628's verification_uri_complete is just verification_uri + ?otc=<code>;
-  // Microsoft omits the field for some tenants, so build it when absent — the
-  // /link page accepts the otc query param either way.
-  const complete =
-    data.verification_uri_complete ??
-    (data.verification_uri && data.user_code
-      ? `${data.verification_uri}?otc=${encodeURIComponent(data.user_code)}`
-      : null);
+  // Never synthesize verification_uri + ?otc=<code>: for consumer accounts
+  // Microsoft rejects that pre-filled link ("The application is a first party
+  // application ... users are not permitted to consent", invalid_request),
+  // while the plain /link page with the code typed in signs in normally
+  // (reproduced 2026-10-25). Only pass through a complete URI Microsoft
+  // itself returns.
   return {
     flow_id: data.device_code,
     user_code: data.user_code,
     verification_uri: data.verification_uri,
-    // URI with the user code embedded — opening it skips manual code entry.
-    verification_uri_complete: complete,
+    // URI with the user code embedded, only when Microsoft provides one.
+    verification_uri_complete: data.verification_uri_complete ?? null,
     expires_in: data.expires_in,
     interval: data.interval ?? 5,
   };
