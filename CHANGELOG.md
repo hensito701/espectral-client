@@ -14,6 +14,12 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   generic so private addresses never reach your profile.
 
 ### Fixed
+- **Fabric instances failed to launch in Spain on match days** ("could not
+  reach meta.fabricmc.net … UND_ERR_CONNECT_TIMEOUT"). meta.fabricmc.net and
+  maven.fabricmc.net are behind Cloudflare, whose IPs Spanish ISPs block
+  during LaLiga matches. When they are unreachable the launcher now uses
+  Fabric's own meta2/maven2 hosts (same data, not on Cloudflare) and keeps
+  using them for 10 minutes so only the first request waits.
 - **Chat heads on wrapped messages** sat on the message's last line instead
   of its first (vanilla flags the last visual line as the "end of entry",
   which was mistaken for the first). The head now always opens the message.
