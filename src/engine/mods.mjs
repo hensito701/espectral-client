@@ -657,13 +657,34 @@ async function installBrandingPreset(instance, modsDir) {
     err.code = 'branding_sha1_mismatch';
     throw err;
   }
-  await writeFile(dest, data);
-  const destSha1 = await sha1File(dest);
-  if (destSha1 !== srcSha1) {
-    await unlink(dest).catch(() => {});
-    const err = new Error(`branding install failed sha1 verification: ${destSha1}`);
+  // Write beside the jar and rename over it — NEVER overwrite in place. A
+  // running game holds this jar open with write-sharing, so an in-place write
+  // succeeds and swaps the bytes under the JVM: its next lazy class load
+  // fails ("Failed to load class file for 'es.spectral.menu.…'") and the game
+  // crashes mid-match. That happened whenever a launcher update (whose fresh
+  // engine does not know about a game started before it) re-seeded the jar
+  // from the instance page. Windows refuses to rename over a jar the JVM has
+  // open, so the running game keeps its copy and the next launch installs
+  // the new one; POSIX rename leaves the open inode intact.
+  const tmp = `${dest}.${process.pid}.tmp`;
+  await writeFile(tmp, data);
+  const tmpSha1 = await sha1File(tmp);
+  if (tmpSha1 !== srcSha1) {
+    await unlink(tmp).catch(() => {});
+    const err = new Error(`branding install failed sha1 verification: ${tmpSha1}`);
     err.code = 'branding_sha1_mismatch';
     throw err;
+  }
+  try {
+    await rename(tmp, dest);
+  } catch (e) {
+    await unlink(tmp).catch(() => {});
+    if (e?.code === 'EPERM' || e?.code === 'EBUSY' || e?.code === 'EACCES') {
+      const err = new Error(`${pin.filename} is in use by a running game; it will be updated on the next launch`);
+      err.code = 'branding_in_use';
+      throw err;
+    }
+    throw e;
   }
 
   emitEvent('mod-progress', {
