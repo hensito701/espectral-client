@@ -9,6 +9,7 @@
  * Writes are atomic (.tmp + rename) so a crash never truncates the file.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,9 +28,29 @@ export function configPath() {
   return path.join(dataDir(), 'config.json');
 }
 
+/**
+ * Heap ceiling (-Xmx) the launcher picks when the player has not chosen one,
+ * by system RAM. Modrinth ships a flat 2 GB; a 3–4 GB fixed default left
+ * low-end PCs (≤ 8 GB) swapping while terrain generated. More RAM only buys
+ * headroom, so bigger machines get 3 GB / 4 GB.
+ */
+export function recommendedMemoryMb(totalBytes = os.totalmem()) {
+  const totalGb = Number(totalBytes) / 1024 ** 3;
+  if (!Number.isFinite(totalGb) || totalGb <= 0) return 2048;
+  if (totalGb <= 8.5) return 2048; // "8 GB" machines report slightly under/over 8
+  if (totalGb <= 16.5) return 3072;
+  return 4096;
+}
+
+/** Old fixed defaults (engine 3072, wizard 4096): instances carrying one were never chosen deliberately. */
+export const LEGACY_DEFAULT_MEMORY_MB = Object.freeze([3072, 4096]);
+
 export const DEFAULT_CONFIG = {
   // AppConfig subset (returned by GET /api/config)
-  default_memory_mb: 3072,
+  // null = automatic (recommendedMemoryMb); a number = the player's choice.
+  default_memory_mb: null,
+  // One-shot: the old fixed 3072 default was rewritten to automatic.
+  memory_auto_migrated: false,
   download_concurrency: 6,
   fast_boot: false,
   aot_auto_train: true,
@@ -87,8 +108,20 @@ export function loadConfig() {
   // the file stops naming a dead host even if nothing else is ever saved.
   const migratedIdentity = isLegacyIdentityUrl(cached.identity_url);
   if (migratedIdentity) cached.identity_url = DEFAULT_CONFIG.identity_url;
-  if (migratedIdentity || !fs.existsSync(configPath())) persist(cached);
+  // The persisted 3072 is the old default every install saved, not a choice.
+  const migratedMemory = cached.memory_auto_migrated !== true;
+  if (migratedMemory) {
+    if (cached.default_memory_mb === 3072) cached.default_memory_mb = null;
+    cached.memory_auto_migrated = true;
+  }
+  if (migratedIdentity || migratedMemory || !fs.existsSync(configPath())) persist(cached);
   return cached;
+}
+
+/** Heap ceiling for instances without their own memory_mb. */
+export function defaultMemoryMb() {
+  const mb = loadConfig().default_memory_mb;
+  return Number.isInteger(mb) && mb >= 512 ? mb : recommendedMemoryMb();
 }
 
 /** Merge `patch` into the live config and persist. Returns the live object. */
@@ -132,7 +165,9 @@ function persist(config) {
 export function appConfig() {
   const c = loadConfig();
   return {
-    default_memory_mb: c.default_memory_mb,
+    default_memory_mb: defaultMemoryMb(),
+    recommended_memory_mb: recommendedMemoryMb(),
+    default_memory_auto: !(Number.isInteger(c.default_memory_mb) && c.default_memory_mb >= 512),
     accent: typeof c.accent === 'string' ? c.accent : 'oro',
     reduced_motion: c.reduced_motion === true,
     download_concurrency: c.download_concurrency,

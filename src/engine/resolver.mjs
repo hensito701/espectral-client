@@ -1145,7 +1145,7 @@ export async function installInstance({
   version,
   loader = 'vanilla',
   loader_version = null,
-  memory_mb = 3072,
+  memory_mb = null,
   ...extra
 } = {}) {
   assertValidInstanceName(name);
@@ -1164,7 +1164,8 @@ export async function installInstance({
     version,
     loader,
     loader_version,
-    memory_mb: Number.isInteger(memory_mb) && memory_mb > 0 ? memory_mb : 3072,
+    memory_mb: Number.isInteger(memory_mb) && memory_mb > 0 ? memory_mb : null,
+    memory_auto_migrated: true,
     jdk_path_override: extra.jdk_path_override ?? null,
     aot_auto_train: extra.aot_auto_train ?? false,
     imported_from: extra.imported_from ?? null,
@@ -1216,7 +1217,7 @@ async function cli() {
     version,
     loader,
     loader_version,
-    memory_mb: memory ?? 3072,
+    memory_mb: memory ?? null,
   });
   console.log(`installed instance "${result.instance.name}"`);
   console.log(

@@ -85,7 +85,11 @@ export interface MsDeviceFlow {
 }
 
 export interface AppConfig {
+  /** Effective default heap ceiling: the Settings value, else the system-RAM recommendation. */
   default_memory_mb: number;
+  recommended_memory_mb: number;
+  /** True when no default is pinned in Settings (automatic). */
+  default_memory_auto: boolean;
   download_concurrency: number;
   aot_auto_train: boolean;
   fast_boot: boolean;
@@ -105,7 +109,10 @@ export interface InstanceSummary {
   loader_version: string | null;
   modpack: string | null;
   modpack_version: string | null;
+  /** Effective heap ceiling (the instance's own value, else the automatic default). */
   memory_mb: number;
+  /** True when the instance follows the automatic default. */
+  memory_auto: boolean;
   mod_count: number;
   enabled_mod_count: number;
   aot_key: string | null;
@@ -366,7 +373,8 @@ export interface CreateInstanceRequest {
   loader_version?: string | null;
   modpack?: string | null;
   modpack_version?: string | null;
-  memory_mb: number;
+  /** Omit for automatic memory. */
+  memory_mb?: number;
   import_from?: string;
   /** Field name matches the REST contract verbatim (merge optionsLC.json into options.txt). */
   merge_optionslc?: boolean;
@@ -375,7 +383,8 @@ export interface CreateInstanceRequest {
 }
 
 export interface InstancePatch {
-  memory_mb?: number;
+  /** null = back to automatic. */
+  memory_mb?: number | null;
   enabled_mods?: string[];
   jdk_path_override?: string;
   aot_auto_train?: boolean;

@@ -4,7 +4,8 @@
  * Model (data/instances/<name>/instance.json):
  *   { name, version, loader: 'vanilla'|'fabric'|'neoforge',
  *     loader_version: string|null, modpack: string|null,
- *     modpack_version: string|null, memory_mb, mods: [], imported_from,
+ *     modpack_version: string|null, memory_mb: int|null (null = automatic,
+ *     config.defaultMemoryMb), mods: [], imported_from,
  *     jdk_path_override, aot_auto_train, created_at, updated_at,
  *     hue: int 0-359|null, game_dir: absolute-path|null,
  *     merge_optionslc? }
@@ -30,7 +31,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { dataDir, loadConfig } from './config.mjs';
+import { dataDir, defaultMemoryMb, LEGACY_DEFAULT_MEMORY_MB, loadConfig } from './config.mjs';
 import { httpError } from './error.mjs';
 import { emit } from './events.mjs';
 import * as nbt from './nbt.mjs';
@@ -242,11 +243,25 @@ export async function getInstance(name) {
   if (!isValidName(name)) {
     throw httpError(409, 'INVALID_NAME', 'instance name must match ^[A-Za-z0-9 ._-]{1,40}$');
   }
+  let inst;
   try {
-    return JSON.parse(await fs.promises.readFile(instanceJsonPath(name), 'utf8'));
+    inst = JSON.parse(await fs.promises.readFile(instanceJsonPath(name), 'utf8'));
   } catch {
     throw httpError(404, 'NOT_FOUND', `instance '${name}' does not exist`);
   }
+  // One-shot: 3072/4096 were the launcher's fixed defaults (engine/wizard),
+  // not a choice — switch them to automatic so low-RAM PCs stop reserving
+  // 3–4 GB. A value the player sets afterwards is kept as-is.
+  if (inst && typeof inst === 'object' && inst.memory_auto_migrated !== true) {
+    if (LEGACY_DEFAULT_MEMORY_MB.includes(inst.memory_mb)) inst.memory_mb = null;
+    inst.memory_auto_migrated = true;
+    try {
+      writeJson(instanceJsonPath(name), inst);
+    } catch (e) {
+      console.warn(`[instances] could not persist memory migration for '${name}':`, e.message);
+    }
+  }
+  return inst;
 }
 
 export async function listInstances() {
@@ -344,7 +359,8 @@ export async function getSummary(name) {
     loader_version: inst.loader_version ?? null,
     modpack: inst.modpack ?? null,
     modpack_version: inst.modpack_version ?? null,
-    memory_mb: inst.memory_mb,
+    memory_mb: Number.isInteger(inst.memory_mb) ? inst.memory_mb : defaultMemoryMb(),
+    memory_auto: !Number.isInteger(inst.memory_mb),
     hue: inst.hue ?? null,
     game_dir: inst.game_dir ?? null,
     has_icon: existsSyncSafe(instanceIconPath(name)),
@@ -447,10 +463,9 @@ export async function createInstance(opts = {}) {
     loader_version: loader_version ?? null,
     modpack: modpack ?? null,
     modpack_version: modpack_version ?? null,
-    memory_mb:
-      Number.isInteger(memory_mb) && memory_mb >= 512
-        ? memory_mb
-        : loadConfig().default_memory_mb ?? 3072,
+    // null = automatic (follows Settings / system RAM at launch time).
+    memory_mb: Number.isInteger(memory_mb) && memory_mb >= 512 ? memory_mb : null,
+    memory_auto_migrated: true,
     mods: [],
     imported_from: import_from || null,
     jdk_path_override: jdk_path_override ?? null,
@@ -576,11 +591,15 @@ export async function patchInstance(name, patch = {}) {
     }
   }
   if (patch.memory_mb !== undefined) {
-    const mb = Number(patch.memory_mb);
-    if (!Number.isInteger(mb) || mb < 512 || mb > 65536) {
-      throw httpError(400, 'BAD_MEMORY', 'memory_mb must be an integer between 512 and 65536');
+    if (patch.memory_mb === null) {
+      inst.memory_mb = null; // back to automatic
+    } else {
+      const mb = Number(patch.memory_mb);
+      if (!Number.isInteger(mb) || mb < 512 || mb > 65536) {
+        throw httpError(400, 'BAD_MEMORY', 'memory_mb must be an integer between 512 and 65536');
+      }
+      inst.memory_mb = mb;
     }
-    inst.memory_mb = mb;
   }
   if (patch.jdk_path_override !== undefined) {
     if (patch.jdk_path_override !== null && typeof patch.jdk_path_override !== 'string') {

@@ -167,6 +167,20 @@
     }
   }
 
+  async function saveMemoryAuto() {
+    savingField = 'memory';
+    try {
+      config = await patchConfig({ default_memory_mb: null });
+      memory = config.default_memory_mb;
+      pushToast({ kind: 'ok', text: t('settings.flash.memory') });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: msg });
+    } finally {
+      savingField = '';
+    }
+  }
+
   async function saveConcurrency() {
     const n = Math.max(1, Math.min(16, Math.round(concurrency) || 1));
     concurrency = n;
@@ -710,11 +724,20 @@
           >
             <!-- Preset Quick Chips -->
             <div class="preset-chips-row">
+              <button
+                type="button"
+                class="preset-chip"
+                class:preset-chip--active={config?.default_memory_auto === true && memoryNum === config.default_memory_mb}
+                disabled={savingField === 'memory'}
+                onclick={saveMemoryAuto}
+              >
+                {t('instance.memoryAuto')}
+              </button>
               {#each [2048, 3072, 4096, 6144, 8192, 12288, 16384] as mb}
                 <button
                   type="button"
                   class="preset-chip"
-                  class:preset-chip--active={memory === mb}
+                  class:preset-chip--active={memory === mb && !(config?.default_memory_auto === true && memoryNum === config.default_memory_mb)}
                   onclick={() => (memory = mb)}
                 >
                   {(mb / 1024).toFixed(0)} GB

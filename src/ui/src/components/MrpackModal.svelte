@@ -11,7 +11,7 @@
 -->
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { pickMrpackFile, importMrpack, getInstance } from '../lib/api';
+  import { pickMrpackFile, importMrpack, getInstance, getConfig } from '../lib/api';
   import { subscribeEvents } from '../lib/sse';
   import type { SseEvent } from '../lib/sse';
   import { instances as instancesStore } from '../lib/stores';
@@ -34,7 +34,18 @@
   }: Props = $props();
 
   let filePath = $state('');
-  let memoryMb = $state(4096);
+  // Automatic default until the player moves the slider (then it is pinned).
+  let memoryMb = $state(2048);
+  let memoryTouched = $state(false);
+  $effect(() => {
+    if (!open) return;
+    memoryTouched = false;
+    void getConfig()
+      .then((cfg) => {
+        if (!memoryTouched) memoryMb = cfg.default_memory_mb;
+      })
+      .catch(() => {});
+  });
   let isBrowsing = $state(false);
   let isImporting = $state(false);
   let createdInstanceName = $state('');
@@ -133,7 +144,7 @@
     });
 
     try {
-      const res = await importMrpack(path, memoryMb);
+      const res = await importMrpack(path, memoryTouched ? memoryMb : undefined);
       createdInstanceName = res.summary.name;
       alreadyExists = res.already_exists === true;
       if (watchdogTimer) clearTimeout(watchdogTimer);
@@ -297,6 +308,7 @@
                   max="16384"
                   step="512"
                   bind:value={memoryMb}
+                  oninput={() => (memoryTouched = true)}
                 />
                 <span class="mrpack-memory-badge">{memLabel(memoryMb)}</span>
               </div>

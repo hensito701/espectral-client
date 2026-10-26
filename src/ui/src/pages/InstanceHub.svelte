@@ -401,6 +401,21 @@
     }
   }
 
+  async function handleAutoMemory() {
+    if (!decodedName || savingConfig) return;
+    savingConfig = true;
+    try {
+      summary = await patchInstance(decodedName, { memory_mb: null });
+      memory = summary.memory_mb;
+      await $instances.refresh();
+      pushToast({ kind: 'ok', text: t('instance.memoryAutoSaved', { mem: memLabel(summary.memory_mb) }) });
+    } catch (e) {
+      pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      savingConfig = false;
+    }
+  }
+
   async function handleSaveJdk() {
     if (!decodedName || savingConfig) return;
     savingConfig = true;
@@ -1217,11 +1232,20 @@
                 </div>
 
                 <div class="memory-presets">
+                  <button
+                    type="button"
+                    class="preset-pill"
+                    class:preset-pill--active={summary.memory_auto && memory === summary.memory_mb}
+                    disabled={savingConfig}
+                    onclick={handleAutoMemory}
+                  >
+                    {t('instance.memoryAuto')}
+                  </button>
                   {#each [2048, 3072, 4096, 6144, 8192, 12288] as mb}
                     <button
                       type="button"
                       class="preset-pill"
-                      class:preset-pill--active={memory === mb}
+                      class:preset-pill--active={memory === mb && !(summary.memory_auto && memory === summary.memory_mb)}
                       onclick={() => (memory = mb)}
                     >
                       {mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`}

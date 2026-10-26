@@ -240,3 +240,37 @@ test('selectGameDir: default split unchanged (active -> base, other -> profile)'
   // ever extracts there, so a per-profile nativesDir would be empty.
   assert.equal(split.nativesDir, resolver.instanceNativesDir('split-inst'));
 });
+
+// The launcher used to store its fixed defaults (3072 engine / 4096 wizard) in
+// every instance, so low-RAM PCs reserved 3–4 GB. They migrate once to
+// automatic; anything else, and anything set after the migration, is kept.
+test('instance memory: legacy defaults become automatic once, real choices stay', async () => {
+  const { defaultMemoryMb } = await import('../src/engine/config.mjs');
+  const write = (name, extra) => {
+    const dir = path.join(dataDir, 'instances', name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'instance.json'),
+      JSON.stringify({ name, version: '26.2', loader: 'fabric', ...extra }));
+  };
+  write('mem-legacy-3g', { memory_mb: 3072 });
+  write('mem-legacy-4g', { memory_mb: 4096 });
+  write('mem-chosen', { memory_mb: 6144 });
+
+  for (const name of ['mem-legacy-3g', 'mem-legacy-4g']) {
+    const s = await instances.getSummary(name);
+    assert.equal(s.memory_auto, true, name);
+    assert.equal(s.memory_mb, defaultMemoryMb(), name);
+  }
+  const chosen = await instances.getSummary('mem-chosen');
+  assert.equal(chosen.memory_auto, false);
+  assert.equal(chosen.memory_mb, 6144);
+
+  // After the migration a player picking 4 GB keeps 4 GB.
+  await instances.patchInstance('mem-legacy-4g', { memory_mb: 4096 });
+  const pinned = await instances.getSummary('mem-legacy-4g');
+  assert.equal(pinned.memory_auto, false);
+  assert.equal(pinned.memory_mb, 4096);
+  // ...and null puts it back on automatic.
+  await instances.patchInstance('mem-legacy-4g', { memory_mb: null });
+  assert.equal((await instances.getSummary('mem-legacy-4g')).memory_auto, true);
+});

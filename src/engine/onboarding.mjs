@@ -17,7 +17,7 @@ const DEFAULT_INSTANCE = Object.freeze({
   name: 'Espectral default',
   version: '26.2',
   loader: 'fabric',
-  memory_mb: 3072,
+  memory_mb: null, // automatic (system-RAM based)
 });
 
 function sourceActivity(source) {
