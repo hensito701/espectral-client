@@ -63,7 +63,8 @@
      ========================================================================== */
   let mrpackPath = $state('');
   let mrpackFileName = $state('');
-  let mrpackMemoryMb = $state(3072);
+  /** null = automatic (system-RAM based); a number pins the new instance. */
+  let mrpackMemoryMb = $state<number | null>(null);
   let mrpackBusy = $state(false);
   let browsingMrpack = $state(false);
   let isDraggingMrpack = $state(false);
@@ -228,7 +229,7 @@
     mrpackTotal = 0;
 
     try {
-      const res = await importMrpack(filePath, mrpackMemoryMb);
+      const res = await importMrpack(filePath, mrpackMemoryMb ?? undefined);
       mrpackResultInstance = res.summary?.name || '';
       mrpackAlreadyExists = (res as { already_exists?: boolean }).already_exists === true;
 
@@ -592,9 +593,18 @@
                     step="512"
                     disabled={mrpackWorking}
                     bind:value={mrpackMemoryMb}
+                    placeholder={t('instance.memoryAuto')}
                     class="field-input memory-input"
                   />
                   <div class="memory-presets">
+                    <button
+                      type="button"
+                      class="preset-btn {mrpackMemoryMb === null ? 'preset-btn--active' : ''}"
+                      disabled={mrpackWorking}
+                      onclick={() => (mrpackMemoryMb = null)}
+                    >
+                      {t('instance.memoryAuto')}
+                    </button>
                     {#each [2048, 3072, 4096, 6144, 8192] as ram}
                       <button
                         type="button"

@@ -14,7 +14,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { CreateInstanceRequest, ImportSource, Loader } from '../lib/types';
-  import { createInstance, getImportSources, pickFolder } from '../lib/api';
+  import { createInstance, getConfig, getImportSources, pickFolder } from '../lib/api';
   import { versions as versionsStore, instances as instancesStore } from '../lib/stores';
   import { pushToast } from '../lib/toast.svelte';
   import { scalePop, fade } from '../lib/motion';
@@ -39,7 +39,11 @@
   let selectedVersion = $state('');
   let selectedLoader = $state<Loader>('fabric');
   let instanceName = $state('');
-  let memoryMb = $state(4096);
+  // Automatic default (Settings value, else system-RAM based) until the
+  // player moves the slider; untouched instances stay automatic.
+  let defaultMemoryMb = $state(2048);
+  let memoryMb = $state(2048);
+  let memoryTouched = $state(false);
   let gameDir = $state('');
   let wizardHue = $state(0);
   let importEnabled = $state(false);
@@ -125,7 +129,8 @@
     selectedVersion = manifest?.latest_release || '';
     selectedLoader = 'fabric';
     instanceName = selectedVersion ? `${selectedVersion}-fabric` : '';
-    memoryMb = 4096;
+    memoryMb = defaultMemoryMb;
+    memoryTouched = false;
     gameDir = '';
     wizardHue = randomHue();
     pickingFolder = false;
@@ -167,7 +172,7 @@
       name: instanceName.trim(),
       version: selectedVersion,
       loader: selectedLoader,
-      memory_mb: memoryMb,
+      memory_mb: memoryTouched ? memoryMb : undefined,
       import_from: importEnabled && selectedSourceId ? selectedSourceId : undefined,
       merge_optionslc: importEnabled && selectedSourceId ? true : undefined,
       hue: wizardHue,
@@ -209,6 +214,12 @@
     const onOpen = () => {
       resetForm();
       open = true;
+      void getConfig()
+        .then((cfg) => {
+          defaultMemoryMb = cfg.default_memory_mb;
+          if (!memoryTouched) memoryMb = cfg.default_memory_mb;
+        })
+        .catch(() => {});
     };
     window.addEventListener('horizon:open-wizard', onOpen);
     return () => window.removeEventListener('horizon:open-wizard', onOpen);
@@ -467,6 +478,7 @@
                     max="16384"
                     step="512"
                     bind:value={memoryMb}
+                    oninput={() => (memoryTouched = true)}
                   />
                   <div class="wizard-memory-val">
                     <span class="wizard-memory-num">{memLabel(memoryMb)}</span>

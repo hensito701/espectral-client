@@ -218,7 +218,9 @@ export const pollMsLogin = (flowId: string): Promise<Account | { pending: true; 
 export const logoutMsAccount = (username: string): Promise<{ deleted: string }> => post(R.msLogout[1], { username });
 export const openFolder = (path: string): Promise<{ ok: true }> => post(R.openFolder[1], { path });
 export const getConfig = (): Promise<AppConfig> => get(R.config[1]);
-export const patchConfig = (configPatch: Partial<AppConfig>): Promise<AppConfig> => patch(R.configPatch[1], { patch: configPatch });
+export const patchConfig = (
+  configPatch: Partial<Omit<AppConfig, 'default_memory_mb'>> & { default_memory_mb?: number | null },
+): Promise<AppConfig> => patch(R.configPatch[1], { patch: configPatch });
 export const getTheme = (): Promise<Theme> => get(R.theme[1]);
 export const setTheme = (theme: Theme): Promise<{ theme: Theme }> => put(R.themePut[1], { theme });
 export const getAccent = (): Promise<Accent> => get(R.accent[1]);

@@ -14,11 +14,12 @@ import * as resolver from './resolver.mjs';
 import { effectiveGameDir, effectiveModsDir, getInstance } from './instances.mjs';
 import { offlineUuid, getActiveAccount } from './accounts.mjs';
 import { cacheKey, cacheFilePath, isCacheStale } from './aot.mjs';
-import { loadConfig } from './config.mjs';
+import { defaultMemoryMb, loadConfig } from './config.mjs';
 import { parseOptionsTxt, setOptionKey, writeOptionsTxt } from './import.mjs';
 import { loadClientConfig, seedClientConfig } from './client.mjs';
 
-export const DEFAULT_MEMORY_MB = 3072;
+/** Initial heap. The game starts small and G1 grows it toward -Xmx only as needed (Modrinth passes no -Xms at all). */
+export const INITIAL_HEAP_MB = 512;
 export const MARKER_RE = /Sound engine started/;
 
 /** Fixed JVM arg set — order is significant and asserted by tests. */
@@ -32,12 +33,17 @@ export const FIXED_JVM_ARGS = [
   '--enable-native-access=ALL-UNNAMED',
 ];
 
-/** -Xms/-Xmx in whole gigabytes when possible: 3072 -> 3G, 4096 -> 4G, 2048 -> 2G. */
+/**
+ * -Xms/-Xmx. -Xmx is the ceiling (whole gigabytes when possible: 3072 -> 3G);
+ * -Xms stays at INITIAL_HEAP_MB. Pinning -Xms to -Xmx made G1 size its young
+ * generation for the full ceiling, so a 3–4 GB heap became resident within
+ * minutes and low-RAM PCs swapped while terrain generated.
+ */
 export function memoryArgs(memoryMb) {
-  const mb = Number.isInteger(memoryMb) && memoryMb > 0 ? memoryMb : DEFAULT_MEMORY_MB;
+  const mb = Number.isInteger(memoryMb) && memoryMb > 0 ? memoryMb : defaultMemoryMb();
   const g = mb / 1024;
   const label = Number.isInteger(g) && g >= 1 ? `${g}G` : `${mb}M`;
-  return [`-Xms${label}`, `-Xmx${label}`];
+  return [`-Xms${Math.min(INITIAL_HEAP_MB, mb)}M`, `-Xmx${label}`];
 }
 
 /** Offline account fallback: OS username, MD5 offline UUID, fake token. */
@@ -241,7 +247,7 @@ export function buildArgv(instance, resolved) {
   const safeToken = accessToken === 'undefined' || accessToken === '' ? '0' : accessToken;
   const userType = rawAcc.userType ?? (rawAcc.token_kind === 'msa' ? 'msa' : 'mojang');
   const acc = { username: rawAcc.username, uuid: rawAcc.uuid, accessToken: safeToken, userType, token_kind: rawAcc.token_kind };
-  const requestedMb = resolved.memoryMb ?? instance.memory_mb ?? DEFAULT_MEMORY_MB;
+  const requestedMb = resolved.memoryMb ?? instance.memory_mb ?? defaultMemoryMb();
   const effectiveMb = effectiveMemoryMb(requestedMb, os.totalmem());
   if (effectiveMb !== requestedMb) {
     resolved.warnings.push(`memory_mb ${requestedMb} clamped to ${effectiveMb} (60% of system RAM)`);
@@ -734,7 +740,7 @@ export async function resolveLaunch(
     nativesDir,
     gameDir,
     assetsDir,
-    memoryMb: instance.memory_mb ?? loadConfig().default_memory_mb ?? DEFAULT_MEMORY_MB,
+    memoryMb: Number.isInteger(instance.memory_mb) ? instance.memory_mb : defaultMemoryMb(),
     account: launchAccount,
     bridgeToken,
     mode,

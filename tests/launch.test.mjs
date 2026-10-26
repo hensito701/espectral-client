@@ -15,7 +15,7 @@ const {
   buildArgv,
   spawnJava,
   childProcess,
-  DEFAULT_MEMORY_MB,
+  INITIAL_HEAP_MB,
   MARKER_RE,
   FIXED_JVM_ARGS,
   bootFlags,
@@ -25,7 +25,7 @@ const {
   javaForLaunch,
 } = await import('../src/engine/launch.mjs');
 const runtimes = await import('../src/engine/runtimes.mjs');
-const { loadConfig, saveConfig } = await import('../src/engine/config.mjs');
+const { loadConfig, saveConfig, defaultMemoryMb } = await import('../src/engine/config.mjs');
 // presenceForInstance lives in the route module; importing it is side-effect
 // free (server bootstrap lives in cli.mjs).
 const { presenceForInstance } = await import('../src/engine/routes/launch.mjs');
@@ -91,19 +91,19 @@ function makeResolved(overrides = {}) {
   };
 }
 
-test('memoryArgs emits G/M labels and falls back on invalid input', () => {
-  assert.deepEqual(memoryArgs(3072), ['-Xms3G', '-Xmx3G']);
-  assert.deepEqual(memoryArgs(4096), ['-Xms4G', '-Xmx4G']);
-  assert.deepEqual(memoryArgs(2048), ['-Xms2G', '-Xmx2G']);
-  assert.deepEqual(memoryArgs(1024), ['-Xms1G', '-Xmx1G']);
+test('memoryArgs: small fixed -Xms, ceiling as -Xmx, automatic fallback on invalid input', () => {
+  assert.deepEqual(memoryArgs(3072), ['-Xms512M', '-Xmx3G']);
+  assert.deepEqual(memoryArgs(2048), ['-Xms512M', '-Xmx2G']);
   // Sub-G values that are not a whole GiB keep an M label.
-  assert.deepEqual(memoryArgs(1500), ['-Xms1500M', '-Xmx1500M']);
-  // Invalid inputs (non-numeric, out-of-range, fractional) fall back to
-  // DEFAULT_MEMORY_MB (3072 -> 3G) instead of emitting garbage labels.
+  assert.deepEqual(memoryArgs(1500), ['-Xms512M', '-Xmx1500M']);
+  // -Xms never exceeds -Xmx (the JVM refuses to start otherwise).
+  assert.deepEqual(memoryArgs(384), ['-Xms384M', '-Xmx384M']);
+  assert.equal(INITIAL_HEAP_MB, 512);
+  // Invalid inputs fall back to the automatic default instead of garbage labels.
+  const auto = defaultMemoryMb();
   for (const bad of [undefined, null, 'abc', NaN, 0, -512, 1.5]) {
-    assert.deepEqual(memoryArgs(bad), ['-Xms3G', '-Xmx3G'], `input ${bad}`);
+    assert.deepEqual(memoryArgs(bad), memoryArgs(auto), `input ${bad}`);
   }
-  assert.equal(DEFAULT_MEMORY_MB, 3072);
 });
 
 test('buildArgv argv[0] is the java executable path (H5 contract)', () => {
@@ -114,8 +114,8 @@ test('buildArgv argv[0] is the java executable path (H5 contract)', () => {
 test('buildArgv full argv shape: memory, fixed set, natives, -cp, main class, program args', () => {
   const resolved = makeResolved();
   const argv = buildArgv({ name: 't' }, resolved);
-  // memory args first (Xms=Xmx)
-  assert.deepEqual(argv.slice(1, 3), ['-Xms4G', '-Xmx4G']);
+  // memory args first
+  assert.deepEqual(argv.slice(1, 3), ['-Xms512M', '-Xmx4G']);
   // fixed arg set immediately after (java major 25 >= 21)
   assert.deepEqual(argv.slice(3, 3 + FIXED_JVM_ARGS.length), FIXED_JVM_ARGS);
   // natives dir right after the fixed set
@@ -223,13 +223,13 @@ test('M2: modern-format versions are multiplayer; snapshots are singleplayer', (
 });
 
 test('buildArgv memory fallback order and MARKER_RE', () => {
-  // resolved.memoryMb wins, then instance.memory_mb, then DEFAULT_MEMORY_MB.
+  // resolved.memoryMb wins, then instance.memory_mb, then the automatic default.
   const argvDefault = buildArgv({ name: 't' }, makeResolved({ memoryMb: undefined }));
-  assert.deepEqual(argvDefault.slice(1, 3), ['-Xms3G', '-Xmx3G']);
+  assert.deepEqual(argvDefault.slice(1, 3), memoryArgs(defaultMemoryMb()));
   const argvInstance = buildArgv({ name: 't', memory_mb: 2048 }, makeResolved({ memoryMb: undefined }));
-  assert.deepEqual(argvInstance.slice(1, 3), ['-Xms2G', '-Xmx2G']);
+  assert.deepEqual(argvInstance.slice(1, 3), ['-Xms512M', '-Xmx2G']);
   const argvResolved = buildArgv({ name: 't', memory_mb: 2048 }, makeResolved());
-  assert.deepEqual(argvResolved.slice(1, 3), ['-Xms4G', '-Xmx4G']);
+  assert.deepEqual(argvResolved.slice(1, 3), ['-Xms512M', '-Xmx4G']);
   // MARKER_RE pins the exact menu-marker line the launch watcher listens for.
   assert.equal(MARKER_RE.test('Sound engine started'), true);
   assert.equal(MARKER_RE.test('[Render thread/INFO]: Sound engine started'), true);
@@ -322,7 +322,7 @@ test('effectiveMemoryMb clamp via buildArgv pushes warning', () => {
   assert.ok(resolved.warnings[resolved.warnings.length - 1].includes(`memory_mb ${over} clamped to ${cap}`));
   // Argv should contain clamped value (cap label)
   const expectedLabel = cap % 1024 === 0 ? `${cap / 1024}G` : `${cap}M`;
-  assert.ok(argv.includes(`-Xms${expectedLabel}`) || argv.includes(`-Xmx${expectedLabel}`));
+  assert.ok(argv.includes(`-Xmx${expectedLabel}`));
   // Request under cap should not push warning
   const under = Math.min(4096, cap - 1 > 0 ? cap - 1 : 1024);
   const resolved2 = makeResolved({ memoryMb: under, aotCacheExists: true });

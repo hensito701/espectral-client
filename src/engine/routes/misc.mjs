@@ -609,7 +609,9 @@ export function decodePngImage(image_base64) {
 /** Whitelist + validate the AppConfig patch fields (engine state is off-limits). */
 function sanitizeConfigPatch(patch) {
   const out = {};
-  if (patch.default_memory_mb !== undefined) {
+  if (patch.default_memory_mb === null) {
+    out.default_memory_mb = null; // back to automatic (system-RAM based)
+  } else if (patch.default_memory_mb !== undefined) {
     const mb = Number(patch.default_memory_mb);
     if (!Number.isInteger(mb) || mb < 512 || mb > 65536) {
       throw httpError(400, 'BAD_MEMORY', 'default_memory_mb must be an integer between 512 and 65536');

@@ -10,7 +10,7 @@ const originalDataDir = process.env.ESPECTRAL_DATA_DIR;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'espectral-config-test-'));
 process.env.ESPECTRAL_DATA_DIR = dataDir;
 
-const { loadConfig, saveConfig, appConfig, DEFAULT_CONFIG, configPath } = await import('../src/engine/config.mjs');
+const { loadConfig, saveConfig, appConfig, DEFAULT_CONFIG, configPath, recommendedMemoryMb, defaultMemoryMb } = await import('../src/engine/config.mjs');
 
 after(() => {
   if (originalDataDir === undefined) delete process.env.ESPECTRAL_DATA_DIR;
@@ -68,12 +68,14 @@ test('appConfig exposes only the whitelisted AppConfig subset', () => {
     'accent',
     'aot_auto_train',
     'data_dir',
+    'default_memory_auto',
     'default_memory_mb',
     'discord_enabled',
     'download_concurrency',
     'fast_boot',
     'fullbright_on_launch',
     'jdk_path_override',
+    'recommended_memory_mb',
     'reduced_motion',
   ]);
   assert.equal('access_token' in appConfig(), false);
@@ -99,4 +101,25 @@ test('appConfig coerces fast_boot to a strict boolean', () => {
   assert.equal(appConfig().fast_boot, true);
   saveConfig({ fast_boot: false });
   assert.equal(appConfig().fast_boot, false);
+});
+
+test('recommendedMemoryMb: 2 GB up to 8 GB of RAM, 3 GB up to 16 GB, 4 GB above', () => {
+  const GB = 1024 ** 3;
+  assert.equal(recommendedMemoryMb(4 * GB), 2048);
+  assert.equal(recommendedMemoryMb(7.8 * GB), 2048); // "8 GB" laptops report a little less
+  assert.equal(recommendedMemoryMb(8 * GB), 2048);
+  assert.equal(recommendedMemoryMb(12 * GB), 3072);
+  assert.equal(recommendedMemoryMb(15.9 * GB), 3072);
+  assert.equal(recommendedMemoryMb(32 * GB), 4096);
+  assert.equal(recommendedMemoryMb(NaN), 2048);
+});
+
+test('default memory: null is automatic, a Settings value wins', () => {
+  saveConfig({ default_memory_mb: null });
+  assert.equal(defaultMemoryMb(), recommendedMemoryMb());
+  assert.equal(appConfig().default_memory_auto, true);
+  saveConfig({ default_memory_mb: 5120 });
+  assert.equal(defaultMemoryMb(), 5120);
+  assert.equal(appConfig().default_memory_auto, false);
+  saveConfig({ default_memory_mb: null });
 });

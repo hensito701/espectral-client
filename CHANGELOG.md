@@ -4,6 +4,17 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [Unreleased]
 
+### Changed
+- **Lighter on low-RAM PCs: memory now works like Modrinth's.** The game
+  starts with a 512 MB heap and grows only when it needs to (`-Xms512M`)
+  instead of reserving its whole allocation from the start (`-Xms` = `-Xmx`),
+  which on PCs with 8 GB or less caused swapping and FPS drops while terrain
+  generated. The maximum is now automatic by system RAM: 2 GB up to 8 GB,
+  3 GB up to 16 GB, 4 GB above. Instances still on the old fixed defaults
+  (3 GB / 4 GB) switch to automatic once; any other value is kept. Instance,
+  Settings and modpack import get an "Automático" option, and new instances
+  stay automatic unless the slider is moved.
+
 ### Fixed
 - **Mid-game crash "Failed to load class file for 'es.spectral.menu.…'"**
   after updating the launcher while playing. The fresh launcher re-installs

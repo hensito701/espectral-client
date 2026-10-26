@@ -30,7 +30,7 @@ export const es: Dict = {
   'import.mrpack.clearFile': 'Quitar archivo',
   'import.mrpack.memoryLabel': 'Memoria RAM asignada (MB)',
   'import.mrpack.memoryHint':
-    'Cantidad de memoria inicial para la nueva instancia creada (por defecto 3072 MB / 3 GB).',
+    'Memoria para la nueva instancia. En automático se ajusta a la RAM de tu PC (2 GB si tienes 8 GB o menos).',
   'import.mrpack.installButton': 'Instalar Modpack',
   'import.mrpack.installing': 'Instalando modpack…',
   'import.mrpack.selectFirst': 'Selecciona o arrastra un archivo .mrpack primero.',
@@ -137,7 +137,7 @@ export const en: Dict = {
   'import.mrpack.clearFile': 'Remove file',
   'import.mrpack.memoryLabel': 'Allocated RAM (MB)',
   'import.mrpack.memoryHint':
-    'Initial RAM allocated to the newly created instance (default: 3072 MB / 3 GB).',
+    'RAM for the new instance. Automatic follows your PC\'s RAM (2 GB with 8 GB or less).',
   'import.mrpack.installButton': 'Install Modpack',
   'import.mrpack.installing': 'Installing modpack…',
   'import.mrpack.selectFirst': 'Please select or drop a .mrpack file first.',
