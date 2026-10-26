@@ -2,6 +2,17 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **Mid-game crash "Failed to load class file for 'es.spectral.menu.…'"**
+  after updating the launcher while playing. The fresh launcher re-installs
+  the Espectral mod jar when an instance page opens, and it overwrote the jar
+  in place while the running game still had it open, so the game's next class
+  load read garbage and crashed. The jar is now written beside the old one and
+  swapped in: Windows refuses the swap while the game runs (the game keeps its
+  copy; the new one goes in on the next launch).
+
 ## [1.5.2] - 2026-10-25
 
 ### Added

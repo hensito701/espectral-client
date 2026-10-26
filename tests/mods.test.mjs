@@ -20,6 +20,7 @@ import {
   slugifyTitle,
   planModInstall,
   installModrinthMod,
+  ensureBrandingSeeded,
 } from '../src/engine/mods.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -130,6 +131,42 @@ test('listMods: tags the Fabric branding jar on a real instance dir', async () =
     assert.equal(row.version_number, pin.version_number);
     assert.equal(row.installed, true);
   } finally {
+    if (old === undefined) delete process.env.ESPECTRAL_DATA_DIR;
+    else process.env.ESPECTRAL_DATA_DIR = old;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// A launcher update re-seeds a rebuilt brand jar from the instance page while
+// a game started by the previous engine still has the jar open. Overwriting
+// in place swapped the bytes under the JVM ("Failed to load class file for
+// 'es.spectral.menu.…'" mid-match); the open handle must keep the old bytes.
+test('ensureBrandingSeeded never rewrites the jar under an open handle', async () => {
+  const old = process.env.ESPECTRAL_DATA_DIR;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'espectral-reseed-'));
+  process.env.ESPECTRAL_DATA_DIR = tmp;
+  const pin = brandingPinForVersion('26.2', 'fabric');
+  const modsDir = path.join(tmp, 'instances', 'reseed-test', 'mods');
+  const jar = path.join(modsDir, pin.filename);
+  fs.mkdirSync(modsDir, { recursive: true });
+  const stale = Buffer.from('stale brand jar bytes from the previous launcher');
+  fs.writeFileSync(jar, stale);
+  let fd = fs.openSync(jar, 'r');
+  try {
+    await ensureBrandingSeeded({ name: 'reseed-test', version: '26.2', loader: 'fabric' });
+    const seen = Buffer.alloc(stale.length);
+    fs.readSync(fd, seen, 0, seen.length, 0);
+    assert.deepEqual(seen, stale, 'the open handle still reads the bytes it opened');
+    assert.deepEqual(fs.readdirSync(modsDir), [pin.filename], 'no temp file left behind');
+    // Windows defers the swap while the jar is open; once the game is gone
+    // the next seed (launch / instance page) installs the pinned jar.
+    fs.closeSync(fd);
+    fd = null;
+    await ensureBrandingSeeded({ name: 'reseed-test', version: '26.2', loader: 'fabric' });
+    const onDisk = createHash('sha1').update(fs.readFileSync(jar)).digest('hex');
+    assert.equal(onDisk, pin.sha1, 'the path now holds the pinned jar');
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
     if (old === undefined) delete process.env.ESPECTRAL_DATA_DIR;
     else process.env.ESPECTRAL_DATA_DIR = old;
     fs.rmSync(tmp, { recursive: true, force: true });
