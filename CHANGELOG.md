@@ -2,6 +2,17 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **Joining a server no longer reloads the menu background over and over.**
+  The world-loading screen shown while joining still draws the menu art, but
+  the mod freed it every tick as soon as a world existed, so each join
+  decoded, uploaded and deleted a full-screen texture repeatedly — right as
+  the world's first chunks reach the GPU, where 26.3 games on AMD cards were
+  crashing to desktop. The art is now freed only once no screen has drawn it
+  for a second.
+
 ## [1.6.2] - 2026-10-30
 
 ### Added
