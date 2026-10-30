@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.6.2] - 2026-10-30
 
 ### Added
 - **Closing the launcher no longer closes Minecraft.** The game now runs on
