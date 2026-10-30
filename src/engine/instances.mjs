@@ -369,6 +369,7 @@ export async function getSummary(name) {
     aot_key: aotKey,
     aot_cache_exists: aotCacheExists,
     imported_from: inst.imported_from ?? null,
+    capture_tools: inst.capture_tools === true,
     created_at: inst.created_at,
   };
 }
@@ -621,6 +622,19 @@ export async function patchInstance(name, patch = {}) {
   }
   if (Array.isArray(patch.enabled_mods)) {
     await applyEnabledMods(inst, patch.enabled_mods);
+  }
+  if (patch.capture_tools !== undefined) {
+    // Flipping the flag OWNS the Replay Mod jar: on installs it, off removes
+    // it (shader packs + Iris stay). The install runs before the flag is
+    // persisted so a failed download never leaves `capture_tools: true` on an
+    // instance that has no Replay Mod.
+    const want = patch.capture_tools === true;
+    if (want !== (inst.capture_tools === true)) {
+      const mods = await import('./mods.mjs');
+      if (want) await mods.installCaptureTools(inst);
+      else await mods.removeCaptureTools(inst);
+    }
+    inst.capture_tools = want;
   }
   inst.updated_at = new Date().toISOString();
   writeJson(instanceJsonPath(current), inst);

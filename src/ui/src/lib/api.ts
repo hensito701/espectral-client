@@ -1,6 +1,7 @@
 import type {
   Accent,
   Account,
+  AgentAccess,
   AppConfig,
   AotStatus,
   ClientInfo,
@@ -200,6 +201,10 @@ const R = {
   identityRefresh: (u: string) => ['POST', `/api/identity/${enc(u)}/refresh`] as const,
   cosmetics: ['GET', '/api/cosmetics'] as const,
   cosmeticsPut: (u: string) => ['PUT', `/api/cosmetics/${enc(u)}`] as const,
+  // Agent access (MCP). UI routes: CSRF header only, never the agent token.
+  agentAccess: ['GET', '/api/agent-access'] as const,
+  agentAccessPut: ['PUT', '/api/agent-access'] as const,
+  agentAccessRotate: ['POST', '/api/agent-access/rotate'] as const,
 } as const;
 
 /* ---------- one wrapper per endpoint ---------- */
@@ -587,6 +592,18 @@ export const refreshIdentity = (uuid: string): Promise<IdentityAccount> =>
 export const getCosmetics = (): Promise<CosmeticsState> => get(R.cosmetics[1]);
 export const putCosmetics = (uuid: string, cosmeticsPatch: CosmeticsPatch): Promise<CosmeticsAccountState> =>
   put(R.cosmeticsPut(uuid)[1], cosmeticsPatch);
+
+/* ---------- Agent access (MCP) ---------- */
+
+export const getAgentAccess = (): Promise<AgentAccess> => get(R.agentAccess[1]);
+
+/** Turning capture/agent access on may provision files, so allow a longer timeout. */
+export const putAgentAccess = (agentPatch: {
+  enabled?: boolean;
+  allowed_servers?: string[];
+}): Promise<AgentAccess> => request<AgentAccess>(R.agentAccessPut[1], 'PUT', agentPatch, TIMEOUT_MS.launch);
+
+export const rotateAgentToken = (): Promise<AgentAccess> => post(R.agentAccessRotate[1]);
 
 // SSE moved to ./sse — re-export to preserve `from './api'` import path.
 export { subscribeEvents, SSE_EVENT_NAMES } from './sse';
