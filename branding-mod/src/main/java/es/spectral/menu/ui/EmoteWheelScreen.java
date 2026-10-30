@@ -41,7 +41,7 @@ public class EmoteWheelScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 0) {
+        if (event.button() == com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT) {
             String pick = pick(event.x(), event.y());
             if (pick != null) {
                 EmoteEngine.getInstance().start(pick);

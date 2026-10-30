@@ -93,10 +93,10 @@ public class HudEditScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 0 && logic.mouseDown(event.x(), event.y())) {
+        if (event.button() == com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT && logic.mouseDown(event.x(), event.y())) {
             return true;
         }
-        if (event.button() == 1 && logic.resetAt(event.x(), event.y(), this.minecraft, this.font, this.width, this.height)) {
+        if (event.button() == com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_RIGHT && logic.resetAt(event.x(), event.y(), this.minecraft, this.font, this.width, this.height)) {
             return true;
         }
         return super.mouseClicked(event, doubleClick);
