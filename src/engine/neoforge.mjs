@@ -35,6 +35,7 @@ import {
   downloadConcurrency,
   downloadFile,
   emitEvent,
+  fetchText,
 } from './download.mjs';
 import { readZipEntry } from './ziputil.mjs';
 
@@ -44,6 +45,38 @@ export const NEOFORGE_MAVEN = 'https://maven.neoforged.net/releases';
 /** URL of the installer jar for a NeoForge version (e.g. '21.1.242'). */
 export function installerUrl(version) {
   return `${NEOFORGE_MAVEN}/net/neoforged/neoforge/${version}/neoforge-${version}-installer.jar`;
+}
+
+/**
+ * NeoForge version prefix for a Minecraft version: classic `1.A[.B]` maps to
+ * `A.B.` (1.21.1 -> 21.1., 1.21.11 -> 21.11.), modern `X.Y[.Z]` to `X.Y.Z.`
+ * (26.2 -> 26.2.0., 26.1.2 -> 26.1.2.). Null for anything else (snapshots).
+ */
+export function neoforgePrefixFor(mcVersion) {
+  const classic = /^1\.(\d+)(?:\.(\d+))?$/.exec(mcVersion ?? '');
+  if (classic) return `${classic[1]}.${classic[2] ?? '0'}.`;
+  const modern = /^(\d{2})\.(\d+)(?:\.(\d+))?$/.exec(mcVersion ?? '');
+  if (modern) return `${modern[1]}.${modern[2]}.${modern[3] ?? '0'}.`;
+  return null;
+}
+
+/** Newest stable NeoForge build for a Minecraft version, or null when none exists. */
+export async function latestNeoForgeFor(mcVersion) {
+  const prefix = neoforgePrefixFor(mcVersion);
+  if (!prefix) return null;
+  const xml = await fetchText(`${NEOFORGE_MAVEN}/net/neoforged/neoforge/maven-metadata.xml`);
+  const versions = [...xml.matchAll(/<version>([^<]+)<\/version>/g)]
+    .map((m) => m[1])
+    .filter((v) => v.startsWith(prefix) && !/beta|alpha|rc/i.test(v));
+  const num = (v) => v.split(/[.-]/).map((p) => Number(p) || 0);
+  versions.sort((a, b) => {
+    const x = num(a), y = num(b);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+      if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
+    }
+    return 0;
+  });
+  return versions.at(-1) ?? null;
 }
 
 /** Version id used in <dataDir>/versions: 'neoforge-<v>'. */

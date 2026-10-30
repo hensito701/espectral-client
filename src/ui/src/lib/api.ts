@@ -18,6 +18,9 @@ import type {
   ImportSource,
   InstanceDetail,
   InstancePatch,
+  VersionChangePlan,
+  VersionChangeResult,
+  VersionTarget,
   InstanceSummary,
   JvmInfo,
   LaunchReply,
@@ -145,6 +148,8 @@ const R = {
   getInstance: (n: string) => ['GET', `/api/instances/${enc(n)}`] as const,
   deleteInstance: (n: string) => ['DELETE', `/api/instances/${enc(n)}`] as const,
   patchInstance: (n: string) => ['PATCH', `/api/instances/${enc(n)}`] as const,
+  versionChangePlan: (n: string) => ['POST', `/api/instances/${enc(n)}/version-change/plan`] as const,
+  versionChange: (n: string) => ['POST', `/api/instances/${enc(n)}/version-change`] as const,
   importSources: ['GET', '/api/import/sources'] as const,
   importProfile: (n: string) => ['POST', `/api/instances/${enc(n)}/import`] as const,
   importMrpack: ['POST', '/api/instances/import-mrpack'] as const,
@@ -231,6 +236,10 @@ export const getInstance = (name: string): Promise<InstanceDetail> => get(R.getI
 export const deleteInstance = (name: string): Promise<{ deleted: string }> => del(R.deleteInstance(name)[1]);
 export const patchInstance = (name: string, instancePatch: InstancePatch): Promise<InstanceSummary> =>
   patch(R.patchInstance(name)[1], instancePatch);
+export const planVersionChange = (name: string, target: VersionTarget): Promise<VersionChangePlan> =>
+  post(R.versionChangePlan(name)[1], target);
+export const applyVersionChange = (name: string, target: VersionTarget): Promise<VersionChangeResult> =>
+  post(R.versionChange(name)[1], target);
 export const getImportSources = (): Promise<ImportSource[]> => get(R.importSources[1]);
 export const importProfile = (name: string, source_id: string, overwrite_policy: OverwritePolicy): Promise<ImportResult> =>
   post(R.importProfile(name)[1], { source_id, overwrite_policy });

@@ -396,6 +396,44 @@ export interface InstancePatch {
   new_name?: string;
 }
 
+export interface VersionTarget {
+  version: string;
+  loader: Loader;
+}
+
+/** One jar's fate in a version/platform change (engine planModsForTarget). */
+export interface VersionChangeMod {
+  filename: string;
+  title: string;
+  enabled: boolean;
+  action: 'keep' | 'update' | 'disable' | 'idle' | 'add';
+  reason?: 'unknown' | 'no_build';
+  to?: { filename: string; version_number: string };
+}
+
+export interface VersionChangePlan {
+  from: { version: string; loader: Loader };
+  to: { version: string; loader: Loader; loader_version: string | null };
+  /** Target released before the current version (worlds may not load back). */
+  downgrade: boolean;
+  /** saves/ will be copied to the instance's backups/ folder first. */
+  backup_worlds: boolean;
+  /** An Espectral menu build exists for the target version + loader. */
+  espectral_menu: boolean;
+  mods: VersionChangeMod[];
+}
+
+export interface VersionChangeResult {
+  summary: InstanceSummary;
+  backup: string | null;
+  mods: {
+    updated: { from: string; to: string }[];
+    added: string[];
+    disabled: string[];
+    errors: { filename: string; error: string }[];
+  };
+}
+
 export interface LogChunk {
   lines: string[];
   cursor: number;
