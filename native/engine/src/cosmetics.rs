@@ -38,3 +38,13 @@ pub fn share_enabled(engine: &Engine, flat_uuid: &str) -> EngineResult<bool> {
     let _ = (engine, flat_uuid);
     crate::not_ported!("cosmetics::share_enabled")
 }
+
+/// Sanitized loadout the presence publisher PUTs to espectral-id
+/// (JS presence.publishOnce: `sanitizeLoadout(getCosmeticsState(uuid).loadout, flags)`).
+///
+/// CONTRACT STUB added by identity-discord (presence.rs) — accounts-skins
+/// owns the implementation; keep the signature.
+pub fn presence_loadout(engine: &Engine, flat_uuid: &str, flags: &[String]) -> EngineResult<serde_json::Value> {
+    let _ = (engine, flat_uuid, flags);
+    crate::not_ported!("cosmetics::presence_loadout")
+}
