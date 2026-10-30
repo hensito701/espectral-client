@@ -221,6 +221,24 @@ export function bootFlags(instance, javaMajor) {
 }
 
 /**
+ * Windows: commit every Java thread's stack up front.
+ *
+ * A minidump of a 26.3 crash on join (silent 0xC0000005, no hs_err) showed a
+ * Minecraft worker thread ("Worker-Main-21", 136 KB into its 1 MB stack)
+ * whose OS guard page was gone — the only one of 93 threads without it. The
+ * next stack probe below the committed region (_alloca_probe in jvm.dll)
+ * then hit plain reserved memory, which Windows cannot grow, and the JVM's
+ * own error reporter died on the same stack, so nothing was written.
+ * Pre-touching commits the whole stack at thread start, so no stack ever
+ * needs to grow at run time and a lost guard page is harmless. Cost: about
+ * 1 MB of RAM per Java thread (+80 MB measured for 80 threads). The flag is
+ * diagnostic-gated on JDK 21–25.
+ */
+export function stackFlags(platform = process.platform) {
+  return platform === 'win32' ? ['-XX:+UnlockDiagnosticVMOptions', '-XX:+AlwaysPreTouchStacks'] : [];
+}
+
+/**
  * Clamp requested memory to 60% of system RAM. Pure helper for testing;
  * buildArgv calls it with os.totalmem().
  */
@@ -284,6 +302,7 @@ export function buildArgv(instance, resolved) {
     ...(javaMajor >= 21 ? FIXED_JVM_ARGS : []),
     '-Djava.library.path=' + resolved.nativesDir,
     ...(javaMajor >= 21 ? bootFlags(instance, javaMajor) : []),
+    ...(javaMajor >= 21 ? stackFlags() : []),
     // Mod bridge: the in-game mod reports visible uuids over loopback; the
     // per-launch token is minted in resolveLaunch (null on dry-run previews).
     `-Despectral.bridge.url=http://127.0.0.1:${process.env.ESPECTRAL_PORT || 4199}/api/bridge`,

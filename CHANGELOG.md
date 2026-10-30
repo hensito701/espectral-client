@@ -12,6 +12,13 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   the world's first chunks reach the GPU, where 26.3 games on AMD cards were
   crashing to desktop. The art is now freed only once no screen has drawn it
   for a second.
+- **Silent crashes to desktop on Windows (exit code 0xC0000005, no crash
+  report).** A crash dump showed a Minecraft worker thread that had lost the
+  Windows "guard page" that lets a thread's stack grow; the next time it
+  needed more stack the game died instantly, too early for Java to write any
+  report. Windows launches now commit each Java thread's whole stack when the
+  thread starts (`-XX:+AlwaysPreTouchStacks`), so stacks never need to grow
+  while playing. Costs about 1 MB of RAM per game thread (~80 MB).
 
 ## [1.6.2] - 2026-10-30
 
