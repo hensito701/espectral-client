@@ -49,6 +49,19 @@ public final class MenuSkin {
 
     /** Set by the backdrop hook, consumed by the blur hook of the same frame. */
     private static boolean backdropPainted;
+    /**
+     * {@link Util#getMillis()} of the last frame that painted the menu art.
+     * The level exists BEFORE the menus that draw the art are gone: joining a
+     * server shows {@code LevelLoadingScreen}, which paints the panorama (our
+     * art) with a level already loaded. Releasing on "level != null" alone
+     * freed the texture every tick while that screen re-requested it every
+     * frame, so each join decoded, uploaded and deleted a full-screen texture
+     * over and over — at the exact moment the world's first chunks hit the
+     * GPU (seen right before native driver crashes on 26.3 + AMD).
+     */
+    private static long lastArtPaintMs;
+    /** Art unpainted this long with a world loaded → free it. */
+    private static final long RELEASE_AFTER_MS = 1000L;
 
     private MenuSkin() {}
 
@@ -71,12 +84,14 @@ public final class MenuSkin {
     }
 
     /**
-     * Client tick: frees the background textures once a world is loaded — the
-     * menus that draw them are gone until the next disconnect, which
-     * re-requests (and re-decodes) the pack.
+     * Client tick: frees the background textures once a world is loaded AND
+     * no screen has painted them for {@link #RELEASE_AFTER_MS} — the menus
+     * that draw them are gone until the next disconnect, which re-requests
+     * (and re-decodes) the pack.
      */
     public static void onClientTick(Minecraft minecraft) {
-        if (minecraft != null && minecraft.level != null) {
+        if (minecraft != null && minecraft.level != null
+                && Util.getMillis() - lastArtPaintMs > RELEASE_AFTER_MS) {
             MenuBackground.releaseIfHeld();
         }
     }
@@ -94,6 +109,7 @@ public final class MenuSkin {
             float parX, float parY) {
         // Drives the async pack resolution/upload and advances animated
         // packs; per-frame cost is an id compare when nothing changed.
+        lastArtPaintMs = now;
         MenuBackground.request(Minecraft.getInstance());
         Compat.uiFill(gfx, 0, 0, width, height, BASE);
         if (!MenuBackground.ready() || MenuBackground.width() <= 0 || MenuBackground.height() <= 0) {

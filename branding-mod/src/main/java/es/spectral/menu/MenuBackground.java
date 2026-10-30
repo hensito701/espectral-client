@@ -50,7 +50,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The texture outlives the title screen: every out-of-world menu draws it
  * ({@code MenuSkin}). {@link #releaseIfHeld()} — called each client tick
- * while a world is loaded — frees every texture and pending decode, so the
+ * once a world is loaded and no screen has drawn the art for a second —
+ * frees every texture and pending decode, so the
  * pack's GPU/native memory is held only while menus are on screen.
  *
  * <p>Both supported versions expose identical texture APIs, so this lives in
