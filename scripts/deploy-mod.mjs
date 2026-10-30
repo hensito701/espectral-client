@@ -71,7 +71,7 @@ function findJar(dir, prefix) {
 
 // ── 1. Build ──────────────────────────────────────────────────────────────
 log(`building espectral-menu jars (launcher ${VERSION})…`);
-gradle(path.join(ROOT, 'branding-mod'), [':mc12111:build', ':mc262:build']);
+gradle(path.join(ROOT, 'branding-mod'), [':mc12111:build', ':mc262:build', ':mc263:build']);
 
 // NeoForge companion: same layout, own wrapper. If it isn't buildable from
 // this tree, keep whatever espectral-brand jar is already bundled.
@@ -93,9 +93,10 @@ if (existsSync(path.join(NF_DIR, 'gradlew.bat'))) {
 const fresh = [
   findJar(path.join(ROOT, 'branding-mod', 'mc12111', 'build', 'libs'), 'espectral-menu-1.21.11-'),
   findJar(path.join(ROOT, 'branding-mod', 'mc262', 'build', 'libs'), 'espectral-menu-26.2-'),
+  findJar(path.join(ROOT, 'branding-mod', 'mc263', 'build', 'libs'), 'espectral-menu-26.3-'),
   nfJar,
 ];
-for (const [i, name] of ['espectral-menu-1.21.11', 'espectral-menu-26.2'].entries()) {
+for (const [i, name] of ['espectral-menu-1.21.11', 'espectral-menu-26.2', 'espectral-menu-26.3'].entries()) {
   if (!fresh[i]) fail(`${name}-${VERSION}.jar not found after build — check the gradle output above`);
 }
 

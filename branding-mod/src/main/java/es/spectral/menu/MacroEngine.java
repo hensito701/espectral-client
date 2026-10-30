@@ -3,9 +3,9 @@ package es.spectral.menu;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
-import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,7 +44,7 @@ public final class MacroEngine {
         // Suite screen); this engine only handles chat/command macros below.
 
         // Always clean up released keys so repeat guard doesn't get stuck if released inside a screen
-        pressedKeys.removeIf(code -> !InputConstants.isKeyDown(minecraft.getWindow(), code));
+        pressedKeys.removeIf(code -> !Keys.isDown(minecraft, code));
 
         if (isScreenOpen || !ClientConfig.getInstance().isFeatureEnabled("macros")) {
             return;
@@ -55,7 +55,7 @@ public final class MacroEngine {
         Set<String> seenIds = new HashSet<>();
         for (ClientConfig.MacroConfig macro : macros) {
             seenIds.add(macro.id);
-            int keyCode = getGlfwKeyCode(macro.keybind);
+            int keyCode = keyCode(macro.keybind);
             if (keyCode <= 0) {
                 if (warnedUnparseable.add(macro.id)) {
                     LOGGER.warn("Ignoring macro '{}' (id '{}'): unparseable keybind '{}'",
@@ -65,7 +65,7 @@ public final class MacroEngine {
             }
             warnedUnparseable.remove(macro.id);
 
-            boolean keyDown = InputConstants.isKeyDown(minecraft.getWindow(), keyCode);
+            boolean keyDown = Keys.isDown(minecraft, keyCode);
             if (keyDown && !pressedKeys.contains(keyCode) && !newlyPressed.contains(keyCode)) {
                 newlyPressed.add(keyCode);
                 executeMacro(macro, minecraft);
@@ -75,144 +75,80 @@ public final class MacroEngine {
         pressedKeys.addAll(newlyPressed);
     }
 
-    public static int getGlfwKeyCode(String keybindStr) {
+    /**
+     * Key value for a stored keybind ({@code key.keyboard.<name>}, a bare
+     * name/alias, or a single layout character), or -1. Values are the running
+     * backend's (GLFW keysyms before 26.3, SDL scancodes from 26.3): names are
+     * resolved through vanilla's own table, so one stored keybind means the
+     * same physical key on every version.
+     */
+    public static int keyCode(String keybindStr) {
         if (keybindStr == null) return -1;
         String trimmed = keybindStr.trim();
         if (trimmed.isEmpty()) return -1;
         String lower = trimmed.toLowerCase(Locale.ROOT);
 
         if (lower.startsWith("key.keyboard.")) {
-            String name = lower.substring("key.keyboard.".length());
-            return getGlfwKeyFromName(name);
+            return keyFromName(lower.substring("key.keyboard.".length()));
         }
 
         // A single non-ASCII character ("ñ", "ç", "ß"): the literal key label a
         // hand-written config may carry. Resolved against the live keyboard
-        // layout so it means the same key the user types.
+        // layout so it means the same key the user types. Accented letters are
+        // dead-key compositions, so a macro for "á" cannot exist — a keyboard
+        // limitation, not a config one.
         if (trimmed.codePointCount(0, trimmed.length()) == 1) {
             int cp = trimmed.codePointAt(0);
             if (cp > 0x7F) {
-                int resolved = glfwKeyForCharacter(cp);
+                int resolved = Keys.forCharacter(cp);
                 if (resolved > 0) return resolved;
             }
         }
 
-        return getGlfwKeyFromName(lower);
+        return keyFromName(lower);
     }
 
-    /**
-     * Reverse lookup for a printed character in the current layout: scans the
-     * GLFW key range for the physical key whose unshifted name is that
-     * character (Windows/GLFW reports the layout name). Returns -1 when the
-     * character is not a plain key on this keyboard (accented letters are
-     * dead-key compositions, so a macro for "á" cannot exist — that is a
-     * keyboard limitation, not a config one).
-     */
-    private static int glfwKeyForCharacter(int codePoint) {
-        String wanted = new String(Character.toChars(codePoint)).toLowerCase(Locale.ROOT);
-        for (int code = GLFW.GLFW_KEY_SPACE; code <= GLFW.GLFW_KEY_LAST; code++) {
-            String name = GLFW.glfwGetKeyName(code, 0);
-            if (name != null && name.toLowerCase(Locale.ROOT).equals(wanted)) {
-                return code;
-            }
-        }
-        return -1;
-    }
+    /** Short spellings hand-written configs use, mapped to vanilla key names. */
+    private static final Map<String, String> ALIASES = Map.ofEntries(
+            Map.entry(" ", "space"),
+            Map.entry("esc", "escape"),
+            Map.entry("shift", "left.shift"),
+            Map.entry("control", "left.control"),
+            Map.entry("ctrl", "left.control"),
+            Map.entry("alt", "left.alt"),
+            Map.entry("grave", "grave.accent"),
+            Map.entry("equals", "equal"),
+            Map.entry("lbracket", "left.bracket"),
+            Map.entry("rbracket", "right.bracket"));
 
-    private static int getGlfwKeyFromName(String name) {
+    private static int keyFromName(String name) {
         if (name == null || name.isEmpty()) return -1;
-        if (name.length() == 1) {
-            char c = name.charAt(0);
-            if (c == ' ') return GLFW.GLFW_KEY_SPACE;
-            if (c >= 'a' && c <= 'z') return GLFW.GLFW_KEY_A + (c - 'a');
-            if (c >= '0' && c <= '9') return GLFW.GLFW_KEY_0 + (c - '0');
-        }
         // Numeric keysym ("key.keyboard.341"): the name vanilla fabricates for
         // a key absent from its name table. Storing it keeps exotic/layout keys
         // round-trippable without inventing names.
         if (name.length() > 1 && name.chars().allMatch(ch -> ch >= '0' && ch <= '9')) {
             try {
                 int code = Integer.parseInt(name);
-                return code >= 0 && code <= GLFW.GLFW_KEY_LAST ? code : -1;
+                return code >= 0 && code <= Keys.maxCode() ? code : -1;
             } catch (NumberFormatException e) {
                 return -1;
             }
         }
-        // Numpad digits accept the common spellings ("numpad.0", "keypad.0",
+        String normalized = ALIASES.getOrDefault(name, name.replace(' ', '.').replace('_', '.'));
+        // Numpad keys accept the common spellings ("numpad.0", "keypad.0",
         // "kp.0", "numpad 0") since configs vary.
-        String normalized = name.replace(' ', '.');
-        if (normalized.startsWith("numpad.") || normalized.startsWith("keypad.") || normalized.startsWith("kp.")) {
-            String tail = normalized.substring(normalized.indexOf('.') + 1);
-            if (tail.length() == 1 && tail.charAt(0) >= '0' && tail.charAt(0) <= '9') {
-                return GLFW.GLFW_KEY_KP_0 + (tail.charAt(0) - '0');
-            }
-            return switch (tail) {
-                case "add" -> GLFW.GLFW_KEY_KP_ADD;
-                case "subtract" -> GLFW.GLFW_KEY_KP_SUBTRACT;
-                case "multiply" -> GLFW.GLFW_KEY_KP_MULTIPLY;
-                case "divide" -> GLFW.GLFW_KEY_KP_DIVIDE;
-                case "enter" -> GLFW.GLFW_KEY_KP_ENTER;
-                case "decimal" -> GLFW.GLFW_KEY_KP_DECIMAL;
-                default -> -1;
-            };
+        if (normalized.startsWith("numpad.") || normalized.startsWith("kp.")) {
+            normalized = "keypad." + normalized.substring(normalized.indexOf('.') + 1);
         }
-        return switch (normalized) {
-            case "space" -> GLFW.GLFW_KEY_SPACE;
-            case "enter" -> GLFW.GLFW_KEY_ENTER;
-            case "tab" -> GLFW.GLFW_KEY_TAB;
-            case "backspace" -> GLFW.GLFW_KEY_BACKSPACE;
-            case "escape", "esc" -> GLFW.GLFW_KEY_ESCAPE;
-            case "f1" -> GLFW.GLFW_KEY_F1;
-            case "f2" -> GLFW.GLFW_KEY_F2;
-            case "f3" -> GLFW.GLFW_KEY_F3;
-            case "f4" -> GLFW.GLFW_KEY_F4;
-            case "f5" -> GLFW.GLFW_KEY_F5;
-            case "f6" -> GLFW.GLFW_KEY_F6;
-            case "f7" -> GLFW.GLFW_KEY_F7;
-            case "f8" -> GLFW.GLFW_KEY_F8;
-            case "f9" -> GLFW.GLFW_KEY_F9;
-            case "f10" -> GLFW.GLFW_KEY_F10;
-            case "f11" -> GLFW.GLFW_KEY_F11;
-            case "f12" -> GLFW.GLFW_KEY_F12;
-            case "f13" -> GLFW.GLFW_KEY_F13;
-            case "f14" -> GLFW.GLFW_KEY_F14;
-            case "f15" -> GLFW.GLFW_KEY_F15;
-            case "shift" -> GLFW.GLFW_KEY_LEFT_SHIFT;
-            case "right.shift", "right_shift" -> GLFW.GLFW_KEY_RIGHT_SHIFT;
-            case "left.shift", "left_shift" -> GLFW.GLFW_KEY_LEFT_SHIFT;
-            case "control", "ctrl" -> GLFW.GLFW_KEY_LEFT_CONTROL;
-            case "right.control", "right_control" -> GLFW.GLFW_KEY_RIGHT_CONTROL;
-            case "left.control", "left_control" -> GLFW.GLFW_KEY_LEFT_CONTROL;
-            case "alt" -> GLFW.GLFW_KEY_LEFT_ALT;
-            case "right.alt", "right_alt" -> GLFW.GLFW_KEY_RIGHT_ALT;
-            case "left.alt", "left_alt" -> GLFW.GLFW_KEY_LEFT_ALT;
-            case "grave", "grave.accent" -> GLFW.GLFW_KEY_GRAVE_ACCENT;
-            case "minus" -> GLFW.GLFW_KEY_MINUS;
-            case "equals", "equal" -> GLFW.GLFW_KEY_EQUAL;
-            case "lbracket" -> GLFW.GLFW_KEY_LEFT_BRACKET;
-            case "rbracket" -> GLFW.GLFW_KEY_RIGHT_BRACKET;
-            case "semicolon" -> GLFW.GLFW_KEY_SEMICOLON;
-            case "apostrophe" -> GLFW.GLFW_KEY_APOSTROPHE;
-            case "comma" -> GLFW.GLFW_KEY_COMMA;
-            case "period" -> GLFW.GLFW_KEY_PERIOD;
-            case "slash" -> GLFW.GLFW_KEY_SLASH;
-            case "backslash" -> GLFW.GLFW_KEY_BACKSLASH;
-            case "up" -> GLFW.GLFW_KEY_UP;
-            case "down" -> GLFW.GLFW_KEY_DOWN;
-            case "left" -> GLFW.GLFW_KEY_LEFT;
-            case "right" -> GLFW.GLFW_KEY_RIGHT;
-            case "insert" -> GLFW.GLFW_KEY_INSERT;
-            case "delete" -> GLFW.GLFW_KEY_DELETE;
-            case "home" -> GLFW.GLFW_KEY_HOME;
-            case "end" -> GLFW.GLFW_KEY_END;
-            case "page.up", "page_up" -> GLFW.GLFW_KEY_PAGE_UP;
-            case "page.down", "page_down" -> GLFW.GLFW_KEY_PAGE_DOWN;
-            case "caps.lock", "caps_lock" -> GLFW.GLFW_KEY_CAPS_LOCK;
-            case "print.screen", "print_screen" -> GLFW.GLFW_KEY_PRINT_SCREEN;
-            case "scroll.lock", "scroll_lock" -> GLFW.GLFW_KEY_SCROLL_LOCK;
-            case "pause" -> GLFW.GLFW_KEY_PAUSE;
-            default -> -1;
-        };
+        InputConstants.Key key;
+        try {
+            key = InputConstants.getKey("key.keyboard." + normalized);
+        } catch (RuntimeException e) {
+            return -1;
+        }
+        // getKey fabricates entries only for numeric names (handled above);
+        // anything else must be a real vanilla keyboard key.
+        return key.getType() == Keys.keyboard() && key.getValue() > 0 ? key.getValue() : -1;
     }
 
     /**
@@ -241,17 +177,17 @@ public final class MacroEngine {
     public static final int MAX_KEYBIND_LENGTH = 32;
 
     /**
-     * Canonical keybind string for a GLFW key code, in the same
+     * Canonical keybind string for a key value, in the same
      * {@code key.keyboard.<name>} form the launcher and {@code options.txt}
      * write: {@link InputConstants} resolves the name from its own table and,
-     * for keys it has no entry for (e.g. {@code Ç} on a Spanish layout,
-     * keysym 231), fabricates {@code key.keyboard.<keysym>} — which vanilla's
-     * {@link InputConstants#getKey(String)} and {@link #getGlfwKeyCode(String)}
+     * for keys it has no entry for (e.g. {@code Ç} on a Spanish layout),
+     * fabricates {@code key.keyboard.<value>} — which vanilla's
+     * {@link InputConstants#getKey(String)} and {@link #keyCode(String)}
      * both parse back to the same code. Empty string for an unknown code.
      */
-    public static String keybindFor(int glfwKey) {
-        if (glfwKey <= 0) return "";
-        return InputConstants.Type.KEYSYM.getOrCreate(glfwKey).getName();
+    public static String keybindFor(int key) {
+        if (key <= 0) return "";
+        return Keys.keyboard().getOrCreate(key).getName();
     }
 
     /**
@@ -261,18 +197,17 @@ public final class MacroEngine {
      * Falls back to the raw keybind when it cannot be parsed.
      */
     public static net.minecraft.network.chat.Component keyDisplayName(String keybind) {
-        int code = getGlfwKeyCode(keybind);
+        int code = keyCode(keybind);
         if (code <= 0) {
             return net.minecraft.network.chat.Component.literal(
                     keybind == null ? "" : keybind);
         }
-        return InputConstants.Type.KEYSYM.getOrCreate(code).getDisplayName();
+        return Keys.keyboard().getOrCreate(code).getDisplayName();
     }
 
-    /** Reserved key: Esc always closes screens, so it can never be a macro. */
-    public static boolean isReserved(int glfwKey) {
-        return glfwKey == GLFW.GLFW_KEY_ESCAPE
-                || glfwKey == GLFW.GLFW_KEY_RIGHT_SHIFT;
+    /** Reserved keys: Esc always closes screens and Right Shift opens the Suite. */
+    public static boolean isReserved(int key) {
+        return key == InputConstants.KEY_ESCAPE || key == InputConstants.KEY_RSHIFT;
     }
 
     /**
@@ -292,14 +227,14 @@ public final class MacroEngine {
      * Suite registry's own {@code keybind} values.
      */
     public static Conflict findConflict(String keybind, String ignoreMacroId) {
-        int code = getGlfwKeyCode(keybind);
+        int code = keyCode(keybind);
         if (code <= 0) return null;
         String canonical = keybindFor(code);
 
         ClientConfig config = ClientConfig.getInstance();
         for (ClientConfig.MacroConfig other : config.getMacros()) {
             if (other.id.equals(ignoreMacroId)) continue;
-            if (getGlfwKeyCode(other.keybind) != code) continue;
+            if (keyCode(other.keybind) != code) continue;
             String name = other.name == null || other.name.isBlank() ? other.id : other.name;
             return new Conflict(true, net.minecraft.network.chat.Component.literal(name));
         }
@@ -320,7 +255,7 @@ public final class MacroEngine {
         for (FeatureRegistry.Feature feature : FeatureRegistry.all()) {
             String suiteKey = feature.keybind();
             if (suiteKey == null || suiteKey.isEmpty()) continue;
-            if (getGlfwKeyCode(suiteKey) != code) continue;
+            if (keyCode(suiteKey) != code) continue;
             return new Conflict(false,
                     net.minecraft.network.chat.Component.translatable(
                             FeatureRegistry.nameKey(feature.id())));

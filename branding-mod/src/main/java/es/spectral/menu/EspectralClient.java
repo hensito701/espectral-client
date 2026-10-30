@@ -32,9 +32,9 @@ public final class EspectralClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        CLIENT_KEY = new net.minecraft.client.KeyMapping("key.espectral.client", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
-        ZOOM_KEY = new net.minecraft.client.KeyMapping("key.espectral.zoom", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_Z, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
-        EMOTE_KEY = new net.minecraft.client.KeyMapping("key.espectral.emotes", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_B, ESPECTRAL_CATEGORY);
+        CLIENT_KEY = new net.minecraft.client.KeyMapping("key.espectral.client", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_RSHIFT, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
+        ZOOM_KEY = new net.minecraft.client.KeyMapping("key.espectral.zoom", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_Z, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
+        EMOTE_KEY = new net.minecraft.client.KeyMapping("key.espectral.emotes", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_B, ESPECTRAL_CATEGORY);
         String version = EspectralBrand.modVersion();
         if (version == null) version = "dev";
         LOGGER.info("Initializing Espectral Client mod (v{})", version);

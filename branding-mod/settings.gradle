@@ -14,3 +14,4 @@ rootProject.name = 'espectral-menu'
 
 include 'mc12111'
 include 'mc262'
+include 'mc263'

@@ -4,6 +4,16 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [Unreleased]
 
+### Added
+- **Minecraft 26.3 support, and 26.3 is now the default.** The Espectral menu
+  mod has a 26.3 build (Espectral servers moved to 26.3), so 26.3 Fabric
+  instances get the Espectral title screen, Suite, HUD, cosmetics and macros
+  instead of the vanilla menu. 26.3 replaced GLFW with SDL3 (different key
+  codes): keys now go through Minecraft's own key names, so saved macros and
+  keybinds mean the same key on 1.21.11, 26.2 and 26.3. New first-run
+  instances are 26.3, and the performance set has researched 26.3 pins
+  (Sodium 0.9.2, Iris 1.11.7, Lithium 0.26.3, Fabric API 0.165.0, …).
+
 ### Changed
 - **Lighter on low-RAM PCs: memory now works like Modrinth's.** The game
   starts with a 512 MB heap and grows only when it needs to (`-Xms512M`)

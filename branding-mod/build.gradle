@@ -46,4 +46,4 @@ subprojects {
     }
 }
 
-ext.releaseOf = { Project p -> p.name == 'mc262' ? 25 : 21 }
+ext.releaseOf = { Project p -> p.name in ['mc262', 'mc263'] ? 25 : 21 }
