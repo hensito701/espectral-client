@@ -405,4 +405,16 @@ public final class Compat {
                     .warn("Could not open support URL", e);
         }
     }
+
+    /** Opens a folder in the OS file browser. */
+    public static void openPath(java.nio.file.Path path) {
+        net.minecraft.util.Util.getPlatform().openPath(path);
+    }
+
+    /** submitModel without a crumbling overlay (the overload set differs per version). */
+    public static <S> void submitModel(net.minecraft.client.renderer.SubmitNodeCollector collector,
+            net.minecraft.client.model.Model<? super S> model, S state, com.mojang.blaze3d.vertex.PoseStack pose,
+            net.minecraft.client.renderer.rendertype.RenderType renderType, int light, int overlay, int outline) {
+        collector.submitModel(model, state, pose, renderType, light, overlay, outline, null);
+    }
 }

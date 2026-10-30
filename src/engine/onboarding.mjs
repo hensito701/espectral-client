@@ -15,7 +15,7 @@ import { createInstance, listInstances } from './instances.mjs';
 
 const DEFAULT_INSTANCE = Object.freeze({
   name: 'Espectral default',
-  version: '26.2',
+  version: '26.3',
   loader: 'fabric',
   memory_mb: null, // automatic (system-RAM based)
 });

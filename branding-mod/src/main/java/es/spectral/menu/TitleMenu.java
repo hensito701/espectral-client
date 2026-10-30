@@ -12,7 +12,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import es.spectral.menu.ui.MenuSkin;
 import es.spectral.menu.ui.SuiteTheme;
@@ -180,7 +180,7 @@ public final class TitleMenu {
         Path dir = minecraft.gameDirectory.toPath().resolve("screenshots");
         try {
             Files.createDirectories(dir);
-            Util.getPlatform().openPath(dir);
+            Compat.openPath(dir);
         } catch (Exception e) {
             org.slf4j.LoggerFactory.getLogger("espectral-menu")
                     .warn("Could not open screenshots folder {}", dir, e);
@@ -447,19 +447,19 @@ public final class TitleMenu {
         int n = buttons.size();
         if (n == 0) return false;
         switch (key) {
-            case GLFW.GLFW_KEY_DOWN:
+            case InputConstants.KEY_DOWN:
                 focused = focused < 0 ? 0 : (focused + 1) % n;
                 return true;
-            case GLFW.GLFW_KEY_UP:
+            case InputConstants.KEY_UP:
                 focused = focused < 0 ? n - 1 : (focused + n - 1) % n;
                 return true;
-            case GLFW.GLFW_KEY_TAB:
-                boolean back = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+            case InputConstants.KEY_TAB:
+                boolean back = (modifiers & InputConstants.MOD_SHIFT) != 0;
                 focused = focused < 0 ? (back ? n - 1 : 0) : (focused + (back ? n - 1 : 1)) % n;
                 return true;
-            case GLFW.GLFW_KEY_ENTER:
-            case GLFW.GLFW_KEY_KP_ENTER:
-            case GLFW.GLFW_KEY_SPACE:
+            case InputConstants.KEY_RETURN:
+            case InputConstants.KEY_NUMPADENTER:
+            case InputConstants.KEY_SPACE:
                 if (focused >= 0 && focused < n) {
                     buttons.get(focused).action.run();
                     return true;

@@ -356,7 +356,7 @@ public class SuiteMacrosScreen extends Screen implements SuiteSheet {
             this.setStatus(Component.translatable("espectral.macros.needkey"), true);
             return;
         }
-        if (MacroEngine.isReserved(MacroEngine.getGlfwKeyCode(this.draftKey))) {
+        if (MacroEngine.isReserved(MacroEngine.keyCode(this.draftKey))) {
             this.setStatus(Component.translatable("espectral.macros.reserved"), true);
             return;
         }
@@ -468,7 +468,7 @@ public class SuiteMacrosScreen extends Screen implements SuiteSheet {
     public boolean keyPressed(KeyEvent event) {
         if (this.captureActive) {
             int code = event.key();
-            if (code == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+            if (code == com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE) {
                 // Esc aborts the capture, never the screen.
                 this.captureActive = false;
                 this.refresh();
@@ -480,7 +480,7 @@ public class SuiteMacrosScreen extends Screen implements SuiteSheet {
             }
             String stored = MacroEngine.keybindFor(code);
             if (stored.isEmpty()) {
-                // GLFW_KEY_UNKNOWN: no keysym to poll, so it cannot be bound.
+                // Unknown key: nothing to poll, so it cannot be bound.
                 this.setStatus(Component.translatable("espectral.macros.needkey"), true);
                 return true;
             }

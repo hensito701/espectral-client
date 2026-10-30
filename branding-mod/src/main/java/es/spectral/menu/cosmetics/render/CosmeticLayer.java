@@ -213,9 +213,9 @@ public final class CosmeticLayer extends RenderLayer<AvatarRenderState, PlayerMo
             PlayerModel model, AvatarRenderState state, WearerSims.Entry e) {
         pose.pushPose();
         partFrame(pose, model.body);
-        collector.submitModel(CosmeticModels.WINGS, state, pose,
+        es.spectral.menu.Compat.submitModel(collector, CosmeticModels.WINGS, state, pose,
                 CosmeticTextures.cloth(CosmeticTextures.WINGS),
-                light, OverlayTexture.NO_OVERLAY, state.outlineColor, null);
+                light, OverlayTexture.NO_OVERLAY, state.outlineColor);
         pose.popPose();
     }
 
@@ -264,9 +264,9 @@ public final class CosmeticLayer extends RenderLayer<AvatarRenderState, PlayerMo
             CosmeticModels.EarModel kind, net.minecraft.resources.Identifier texture) {
         pose.pushPose();
         partFrame(pose, model.head);
-        collector.submitModel(kind, state, pose,
+        es.spectral.menu.Compat.submitModel(collector, kind, state, pose,
                 CosmeticTextures.cutout(texture),
-                light, OverlayTexture.NO_OVERLAY, state.outlineColor, null);
+                light, OverlayTexture.NO_OVERLAY, state.outlineColor);
         pose.popPose();
     }
 }

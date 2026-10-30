@@ -1,0 +1,38 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.19'
+}
+
+base { archivesName = 'espectral-menu-26.3' }
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+
+dependencies {
+    minecraft 'com.mojang:minecraft:26.3'
+    implementation 'net.fabricmc:fabric-loader:0.19.3'
+    // Dev-runtime-only parity with production installs (src/engine/mods.mjs
+    // pins the same release). Non-remap Loom has no modImplementation;
+    // runtimeOnly keeps it off the compile classpath and the jar.
+    runtimeOnly 'net.fabricmc.fabric-api:fabric-api:0.165.0+26.3'
+}
+
+// 26.3 reuses the 26.2 variant sources: most mixin targets are unchanged.
+// A class 26.3 needs differently (SDL3 input, moved RenderPipeline, Blaze3D
+// helpers) gets its own copy under mc263/src, and that copy replaces the 26.2
+// one — the sync below drops every 26.2 file mc263 also defines, so there is
+// never a duplicate class and never a hand-maintained exclude list.
+def shared262 = layout.buildDirectory.dir('shared-mc262/java')
+def syncShared262 = tasks.register('syncShared262', Sync) {
+    def own = file('src/main/java')
+    from(rootProject.file('mc262/src/main/java')) {
+        exclude { el -> !el.directory && new File(own, el.relativePath.pathString).exists() }
+    }
+    into shared262
+}
+
+afterEvaluate {
+    sourceSets {
+        main {
+            java.srcDirs = [rootProject.file('src/main/java'), shared262, 'src/main/java']
+        }
+    }
+    tasks.named('compileJava') { dependsOn syncShared262 }
+}

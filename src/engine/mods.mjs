@@ -1,5 +1,5 @@
 /**
- * Modrinth v2 performance mod set (1.21–26.2) + local branding preset.
+ * Modrinth v2 performance mod set (1.21–26.x) + local branding preset.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -26,7 +26,7 @@ export const BRANDING_PRESET = 'branding';
 /** QoL preset: in-client zoom / fullbright / nofog (the "lunar-like" bundle). */
 export const QOL_PRESET = 'qol';
 
-export const PINNED_VERSIONS = Object.freeze(['1.21.11', '26.2']);
+export const PINNED_VERSIONS = Object.freeze(['1.21.11', '26.2', '26.3']);
 export const PINNED_VERSION = '1.21.11';
 
 export const PINS_BY_VERSION = Object.freeze({
@@ -47,6 +47,17 @@ export const PINS_BY_VERSION = Object.freeze({
     { slug: 'krypton', project_id: 'fQEb0iXm', version_id: '5WeL0Nkz', version_number: '0.3.1' },
     { slug: 'modmenu', project_id: 'mOgUt4GM', version_id: 'njXb639R', version_number: '20.0.1' },
     { slug: 'fabric-api', project_id: 'P7dR8mSH', version_id: '3gT0I5vt', version_number: '0.156.0+26.2' },
+  ]),
+  // Iris 1.11.7 requires exactly Sodium 0.9.2 (bAZQdGpg); the newer Sodium
+  // 0.9.3 is still beta.
+  '26.3': Object.freeze([
+    { slug: 'sodium', project_id: 'AANobbMI', version_id: 'bAZQdGpg', version_number: 'mc26.3-0.9.2-fabric' },
+    { slug: 'iris', project_id: 'YL57xq9U', version_id: 'vTN4NRGW', version_number: '1.11.7+26.3-fabric' },
+    { slug: 'lithium', project_id: 'gvQqBUqZ', version_id: 'fWv5bnZk', version_number: 'mc26.3-0.26.3-fabric' },
+    { slug: 'ferrite-core', project_id: 'uXXizFIs', version_id: 'd5ddUdiB', version_number: '9.0.0-fabric' },
+    { slug: 'krypton', project_id: 'fQEb0iXm', version_id: 'UugdIYJw', version_number: '0.3.2' },
+    { slug: 'modmenu', project_id: 'mOgUt4GM', version_id: 'kyy7dbrZ', version_number: '21.0.0' },
+    { slug: 'fabric-api', project_id: 'P7dR8mSH', version_id: 'EQKgpeKu', version_number: '0.165.0+26.3' },
   ]),
 });
 
@@ -71,6 +82,10 @@ export const PINS_QOL_BY_VERSION = Object.freeze({
   '26.2': Object.freeze([
     { slug: 'gamma-utils', project_id: 'wdLuzzEP', version_id: 'bR4tEPFq', version_number: '3.1.1+Fabric' },
     { slug: 'clear-fog', project_id: '46n24c6r', version_id: 'GZ2Uiwgv', version_number: '26.2_Fabric' },
+  ]),
+  '26.3': Object.freeze([
+    { slug: 'gamma-utils', project_id: 'wdLuzzEP', version_id: 'k6ywOirE', version_number: '3.2.2+Fabric' },
+    { slug: 'clear-fog', project_id: '46n24c6r', version_id: 'C8eOUsdr', version_number: '26.3_Fabric' },
   ]),
 });
 
@@ -165,9 +180,9 @@ function sha1Buffer(data) {
 
 /**
  * True for release-style Minecraft version ids inside the supported range
- * [1.21, 26.2]: classic naming `1.2X[.patch]` with minor >= 21 (1.21, 1.21.11,
+ * [1.21, 26.x]: classic naming `1.2X[.patch]` with minor >= 21 (1.21, 1.21.11,
  * 1.22.4) and modern naming `NN[.minor]` with 21 <= NN <= 26 (21.0, 25.1,
- * 26.2). Snapshots (`25w11a`), 1.20.x and below, and 27+ are not supported.
+ * 26.3). Snapshots (`25w11a`), 1.20.x and below, and 27+ are not supported.
  * Pure — no network.
  */
 export function supportsPerformanceBundle(version) {
@@ -187,7 +202,7 @@ export function supportsPerformanceBundle(version) {
 }
 
 /**
- * Pin set for a version: exact researched pins for 1.21.11/26.2, otherwise
+ * Pin set for a version: exact researched pins for 1.21.11/26.2/26.3, otherwise
  * dynamically resolved per project for any supported release. Returns null
  * when the version is unsupported or any of the seven projects has no fabric
  * build for it (never throws; fetch failures count as unresolved).
@@ -201,7 +216,7 @@ export async function pinsForVersion(version) {
 
 export function pinNoteForVersion(version) {
   if (supportsPerformanceBundle(version)) return null;
-  return `no performance mod bundle for ${version}; the bundle covers release versions 1.21 through 26.2`;
+  return `no performance mod bundle for ${version}; the bundle covers release versions 1.21 through 26.x`;
 }
 
 // In-memory Modrinth version metadata cache (refreshed per process).
