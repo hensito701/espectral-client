@@ -8,6 +8,7 @@ import * as instances from '../instances.mjs';
 import { httpError } from '../error.mjs';
 import { ensureBrandingSeeded } from '../mods.mjs';
 import { activeInstances } from './launch.mjs';
+import { applyVersionChange, planVersionChange } from '../version-change.mjs';
 
 export async function register(app) {
   app.get('/api/instances', async () => {
@@ -47,6 +48,28 @@ export async function register(app) {
       throw httpError(409, 'ALREADY_RUNNING', `instance '${params.name}' is running; stop it before renaming`);
     }
     return instances.patchInstance(params.name, patch);
+  });
+
+  // Version / platform change: preview, then apply. Never while the game runs
+  // (it holds the mod jars), and the instance is marked busy while applying
+  // so a launch cannot start against half-swapped mods.
+  const versionRequest = (body) => ({
+    version: body && typeof body.version === 'string' ? body.version : undefined,
+    loader: body && typeof body.loader === 'string' ? body.loader : undefined,
+  });
+  app.post('/api/instances/:name/version-change/plan', async (req, res, params, body) => {
+    return planVersionChange(params.name, versionRequest(body));
+  });
+  app.post('/api/instances/:name/version-change', async (req, res, params, body) => {
+    if (activeInstances.has(params.name)) {
+      throw httpError(409, 'ALREADY_RUNNING', `instance '${params.name}' is running; close the game first`);
+    }
+    activeInstances.add(params.name);
+    try {
+      return await applyVersionChange(params.name, versionRequest(body));
+    } finally {
+      activeInstances.delete(params.name);
+    }
   });
 
   app.get('/api/instances/:name/servers', async (req, res, params) => {

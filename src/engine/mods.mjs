@@ -1068,3 +1068,193 @@ export async function installModrinthMod(instanceName, projectId, loader = null,
     ...summarizePlan(plan),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Version / platform change: re-resolve every jar for a new game version or
+// loader. Planning is read-only; applying downloads replacements before it
+// removes anything, and never deletes a mod it could not replace — those are
+// disabled (renamed .jar.disabled) so switching back restores them.
+// ---------------------------------------------------------------------------
+
+/** Bundled Espectral jars: owned by ensureBrandingSeeded, not by this planner. */
+const BRAND_JAR_RE = /^espectral-(menu|brand)-.*\.jar(\.disabled)?$/i;
+
+/** sha1 -> Modrinth version meta for the given hashes (POST /version_files). Throws when Modrinth is unreachable. */
+async function versionsByHash(hashes) {
+  if (hashes.length === 0) return new Map();
+  let res;
+  try {
+    res = await fetch(`${MODRINTH_API}/version_files`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': USER_AGENT },
+      body: JSON.stringify({ hashes, algorithm: 'sha1' }),
+    });
+  } catch (cause) {
+    throw Object.assign(new Error('Modrinth is unreachable; cannot check mods for the new version'), {
+      status: 502, code: 'MODRINTH_UNREACHABLE', cause,
+    });
+  }
+  if (!res.ok) {
+    throw Object.assign(new Error(`Modrinth version lookup failed (HTTP ${res.status})`), {
+      status: 502, code: 'MODRINTH_UNREACHABLE',
+    });
+  }
+  return new Map(Object.entries((await res.json()) ?? {}));
+}
+
+/**
+ * What happens to each jar in the instance's mods dir when it moves to
+ * `target` ({ version, loader }). Entries:
+ *   keep    — the installed file already fits the target
+ *   update  — replaced by `to` (the target's researched pin for performance-set
+ *             mods, otherwise Modrinth's newest build for version + loader)
+ *   disable — no build for the target, or not a Modrinth file (cannot verify)
+ *   idle    — target is Vanilla: mods/ is not loaded, files are left alone
+ *   add     — performance-set mods a non-Fabric instance gains on becoming Fabric
+ * Bundled Espectral jars are excluded (re-seeded for the target at apply).
+ */
+export async function planModsForTarget(instance, target, fromLoader = instance.loader) {
+  const modsDir = modsDirOf(instance);
+  let files = [];
+  try {
+    files = (await readdir(modsDir))
+      .filter((f) => (f.endsWith('.jar') || f.endsWith('.jar.disabled')) && !BRAND_JAR_RE.test(f))
+      .sort();
+  } catch {
+    /* no mods dir yet */
+  }
+  const rows = [];
+  for (const file of files) {
+    const enabled = file.endsWith('.jar');
+    const filename = enabled ? file : file.slice(0, -'.disabled'.length);
+    let sha1 = null;
+    try {
+      sha1 = await sha1File(path.join(modsDir, file));
+    } catch {
+      continue; // raced away
+    }
+    rows.push({ file, filename, enabled, sha1 });
+  }
+
+  if (target.loader === 'vanilla') {
+    return rows.map(({ filename, enabled }) => ({ filename, enabled, title: filename, action: 'idle' }));
+  }
+
+  const byHash = await versionsByHash(rows.map((r) => r.sha1));
+  const pins = target.loader === 'fabric' ? ((await pinsForVersion(target.version)) ?? []) : [];
+  const pinByProject = new Map(pins.map((p) => [p.project_id, p]));
+  const present = new Set();
+  const out = [];
+  for (const row of rows) {
+    const current = byHash.get(row.sha1);
+    const base = { filename: row.filename, enabled: row.enabled, title: row.filename };
+    if (!current?.project_id) {
+      out.push({ ...base, action: 'disable', reason: 'unknown' });
+      continue;
+    }
+    const pid = current.project_id;
+    present.add(pid);
+    const pin = pinByProject.get(pid);
+    let next = null;
+    if (pin) next = await versionMeta(pin.version_id).catch(() => null);
+    if (!next) next = await bestVersionForCached(pid, target.version, target.loader);
+    const file = next ? primaryFile(next) : null;
+    if (!file) {
+      out.push({ ...base, project_id: pid, action: 'disable', reason: 'no_build' });
+    } else if (file.hashes?.sha1 === row.sha1) {
+      out.push({ ...base, project_id: pid, action: 'keep' });
+    } else {
+      out.push({
+        ...base,
+        project_id: pid,
+        action: 'update',
+        bundle: Boolean(pin),
+        version_id: next.id,
+        to: { filename: file.filename, version_number: next.version_number },
+      });
+    }
+  }
+  // A Vanilla/NeoForge instance turning Fabric gets the performance set, the
+  // same as a freshly created Fabric instance.
+  if (target.loader === 'fabric' && fromLoader !== 'fabric') {
+    for (const pin of pins) {
+      if (present.has(pin.project_id)) continue;
+      const meta = await versionMeta(pin.version_id).catch(() => null);
+      const file = meta ? primaryFile(meta) : null;
+      if (!file) continue;
+      out.push({
+        filename: file.filename,
+        enabled: true,
+        title: pin.slug,
+        project_id: pin.project_id,
+        action: 'add',
+        bundle: true,
+        version_id: pin.version_id,
+        to: { filename: file.filename, version_number: meta.version_number },
+      });
+    }
+  }
+  const info = await projectInfo(out.map((e) => e.project_id));
+  for (const e of out) {
+    if (e.project_id && info.get(e.project_id)?.title) e.title = info.get(e.project_id).title;
+  }
+  return out;
+}
+
+/**
+ * Apply a planModsForTarget() result to an instance whose instance.json
+ * already names the new version/loader. Replacements are downloaded first;
+ * the old jar is removed only once its replacement is on disk, and a failed
+ * replacement disables the old jar instead. Returns per-file outcomes.
+ */
+export async function applyModsPlan(instanceName, plan) {
+  assertValidInstanceName(instanceName);
+  const instance = await loadInstanceMeta(instanceName);
+  const modsDir = modsDirOf(instance);
+  await mkdir(modsDir, { recursive: true });
+  const result = { updated: [], added: [], disabled: [], errors: [] };
+  const removeOld = async (filename, keep) => {
+    if (filename === keep) return;
+    await unlink(path.join(modsDir, filename)).catch(() => {});
+    await unlink(path.join(modsDir, `${filename}.disabled`)).catch(() => {});
+  };
+  const disable = async (filename) => {
+    if (existsSync(path.join(modsDir, filename))) await setModEnabled(instanceName, filename, false);
+    result.disabled.push(filename);
+  };
+
+  for (const entry of plan) {
+    try {
+      if (entry.action === 'disable') {
+        await disable(entry.filename);
+      } else if (entry.action === 'update' || entry.action === 'add') {
+        let newFile;
+        if (entry.bundle) {
+          // Researched pin: exactly that build, never "newest" (Iris pins a
+          // specific Sodium; the newest Sodium can be a beta).
+          const meta = await versionMeta(entry.version_id);
+          const file = primaryFile(meta);
+          await downloadAll(
+            [{ url: file.url, dest: path.join(modsDir, file.filename), sha1: file.hashes?.sha1 ?? null, size: file.size ?? null }],
+            { concurrency: 1 }
+          );
+          newFile = file.filename;
+        } else {
+          const res = await installModrinthMod(instanceName, entry.project_id, instance.loader);
+          newFile = res.installed[0];
+        }
+        if (entry.action === 'update') {
+          await removeOld(entry.filename, newFile);
+          if (!entry.enabled) await setModEnabled(instanceName, newFile, false);
+          result.updated.push({ from: entry.filename, to: newFile });
+        } else {
+          result.added.push(newFile);
+        }
+      }
+    } catch (err) {
+      result.errors.push({ filename: entry.filename, error: err?.message ?? String(err) });
+      if (entry.action === 'update') await disable(entry.filename).catch(() => {});
+    }
+  }
+  return result;
+}

@@ -44,8 +44,10 @@
     patchPersonalization,
     pickPngFile,
     pickPngFiles,
+    planVersionChange,
+    applyVersionChange,
   } from '../lib/api';
-  import { instances, liveLaunches, launchLog, servers as networkServers } from '../lib/stores';
+  import { instances, liveLaunches, launchLog, servers as networkServers, versions as versionsStore } from '../lib/stores';
   import type {
     InstanceSummary,
     ServerEntry,
@@ -55,6 +57,8 @@
     ClientInfo,
     JvmInfo,
     ModPresetInfo,
+    Loader,
+    VersionChangePlan,
   } from '../lib/types';
   import TelemetryCapsule from '../components/TelemetryCapsule.svelte';
   import LoaderBadge from '../components/LoaderBadge.svelte';
@@ -129,6 +133,28 @@
   let importOptionsFrom = $state('');
   let importingOptions = $state(false);
   let optionsNote = $state('');
+
+  // Version / platform change (preview, then apply)
+  let vcVersion = $state('');
+  let vcLoader = $state<Loader>('fabric');
+  let vcShowAll = $state(false);
+  let vcPlan = $state<VersionChangePlan | null>(null);
+  let vcPlanning = $state(false);
+  let vcApplying = $state(false);
+  let vcError = $state('');
+  const vcVersions = $derived(
+    ($versionsStore.value?.versions ?? [])
+      .filter((v) => vcShowAll || v.type === 'release')
+      .map((v) => v.id),
+  );
+  const vcChanged = $derived(
+    summary !== null && vcVersion !== '' && (vcVersion !== summary.version || vcLoader !== summary.loader),
+  );
+  const vcCounts = $derived.by(() => {
+    const c = { update: 0, keep: 0, disable: 0, add: 0, idle: 0 };
+    for (const m of vcPlan?.mods ?? []) c[m.action] += 1;
+    return c;
+  });
 
   // Client Suite state
   let clientInfo = $state<ClientInfo | null>(null);
@@ -218,6 +244,9 @@
 
       summary = detail.summary;
       memory = detail.summary.memory_mb;
+      vcVersion = detail.summary.version;
+      vcLoader = detail.summary.loader;
+      vcPlan = null;
       servers = detail.servers;
       options = detail.options;
       aotStatus = detail.aot;
@@ -413,6 +442,51 @@
       pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       savingConfig = false;
+    }
+  }
+
+  // The preview belongs to one target; any edit to the selection voids it.
+  function vcSelect(version: string, loader: Loader) {
+    vcVersion = version;
+    vcLoader = loader;
+    vcPlan = null;
+    vcError = '';
+  }
+
+  async function handlePlanVersionChange() {
+    if (!decodedName || !vcChanged || vcPlanning) return;
+    vcPlanning = true;
+    vcError = '';
+    vcPlan = null;
+    try {
+      vcPlan = await planVersionChange(decodedName, { version: vcVersion, loader: vcLoader });
+    } catch (e) {
+      vcError = e instanceof Error ? e.message : String(e);
+    } finally {
+      vcPlanning = false;
+    }
+  }
+
+  async function handleApplyVersionChange() {
+    if (!decodedName || !vcPlan || vcApplying) return;
+    vcApplying = true;
+    vcError = '';
+    try {
+      const res = await applyVersionChange(decodedName, { version: vcPlan.to.version, loader: vcPlan.to.loader });
+      vcPlan = null;
+      await loadData(decodedName);
+      await $instances.refresh();
+      const failed = res.mods.errors.length;
+      pushToast({
+        kind: failed ? 'err' : 'ok',
+        text: t('instance.vcDone', { version: res.summary.version, loader: res.summary.loader })
+          + (res.backup ? ` ${t('instance.vcBackedUp')}` : '')
+          + (failed ? ` ${t('instance.vcFailedMods', { count: failed })}` : ''),
+      });
+    } catch (e) {
+      vcError = e instanceof Error ? e.message : String(e);
+    } finally {
+      vcApplying = false;
     }
   }
 
@@ -1216,6 +1290,116 @@
                next to the short cards. -->
           <div class="panel-columns">
             <div class="panel-col">
+            <!-- Version & platform change: preview, then apply in place -->
+            <GlassCard title={t('instance.vcTitle')} subtitle={t('instance.vcHint')} elevation="md">
+              <div class="vc-settings">
+                <div class="vc-row">
+                  <Field label={t('instance.vcVersion')}>
+                    <select
+                      class="glass-select"
+                      value={vcVersion}
+                      onchange={(e) => vcSelect((e.currentTarget as HTMLSelectElement).value, vcLoader)}
+                      disabled={vcApplying || isInstanceRunning}
+                    >
+                      {#if summary && !vcVersions.includes(summary.version)}
+                        <option value={summary.version}>{summary.version}</option>
+                      {/if}
+                      {#each vcVersions as id (id)}
+                        <option value={id}>{id}{id === summary?.version ? ` · ${t('instance.vcCurrent')}` : ''}</option>
+                      {/each}
+                    </select>
+                  </Field>
+                  <Field label={t('instance.vcLoader')}>
+                    <select
+                      class="glass-select"
+                      value={vcLoader}
+                      onchange={(e) => vcSelect(vcVersion, (e.currentTarget as HTMLSelectElement).value as Loader)}
+                      disabled={vcApplying || isInstanceRunning}
+                    >
+                      <option value="fabric">Fabric</option>
+                      <option value="vanilla">Vanilla</option>
+                      <option value="neoforge">NeoForge</option>
+                    </select>
+                  </Field>
+                </div>
+                <label class="vc-snapshots">
+                  <input type="checkbox" bind:checked={vcShowAll} />
+                  {t('instance.vcShowSnapshots')}
+                </label>
+
+                {#if vcPlan}
+                  <div class="vc-plan" in:fade>
+                    <p class="vc-plan__head">
+                      {vcPlan.from.version} · {vcPlan.from.loader} → <strong>{vcPlan.to.version} · {vcPlan.to.loader}</strong>
+                    </p>
+                    {#if vcPlan.downgrade}
+                      <p class="vc-warn" role="alert">
+                        {vcPlan.backup_worlds ? t('instance.vcDowngradeBackup') : t('instance.vcDowngrade')}
+                      </p>
+                    {/if}
+                    {#if !vcPlan.espectral_menu && vcPlan.to.loader !== 'vanilla'}
+                      <p class="vc-warn">{t('instance.vcNoMenu')}</p>
+                    {/if}
+                    {#if vcPlan.to.loader === 'vanilla' && vcPlan.mods.length > 0}
+                      <p class="options-hint">{t('instance.vcVanillaMods', { count: vcPlan.mods.length })}</p>
+                    {:else if vcPlan.mods.length > 0}
+                      <p class="options-hint">
+                        {t('instance.vcSummary', {
+                          update: vcCounts.update + vcCounts.add,
+                          keep: vcCounts.keep,
+                          disable: vcCounts.disable,
+                        })}
+                      </p>
+                      <ul class="vc-mods">
+                        {#each vcPlan.mods.filter((m) => m.action !== 'idle') as m (m.filename + m.action)}
+                          <li class="vc-mod vc-mod--{m.action}">
+                            <span class="vc-mod__name">{m.title}</span>
+                            <span class="vc-mod__what">
+                              {#if m.action === 'update' || m.action === 'add'}
+                                {m.action === 'add' ? t('instance.vcAdd') : t('instance.vcUpdate')} {m.to?.version_number}
+                              {:else if m.action === 'keep'}
+                                {t('instance.vcKeep')}
+                              {:else}
+                                {m.reason === 'unknown' ? t('instance.vcDisableUnknown') : t('instance.vcDisableNoBuild')}
+                              {/if}
+                            </span>
+                          </li>
+                        {/each}
+                      </ul>
+                    {/if}
+                  </div>
+                {/if}
+
+                {#if vcError}
+                  <p class="options-feedback" role="alert">{vcError}</p>
+                {/if}
+                {#if isInstanceRunning}
+                  <p class="options-hint">{t('instance.vcRunning')}</p>
+                {/if}
+
+                <div class="card-action-footer">
+                  {#if vcPlan}
+                    <Btn variant="ghost" size="sm" disabled={vcApplying} onclick={() => (vcPlan = null)}>
+                      {t('instance.vcCancel')}
+                    </Btn>
+                    <Btn variant="primary" size="sm" loading={vcApplying} disabled={vcApplying || isInstanceRunning} onclick={handleApplyVersionChange}>
+                      {t('instance.vcApply')}
+                    </Btn>
+                  {:else}
+                    <Btn
+                      variant="secondary"
+                      size="sm"
+                      loading={vcPlanning}
+                      disabled={!vcChanged || vcPlanning || isInstanceRunning}
+                      onclick={handlePlanVersionChange}
+                    >
+                      {t('instance.vcReview')}
+                    </Btn>
+                  {/if}
+                </div>
+              </div>
+            </GlassCard>
+
             <!-- Memory Allocation Card -->
             <GlassCard title={t('instance.memoryTitle')} subtitle={t('instance.memoryHint')} elevation="md">
               <div class="memory-setting">
@@ -2316,6 +2500,81 @@
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
+  }
+
+  /* Version & platform change */
+  .vc-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .vc-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .vc-snapshots {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.75rem;
+    color: var(--muted, #8b93a3);
+    cursor: pointer;
+  }
+
+  .vc-plan {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 0.6rem;
+    background: rgba(8, 12, 24, 0.45);
+  }
+
+  .vc-plan__head {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+
+  .vc-warn {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--warning, #f5b14c);
+  }
+
+  .vc-mods {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 14rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .vc-mod {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.78rem;
+  }
+
+  .vc-mod__what {
+    color: var(--muted, #8b93a3);
+    text-align: right;
+  }
+
+  .vc-mod--update .vc-mod__what,
+  .vc-mod--add .vc-mod__what {
+    color: var(--accent);
+  }
+
+  .vc-mod--disable .vc-mod__what {
+    color: var(--warning, #f5b14c);
   }
 
   /* Memory Setting */

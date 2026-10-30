@@ -4,6 +4,18 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [Unreleased]
 
+### Added
+- **Change an instance's version and platform in place.** Configuración now
+  has a "Versión y plataforma" card: pick a Minecraft version and Fabric,
+  Vanilla or NeoForge, review what happens, then apply. Worlds, options,
+  servers and mods stay in the same instance. Each mod is looked up on
+  Modrinth and switched to its build for the new version (the performance set
+  uses its researched pins); mods with no build, or not on Modrinth, are
+  disabled rather than deleted, so switching back restores them. Moving to an
+  older version warns and first copies `saves/` to the instance's `backups/`
+  folder, because worlds opened in a newer version can be damaged. Not
+  available while the game is running.
+
 ### Fixed
 - **Instance settings no longer leave big blank gaps.** The Configuración tab
   laid its cards out in grid rows, so every short card (game directory,
