@@ -428,7 +428,8 @@ public final class TitleMenu {
 
     /** Returns true when the click landed on a button or icon. */
     public boolean mouseClicked(double mx, double my, int button) {
-        if (button != 0) return false;
+        // InputConstants, not a literal: 26.3 (SDL) numbers the left button 1, GLFW 0.
+        if (button != InputConstants.MOUSE_BUTTON_LEFT) return false;
         for (Btn b : buttons) {
             if (b.hit(mx, my)) { b.action.run(); return true; }
         }

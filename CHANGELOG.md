@@ -17,6 +17,10 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   available while the game is running.
 
 ### Fixed
+- **Espectral menu buttons did nothing on Minecraft 26.3.** 26.3 renumbered
+  the mouse buttons (left click is 1 under SDL, 0 under GLFW), and the menu,
+  emote wheel and HUD editor checked for a literal 0. They now use
+  Minecraft's own button constants, correct on every version.
 - **Instance settings no longer leave big blank gaps.** The Configuración tab
   laid its cards out in grid rows, so every short card (game directory,
   memory) sat next to the tall Appearance card with empty space below it.
