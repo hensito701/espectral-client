@@ -2,6 +2,16 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **Instance settings no longer leave big blank gaps.** The Configuración tab
+  laid its cards out in grid rows, so every short card (game directory,
+  memory) sat next to the tall Appearance card with empty space below it.
+  The cards now form two independent stacks (Memory, Game directory, Java,
+  AOT | Appearance, Game options), and the Espectral Client Suite list runs
+  full-width below them in up to three columns, which halves its height.
+
 ## [1.6.0] - 2026-10-30
 
 ### Added

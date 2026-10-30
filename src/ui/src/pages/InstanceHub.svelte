@@ -1211,7 +1211,11 @@
           class="workbench-panel"
           in:fade={{ duration: 150 }}
         >
-          <div class="panel-grid">
+          <!-- Two independent stacks (not grid rows): a tall card such as
+               Appearance must not stretch its row and strand blank space
+               next to the short cards. -->
+          <div class="panel-columns">
+            <div class="panel-col">
             <!-- Memory Allocation Card -->
             <GlassCard title={t('instance.memoryTitle')} subtitle={t('instance.memoryHint')} elevation="md">
               <div class="memory-setting">
@@ -1267,6 +1271,168 @@
               </div>
             </GlassCard>
 
+            <!-- Game directory override -->
+            <GlassCard title={t('instance.gameDirTitle')} subtitle={t('instance.gameDirHint')} elevation="md">
+              <div class="gamedir-settings">
+                <Field label={t('instance.gameDirLabel')} hint={t('instance.gameDirFieldHint')}>
+                  <div class="import-input-row">
+                    <input
+                      type="text"
+                      bind:value={gameDir}
+                      placeholder={t('instance.gameDirDefault')}
+                      class="glass-input"
+                      readonly
+                    />
+                    <Btn
+                      variant="secondary"
+                      size="sm"
+                      loading={pickingFolder}
+                      disabled={pickingFolder}
+                      onclick={handlePickGameDir}
+                    >
+                      {t('instance.gameDirBrowse')}
+                    </Btn>
+                    {#if !gameDirDefault}
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        disabled={savingGameDir}
+                        onclick={handleClearGameDir}
+                      >
+                        {t('instance.gameDirClear')}
+                      </Btn>
+                    {/if}
+                  </div>
+                </Field>
+                <div class="card-action-footer">
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    loading={savingGameDir}
+                    disabled={savingGameDir || (gameDir || '') === (summary.game_dir || '')}
+                    onclick={handleSaveGameDir}
+                  >
+                    {t('instance.saveGameDir')}
+                  </Btn>
+                </div>
+              </div>
+            </GlassCard>
+
+            <!-- JVM Environment & Override Card -->
+            <GlassCard title={t('instance.jvmTitle')} elevation="md">
+              <div class="jvm-details">
+                <div class="jvm-spec-grid">
+                  <div class="spec-cell">
+                    <span class="spec-label">{t('instance.jvmSource')}</span>
+                    <Badge variant="accent" size="sm">{jvm?.source ?? 'Bundled'}</Badge>
+                  </div>
+                  <div class="spec-cell">
+                    <span class="spec-label">{t('instance.jvmVersion')}</span>
+                    <span class="spec-value">{jvm ? `${jvm.version} (${jvm.vendor})` : '—'}</span>
+                  </div>
+                </div>
+
+                {#if jvm?.path}
+                  <div class="jvm-path-display">
+                    <span class="spec-label">{t('instance.jvmPath')}</span>
+                    <code class="code-box">{jvm.path}</code>
+                  </div>
+                {/if}
+
+                <Field
+                  label={t('instance.jdkOverrideLabel')}
+                  hint={t('instance.jdkOverrideHint')}
+                >
+                  <input
+                    type="text"
+                    bind:value={jdkOverride}
+                    placeholder={t('instance.jdkOverridePlaceholder')}
+                    class="glass-input"
+                  />
+                </Field>
+
+                <div class="card-action-footer">
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    loading={savingConfig}
+                    disabled={savingConfig}
+                    onclick={handleSaveJdk}
+                  >
+                    {t('instance.saveJdk')}
+                  </Btn>
+                </div>
+              </div>
+            </GlassCard>
+
+            <!-- AOT Acceleration Card -->
+            <GlassCard title={t('instance.aotTitle')} subtitle={t('instance.aotSubtitle')} elevation="md">
+              <div class="aot-settings">
+                <div class="aot-stats-grid">
+                  <div class="aot-stat-item">
+                    <span class="stat-label">{t('instance.aotStatusLabel')}</span>
+                    {#if aotStatus?.cache_exists}
+                      <Badge variant="ok" dot={true} size="md">{t('instance.aotReady')}</Badge>
+                    {:else}
+                      <Badge variant="muted" size="md">{t('instance.aotNone')}</Badge>
+                    {/if}
+                  </div>
+
+                  <div class="aot-stat-item">
+                    <span class="stat-label">{t('instance.aotCacheSize')}</span>
+                    <span class="stat-num">{formatBytes(aotStatus?.cache_size_bytes)}</span>
+                  </div>
+
+                  <div class="aot-stat-item">
+                    <span class="stat-label">{t('instance.aotProofLabel')}</span>
+                    {#if aotStatus?.proof?.using_aot_linked_classes}
+                      <Badge variant="accent" size="sm">{t('instance.aotProofOk')}</Badge>
+                    {:else}
+                      <span class="stat-desc">{t('instance.aotProofNone')}</span>
+                    {/if}
+                  </div>
+                </div>
+
+                <label class="toggle-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={aotAutoTrain}
+                    onchange={handleToggleAotAutoTrain}
+                    class="glass-checkbox"
+                  />
+                  <div class="toggle-texts">
+                    <span class="toggle-title">{t('instance.aotAutoTrain')}</span>
+                    <span class="toggle-hint">{t('instance.aotAutoTrainHint')}</span>
+                  </div>
+                </label>
+
+                {#if trainProgress}
+                  <div class="train-progress-wrap" in:fade>
+                    <ProgressBar
+                      value={trainProgress.done}
+                      max={Math.max(trainProgress.total, 1)}
+                      tone="accent"
+                      label={t('instance.trainingAot')}
+                      showValue={true}
+                    />
+                  </div>
+                {/if}
+
+                <div class="card-action-footer">
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    loading={trainingAot}
+                    disabled={trainingAot || isInstanceRunning}
+                    onclick={handleTrainAot}
+                  >
+                    {t('instance.trainAotBtn')}
+                  </Btn>
+                </div>
+              </div>
+            </GlassCard>
+            </div>
+            <div class="panel-col">
             <!-- Appearance: accent hue + icon -->
             <GlassCard title={t('instance.appearanceTitle')} subtitle={t('instance.appearanceHint')} elevation="md">
               <div class="appearance-settings">
@@ -1476,167 +1642,6 @@
               </div>
             </GlassCard>
 
-            <!-- Game directory override -->
-            <GlassCard title={t('instance.gameDirTitle')} subtitle={t('instance.gameDirHint')} elevation="md">
-              <div class="gamedir-settings">
-                <Field label={t('instance.gameDirLabel')} hint={t('instance.gameDirFieldHint')}>
-                  <div class="import-input-row">
-                    <input
-                      type="text"
-                      bind:value={gameDir}
-                      placeholder={t('instance.gameDirDefault')}
-                      class="glass-input"
-                      readonly
-                    />
-                    <Btn
-                      variant="secondary"
-                      size="sm"
-                      loading={pickingFolder}
-                      disabled={pickingFolder}
-                      onclick={handlePickGameDir}
-                    >
-                      {t('instance.gameDirBrowse')}
-                    </Btn>
-                    {#if !gameDirDefault}
-                      <Btn
-                        variant="ghost"
-                        size="sm"
-                        disabled={savingGameDir}
-                        onclick={handleClearGameDir}
-                      >
-                        {t('instance.gameDirClear')}
-                      </Btn>
-                    {/if}
-                  </div>
-                </Field>
-                <div class="card-action-footer">
-                  <Btn
-                    variant="secondary"
-                    size="sm"
-                    loading={savingGameDir}
-                    disabled={savingGameDir || (gameDir || '') === (summary.game_dir || '')}
-                    onclick={handleSaveGameDir}
-                  >
-                    {t('instance.saveGameDir')}
-                  </Btn>
-                </div>
-              </div>
-            </GlassCard>
-
-            <!-- JVM Environment & Override Card -->
-            <GlassCard title={t('instance.jvmTitle')} elevation="md">
-              <div class="jvm-details">
-                <div class="jvm-spec-grid">
-                  <div class="spec-cell">
-                    <span class="spec-label">{t('instance.jvmSource')}</span>
-                    <Badge variant="accent" size="sm">{jvm?.source ?? 'Bundled'}</Badge>
-                  </div>
-                  <div class="spec-cell">
-                    <span class="spec-label">{t('instance.jvmVersion')}</span>
-                    <span class="spec-value">{jvm ? `${jvm.version} (${jvm.vendor})` : '—'}</span>
-                  </div>
-                </div>
-
-                {#if jvm?.path}
-                  <div class="jvm-path-display">
-                    <span class="spec-label">{t('instance.jvmPath')}</span>
-                    <code class="code-box">{jvm.path}</code>
-                  </div>
-                {/if}
-
-                <Field
-                  label={t('instance.jdkOverrideLabel')}
-                  hint={t('instance.jdkOverrideHint')}
-                >
-                  <input
-                    type="text"
-                    bind:value={jdkOverride}
-                    placeholder={t('instance.jdkOverridePlaceholder')}
-                    class="glass-input"
-                  />
-                </Field>
-
-                <div class="card-action-footer">
-                  <Btn
-                    variant="secondary"
-                    size="sm"
-                    loading={savingConfig}
-                    disabled={savingConfig}
-                    onclick={handleSaveJdk}
-                  >
-                    {t('instance.saveJdk')}
-                  </Btn>
-                </div>
-              </div>
-            </GlassCard>
-
-            <!-- AOT Acceleration Card -->
-            <GlassCard title={t('instance.aotTitle')} subtitle={t('instance.aotSubtitle')} elevation="md">
-              <div class="aot-settings">
-                <div class="aot-stats-grid">
-                  <div class="aot-stat-item">
-                    <span class="stat-label">{t('instance.aotStatusLabel')}</span>
-                    {#if aotStatus?.cache_exists}
-                      <Badge variant="ok" dot={true} size="md">{t('instance.aotReady')}</Badge>
-                    {:else}
-                      <Badge variant="muted" size="md">{t('instance.aotNone')}</Badge>
-                    {/if}
-                  </div>
-
-                  <div class="aot-stat-item">
-                    <span class="stat-label">{t('instance.aotCacheSize')}</span>
-                    <span class="stat-num">{formatBytes(aotStatus?.cache_size_bytes)}</span>
-                  </div>
-
-                  <div class="aot-stat-item">
-                    <span class="stat-label">{t('instance.aotProofLabel')}</span>
-                    {#if aotStatus?.proof?.using_aot_linked_classes}
-                      <Badge variant="accent" size="sm">{t('instance.aotProofOk')}</Badge>
-                    {:else}
-                      <span class="stat-desc">{t('instance.aotProofNone')}</span>
-                    {/if}
-                  </div>
-                </div>
-
-                <label class="toggle-checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={aotAutoTrain}
-                    onchange={handleToggleAotAutoTrain}
-                    class="glass-checkbox"
-                  />
-                  <div class="toggle-texts">
-                    <span class="toggle-title">{t('instance.aotAutoTrain')}</span>
-                    <span class="toggle-hint">{t('instance.aotAutoTrainHint')}</span>
-                  </div>
-                </label>
-
-                {#if trainProgress}
-                  <div class="train-progress-wrap" in:fade>
-                    <ProgressBar
-                      value={trainProgress.done}
-                      max={Math.max(trainProgress.total, 1)}
-                      tone="accent"
-                      label={t('instance.trainingAot')}
-                      showValue={true}
-                    />
-                  </div>
-                {/if}
-
-                <div class="card-action-footer">
-                  <Btn
-                    variant="secondary"
-                    size="sm"
-                    loading={trainingAot}
-                    disabled={trainingAot || isInstanceRunning}
-                    onclick={handleTrainAot}
-                  >
-                    {t('instance.trainAotBtn')}
-                  </Btn>
-                </div>
-              </div>
-            </GlassCard>
-
             <!-- Options & Preferences Import Card -->
             <GlassCard
               title={t('instance.optionsTitle')}
@@ -1686,6 +1691,8 @@
                 {/if}
               </div>
             </GlassCard>
+            </div>
+          </div>
 
             <!-- Espectral Client Suite Toggles Card -->
             {#if clientInfo?.supported && clientInfo?.registry?.length}
@@ -1723,7 +1730,6 @@
                 </div>
               </GlassCard>
             {/if}
-          </div>
         </div>
       {/if}
 
@@ -2293,6 +2299,25 @@
     }
   }
 
+  /* Config tab: two independent card stacks that wrap to one below ~57rem
+     (same breakpoint as the 28rem grid columns). Each stack sizes to its own
+     cards, so a tall card never leaves a hole beside a short one; the long
+     Suite list sits full-width below both. */
+  .panel-columns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    align-items: flex-start;
+  }
+
+  .panel-col {
+    flex: 1 1 28rem;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
   /* Memory Setting */
   .memory-setting {
     display: flex;
@@ -2793,8 +2818,8 @@
 
   /* Client Features List */
   .client-features-list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(24rem, 100%), 1fr));
     gap: 0.65rem;
   }
 
