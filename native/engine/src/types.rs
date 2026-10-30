@@ -711,6 +711,11 @@ pub struct VersionChangeResult {
     pub summary: InstanceSummary,
     pub backup: Option<String>,
     pub mods: VersionChangeModsResult,
+    /// JS also answered `from` / `to` (the plan's refs); the UI ignores them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<VersionLoaderRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<VersionLoaderRef>,
 }
 
 // =========================================================================
