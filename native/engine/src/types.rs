@@ -518,11 +518,12 @@ pub struct InstanceSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModEntry {
     pub filename: String,
-    pub project_slug: String,
-    pub version_number: String,
-    pub version_id: String,
-    pub sha1: String,
-    pub size: u64,
+    /// null for untracked jars (JS sends explicit nulls).
+    pub project_slug: Option<String>,
+    pub version_number: Option<String>,
+    pub version_id: Option<String>,
+    pub sha1: Option<String>,
+    pub size: Option<u64>,
     pub enabled: bool,
     pub installed: bool,
 }
@@ -841,10 +842,11 @@ pub struct ServerStatus {
     pub host: String,
     pub online: bool,
     pub hostname: String,
-    pub ip: String,
+    /// null when offline / unknown (JS sends explicit nulls).
+    pub ip: Option<String>,
     pub port: u16,
-    pub version: String,
-    pub software: String,
+    pub version: Option<String>,
+    pub software: Option<String>,
     pub motd_raw: Vec<String>,
     pub motd_clean: Vec<String>,
     pub players_online: u32,
