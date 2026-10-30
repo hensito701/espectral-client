@@ -14,6 +14,9 @@
     openFolder,
     listInstances,
     patchInstanceClient,
+    getAgentAccess,
+    putAgentAccess,
+    rotateAgentToken,
     API_BASE,
   } from '../lib/api';
   import { theme as themeStore, accent as accentStore, resolveTheme, ACCENTS } from '../lib/theme.svelte';
@@ -24,6 +27,7 @@
   import { memLabel } from '../lib/format';
   import { flyY, fade, scalePop } from '../lib/motion';
   import type { AppConfig, JvmInfo, Theme } from '../lib/types';
+  import type { AgentAccess } from '../lib/types';
 
   import GlassCard from '../components/GlassCard.svelte';
   import Btn from '../components/Btn.svelte';
@@ -65,6 +69,184 @@
 
   // Copy helper for data directory
   const dataDirCopy = useCopy(2000);
+
+  /* ==========================================================================
+     Agent access (MCP) — config lives outside AppConfig, behind its own
+     routes (/api/agent-access); see docs/agent-capture-plan.md → Protocol v1.
+     ========================================================================== */
+  let agent = $state<AgentAccess | null>(null);
+  let agentError = $state('');
+  let agentEnabled = $state(false);
+  let agentSaving = $state(false);
+  let agentRotating = $state(false);
+  let agentConfirmRotate = $state(false);
+  // Allowlist draft: edited locally, persisted with one PUT.
+  let agentAllowDraft = $state<string[]>([]);
+  let agentAllowInput = $state('');
+  let agentAllowError = $state('');
+  let agentAllowSaving = $state(false);
+
+  const agentJsonCopy = useCopy(2000);
+  const agentTomlCopy = useCopy(2000);
+
+  /** Public Espectral hosts: never allowlisted (engine refuses them anyway). */
+  const BLOCKED_AGENT_SUFFIXES = ['uhce.top', 'espectral.es'];
+  const isBlockedAgentHost = (host: string): boolean => {
+    const h = host.toLowerCase();
+    return BLOCKED_AGENT_SUFFIXES.some((suffix) => h === suffix || h.endsWith(`.${suffix}`));
+  };
+
+  /** `host`, `host:port`, IPv4, or bracketed IPv6 — never a URL. */
+  const AGENT_HOST_RE = /^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)(?::(\d{1,5}))?$/;
+
+  const agentJsonConfig = $derived(
+    agent
+      ? JSON.stringify(
+          {
+            mcpServers: {
+              espectral: {
+                command: agent.mcp.command,
+                args: agent.mcp.args,
+                env: agent.mcp.env,
+              },
+            },
+          },
+          null,
+          2,
+        )
+      : '',
+  );
+
+  const tomlString = (value: string): string => `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
+  const agentTomlConfig = $derived.by(() => {
+    if (!agent) return '';
+    const envEntries = Object.entries(agent.mcp.env);
+    const lines = [
+      '[mcp_servers.espectral]',
+      `command = ${tomlString(agent.mcp.command)}`,
+      `args = [${agent.mcp.args.map(tomlString).join(', ')}]`,
+    ];
+    if (envEntries.length > 0) {
+      lines.push(`env = { ${envEntries.map(([k, v]) => `${k} = ${tomlString(v)}`).join(', ')} }`);
+    }
+    return lines.join('\n');
+  });
+
+  const agentAllowDirty = $derived.by(() => {
+    const current = agent;
+    if (!current) return false;
+    return (
+      agentAllowDraft.length !== current.allowed_servers.length ||
+      agentAllowDraft.some((host, i) => host !== current.allowed_servers[i])
+    );
+  });
+
+  async function loadAgentAccess() {
+    agentError = '';
+    try {
+      agent = await getAgentAccess();
+      agentEnabled = agent.enabled;
+      agentAllowDraft = [...agent.allowed_servers];
+    } catch (e: unknown) {
+      agentError = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: `${t('dash.agent.loadError')}: ${agentError}` });
+    }
+  }
+
+  async function saveAgentEnabled() {
+    if (agentSaving) return;
+    agentSaving = true;
+    try {
+      agent = await putAgentAccess({ enabled: agentEnabled });
+      agentEnabled = agent.enabled;
+      agentAllowDraft = [...agent.allowed_servers];
+      pushToast({
+        kind: 'ok',
+        text: t(agent.enabled ? 'dash.agent.flashOn' : 'dash.agent.flashOff'),
+      });
+    } catch (e: unknown) {
+      agentEnabled = !agentEnabled;
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: msg });
+    } finally {
+      agentSaving = false;
+    }
+  }
+
+  async function rotateToken() {
+    if (agentRotating) return;
+    agentRotating = true;
+    try {
+      agent = await rotateAgentToken();
+      agentEnabled = agent.enabled;
+      agentAllowDraft = [...agent.allowed_servers];
+      agentConfirmRotate = false;
+      pushToast({ kind: 'ok', text: t('dash.agent.rotateOk') });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: msg });
+    } finally {
+      agentRotating = false;
+    }
+  }
+
+  function addAgentServer() {
+    agentAllowError = '';
+    const raw = agentAllowInput.trim().toLowerCase();
+    if (!raw) return;
+    const match = AGENT_HOST_RE.exec(raw);
+    const port = match?.[1];
+    if (!match || (port !== undefined && (Number(port) < 1 || Number(port) > 65535))) {
+      agentAllowError = t('dash.agent.allowInvalid');
+      return;
+    }
+    // Strip the brackets for the blocked-suffix check; keep them in the value.
+    if (isBlockedAgentHost(raw.replace(/^\[|\](?::\d+)?$/g, ''))) {
+      agentAllowError = t('dash.agent.allowBlocked');
+      return;
+    }
+    if (agentAllowDraft.includes(raw)) {
+      agentAllowError = t('dash.agent.allowDuplicate');
+      return;
+    }
+    agentAllowDraft = [...agentAllowDraft, raw];
+    agentAllowInput = '';
+  }
+
+  function removeAgentServer(host: string) {
+    agentAllowError = '';
+    agentAllowDraft = agentAllowDraft.filter((h) => h !== host);
+  }
+
+  async function saveAgentAllowlist() {
+    if (agentAllowSaving) return;
+    agentAllowSaving = true;
+    try {
+      agent = await putAgentAccess({ allowed_servers: agentAllowDraft });
+      agentEnabled = agent.enabled;
+      agentAllowDraft = [...agent.allowed_servers];
+      agentAllowError = '';
+      pushToast({ kind: 'ok', text: t('dash.agent.allowSaved') });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: msg });
+    } finally {
+      agentAllowSaving = false;
+    }
+  }
+
+  function copyAgentJson() {
+    if (!agentJsonConfig) return;
+    agentJsonCopy.copy(agentJsonConfig);
+    pushToast({ kind: 'ok', text: t('dash.agent.copied') });
+  }
+
+  function copyAgentToml() {
+    if (!agentTomlConfig) return;
+    agentTomlCopy.copy(agentTomlConfig);
+    pushToast({ kind: 'ok', text: t('dash.agent.copied') });
+  }
 
   /* ==========================================================================
      Derived Computations & Dirty Checking
@@ -148,6 +330,7 @@
 
   $effect(() => {
     void loadConfig();
+    void loadAgentAccess();
   });
 
   /* ==========================================================================
@@ -1134,7 +1317,238 @@
     </section>
 
     <!-- ======================================================================
-         SECTION 4: SYSTEM STORAGE & DIRECTORIES
+         SECTION 4: AGENT ACCESS (MCP)
+         ====================================================================== -->
+    <section class="settings-section" aria-labelledby="section-agent">
+      <div class="section-header">
+        <div class="section-header__meta">
+          <h2 id="section-agent" class="section-header__title">
+            {t('dash.agent.title')}
+          </h2>
+          <p class="section-header__desc">{t('dash.agent.subtitle')}</p>
+        </div>
+        {#if agent?.enabled}
+          <Badge variant="ok" dot={true} size="sm">{t('dash.agent.enabledBadge')}</Badge>
+        {/if}
+      </div>
+
+      <div class="agent-grid">
+        <!-- Master toggle + safety rules -->
+        <GlassCard elevation="sm" class="setting-card">
+          <div class="card-head">
+            <div class="card-head__title-wrap">
+              <span class="card-head__title">{t('dash.agent.toggleTitle')}</span>
+              <span class="card-head__desc">{t('dash.agent.toggleDesc')}</span>
+            </div>
+            <label class="switch-control agent-switch">
+              <input
+                type="checkbox"
+                aria-label={t('dash.agent.toggleTitle')}
+                bind:checked={agentEnabled}
+                onchange={saveAgentEnabled}
+                disabled={agentSaving || !agent}
+              />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <div class="explainer-box">
+            <div class="explainer-box__icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <p class="explainer-box__text">{t('dash.agent.rulesTitle')}</p>
+          </div>
+
+          <ul class="agent-rules">
+            <li>{t('dash.agent.ruleEspectral')}</li>
+            <li>{t('dash.agent.ruleF8')}</li>
+            <li>{t('dash.agent.ruleLocal')}</li>
+          </ul>
+
+          <!-- Token rotation -->
+          <div class="agent-token-block">
+            <div class="agent-token-meta">
+              <span class="motion-row__title">{t('dash.agent.tokenTitle')}</span>
+              <span class="motion-row__desc">{t('dash.agent.tokenDesc')}</span>
+            </div>
+            {#if agent?.token_path}
+              <div class="health-row agent-token-row">
+                <span class="health-k">{t('dash.agent.tokenPath')}</span>
+                <code class="code-pill" title={agent.token_path}>{agent.token_path}</code>
+              </div>
+            {/if}
+
+            <div class="action-buttons-row">
+              {#if agentConfirmRotate}
+                <span class="agent-confirm-text">{t('dash.agent.rotateConfirm')}</span>
+                <Btn
+                  variant="danger"
+                  size="sm"
+                  loading={agentRotating}
+                  disabled={agentRotating}
+                  onclick={rotateToken}
+                >
+                  {t('dash.agent.rotateConfirmYes')}
+                </Btn>
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  disabled={agentRotating}
+                  onclick={() => (agentConfirmRotate = false)}
+                >
+                  {t('dash.agent.rotateCancel')}
+                </Btn>
+              {:else}
+                <Btn
+                  variant="secondary"
+                  size="sm"
+                  onclick={() => (agentConfirmRotate = true)}
+                >
+                  {t('dash.agent.rotate')}
+                </Btn>
+              {/if}
+            </div>
+          </div>
+        </GlassCard>
+
+        <!-- MCP config copy -->
+        <GlassCard elevation="sm" class="setting-card">
+          <div class="card-head">
+            <div class="card-head__title-wrap">
+              <span class="card-head__title">{t('dash.agent.configTitle')}</span>
+              <span class="card-head__desc">{t('dash.agent.configDesc')}</span>
+            </div>
+          </div>
+
+          {#if agent?.enabled && agentJsonConfig}
+            <div class="agent-config-block">
+              <div class="agent-config-head">
+                <span class="agent-config-label">mcpServers.espectral</span>
+                <Btn variant="ghost" size="sm" onclick={copyAgentJson}>
+                  {#snippet icon()}
+                    {#if agentJsonCopy.copied}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    {:else}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                    {/if}
+                  {/snippet}
+                  {agentJsonCopy.copied ? t('dash.agent.copied') : t('dash.agent.copyJson')}
+                </Btn>
+              </div>
+              <pre class="agent-config-code" aria-label={t('dash.agent.copyJson')}>{agentJsonConfig}</pre>
+            </div>
+
+            <div class="agent-config-block">
+              <div class="agent-config-head">
+                <span class="agent-config-label">~/.codex/config.toml</span>
+                <Btn variant="ghost" size="sm" onclick={copyAgentToml}>
+                  {#snippet icon()}
+                    {#if agentTomlCopy.copied}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    {:else}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                    {/if}
+                  {/snippet}
+                  {agentTomlCopy.copied ? t('dash.agent.copied') : t('dash.agent.copyToml')}
+                </Btn>
+              </div>
+              <pre class="agent-config-code" aria-label={t('dash.agent.copyToml')}>{agentTomlConfig}</pre>
+            </div>
+          {:else}
+            <p class="agent-empty">{t('dash.agent.configEmpty')}</p>
+          {/if}
+        </GlassCard>
+
+        <!-- Allowlist editor -->
+        <GlassCard elevation="sm" class="setting-card agent-allow-card">
+          <div class="card-head">
+            <div class="card-head__title-wrap">
+              <span class="card-head__title">{t('dash.agent.allowTitle')}</span>
+              <span class="card-head__desc">{t('dash.agent.allowDesc')}</span>
+            </div>
+          </div>
+
+          <div class="agent-always-row">
+            <Badge variant="ok" size="sm">{t('dash.agent.allowAlways')}</Badge>
+            <code class="agent-host-chip">singleplayer</code>
+            <code class="agent-host-chip">localhost</code>
+            <Badge variant="err" size="sm">{t('dash.agent.allowNever')}</Badge>
+            <code class="agent-host-chip agent-host-chip--blocked">*.uhce.top</code>
+            <code class="agent-host-chip agent-host-chip--blocked">*.espectral.es</code>
+          </div>
+
+          <div class="agent-allow-input-row">
+            <input
+              type="text"
+              placeholder={t('dash.agent.allowPlaceholder')}
+              aria-label={t('dash.agent.allowTitle')}
+              bind:value={agentAllowInput}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addAgentServer();
+                }
+              }}
+              disabled={agentAllowSaving}
+            />
+            <Btn variant="secondary" size="sm" disabled={agentAllowSaving} onclick={addAgentServer}>
+              {t('dash.agent.allowAdd')}
+            </Btn>
+          </div>
+
+          {#if agentAllowError}
+            <p class="agent-allow-error" role="alert">{agentAllowError}</p>
+          {/if}
+
+          <div class="agent-allow-list">
+            {#each agentAllowDraft as host (host)}
+              <div class="agent-allow-item">
+                <code>{host}</code>
+                <button
+                  type="button"
+                  class="agent-allow-remove"
+                  aria-label={t('dash.agent.allowRemove', { host })}
+                  title={t('dash.agent.allowRemove', { host })}
+                  disabled={agentAllowSaving}
+                  onclick={() => removeAgentServer(host)}
+                >
+                  ✕
+                </button>
+              </div>
+            {:else}
+              <p class="agent-empty">{t('dash.agent.allowEmpty')}</p>
+            {/each}
+          </div>
+
+          <div class="agent-actions-row">
+            <Btn
+              variant="secondary"
+              size="sm"
+              loading={agentAllowSaving}
+              disabled={agentAllowSaving || !agentAllowDirty}
+              onclick={saveAgentAllowlist}
+            >
+              {t('dash.agent.allowSave')}
+            </Btn>
+          </div>
+        </GlassCard>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         SECTION 5: SYSTEM STORAGE & DIRECTORIES
          ====================================================================== -->
     <section class="settings-section" aria-labelledby="section-data">
       <div class="section-header">
@@ -1299,7 +1713,7 @@
     </section>
 
     <!-- ======================================================================
-         SECTION 5: ABOUT & COMMUNITY VIP FOOTER
+         SECTION 6: ABOUT & COMMUNITY VIP FOOTER
          ====================================================================== -->
     <section class="settings-section" aria-labelledby="section-about">
       <div class="about-pavilion-card">
@@ -2194,6 +2608,182 @@
   }
 
   /* ==========================================================================
+     Agent Access (MCP)
+     ========================================================================== */
+  .agent-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .agent-switch {
+    flex-shrink: 0;
+  }
+
+  .agent-rules {
+    margin: 0;
+    padding-left: 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+
+  .agent-token-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .agent-token-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .agent-token-row {
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .agent-token-row .code-pill {
+    max-width: 60%;
+    font-size: 0.72rem;
+  }
+
+  .agent-config-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .agent-config-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .agent-config-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-transform: none;
+  }
+
+  .agent-config-code {
+    margin: 0;
+    padding: 0.75rem 0.875rem;
+    background: var(--log-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--text);
+    overflow-x: auto;
+    white-space: pre;
+    max-height: 15rem;
+  }
+
+  .agent-empty {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .agent-always-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .agent-host-chip {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    padding: 0.2rem 0.45rem;
+    background: var(--surface-up);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+  }
+
+  .agent-host-chip--blocked {
+    color: var(--accent-red);
+    border-color: rgba(239, 68, 68, 0.35);
+  }
+
+  .agent-allow-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .agent-actions-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+
+  .agent-confirm-text {
+    font-size: 0.8rem;
+    color: var(--text);
+    flex: 1;
+  }
+
+  .agent-allow-error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--accent-red);
+  }
+
+  .agent-allow-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .agent-allow-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.45rem 0.75rem;
+    background: var(--surface-up);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .agent-allow-item code {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text);
+    word-break: break-all;
+  }
+
+  .agent-allow-remove {
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1;
+    padding: 0.2rem 0.35rem;
+    border-radius: var(--radius-sm);
+    transition: color var(--dur-fast) ease-out, background var(--dur-fast) ease-out;
+  }
+
+  .agent-allow-remove:hover {
+    color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.12);
+  }
+
+  /* ==========================================================================
      Data Directory Display & Subfolders
      ========================================================================== */
   .path-display-card {
@@ -2417,6 +3007,7 @@
   @media (max-width: 1100px) {
     .cards-duo,
     .toggles-grid,
+    .agent-grid,
     .about-pavilion-card {
       grid-template-columns: 1fr;
     }

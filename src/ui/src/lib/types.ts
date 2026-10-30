@@ -124,6 +124,8 @@ export interface InstanceSummary {
   hue: number | null;
   game_dir: string | null;
   has_icon: boolean;
+  /** Installs Replay Mod + shader pack + Iris/Sodium pins (Fabric 1.21.11/26.2/26.3). */
+  capture_tools?: boolean;
 }
 
 export interface ModEntry {
@@ -356,6 +358,8 @@ export interface LiveLaunch {
   started_at: number;
   menu_at: number | null;
   ended_at: number | null;
+  /** True for launches started by an agent (MCP) — shown as a badge in launch lists. */
+  agent?: boolean;
 }
 
 export type OptionsPair = [string, string];
@@ -387,6 +391,8 @@ export interface CreateInstanceRequest {
 export interface InstancePatch {
   /** null = back to automatic. */
   memory_mb?: number | null;
+  /** Toggles Replay Mod (+ shader pack, Iris/Sodium pins) for capture tools. */
+  capture_tools?: boolean;
   enabled_mods?: string[];
   jdk_path_override?: string;
   aot_auto_train?: boolean;
@@ -560,4 +566,23 @@ export interface BackgroundPack {
   frame_count: number;
   width: number;
   height: number;
+}
+
+/* ---------- Agent access (MCP) ---------- */
+
+/** Ready-to-paste MCP server entry (Claude Code / Cursor / Codex format). */
+export interface AgentMcpEntry {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+/** GET/PUT /api/agent-access, POST /api/agent-access/rotate. */
+export interface AgentAccess {
+  enabled: boolean;
+  /** host[:port] entries where agent act-tier tools are allowed. */
+  allowed_servers: string[];
+  /** Absolute path of the 0600 token file (the token itself is never returned). */
+  token_path: string;
+  mcp: AgentMcpEntry;
 }

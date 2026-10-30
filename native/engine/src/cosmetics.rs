@@ -641,3 +641,13 @@ mod tests {
         assert_eq!(get_cosmetics_state(&e, "bad"), AccountCosmetics::default());
     }
 }
+
+/// Sanitized loadout the presence publisher PUTs to espectral-id
+/// (JS presence.publishOnce: `sanitizeLoadout(getCosmeticsState(uuid).loadout, flags)`).
+///
+/// CONTRACT STUB added by identity-discord (presence.rs) — accounts-skins
+/// owns the implementation; keep the signature.
+pub fn presence_loadout(engine: &Engine, flat_uuid: &str, flags: &[String]) -> EngineResult<serde_json::Value> {
+    let _ = (engine, flat_uuid, flags);
+    crate::not_ported!("cosmetics::presence_loadout")
+}

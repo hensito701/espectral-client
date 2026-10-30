@@ -17,6 +17,7 @@ import { cacheKey, cacheFilePath, isCacheStale } from './aot.mjs';
 import { defaultMemoryMb, loadConfig } from './config.mjs';
 import { parseOptionsTxt, setOptionKey, writeOptionsTxt } from './import.mjs';
 import { loadClientConfig, seedClientConfig } from './client.mjs';
+import { gameArgFragment } from './agent.mjs';
 
 /** Initial heap. The game starts small and G1 grows it toward -Xmx only as needed (Modrinth passes no -Xms at all). */
 export const INITIAL_HEAP_MB = 512;
@@ -221,6 +222,24 @@ export function bootFlags(instance, javaMajor) {
 }
 
 /**
+ * Windows: commit every Java thread's stack up front.
+ *
+ * A minidump of a 26.3 crash on join (silent 0xC0000005, no hs_err) showed a
+ * Minecraft worker thread ("Worker-Main-21", 136 KB into its 1 MB stack)
+ * whose OS guard page was gone — the only one of 93 threads without it. The
+ * next stack probe below the committed region (_alloca_probe in jvm.dll)
+ * then hit plain reserved memory, which Windows cannot grow, and the JVM's
+ * own error reporter died on the same stack, so nothing was written.
+ * Pre-touching commits the whole stack at thread start, so no stack ever
+ * needs to grow at run time and a lost guard page is harmless. Cost: about
+ * 1 MB of RAM per Java thread (+80 MB measured for 80 threads). The flag is
+ * diagnostic-gated on JDK 21–25.
+ */
+export function stackFlags(platform = process.platform) {
+  return platform === 'win32' ? ['-XX:+UnlockDiagnosticVMOptions', '-XX:+AlwaysPreTouchStacks'] : [];
+}
+
+/**
  * Clamp requested memory to 60% of system RAM. Pure helper for testing;
  * buildArgv calls it with os.totalmem().
  */
@@ -241,6 +260,11 @@ export function effectiveMemoryMb(requestedMb, totalMb) {
  */
 export function buildArgv(instance, resolved) {
   const javaMajor = resolved.java?.major ?? parseMajor(resolved.java?.build ?? resolved.java?.version ?? '');
+  // Agent launch options (validated by agent.mjs at the route). `null`/absent
+  // on every plain launch, so the argv below is byte-identical to before.
+  const agent = resolved.agent === true;
+  const join = resolved.join ?? null;
+  const window = resolved.window ?? null;
   const rawAcc = resolved.account ?? pickAccount();
   const _tok = rawAcc.accessToken;
   const accessToken = _tok != null ? String(_tok) : '0';
@@ -270,8 +294,13 @@ export function buildArgv(instance, resolved) {
     classpath_separator: path.delimiter,
     launcher_name: 'Espectral Client',
     launcher_version: '0.6.0',
-    resolution_width: '854',
-    resolution_height: '480',
+    resolution_width: window ? String(window.width) : '854',
+    resolution_height: window ? String(window.height) : '480',
+    // Quick-play placeholders: only meaningful when the matching feature is
+    // enabled below; a missing key substitutes to '' (expandGameArgs drops the
+    // value args of disabled rules entirely, so this is defense in depth).
+    quickPlaySingleplayer: join?.world ?? '',
+    quickPlayMultiplayer: join?.server ?? '',
     clientid: '0',
     auth_xuid: '0',
     version_type: 'release',
@@ -284,10 +313,19 @@ export function buildArgv(instance, resolved) {
     ...(javaMajor >= 21 ? FIXED_JVM_ARGS : []),
     '-Djava.library.path=' + resolved.nativesDir,
     ...(javaMajor >= 21 ? bootFlags(instance, javaMajor) : []),
+    ...(javaMajor >= 21 ? stackFlags() : []),
     // Mod bridge: the in-game mod reports visible uuids over loopback; the
     // per-launch token is minted in resolveLaunch (null on dry-run previews).
     `-Despectral.bridge.url=http://127.0.0.1:${process.env.ESPECTRAL_PORT || 4199}/api/bridge`,
     ...(resolved.bridgeToken ? [`-Despectral.bridge.token=${resolved.bridgeToken}`] : []),
+    // Agent mode. Inert unless the route tagged the launch `agent: true`; the
+    // mod starts its relay thread only when it sees -Despectral.agent=1.
+    ...(agent ? ['-Despectral.agent=1'] : []),
+    // ffmpeg for live recording / clip rendering. resolveLaunch already
+    // resolved the absolute path (null when none is available — captures then
+    // report NO_FFMPEG mod-side instead of guessing a binary name).
+    ...(agent && resolved.ffmpegPath ? [`-Despectral.ffmpeg=${resolved.ffmpegPath}`] : []),
+    ...(agent && window?.hidden ? ['-Despectral.agent.hidden=1'] : []),
   ];
   if (Array.isArray(resolved.loader?.jvmArgs) && resolved.loader.jvmArgs.length > 0) {
     // Loader templates are expanded (rules) + placeholder-substituted. The
@@ -351,9 +389,18 @@ export function buildArgv(instance, resolved) {
 
   const mainClass =
     resolved.loader?.mainClass ?? resolved.version.mainClass ?? 'net.minecraft.client.main.Main';
+  // Features the vanilla/NecForge game template gates its program args on.
+  // Fabric has no game template (it reuses the version's, which is empty in
+  // the loader profile), so its flags are appended explicitly below; NeoForge
+  // merges the vanilla game args and expands them here.
+  const features = {
+    has_custom_resolution: !!window,
+    is_quick_play_singleplayer: !!join?.world,
+    is_quick_play_multiplayer: !!join?.server,
+  };
   const progArgs =
     Array.isArray(resolved.loader?.gameArgs) && resolved.loader.gameArgs.length > 0
-      ? expandGameArgs(resolved.loader.gameArgs).map((a) => substitutePlaceholders(a, subst))
+      ? expandGameArgs(resolved.loader.gameArgs, features).map((a) => substitutePlaceholders(a, subst))
       : [
           '--username', acc.username,
           '--version', resolved.version.id,
@@ -364,6 +411,9 @@ export function buildArgv(instance, resolved) {
           '--accessToken', acc.accessToken,
           '--userType', acc.userType === 'msa' ? 'msa' : 'mojang',
           '--versionType', 'release',
+          // Fabric/vanilla fixed list: append the agent launch flags directly
+          // (there is no feature-gated template to expand here).
+          ...gameArgFragment({ join, window }),
         ];
   return [resolved.java.path, ...jvm, mainClass, ...progArgs];
 }
@@ -486,7 +536,17 @@ export async function javaForLaunch(instance, versionJavaMajor) {
 
 export async function resolveLaunch(
   instance,
-  { mode = 'normal', account = null, dryRun = false, forceVerify = false, onProgress = null, onPhase = null } = {}
+  {
+    mode = 'normal',
+    account = null,
+    dryRun = false,
+    forceVerify = false,
+    onProgress = null,
+    onPhase = null,
+    agent = false,
+    join = null,
+    window = null,
+  } = {}
 ) {
   const warnings = [];
   const phase = (name) => {
@@ -711,7 +771,25 @@ export async function resolveLaunch(
   // cache, so it stays false in that case.
   const aotCacheStale = aotCacheExists ? isCacheStale(aotKey, classpath) : false;
 
+  // ffmpeg for agent captures. Dry runs only look at what is already on disk
+  // (a preview must not download 110 MB); a real agent launch provisions the
+  // pinned Windows build when the machine has none.
+  let ffmpegPath = null;
+  if (agent) {
+    try {
+      const ff = await import('./ffmpeg.mjs');
+      ffmpegPath = dryRun ? ff.resolveFfmpegSync() : await ff.ensureFfmpeg();
+      if (!ffmpegPath) warnings.push('no ffmpeg found — recording/clip rendering will fail with NO_FFMPEG');
+    } catch (e) {
+      warnings.push(`ffmpeg resolution failed: ${e.message}`);
+    }
+  }
+
   return {
+    agent,
+    join,
+    window,
+    ffmpegPath,
     java,
     version: {
       id: neoforge ? nf.neoforgeVersionId(instance.loader_version) : instance.version,
