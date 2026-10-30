@@ -159,7 +159,8 @@
           title: t('command.action.stopInstance', { name: r.instance }),
           description: t('command.action.stopInstanceDesc'),
           iconKind: 'stop',
-          badge: t('command.badge.running'),
+          // Agent-launched games get a distinct chip so it is obvious who owns them.
+          badge: r.agent === true ? t('pip.agentBadge') : t('command.badge.running'),
           badgeType: 'running',
           keywords: ['detener', 'stop', 'cerrar', 'kill', 'parar', r.instance],
           run: async () => {

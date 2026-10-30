@@ -41,6 +41,10 @@
   const liveList = $derived<LiveLaunch[]>($liveLaunches.value ?? []);
   const runningLaunches = $derived<LiveLaunch[]>(liveList.filter((l) => l.running));
   const runningCount = $derived<number>(runningLaunches.length);
+  // Keys launched by an agent (MCP) — rendered as a small badge on the tab.
+  const agentKeys = $derived<Set<string>>(
+    new Set(liveList.filter((l) => l.agent === true).map((l) => l.key)),
+  );
 
   // Active lines and running state
   const lines = $derived<string[]>(activeBuffer?.lines ?? []);
@@ -284,6 +288,9 @@
                   aria-hidden="true"
                 ></span>
                 <span class="pip-tab__name">{buf.instance || buf.key.slice(0, 8)}</span>
+                {#if agentKeys.has(buf.key)}
+                  <span class="pip-tab__agent">{t('pip.agentBadge')}</span>
+                {/if}
                 {#if buf.account}
                   <span class="pip-tab__account">({buf.account})</span>
                 {/if}
@@ -595,6 +602,17 @@
   .pip-tab__account {
     font-size: 0.6875rem;
     color: var(--muted);
+  }
+
+  .pip-tab__agent {
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0.05rem 0.3rem;
+    border-radius: var(--radius-sm);
+    color: var(--accent-purple);
+    background: rgba(167, 139, 250, 0.16);
+    border: 1px solid rgba(167, 139, 250, 0.4);
   }
 
   .pip-panel__actions {

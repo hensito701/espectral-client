@@ -2,20 +2,21 @@
  * Modrinth v2 performance mod set (1.21–26.x) + local branding preset.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   downloadAll,
   downloadConcurrency,
+  downloadFile,
   emitEvent,
   fetchJson,
   sha1File,
   USER_AGENT,
 } from './download.mjs';
 import { assertValidInstanceName, loadInstanceMeta } from './resolver.mjs';
-import { effectiveModsDir } from './instances.mjs';
+import { effectiveGameDir, effectiveModsDir } from './instances.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -62,6 +63,69 @@ export const PINS_BY_VERSION = Object.freeze({
 });
 
 export const PINS = PINS_BY_VERSION['1.21.11'];
+
+/**
+ * Capture tools pins (docs/agent-capture-plan.md → Protocol v1 → Capture
+ * tools). Replay Mod is GPL-3: it is downloaded from Modrinth at install time
+ * and NEVER bundled into the MIT espectral-menu jar or the app payload.
+ * `Nv2fQJo5` = Replay Mod; the ids are 2.6.28 builds, sha1-verified.
+ */
+export const REPLAY_MOD_PROJECT = 'Nv2fQJo5';
+export const REPLAY_MOD_PINS_BY_VERSION = Object.freeze({
+  '1.21.11': Object.freeze({ version_id: 'KJkQjrpd', sha1: '745cc0e46c36f11d377fd4a38ec268791462398a', filename: 'replaymod-1.21.11-2.6.28.jar', version_number: '2.6.28' }),
+  '26.2': Object.freeze({ version_id: 'eHbYuA7P', sha1: '4c0a9b4fa4852af576c20083c4f07e4fea1a32f0', filename: 'replaymod-26.2-2.6.28.jar', version_number: '2.6.28' }),
+  '26.3': Object.freeze({ version_id: '7c5mnPyr', sha1: '6e6cc19cb5b5a88c2c37dfe567c3d36685ba591b', filename: 'replaymod-26.3-2.6.28.jar', version_number: '2.6.28' }),
+});
+
+/**
+ * Default shader pack, downloaded into `<mods dir>/../shaderpacks/` at runtime
+ * (licences vary per pack — never bundled). Complementary Reimagined r5.9.3:
+ * supports Iris 1.11.x and stays playable on the low-end iGPU test box.
+ * sha1 fetched from the Modrinth API once and pinned here; the integrator may
+ * swap this constant after the P0 benchmarks.
+ */
+export const DEFAULT_SHADER_PACK = Object.freeze({
+  slug: 'complementary-reimagined',
+  project_id: 'HVnmMxH1',
+  version_id: 'Bqen1mJX',
+  version_number: 'r5.9.3',
+  filename: 'ComplementaryReimagined_r5.9.3.zip',
+  sha1: '838139b54cddb56b2e83cd260d8efd960ac536d6',
+  size: 553397,
+  url: 'https://cdn.modrinth.com/data/HVnmMxH1/versions/Bqen1mJX/ComplementaryReimagined_r5.9.3.zip',
+});
+
+/**
+ * Second shipped pack: the fast one. Benchmarked on the Barcelo iGPU at
+ * 1920x1080 (p50 fps): MakeUp Ultra Fast 33.5 vs Complementary Reimagined
+ * default 13.3 / LOW 21.4, BSL 15.7, Photon 11.7, Unbound 10.8. Live play and
+ * `record_*` use this; cinematic `clip_render` output is frame-locked
+ * off-line, so it keeps the prettier DEFAULT pack.
+ */
+export const FAST_SHADER_PACK = Object.freeze({
+  slug: 'makeup-ultra-fast',
+  project_id: 'izsIPI7a',
+  version_id: 't4YRxQug',
+  version_number: '9.6',
+  filename: 'MakeUp-UltraFast-9.6.zip',
+  sha1: 'e2a930f1ffb7ca6a56cf466c13c9e36193425a38',
+  size: 406830,
+  url: 'https://cdn.modrinth.com/data/izsIPI7a/versions/t4YRxQug/MakeUp-UltraFast-9.6.zip',
+});
+
+/** Every pack capture tools installs, prettiest first. */
+export const CAPTURE_SHADER_PACKS = Object.freeze([DEFAULT_SHADER_PACK, FAST_SHADER_PACK]);
+
+/** Replay Mod pin for a version, or null when the bundle has no build for it. */
+export function replayModPin(version) {
+  return REPLAY_MOD_PINS_BY_VERSION[version] ?? null;
+}
+
+/** True when capture tools can be enabled (Fabric + a Replay Mod pin). */
+export function supportsCaptureTools(instance) {
+  if (!instance || instance.loader !== 'fabric') return false;
+  return replayModPin(instance.version) != null;
+}
 
 /**
  * QoL bundle pins (gamma-utils / clear-fog) per pinned version. Researched
@@ -713,6 +777,305 @@ async function installBrandingPreset(instance, modsDir) {
     message: `installed ${pin.filename}`,
   });
   return { installed: [pin.filename], notes };
+}
+
+// ---------------------------------------------------------------------------
+// Capture tools: Replay Mod + performance pins + default shader pack
+// ---------------------------------------------------------------------------
+
+/** A pinned artifact is a plain basename — never a path that could leave the target dir. */
+function assertSafePinnedFileName(name, label) {
+  if (
+    typeof name !== 'string' ||
+    name.length === 0 ||
+    name.includes('..') ||
+    name.includes('/') ||
+    name.includes('\\') ||
+    path.isAbsolute(name)
+  ) {
+    throw new Error(`${label} pins an unsafe filename: ${name}`);
+  }
+  return name;
+}
+
+/**
+ * Resolve the pinned Replay Mod build, cross-checked against the pin. The pin
+ * — not the Modrinth response — is the trust anchor: verifying a download
+ * against a sha1 the server itself supplied would accept any substituted jar,
+ * so a renamed artifact or a changed hash is refused outright.
+ */
+async function pinnedReplayFile(pin) {
+  const meta = await versionMeta(pin.version_id);
+  if (meta?.project_id && meta.project_id !== REPLAY_MOD_PROJECT) {
+    throw new Error(
+      `Modrinth version ${pin.version_id} belongs to project ${meta.project_id}, not Replay Mod (${REPLAY_MOD_PROJECT})`
+    );
+  }
+  const file = primaryFile(meta);
+  if (!file) throw new Error(`Replay Mod build ${pin.version_id} has no downloadable file`);
+  if (file.filename !== pin.filename) {
+    throw new Error(
+      `Replay Mod build ${pin.version_id} is served as ${file.filename} but the pin says ${pin.filename}; ` +
+        're-verify the build and update the pin'
+    );
+  }
+  const served = file.hashes?.sha1 ?? null;
+  if (served && served !== pin.sha1) {
+    throw new Error(
+      `Replay Mod build ${pin.version_id} sha1 is ${served} but the pin says ${pin.sha1}; ` +
+        're-verify the build and update the pin'
+    );
+  }
+  return file;
+}
+
+/** Iris' own config file (written by the game; keys are Java properties). */
+export function irisPropertiesPath(gameDir) {
+  return path.join(gameDir, 'config', 'iris.properties');
+}
+
+/**
+ * Pick the default shader pack for Iris, but only when the player has not
+ * chosen one: a non-empty `shaderPack` line means the user (or a previous
+ * capture-tools install) already decided, and overwriting it would silently
+ * change their graphics. Returns `{applied, pack}`.
+ *
+ * The game rewrites iris.properties on exit, so this is a seed, not state.
+ */
+export function selectDefaultShaderPack(instance, pack = DEFAULT_SHADER_PACK) {
+  const gameDir = effectiveGameDir(instance);
+  const file = irisPropertiesPath(gameDir);
+  const lines = readPropertiesLines(file);
+  const current = (propertyValue(lines, 'shaderPack') ?? '').trim();
+  if (current && current.toLowerCase() !== 'off') {
+    return { applied: false, pack: current };
+  }
+  setProperty(lines, 'shaderPack', pack.filename);
+  setProperty(lines, 'enableShaders', 'true');
+  mkdirSync(path.dirname(file), { recursive: true });
+  // Write beside the file and rename over it: Iris (or the game) rewrites this
+  // config on exit, and an in-place write interrupted mid-way would leave the
+  // player's other graphics settings truncated. Same tmp+rename rule as the
+  // branding jar install above.
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${lines.join('\n')}\n`, 'utf8');
+  renameSync(tmp, file);
+  return { applied: true, pack: pack.filename };
+}
+
+/** File lines, or [] when it does not exist yet (corrupt is read as-is). */
+function readPropertiesLines(file) {
+  try {
+    return readFileSync(file, 'utf8').split(/\r?\n/);
+  } catch {
+    return [];
+  }
+}
+
+/** `key=value` value from the lines, last occurrence winning (Java semantics). */
+function propertyValue(lines, key) {
+  let value = null;
+  for (const line of lines) {
+    const parsed = parsePropertyLine(line);
+    if (parsed && parsed.key === key) value = parsed.value;
+  }
+  return value;
+}
+
+/**
+ * Set `key=value`, replacing the last existing occurrence in place (so the
+ * player's ordering and comments survive) and appending when absent. Any other
+ * occurrence is dropped: Java properties read last-wins, so a stale earlier
+ * duplicate would otherwise win over the value we just wrote.
+ */
+function setProperty(lines, key, value) {
+  let lastIndex = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const parsed = parsePropertyLine(lines[i]);
+    if (parsed && parsed.key === key) lastIndex = i;
+  }
+  if (lastIndex === -1) {
+    lines.push(`${key}=${value}`);
+    return;
+  }
+  lines[lastIndex] = `${key}=${value}`;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    if (i === lastIndex) continue;
+    const parsed = parsePropertyLine(lines[i]);
+    if (parsed && parsed.key === key) lines.splice(i, 1);
+  }
+}
+
+/** `{key, value}` for a data line, null for blanks/comments/other. */
+function parsePropertyLine(line) {
+  if (typeof line !== 'string' || !line || line.startsWith('#') || line.startsWith('!')) return null;
+  const i = line.indexOf('=');
+  if (i <= 0) return null;
+  return { key: line.slice(0, i).trim(), value: line.slice(i + 1) };
+}
+
+/**
+ * Enable capture tools on an instance: install the pinned Replay Mod build
+ * (sha1-verified), make sure the performance pins (Iris/Sodium and friends)
+ * are present so shaders can actually run, and download the shipped shader
+ * packs into `<gameDir>/shaderpacks/`.
+ *
+ * Called from the instance PATCH route when `capture_tools` flips to true.
+ * Never bundles anything: every artifact comes from Modrinth at install time.
+ * Returns `{replay_mod, performance, shaderpacks, iris_pack, notes}`; a partial
+ * failure throws (the PATCH then leaves `capture_tools` false).
+ *
+ * `opts` mirrors `selectDefaultShaderPack(instance, pack)`/`installModrinthMod`
+ * — the pins are overridable for tests and for a future per-instance pin.
+ */
+export async function installCaptureTools(instance, opts = {}) {
+  const packs = opts.packs ?? CAPTURE_SHADER_PACKS;
+  const pin = opts.replayPin ?? replayModPin(instance.version);
+  if (!supportsCaptureTools(instance) || !pin) {
+    const err = new Error(
+      `capture tools need a Fabric instance on a version with a Replay Mod pin (${Object.keys(REPLAY_MOD_PINS_BY_VERSION).join(', ')})`
+    );
+    err.status = 400;
+    err.code = 'CAPTURE_TOOLS_UNSUPPORTED';
+    throw err;
+  }
+  const instanceName = instance.name;
+  const modsDir = modsDirOf(instance);
+  const shaderDir = path.join(effectiveGameDir(instance), 'shaderpacks');
+  await mkdir(modsDir, { recursive: true });
+  const notes = [];
+
+  emitEvent('mod-progress', {
+    instance: instanceName,
+    phase: 'start',
+    preset: 'capture',
+    total: 3,
+    index: 0,
+    message: 'installing capture tools (Replay Mod + shaders)',
+  });
+
+  let installedReplay = null; // set once THIS call installed the jar
+  try {
+    // 1. Replay Mod pin — exact build, sha1 verified against the PIN (not
+    //    against the hash the same server handed us alongside the URL).
+    const file = await pinnedReplayFile(pin);
+    assertSafePinnedFileName(file.filename, 'Replay Mod pin');
+    const replayDest = path.join(modsDir, file.filename);
+    const alreadyPinned = existsSync(replayDest) && (await sha1File(replayDest)) === pin.sha1;
+    // A leftover `.disabled` twin would show as a second row in the mod list
+    // and could be re-enabled over the verified jar.
+    await unlink(replayDest + '.disabled').catch(() => {});
+    // A single artifact: downloadFile directly, so a sha1/size failure reaches
+    // the PATCH response as "sha1 mismatch for <url>" instead of downloadAll's
+    // opaque "1/1 item(s) failed" (the detail array never leaves the engine).
+    await downloadFile(file.url, replayDest, { sha1: pin.sha1, size: file.size ?? null });
+    // downloadFile unlinks a mismatching .part and throws, so a bad hash never
+    // reaches `dest`; assert it once more so a pre-existing jar with the right
+    // name and the wrong bytes cannot be mistaken for the pinned build.
+    if ((await sha1File(replayDest)) !== pin.sha1) {
+      await unlink(replayDest).catch(() => {});
+      throw new Error(`Replay Mod ${pin.version_number} failed sha1 verification after download`);
+    }
+    if (!alreadyPinned) installedReplay = replayDest;
+    notes.push(`replaymod ${pin.version_number} installed`);
+    // 2. Performance pins (Iris + Sodium + friends). installPreset skips jars
+    //    that already verify, so a second enable is a cheap no-op.
+    const preset = await installPreset(instanceName, PERFORMANCE_PRESET);
+    if (Array.isArray(preset?.installed) && preset.installed.length > 0) {
+      notes.push(`performance pins installed: ${preset.installed.length}`);
+    }
+    for (const note of preset?.notes ?? []) notes.push(note);
+
+    // 3. Both shipped packs — plain zips in shaderpacks/, sha1-verified. The
+    //    pretty one (cinematic renders) and the fast one (live play/record).
+    await mkdir(shaderDir, { recursive: true });
+    for (const pack of packs) assertSafePinnedFileName(pack.filename, 'shader pack');
+    await downloadAll(
+      packs.map((pack) => ({
+        url: pack.url,
+        dest: path.join(shaderDir, pack.filename),
+        sha1: pack.sha1,
+        size: pack.size,
+        eventName: 'mod-progress',
+        context: { instance: instanceName, preset: 'capture', filename: pack.filename },
+      })),
+      { concurrency: 2 }
+    );
+
+    // 4. Iris selection: only when the player has no pack chosen yet. Iris keeps
+    //    its own iris.properties in <gameDir>/config/; writing over an existing
+    //    non-empty shaderPack would silently change the user's graphics.
+    //    CAPTURE_SHADER_PACKS is prettiest-first, so [0] is the cinematic one.
+    const preferred = packs[0] ?? DEFAULT_SHADER_PACK;
+    const selection = selectDefaultShaderPack(instance, preferred);
+    if (selection.applied) notes.push(`iris shader pack set to ${preferred.filename}`);
+
+    emitEvent('mod-progress', {
+      instance: instanceName,
+      phase: 'done',
+      preset: 'capture',
+      total: 3,
+      index: 3,
+      message: 'capture tools ready',
+    });
+    return {
+      replay_mod: file.filename,
+      performance: preset?.installed ?? [],
+      shaderpacks: packs.map((p) => p.filename),
+      iris_pack: selection.pack,
+      notes,
+    };
+  } catch (err) {
+    // A jar this call installed but could not finish provisioning for must
+    // not outlive the failure: the PATCH leaves `capture_tools` false, so a
+    // leftover Replay Mod would record with the flag reported off.
+    if (installedReplay) await unlink(installedReplay).catch(() => {});
+    emitEvent('mod-progress', {
+      instance: instanceName,
+      phase: 'error',
+      preset: 'capture',
+      error: err?.message ?? String(err),
+      message: err?.message ?? String(err),
+    });
+    throw err;
+  }
+}
+
+/**
+ * Disable capture tools: remove the Replay Mod jar only. Shader packs and the
+ * Iris/Sodium performance pins stay — disabling captures should not strip the
+ * user's graphics setup.
+ *
+ * Matches the mod's own filename prefix rather than the single pinned
+ * filename: an instance upgraded from an older Replay Mod build still holds
+ * `replaymod-<ver>-<older>.jar`, and leaving it behind would keep recording
+ * active after the user switched capture tools off.
+ */
+const REPLAY_JAR_RE = /^replaymod([-.].*)?\.jar(\.disabled)?$/i;
+
+export async function removeCaptureTools(instance) {
+  const modsDir = modsDirOf(instance);
+  const removed = [];
+  let entries;
+  try {
+    entries = await readdir(modsDir);
+  } catch (err) {
+    // No mods dir yet is the normal "nothing installed" case. Any other
+    // failure must surface: reporting success while the jar stays in place
+    // would leave Replay Mod recording after the user turned captures off.
+    if (err?.code === 'ENOENT') return { removed };
+    throw err;
+  }
+  for (const entry of entries) {
+    if (!REPLAY_JAR_RE.test(entry)) continue;
+    try {
+      await unlink(path.join(modsDir, entry));
+      removed.push(entry);
+    } catch (err) {
+      if (err?.code !== 'ENOENT') throw err; // raced away? then it is already gone
+    }
+  }
+  return { removed };
 }
 
 /**
