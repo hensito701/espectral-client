@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [1.6.3] - 2026-10-31
+## [Unreleased]
 
 ### Added
 - **Agent access in the game client (opt-in).** Launches started by an AI
@@ -19,6 +19,8 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   connected by raw address); input and chat are refused there with a clear
   error, including on the kick screen. Singleplayer, replays, localhost and
   hosts you allowlist are unaffected.
+
+## [1.6.3] - 2026-10-31
 
 ### Fixed
 - **Joining a server no longer reloads the menu background over and over.**
