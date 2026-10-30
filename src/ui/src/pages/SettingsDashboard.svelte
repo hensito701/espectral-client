@@ -50,6 +50,7 @@
   let fastBoot = $state<boolean>(false);
   let fullbright = $state<boolean>(false);
   let discordEnabled = $state<boolean>(true);
+  let closeOnGameStart = $state<boolean>(false);
   let reducedMotion = $state<boolean>(false);
   let savingMotion = $state<boolean>(false);
 
@@ -135,6 +136,7 @@
     fastBoot = cfg.fast_boot ?? false;
     fullbright = cfg.fullbright_on_launch ?? false;
     discordEnabled = cfg.discord_enabled ?? true;
+    closeOnGameStart = cfg.close_on_game_start === true;
     reducedMotion = cfg.reduced_motion === true;
   }
 
@@ -266,6 +268,24 @@
         text: t(discordEnabled ? 'settings.flash.discordOn' : 'settings.flash.discordOff'),
       });
     } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: msg });
+    } finally {
+      savingField = '';
+    }
+  }
+
+  // Applied immediately (like reduced motion): not part of the batch save.
+  async function saveCloseOnGameStart() {
+    savingField = 'closeOnStart';
+    try {
+      config = await patchConfig({ close_on_game_start: closeOnGameStart });
+      pushToast({
+        kind: 'ok',
+        text: t(closeOnGameStart ? 'settings.flash.closeOnStartOn' : 'settings.flash.closeOnStartOff'),
+      });
+    } catch (e: unknown) {
+      closeOnGameStart = !closeOnGameStart;
       const msg = e instanceof Error ? e.message : String(e);
       pushToast({ kind: 'err', text: msg });
     } finally {
@@ -1029,6 +1049,31 @@
                   bind:checked={fastBoot}
                   onchange={saveFastBoot}
                   disabled={savingField === 'fastboot'}
+                />
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+          </div>
+        </GlassCard>
+
+        <!-- Close the launcher once the game is up (frees RAM; the game keeps running) -->
+        <GlassCard elevation="sm" class="toggle-card">
+          <div class="toggle-card__main">
+            <div class="toggle-card__info">
+              <div class="toggle-card__badge-row">
+                <Badge variant="accent" size="sm">{t('dash.closeOnStart.badge')}</Badge>
+              </div>
+              <h3 class="toggle-card__title">{t('dash.closeOnStart.title')}</h3>
+              <p class="toggle-card__desc">{t('dash.closeOnStart.desc')}</p>
+            </div>
+
+            <div class="toggle-card__switch">
+              <label class="switch-control">
+                <input
+                  type="checkbox"
+                  bind:checked={closeOnGameStart}
+                  onchange={saveCloseOnGameStart}
+                  disabled={savingField === 'closeOnStart'}
                 />
                 <span class="switch-slider"></span>
               </label>

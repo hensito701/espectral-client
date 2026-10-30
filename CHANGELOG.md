@@ -2,6 +2,19 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Closing the launcher no longer closes Minecraft.** The game now runs on
+  its own, so players can close Espectral Client (about 500 MB of RAM) while
+  they play — what low-RAM players did with Modrinth. Reopening the launcher
+  finds the running game: Play is blocked for that instance, Stop works, and
+  Discord presence returns. A stale record whose process id now belongs to
+  another program is ignored (the game's folder must be on its command line).
+- **Setting: "Cerrar el launcher al entrar al juego"** (Ajustes, off by
+  default). Once Minecraft reaches its menu the launcher closes itself; it
+  waits if another instance is still preparing.
+
 ## [1.6.1] - 2026-10-30
 
 ### Added

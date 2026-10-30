@@ -23,6 +23,7 @@ const HEARTBEAT_MS = 25_000;
 export const EVENT_NAMES = [
   'launch-log',
   'launch-exit',
+  'launch-ready',
   'mod-progress',
   'train-progress',
   'train-done',

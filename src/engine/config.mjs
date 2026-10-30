@@ -57,6 +57,9 @@ export const DEFAULT_CONFIG = {
   fullbright_on_launch: false,
   jdk_path_override: null,
   discord_enabled: true,
+  // Close the launcher window once a game reaches its main menu (the game is
+  // detached and keeps running). Off by default; frees ~500 MB on low-RAM PCs.
+  close_on_game_start: false,
   // espectral-id service base URL. Canonical host since the espectral.es zone
   // lapsed (2026-10-22); LEGACY_IDENTITY_URLS below are migrated on load.
   identity_url: 'https://id.uhce.top',
@@ -170,6 +173,7 @@ export function appConfig() {
     default_memory_auto: !(Number.isInteger(c.default_memory_mb) && c.default_memory_mb >= 512),
     accent: typeof c.accent === 'string' ? c.accent : 'oro',
     reduced_motion: c.reduced_motion === true,
+    close_on_game_start: c.close_on_game_start === true,
     download_concurrency: c.download_concurrency,
     aot_auto_train: c.aot_auto_train,
     fast_boot: c.fast_boot === true,

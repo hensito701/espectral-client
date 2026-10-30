@@ -90,6 +90,8 @@ export interface AppConfig {
   recommended_memory_mb: number;
   /** True when no default is pinned in Settings (automatic). */
   default_memory_auto: boolean;
+  /** Close the launcher once a game reaches its menu (the game keeps running). */
+  close_on_game_start: boolean;
   download_concurrency: number;
   aot_auto_train: boolean;
   fast_boot: boolean;

@@ -30,6 +30,7 @@ import * as presence from '../presence.mjs';
 import { emit } from '../events.mjs';
 import { loadConfig } from '../config.mjs';
 import { httpError } from '../error.mjs';
+import * as sessions from '../game-sessions.mjs';
 
 const execFileAsync = promisify(execFile);
 const RING_CAPACITY = 2000;
@@ -115,21 +116,30 @@ const liveLaunches = new Set();
  *  twice (two games would share one gameDir/latest.log/natives). */
 export const activeInstances = new Set();
 
-/** Active running child processes: Map<string, { child, pid, key }> keyed by instance name. */
+/** Active running child processes: Map<string, { child, pid, key }> keyed by
+ *  instance name. `child` is null for a game adopted from an earlier launcher
+ *  session (pid only). */
 const runningProcesses = new Map();
 /** Force-kill a running game process tree (win32 taskkill /T /F, elsewhere SIGKILL). */
 async function forceKillProcess(child, pid) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (child && (child.exitCode !== null || child.signalCode !== null)) return;
   try {
     if (process.platform === 'win32') {
       await execFileAsync('taskkill', ['/pid', String(pid), '/T', '/F'], {
         windowsHide: true,
       });
-    } else {
+    } else if (child) {
       child.kill('SIGKILL');
+    } else {
+      process.kill(pid, 'SIGKILL');
     }
   } catch {
     /* process may have already exited */
+  }
+  if (!child) {
+    // Adopted game: no exit event to wait for — poll the pid instead.
+    for (let i = 0; i < 50 && isPidAlive(pid); i++) await new Promise((r) => setTimeout(r, 100));
+    return;
   }
   if (child.exitCode === null && child.signalCode === null) {
     await new Promise((resolve) => {
@@ -145,16 +155,7 @@ async function forceKillProcess(child, pid) {
     });
   }
 }
-/** True when the OS still holds this pid (signal-0 probe; EPERM counts as alive). */
-function isPidAlive(pid) {
-  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err?.code === 'EPERM';
-  }
-}
+const isPidAlive = sessions.isPidAlive;
 
 /** Reconcile spawned processes against the OS. A missed exit event (or a kill
  *  from outside the launcher) would otherwise leave a stale activeInstances
@@ -640,6 +641,14 @@ export async function register(app) {
             }
             // Presence refreshes at the main menu with the same elapsed clock.
             void pushPresence(instance, presenceStart, livePresence);
+            sessions.recordSession(params.name, { menu_at: at });
+            // The game is up: the UI may close the launcher now (setting
+            // "close on game start") — the detached game keeps running.
+            try {
+              routeEmit('launch-ready', { key, instance: params.name });
+            } catch {
+              /* ignore */
+            }
             // AOT auto-train on first launch — and on a cache the JVM refused
             // (classpath identity drifted): without this a stale cache is never
             // replaced and every boot silently loses the AOT win.
@@ -657,6 +666,7 @@ export async function register(app) {
             if (exitSeen) return;
             exitSeen = true;
             runningProcesses.delete(params.name);
+            sessions.removeSession(params.name);
             pendingStops.delete(params.name);
             const buf = buffers.get(key);
             const endedAt = Date.now();
@@ -732,6 +742,16 @@ export async function register(app) {
         });
         if (spawned?.child && spawned.child.exitCode === null && spawned.child.signalCode === null) {
           runningProcesses.set(params.name, { child: spawned.child, pid: spawned.pid, key, finalize: handleExit });
+          sessions.recordSession(params.name, {
+            key,
+            pid: spawned.pid,
+            version: instance.version,
+            account: buffers.get(key)?.account ?? null,
+            uuid: resolved.account?.uuid ?? null,
+            game_dir: resolved.gameDir,
+            started_at: buffers.get(key)?.started_at ?? Date.now(),
+            bridge_token: resolved.bridgeToken ?? '',
+          });
         }
       } catch (spawnErr) {
         runningProcesses.delete(params.name);
@@ -798,11 +818,12 @@ export async function register(app) {
       return { ok: true, instance: name, already_stopped: true };
     }
     const proc = runningProcesses.get(name);
-    if (!proc || !proc.child) {
+    if (!proc) {
       pendingStops.add(name);
       return { ok: true, instance: name, cancelled: 'starting' };
     }
     await forceKillProcess(proc.child, proc.pid);
+    reconcileRunning();
     return { ok: true, instance: name };
   });
 
@@ -872,4 +893,107 @@ export async function register(app) {
     if (limit > 100) limit = 100;
     return { launches: await stats.readLaunchStats(limit) };
   });
+
+  void adoptRunningGames();
+}
+
+/**
+ * Re-attach games still running from an earlier launcher session (the game is
+ * detached, so it survives the launcher closing). Each becomes a pid-only
+ * runningProcesses entry: Play is blocked for that instance, Stop kills it,
+ * the bridge + Discord presence come back, and reconcileRunning() finalizes
+ * it when the process ends (no exit code is available for an adopted game).
+ */
+export async function adoptRunningGames() {
+  let live;
+  try {
+    live = await sessions.liveSessions();
+  } catch {
+    return [];
+  }
+  const adopted = [];
+  for (const s of live) {
+    const name = s.instance;
+    if (activeInstances.has(name)) continue;
+    let instance = null;
+    try {
+      instance = await instances.getInstance(name);
+    } catch {
+      instance = { name, version: s.version };
+    }
+    const key = typeof s.key === 'string' ? s.key : makeKey(name);
+    const buf = createBuffer(key, name, s.version ?? instance.version, s.account ?? null);
+    buf.started_at = s.started_at ?? Date.now();
+    buf.spawned_at = buf.started_at;
+    buf.menu_at = s.menu_at ?? null;
+    appendSystem(key, `[espectral] ${name} sigue abierto desde antes de reabrir el launcher (pid ${s.pid})`);
+    activeInstances.add(name);
+    liveLaunches.add(key);
+    try {
+      presence.launchStarted({ instance: name, uuid: s.uuid, gameDir: s.game_dir, token: s.bridge_token ?? '' });
+    } catch {
+      /* bridge registration is best-effort */
+    }
+    void pushPresence(instance, buf.started_at);
+    let done = false;
+    runningProcesses.set(name, {
+      child: null,
+      pid: s.pid,
+      key,
+      finalize: () => {
+        if (done) return;
+        done = true;
+        runningProcesses.delete(name);
+        sessions.removeSession(name);
+        const endedAt = Date.now();
+        buf.running = false;
+        buf.ended_at = endedAt;
+        liveLaunches.delete(key);
+        activeInstances.delete(name);
+        try {
+          presence.launchExited(name, s.bridge_token ?? '');
+        } catch {
+          /* ignore */
+        }
+        if (liveLaunches.size === 0) void pushClear();
+        for (const { seq, line } of appendSystem(key, '[espectral] game exited')) {
+          try {
+            routeEmit('launch-log', { key, seq, line });
+          } catch {
+            /* ignore */
+          }
+        }
+        try {
+          routeEmit('launch-exit', {
+            key,
+            instance: name,
+            account: buf.account,
+            code: null,
+            signal: null,
+            marker: buf.menu_at != null,
+            error: null,
+            menu_ms: buf.menu_at ? buf.menu_at - buf.started_at : null,
+            played_ms: endedAt - buf.started_at,
+            spawn_ms: null,
+            boot_ms: null,
+            phases: {},
+          });
+        } catch {
+          /* ignore */
+        }
+      },
+    });
+    console.log(`[launch] adopted running game ${name} (pid ${s.pid})`);
+    adopted.push(name);
+  }
+  return adopted;
+}
+
+/** Test hook: forget in-memory launch state (a "fresh engine"). */
+export function __resetLaunchState() {
+  buffers.clear();
+  liveLaunches.clear();
+  activeInstances.clear();
+  runningProcesses.clear();
+  pendingStops.clear();
 }

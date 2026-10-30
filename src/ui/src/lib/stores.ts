@@ -1,6 +1,7 @@
 import { get, writable } from 'svelte/store';
 import {
   ApiError,
+  getConfig,
   getHealth,
   getLaunches,
   getLaunchLog,
@@ -10,7 +11,7 @@ import {
   subscribeEvents,
 } from './api';
 import type { HealthInfo, InstanceSummary, LiveLaunch, ServerStatus, VersionManifest } from './types';
-import { startEngine, suppressEngineRestart } from './tauri';
+import { closeLauncherWindow, isTauri, startEngine, suppressEngineRestart } from './tauri';
 import { theme } from './theme.svelte';
 import { t } from './i18n.svelte';
 import { pushToast } from './toast.svelte';
@@ -433,6 +434,8 @@ subscribeEvents((ev) => {
         ? [d.line]
         : [];
     launchLog.appendFor(d.key, incoming, d.cursor, d.running);
+  } else if (ev.type === 'launch-ready') {
+    void maybeCloseLauncher((ev.data as { key?: string } | null)?.key ?? '');
   } else if (ev.type === 'launch-exit') {
     const d = ev.data as { key?: string; instance?: string; account?: string } | null;
     if (!d || typeof d.key !== 'string') return;
@@ -472,3 +475,21 @@ subscribeEvents((ev) => {
     void instances.refresh();
   }
 });
+
+/**
+ * "Close the launcher when the game starts": once a game reaches its menu,
+ * close the window (the game is detached and keeps running; ~500 MB freed).
+ * Never while another launch is still preparing — closing would abort it.
+ */
+async function maybeCloseLauncher(readyKey: string): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const cfg = await getConfig();
+    if (!cfg.close_on_game_start) return;
+    const launches = await getLaunches();
+    if (launches.some((l) => l.running && l.menu_at == null && l.key !== readyKey)) return;
+    await closeLauncherWindow();
+  } catch {
+    /* staying open is always safe */
+  }
+}
