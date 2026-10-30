@@ -77,6 +77,10 @@ export const DEFAULT_CONFIG = {
   jvm: null,
   first_launch_setup_complete: false,
   first_launch_import_source: null,
+  // Agent access (MCP). Inert unless enabled; see docs/agent-capture-plan.md
+  // → Protocol v1. `allowed_servers` gates the act tier mod-side (singleplayer
+  // and localhost are always allowed; public Espectral hosts never are).
+  agent: { enabled: false, allowed_servers: [] },
 };
 
 let cached = null;
@@ -106,6 +110,12 @@ export function loadConfig() {
   }
   cached = { ...DEFAULT_CONFIG, ...raw };
   if (!Array.isArray(cached.accounts)) cached.accounts = [];
+  // The shallow merge above hands the shared DEFAULT_CONFIG.agent object to
+  // every install — copy it so a caller patching the config in place can never
+  // leak into the defaults of the next load.
+  if (!cached.agent || typeof cached.agent !== 'object' || Array.isArray(cached.agent)) {
+    cached.agent = { ...DEFAULT_CONFIG.agent };
+  }
   // Only a *legacy* value is rewritten — any other custom identity_url is the
   // user's own (self-hosted service) and is left alone. Persist immediately so
   // the file stops naming a dead host even if nothing else is ever saved.
