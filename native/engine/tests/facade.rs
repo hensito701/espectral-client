@@ -7,8 +7,10 @@ use espectral_engine::{EngineError, EngineEvent};
 
 #[tokio::test]
 async fn unported_routes_report_not_implemented_501() {
-    let (_d, e) = temp_engine();
-    let err = e.list_versions().await.unwrap_err();
+    // (Was `e.list_versions()`; game-resolve is ported now, so exercise the
+    // stub error directly instead of a cluster method.)
+    let stub: Result<(), EngineError> = espectral_engine::not_ported!("probe");
+    let err = stub.unwrap_err();
     assert!(matches!(err, EngineError::NotImplemented(_)));
     let env = err.envelope();
     assert_eq!((env.status, env.code.as_str()), (501, "NOT_IMPLEMENTED"));
