@@ -1,8 +1,8 @@
 # Agent access & capture — plan (2026-10-30)
 
-Status: **planned, not started.** Implementation + testing handed to the devLIN
-agent (see "Handoff" at the bottom). Brainstorm context: the 2026-10-30 session
-on devWIN1.
+Status: **in progress** — P0 done (findings below), P1–P4 being built on
+devLIN (see "Handoff" at the bottom). Brainstorm context: the 2026-10-30
+session on devWIN1.
 
 ## Goals
 
@@ -75,8 +75,9 @@ flowchart LR
   `<gameDir>/espectral-captures/`, the engine (knows `gameDir` from
   `bridge.attach`) reads them. MCP image results return a downscaled preview
   (≤1280 px wide); the full-res path is in the text result.
-- **MCP transport: stdio shim** (`scripts/espectral-mcp.mjs`, shipped in the
-  app bundle next to the bundled node). It reads `<data_dir>/agent-token`
+- **MCP transport: stdio shim** (`src/engine/mcp.mjs` — lives in the engine
+  dir so the existing Tauri staging ships it as `resources/engine/mcp.mjs`,
+  run by the bundled node). It reads `<data_dir>/agent-token`
   (0600, rotatable) and calls `/api/agent/*` with it. Reason: today non-GET
   routes only need `x-espectral-client: 1` (CSRF guard, not auth) — the agent
   surface needs a real secret. stdio is also the most portable across MCP
@@ -119,7 +120,8 @@ In-client (relay):
   (`net.irisshaders.iris.api.v0.IrisApi` — verify method names on 1.11.7).
 - `record start {preset?, width?, height?, fps?, out?}` / `record stop` —
   **live** capture: async PBO readback → `ffmpeg` stdin (rawvideo RGBA →
-  H.264). Reports real achieved fps and dropped frames. No audio in v1.
+  H.264). Reports real achieved fps and dropped frames. **With audio**
+  (decision 2026-10-30, see Protocol v1 → Audio).
 - `clip render {replay?, camera: {orbit|path|keyframes}, preset}` —
   **cinematic** capture via Replay Mod (see below).
 
@@ -167,6 +169,194 @@ Shader packs: download from Modrinth (project_type `shader`) into
   Iris/Sodium pins are present.
 - Docs page + CHANGELOG entry when shipped.
 
+## Protocol v1 (implementation contract)
+
+Single source of truth for the engine ↔ mod ↔ shim ↔ UI interfaces. Change
+it here first, then in code.
+
+### Launch options (engine)
+
+`POST /api/instances/:name/launch` (UI route) and the agent `launch` tool
+accept, in addition to `account` / `dry_run`:
+
+- `agent: true` → JVM `-Despectral.agent=1`; no Discord presence for that
+  launch; `/api/launches` rows and the launch buffer carry `agent: true`.
+  Agent launches also get `-Despectral.ffmpeg=<abs path>` when an ffmpeg is
+  known (Linux: `ffmpeg` on PATH; Windows: provisioned, see Engine changes).
+- `join: {world: "<save folder>"}` → `--quickPlaySingleplayer <world>`;
+  `join: {server: "host[:port]"}` → `--quickPlayMultiplayer host:port`.
+  World = existing folder name under `saves/` (no `/`, `\`, `..`); server =
+  hostname/IPv4/[IPv6] with optional port. Both → 400.
+- `window: {width, height, hidden?}` → `--width W --height H`
+  (64…7680 × 64…4320); `hidden: true` (agent launches only) →
+  `-Despectral.agent.hidden=1`.
+- Fabric launches use the fixed program-arg list (append the flags);
+  NeoForge launches go through `expandGameArgs` features
+  (`has_custom_resolution`, `is_quick_play_singleplayer`,
+  `is_quick_play_multiplayer`) + placeholders.
+
+### Agent access config + token
+
+- Config keys: `agent.enabled` (bool, default false),
+  `agent.allowed_servers` (string[] of `host[:port]`, default `[]`).
+- Token: `<data_dir>/agent-token`, 64 hex chars + newline, mode 0600, created
+  when agent access is enabled (or on first rotate). Never returned by any
+  GET.
+- UI routes (normal CSRF header, no token):
+  - `GET /api/agent-access` → `{enabled, allowed_servers, token_path,
+    mcp: {command, args, env}}` — `mcp` is the ready-to-paste server entry
+    (`command` = absolute node path, `args` = [absolute `mcp.mjs`],
+    `env` = `{ESPECTRAL_DATA_DIR, ESPECTRAL_PORT}`).
+  - `PUT /api/agent-access` `{enabled?, allowed_servers?}` → same shape.
+  - `POST /api/agent-access/rotate` → same shape (token file rewritten).
+
+### Agent API (shim → engine)
+
+Every `/api/agent/*` request needs `Authorization: Bearer <token>`
+(constant-time compare) **and** `x-espectral-client: 1` on non-GET. Errors:
+`401 AGENT_AUTH`, `403 AGENT_DISABLED`, `404 NO_LAUNCH`, `409 NOT_AGENT_LAUNCH`
+(command to a non-agent launch), `504 AGENT_TIMEOUT`, `502 GAME_GONE`.
+
+| Route | Body / query | Reply |
+|---|---|---|
+| `GET /api/agent/instances` | — | `{instances:[{name, version, loader, capture_tools}]}` |
+| `GET /api/agent/launches` | — | `{launches:[{key, instance, running, agent, state}]}` |
+| `POST /api/agent/launch` | `{instance, account?, join?, window?, wait_for?: "title"\|"in_world", timeout_s?=180}` | `{key, state}` (always `agent: true`) |
+| `POST /api/agent/stop` | `{key}` | `{ok}` |
+| `GET /api/agent/state?key=` | — | `{key, instance, running, state}` |
+| `GET /api/agent/logs?key=&cursor=` | — | `{lines, cursor, running}` |
+| `POST /api/agent/call` | `{key, tool, args?, timeout_s?=30}` | `{ok:true, data}` \| `{ok:false, error:{code, message}}` |
+
+`state` = the last mod report (below) plus `updated_at`; `null` before the
+mod's first report. `call` file results: every `data` field ending in `_path`
+holds a path relative to the gameDir; the engine rewrites it to an absolute
+path after checking it stays inside `<gameDir>/espectral-captures/`, and for
+`preview_path` also adds `preview: {mime: "image/png", base64}`.
+
+### Bridge agent channel (mod → engine)
+
+Headers as today: `x-espectral-client: 1` + `x-espectral-bridge: <token>`.
+Only launches started with `agent: true` are served (others → 409).
+
+- `POST /api/bridge/agent/poll` `{}` → long-poll ≤ 25 s →
+  `{commands:[{id, tool, args, timeout_ms}], policy:{allowed_servers,
+  blocked_hosts}}` (`commands` may be empty). `blocked_hosts` =
+  `["uhce.top", "espectral.es"]` (domain suffixes; the mod also blocks the
+  IPs they resolve to).
+- `POST /api/bridge/agent/result` `{id, ok, data?, error?:{code, message}}`.
+- `POST /api/bridge/agent/state` `{phase, screen, server, world, context,
+  paused, recording}` → engine stores it per launch, emits SSE
+  `agent-state {key, instance, ...state}`. `phase` ∈ `loading|title|joining|
+  in_world|disconnected`; `context` ∈ `menu|singleplayer|replay|localhost|
+  allowlisted|espectral|server`. Sent on every change and at least every 10 s.
+
+### Tools executed in the mod (`call.tool`)
+
+All run on the render thread. Error codes: `TIER_REFUSED`, `PAUSED` (F8),
+`NOT_IN_WORLD`, `NO_SCREEN`, `UNKNOWN_WIDGET`, `BAD_ARGS`, `BUSY`,
+`NO_IRIS`, `NO_REPLAYMOD`, `NO_FFMPEG`, `UNSUPPORTED`, `FAILED`.
+
+| Tool | Tier | Args → data |
+|---|---|---|
+| `screenshot` | observe (capture when `width/height` or `hud:false`) | `{width?, height?, hud?=true, preview?=true}` → `{image_path, preview_path?, width, height}` |
+| `screen_tree` | observe | `{}` → `{screen, title, gui_width, gui_height, gui_scale, widgets:[{id, type, class, text, x, y, w, h, enabled, focused, value?}], slots?:[{id, index, x, y, w, h, item, count, name, lore}]}` |
+| `click` | act | `{id}` \| `{x, y}` (GUI-scaled coords), `button?="left"`, `double?` → `{}` |
+| `key` | act | `{key: "<vanilla key name or short form, e.g. key.keyboard.e / e / escape / f3>", action?: "press"\|"down"\|"up"}` → `{}`; `down` auto-releases after 2 s unless renewed |
+| `type` | act | `{text}` → `{}` (char events into the focused widget) |
+| `chat` / `command` | act | `{text}` → `{}` |
+| `disconnect` | observe | `{}` → `{}` (leave world/server to title; always allowed) |
+| `hud` | capture | `{hidden}` → `{hidden}` |
+| `shaders` | capture | `{enabled?, pack?}` → `{enabled, pack, available:[…]}` |
+| `record_start` | capture | `{preset?="evidence", width?, height?, fps?, audio?=true}` → `{video_path, width, height, fps}` |
+| `record_stop` | capture | `{}` → `{video_path, duration_s, frames, dropped, achieved_fps, audio}` |
+| `replays` | observe | `{}` → `{replays:[{name, duration_s, date}]}` |
+| `clip_render` | camera | `{replay, start_s?, duration_s, preset?="short", camera:{orbit:{center:[x,y,z], radius, height, degrees?=360, start_deg?=0}} \| {path:{points:[[x,y,z,yaw,pitch],…]}}, shaders?: pack, audio?=true}` → `{job}` |
+| `clip_status` | observe | `{job, wait_s?≤25}` → `{job, state: "rendering"\|"done"\|"failed", frames_done, total_frames, video_path?, error?}` |
+
+Presets: `short` 1080×1920@60 HUD off; `landscape` 1920×1080@60 HUD off;
+`evidence` window size @30 HUD on. H.264 `yuv420p` CRF 18, AAC 48 kHz
+stereo audio, `+faststart`.
+
+### Audio
+
+Decision: recordings carry the game's audio. Live `record_*` captures the
+game's own mix in-process (OpenAL Soft loopback device or an equivalent tap —
+mod's choice, documented in P0/P3 findings) so it is portable and sample-
+aligned with the frames; `clip_render` muxes the audio for its replay time
+range (from Replay Mod's render if it produces sound, else from a sidecar
+recorded alongside the replay). Missing audio never fails a capture: `audio`
+in the result says what happened.
+
+### Capture tools (instance)
+
+- Instance field `capture_tools` (bool, default false), set through the
+  existing instance PATCH route. Turning it on (Fabric, versions with a pin)
+  installs the Replay Mod pin into the instance's mods dir, makes sure the
+  Iris/Sodium performance pins are present, and downloads the shader packs
+  below into `shaderpacks/` (Modrinth CDN, sha1-verified), selecting the
+  default one only when no pack is selected yet. Turning it off removes the
+  Replay Mod jar only (shader packs and Iris stay).
+- Replay Mod pins (Modrinth project `Nv2fQJo5`, 2.6.28): 1.21.11
+  `KJkQjrpd` sha1 `745cc0e46c36f11d377fd4a38ec268791462398a`; 26.2
+  `eHbYuA7P` sha1 `4c0a9b4fa4852af576c20083c4f07e4fea1a32f0`; 26.3
+  `7c5mnPyr` sha1 `6e6cc19cb5b5a88c2c37dfe567c3d36685ba591b`.
+- Shader packs (P0 benchmark): `DEFAULT_SHADER_PACK` = Complementary
+  Reimagined r5.9.3 (`HVnmMxH1` / `Bqen1mJX`) for cinematic renders;
+  `FAST_SHADER_PACK` = MakeUp Ultra Fast 9.6 (`izsIPI7a` / `t4YRxQug`) for
+  live play and live `record`.
+
+## P0 findings (devLIN, 2026-10-30)
+
+**Live fps with shaders** — 26.3 Fabric, Iris 1.11.7 + Sodium 0.9.2 +
+Replay Mod 2.6.28, render distance 12, vsync off, 1920×1080 window (same
+pixel count as the 1080×1920 `short` preset), creative world seed 1337,
+20 s static vista, measured with the mod's own bench harness
+(`espectral-bench.json` → `bench-metrics.jsonl`, p50 frame time):
+
+| Shader pack | p50 fps | 1 % low fps |
+|---|---|---|
+| none | 311 | 112 |
+| MakeUp Ultra Fast 9.6 | 33.5 | 25.4 |
+| Complementary Reimagined r5.9.3 — VERYLOW / LOW profile | 21.1 / 21.4 | 7.3 / 14.3 |
+| Complementary Reimagined r5.9.3 — MEDIUM profile | 15.8 | 10.6 |
+| BSL 10.1.8 | 15.7 | 11.4 |
+| Complementary Reimagined r5.9.3 — default profile | 13.3 | 10.9 |
+| Photon v1.4 | 11.7 | 7.4 |
+| Complementary Unbound r5.9.3 | 10.8 | 7.5 |
+
+Consequences: no pack reaches 60 fps live at 1080p on this iGPU, so smooth
+60 fps content **must** come from the offline Replay Mod render, where fps
+only changes render time. Hence two packs: Complementary Reimagined (best
+look that still runs, default profile) for `clip_render`, MakeUp Ultra Fast
+for live play / `record` (the only pack above 30 fps).
+
+**Windowing** — 26.3 creates its window through **SDL3** (`Created window
+using SDL video driver: wayland`), natively on Wayland, not GLFW/XWayland:
+the plan's `GLFW_VISIBLE` idea does not apply on 26.x; hidden mode must use
+SDL (hidden window flag / `SDL_HideWindow`) — and 1.21.11 still uses GLFW.
+
+**Replay Mod 2.6.28** — auto-starts recording in singleplayer ("Recording
+started"), files in `replay_recordings/`. Public render API (javap):
+`ReplayModReplay.instance.startReplay(File)`, `SPTimeline`
+(`addPositionKeyframe`, `addTimeKeyframe`, `createTimeline`),
+`RenderSettings` (+ `EncodingPreset.MP4_CUSTOM`, export command/arguments),
+`VideoRenderer(RenderSettings, ReplayHandler, Timeline).renderVideo()`.
+The jar contains no audio writer: its renders are silent, so audio for
+`clip_render` has to come from us.
+
+**Iris 1.11.7 API v0** — only `getConfig().setShadersEnabledAndApply(bool)`;
+pack switching needs internal `Iris.getIrisConfig().setShaderPackName()` +
+`save()` + `Iris.reload()` (reflection).
+
+**Bench harness bug fixed** — the bench never recognised
+`EspectralTitleScreen` as the title and re-opened it forever; it now accepts
+both titles.
+
+**Process note** — Mine MCP was not tried: driving a native Wayland window
+from outside (no per-window input/capture on this session) is exactly what
+the relay solves, so the remaining spike items (Replay Mod render time,
+hidden window, audio tap) are measured through the relay itself in P2/P3.
+
 ## Phases & acceptance (each testable on devLIN)
 
 | Phase | Scope | Acceptance (observed, not assumed) |
@@ -180,13 +370,15 @@ Shader packs: download from Modrinth (project_type `shader`) into
 Verification recipe per `AGENTS.md` (npm test, npm run check, npm run build,
 Gradle for all three mod variants, cargo check if Rust is touched).
 
-## Open questions for the human
+## Decisions (human, 2026-10-30)
 
-- Default shader pack for the `short` preset (licence must allow runtime
-  download; candidates: Complementary Reimagined, BSL, MakeUp UF for iGPUs).
-- Audio in recordings (v2?).
-- Should `camera` tier be allowed on Espectral servers for staff/creators
-  (e.g. a server-granted permission), or never?
+- **Default shader pack:** the best-looking pack that still runs well on the
+  devLIN Barcelo iGPU — measured in P0: Complementary Reimagined for renders,
+  MakeUp Ultra Fast for live (see P0 findings).
+- **Audio in recordings: yes** (v1, both live `record` and `clip render`).
+- **Camera tier:** fine for this work (singleplayer, replay viewer, localhost);
+  generally **not** allowed on Espectral servers. A server-granted
+  staff/creator permission is out of scope.
 
 ## Handoff (devLIN)
 

@@ -166,7 +166,7 @@ public final class BenchEngine {
         if (!inWorld) {
             if (!enterAttempted) {
                 Screen screen = minecraft.gui != null ? minecraft.gui.screen() : null;
-                if (screen instanceof TitleScreen) {
+                if (isTitle(screen)) {
                     enterAttempted = true;
                     enterStartMs = nowMs;
                     attemptEnter(minecraft);
@@ -194,7 +194,7 @@ public final class BenchEngine {
                 // screen); still sitting on it means vanilla aborted the
                 // enter (it logs and swallows creation failures itself).
                 Screen screen = minecraft.gui != null ? minecraft.gui.screen() : null;
-                if (screen instanceof TitleScreen) {
+                if (isTitle(screen)) {
                     LOGGER.error("[espectral-bench] world missing: '{}' (enter aborted)", spec.world);
                     emitDone(nowMs);
                     finished = true;
@@ -260,6 +260,12 @@ public final class BenchEngine {
             emitDone(System.currentTimeMillis());
             finished = true;
         }
+    }
+
+    /** Vanilla title or Espectral's replacement (TitleSwapMixin swaps it in). */
+    private static boolean isTitle(Screen screen) {
+        return screen instanceof TitleScreen
+                || screen instanceof es.spectral.menu.ui.EspectralTitleScreen;
     }
 
     private static void createWorld(Minecraft minecraft, String folder) {
