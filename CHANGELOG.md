@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.6.1] - 2026-10-30
 
 ### Added
 - **Change an instance's version and platform in place.** Configuración now
