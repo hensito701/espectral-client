@@ -1,0 +1,91 @@
+# Espectral Client — native (Rust) workspace.
+#
+# engine/  espectral-engine: the launcher engine as a library (port of src/engine/*.mjs)
+# app/     espectral-client: the native binary (Slint UI lands in a later phase)
+#
+# Every third-party dependency is pinned HERE, once. Member crates reference
+# them with `dep = { workspace = true }` so the parallel porting worktrees can
+# never pull two versions of the same crate. If a port truly needs a new crate,
+# add it to [workspace.dependencies] in its own commit (see PORTING.md).
+
+[workspace]
+resolver = "2"
+members = ["engine", "app"]
+
+[workspace.package]
+# Mirrors package.json "version" (the JS engine reports it from /api/health).
+version = "1.6.2"
+edition = "2021"
+license = "GPL-3.0-only"
+rust-version = "1.80"
+repository = "https://github.com/espectral/espectral-client"
+
+[workspace.dependencies]
+espectral-engine = { path = "engine" }
+
+# async runtime + utilities
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "process", "signal"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+bytes = "1"
+
+# HTTP — rustls ONLY (never OpenSSL / native-tls)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "json", "stream", "http2", "charset"] }
+# Loopback listener for the two endpoints external processes still call:
+# the in-game mod bridge (POST /api/bridge/visible) and the Discord OAuth
+# redirect (GET /api/discord/callback). See PORTING.md.
+axum = { version = "0.7", default-features = false, features = ["tokio", "http1", "json", "query"] }
+
+# serde — preserve_order keeps JSON key order identical to the JS engine's
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+indexmap = { version = "2", features = ["serde"] }
+
+# errors / logging
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# archives / compression
+zip = { version = "2", default-features = false, features = ["deflate"] }
+flate2 = "1"
+tar = "0.4"
+
+# hashing / crypto / encoding
+sha1 = "0.10"
+sha2 = "0.10"
+md-5 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["pkcs8", "alloc"] }
+rand = "0.8"
+uuid = { version = "1", features = ["v4"] }
+
+# misc
+url = "2"
+regex = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+dirs = "5"
+
+# platform
+libc = "0.2"
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Pipes",
+  "Win32_System_ProcessStatus",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+# tests
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "symbols"
