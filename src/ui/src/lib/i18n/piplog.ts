@@ -26,6 +26,8 @@ export const es: Dict = {
   'pip.pin': 'Fijar panel',
   'pip.unpin': 'Desfijar panel',
   'pip.close': 'Cerrar',
+  'pip.agentBadge': 'AGENTE',
+  'pip.agentTabTitle': '{name} — lanzado por un agente',
 };
 
 export const en: Dict = {
@@ -54,4 +56,6 @@ export const en: Dict = {
   'pip.pin': 'Pin panel',
   'pip.unpin': 'Unpin panel',
   'pip.close': 'Close',
+  'pip.agentBadge': 'AGENT',
+  'pip.agentTabTitle': '{name} — launched by an agent',
 };

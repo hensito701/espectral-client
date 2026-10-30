@@ -19,6 +19,7 @@ import { es as piplogEs, en as piplogEn } from './i18n/piplog';
 import { es as discordEs, en as discordEn } from './i18n/discord';
 import { es as wardrobeEs, en as wardrobeEn } from './i18n/wardrobe';
 import { es as personalizationEs, en as personalizationEn } from './i18n/personalization';
+import { es as agentEs, en as agentEn } from './i18n/agent';
 export type Dict = Record<string, string>;
 
 /**
@@ -41,6 +42,7 @@ export const es: Dict = {
   ...discordEs,
   ...wardrobeEs,
   ...personalizationEs,
+  ...agentEs,
   'home.capsuleTiming': 'Preparación {prep}s · JVM {jvm}s',
 };
 
@@ -64,5 +66,6 @@ export const en: Dict = {
   ...discordEn,
   ...wardrobeEn,
   ...personalizationEn,
+  ...agentEn,
   'home.capsuleTiming': 'Prep {prep}s · JVM {jvm}s',
 };

@@ -47,6 +47,12 @@ export async function register(app) {
     if (wantsRename && activeInstances.has(params.name)) {
       throw httpError(409, 'ALREADY_RUNNING', `instance '${params.name}' is running; stop it before renaming`);
     }
+    // Toggling capture tools rewrites the mods dir (Replay Mod in/out). A live
+    // JVM scans that directory at boot and crashes on a jar that disappears
+    // mid-session, so the same guard as a rename applies.
+    if (patch.capture_tools !== undefined && activeInstances.has(params.name)) {
+      throw httpError(409, 'ALREADY_RUNNING', `instance '${params.name}' is running; stop it before changing capture tools`);
+    }
     return instances.patchInstance(params.name, patch);
   });
 

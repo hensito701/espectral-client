@@ -98,6 +98,17 @@ export const es: Dict = {
   'instance.gameDirClear': 'Restablecer',
   'instance.saveGameDir': 'Guardar directorio',
   'instance.gameDirSaved': 'Directorio de juego actualizado correctamente',
+  // Config Tab — Capture tools (Replay Mod + shader packs)
+  'instance.captureTitle': 'Herramientas de captura',
+  'instance.captureDesc': 'Instala Replay Mod y dos paquetes de shaders (uno bonito para clips cinemáticos, uno rápido para jugar y grabar en directo). Solo Fabric 1.21.11, 26.2 y 26.3.',
+  'instance.captureLabel': 'Instalar herramientas de captura',
+  'instance.captureHint': 'Añade Replay Mod a los mods, se asegura de que Iris y Sodium estén presentes y descarga Complementary Reimagined y MakeUp Ultra Fast. Apagarlo quita solo Replay Mod.',
+  'instance.captureUnavailable': 'Solo disponible en Fabric 1.21.11, 26.2 y 26.3.',
+  'instance.captureInstalling': 'Instalando herramientas de captura…',
+  'instance.captureOn': 'Herramientas de captura instaladas.',
+  'instance.captureActive': 'ACTIVO',
+  'instance.captureOff': 'Herramientas de captura desactivadas (Replay Mod retirado).',
+  'instance.captureError': 'No se pudieron cambiar las herramientas de captura',
   // Config Tab — AOT
   'instance.aotTitle': 'Aceleración AOT (Ahead-Of-Time)',
   'instance.aotSubtitle': 'Compilación anticipada de clases para tiempos de arranque ultrarrápidos',
@@ -281,6 +292,17 @@ export const en: Dict = {
   'instance.gameDirClear': 'Reset',
   'instance.saveGameDir': 'Save directory',
   'instance.gameDirSaved': 'Game directory updated successfully',
+  // Config Tab — Capture tools (Replay Mod + shader packs)
+  'instance.captureTitle': 'Capture tools',
+  'instance.captureDesc': 'Installs Replay Mod plus two shader packs (a pretty one for cinematic clips, a fast one for live play and recording). Fabric 1.21.11, 26.2 and 26.3 only.',
+  'instance.captureLabel': 'Install capture tools',
+  'instance.captureHint': 'Adds Replay Mod to the mods folder, makes sure Iris and Sodium are present, and downloads Complementary Reimagined and MakeUp Ultra Fast. Turning it off removes Replay Mod only.',
+  'instance.captureUnavailable': 'Only available on Fabric 1.21.11, 26.2 and 26.3.',
+  'instance.captureInstalling': 'Installing capture tools…',
+  'instance.captureOn': 'Capture tools installed.',
+  'instance.captureActive': 'ACTIVE',
+  'instance.captureOff': 'Capture tools disabled (Replay Mod removed).',
+  'instance.captureError': 'Could not change the capture tools',
 
   // Config Tab — AOT
   'instance.aotTitle': 'Ahead-Of-Time (AOT) Acceleration',
