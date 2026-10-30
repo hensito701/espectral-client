@@ -134,6 +134,16 @@
   let importingOptions = $state(false);
   let optionsNote = $state('');
 
+  // Capture tools (Replay Mod + shader pack; instance PATCH capture_tools)
+  let captureTools = $state(false);
+  let savingCaptureTools = $state(false);
+  const CAPTURE_TOOL_VERSIONS = ['1.21.11', '26.2', '26.3'];
+  const captureToolsSupported = $derived(
+    summary !== null &&
+      summary.loader === 'fabric' &&
+      CAPTURE_TOOL_VERSIONS.includes(summary.version),
+  );
+
   // Version / platform change (preview, then apply)
   let vcVersion = $state('');
   let vcLoader = $state<Loader>('fabric');
@@ -258,6 +268,7 @@
       hue = typeof detail.summary.hue === 'number' ? detail.summary.hue : null;
       gameDir = detail.summary.game_dir ?? '';
       gameDirDefault = !detail.summary.game_dir;
+      captureTools = detail.summary.capture_tools === true;
       iconError = '';
 
       // Extract existing config values
@@ -564,6 +575,30 @@
       pushToast({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       savingGameDir = false;
+    }
+  }
+
+  /**
+   * Capture tools: the engine installs Replay Mod + the Iris/Sodium pins and
+   * downloads the default shader pack on enable (so the PATCH is slow), and
+   * removes only the Replay Mod jar on disable.
+   */
+  async function handleToggleCaptureTools() {
+    if (!decodedName || savingCaptureTools || !summary) return;
+    const next = !captureTools;
+    savingCaptureTools = true;
+    captureTools = next;
+    try {
+      summary = await patchInstance(decodedName, { capture_tools: next });
+      captureTools = summary.capture_tools === true;
+      await $instances.refresh();
+      pushToast({ kind: 'ok', text: t(next ? 'instance.captureOn' : 'instance.captureOff') });
+    } catch (e) {
+      captureTools = !next;
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast({ kind: 'err', text: `${t('instance.captureError')}: ${msg}` });
+    } finally {
+      savingCaptureTools = false;
     }
   }
 
@@ -1499,6 +1534,41 @@
                     {t('instance.saveGameDir')}
                   </Btn>
                 </div>
+              </div>
+            </GlassCard>
+
+            <!-- Capture tools: Replay Mod + shader pack (Fabric 1.21.11/26.2/26.3) -->
+            <GlassCard
+              title={t('instance.captureTitle')}
+              subtitle={t('instance.captureDesc')}
+              elevation="md"
+            >
+              <div class="capture-settings">
+                <label
+                  class="toggle-checkbox-row"
+                  class:toggle-checkbox-row--disabled={!captureToolsSupported || savingCaptureTools}
+                >
+                  <input
+                    type="checkbox"
+                    checked={captureTools}
+                    onchange={handleToggleCaptureTools}
+                    class="glass-checkbox"
+                    disabled={!captureToolsSupported || savingCaptureTools}
+                  />
+                  <div class="toggle-texts">
+                    <span class="toggle-title">{t('instance.captureLabel')}</span>
+                    <span class="toggle-hint">
+                      {captureToolsSupported
+                        ? t('instance.captureHint')
+                        : t('instance.captureUnavailable')}
+                    </span>
+                  </div>
+                  {#if savingCaptureTools}
+                    <span class="capture-busy">{t('instance.captureInstalling')}</span>
+                  {:else if captureTools}
+                    <Badge variant="ok" dot={true} size="sm">{t('instance.captureActive')}</Badge>
+                  {/if}
+                </label>
               </div>
             </GlassCard>
 
@@ -3022,6 +3092,29 @@
   .toggle-hint {
     font-size: var(--text-xs, 0.75rem);
     color: var(--muted, #8e9eb8);
+  }
+
+  /* Capture tools (Replay Mod + shader pack) */
+  .capture-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .toggle-checkbox-row--disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+  }
+
+  .toggle-checkbox-row--disabled .glass-checkbox {
+    cursor: not-allowed;
+  }
+
+  .capture-busy {
+    margin-left: auto;
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--accent);
+    white-space: nowrap;
   }
 
   /* Options Import Deck */
