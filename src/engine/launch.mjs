@@ -838,10 +838,16 @@ export function launchInstance(instance, resolved, { onLog, onMarker, onExit, on
   fs.mkdirSync(path.join(gameDir, 'logs'), { recursive: true });
   const logFile = path.join(gameDir, 'logs', 'latest.log');
 
+  // detached: the game must outlive the launcher. On Windows libuv puts every
+  // non-detached child in a kill-on-close job object, so closing the launcher
+  // (which ends the engine) took Minecraft down with it — and low-RAM players
+  // want to close the ~500 MB launcher while they play. A fresh engine
+  // re-adopts the running game from ../game-sessions.mjs.
   const child = spawnJava(resolved.java.path, argv, {
     cwd: gameDir,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
+    detached: true,
   });
   if (typeof onSpawned === 'function') {
     try { onSpawned(Date.now()); } catch {}

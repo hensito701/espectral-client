@@ -21,6 +21,19 @@ export function setSuppressEngineRestart(v: boolean): void {
   suppressEngineRestart = v;
 }
 
+/**
+ * Close the launcher window exactly like the title-bar X: the shell then ends
+ * the engine, and a running game (spawned detached) keeps going. Same command
+ * @tauri-apps/api's Window.close() sends; needs core:window:allow-close.
+ */
+export async function closeLauncherWindow(): Promise<void> {
+  if (!isTauri()) return;
+  const internals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ as {
+    invoke?: (cmd: string, args?: unknown) => Promise<unknown>;
+  };
+  await internals.invoke?.('plugin:window|close', { label: 'main' });
+}
+
 /** Ask the Rust shell to start the engine child process, then wait until the
  *  engine answers /api/health (bounded retry) so the UI's first fetch lands. */
 export async function startEngine(): Promise<void> {

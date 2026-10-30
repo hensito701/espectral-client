@@ -67,6 +67,7 @@ test('appConfig exposes only the whitelisted AppConfig subset', () => {
   assert.deepEqual(keys, [
     'accent',
     'aot_auto_train',
+    'close_on_game_start',
     'data_dir',
     'default_memory_auto',
     'default_memory_mb',

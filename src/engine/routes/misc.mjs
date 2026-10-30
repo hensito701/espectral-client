@@ -629,6 +629,7 @@ function sanitizeConfigPatch(patch) {
   if (patch.aot_auto_train !== undefined) out.aot_auto_train = !!patch.aot_auto_train;
   if (patch.discord_enabled !== undefined) out.discord_enabled = !!patch.discord_enabled;
   if (patch.reduced_motion !== undefined) out.reduced_motion = !!patch.reduced_motion;
+  if (patch.close_on_game_start !== undefined) out.close_on_game_start = !!patch.close_on_game_start;
   if (patch.jdk_path_override !== undefined) {
     if (patch.jdk_path_override !== null && typeof patch.jdk_path_override !== 'string') {
       throw httpError(400, 'BAD_JDK', 'jdk_path_override must be a path string or null');

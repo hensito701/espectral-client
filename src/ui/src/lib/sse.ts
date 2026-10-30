@@ -30,6 +30,7 @@ export interface SseEvent {
 export const SSE_EVENT_NAMES = [
   'launch-log',
   'launch-exit',
+  'launch-ready',
   'mod-progress',
   'train-progress',
   'train-done',
