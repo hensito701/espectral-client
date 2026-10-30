@@ -39,7 +39,11 @@
     "EmoteWheelPaintMixin",
     "CosmeticLayerMixin",
     "LivingEntityLayerAccess",
-    "WingsLayerElytraMixin"
+    "WingsLayerElytraMixin",
+    "AgentFrameMixin",
+    "AgentHudMixin",
+    "SliderValueAccess",
+    "ContainerScreenAccess"
   ],
   "injectors": {
     "defaultRequire": 1

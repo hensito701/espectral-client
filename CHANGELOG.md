@@ -4,6 +4,22 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [1.6.3] - 2026-10-31
 
+### Added
+- **Agent access in the game client (opt-in).** Launches started by an AI
+  agent over the launcher's MCP surface now include an in-game relay: the
+  agent can read the screen as structured data (`screen_tree`), take
+  screenshots, and drive the title menu, the Espectral Suite and normal
+  gameplay through the same input entry points real input uses. It is inert
+  unless a launch passes `-Despectral.agent=1`.
+- **F8 pauses agent control.** Pressing F8 shows a small `AGENT PAUSED (F8)`
+  chip and refuses every input, chat and command tool until pressed again.
+  The agent cannot press that key: its own key injection is refused.
+- **Act tools never work on Espectral's servers.** The context classifier
+  blocks `uhce.top` / `espectral.es` (and every IP they resolve to, even when
+  connected by raw address); input and chat are refused there with a clear
+  error, including on the kick screen. Singleplayer, replays, localhost and
+  hosts you allowlist are unaffected.
+
 ### Fixed
 - **Joining a server no longer reloads the menu background over and over.**
   The world-loading screen shown while joining still draws the menu art, but

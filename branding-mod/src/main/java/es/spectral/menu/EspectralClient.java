@@ -24,6 +24,15 @@ public final class EspectralClient implements ClientModInitializer {
     /** Radial emote wheel key for local-only MVP emotes (default B). */
     public static net.minecraft.client.KeyMapping EMOTE_KEY;
 
+    /**
+     * Agent pause key (default F8): flips {@code paused} for the in-game relay,
+     * after which every act-tier agent tool is refused. Registered only in
+     * agent mode. A plain {@code KeyMapping} — the agent's injected keys go
+     * through {@code KeyboardHandler}, which never touches
+     * {@code KeyMapping.isDown()}, so only a real key press can unpause.
+     */
+    public static net.minecraft.client.KeyMapping AGENT_PAUSE_KEY;
+
     private static final net.minecraft.client.KeyMapping.Category ESPECTRAL_CATEGORY =
             net.minecraft.client.KeyMapping.Category.register(
                     net.minecraft.resources.Identifier.fromNamespaceAndPath(
@@ -35,6 +44,10 @@ public final class EspectralClient implements ClientModInitializer {
         CLIENT_KEY = new net.minecraft.client.KeyMapping("key.espectral.client", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_RSHIFT, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
         ZOOM_KEY = new net.minecraft.client.KeyMapping("key.espectral.zoom", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_Z, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
         EMOTE_KEY = new net.minecraft.client.KeyMapping("key.espectral.emotes", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_B, ESPECTRAL_CATEGORY);
+        if (es.spectral.menu.agent.AgentRuntime.enabled()) {
+            AGENT_PAUSE_KEY = new net.minecraft.client.KeyMapping("key.espectral.agent.pause", Keys.keyboard(),
+                    com.mojang.blaze3d.platform.InputConstants.KEY_F8, ESPECTRAL_CATEGORY);
+        }
         String version = EspectralBrand.modVersion();
         if (version == null) version = "dev";
         LOGGER.info("Initializing Espectral Client mod (v{})", version);
@@ -52,7 +65,7 @@ public final class EspectralClient implements ClientModInitializer {
                 || EMOTE_KEY == null) return;
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.options == null) return;
-        net.minecraft.client.KeyMapping[] all = {CLIENT_KEY, ZOOM_KEY, EMOTE_KEY};
+        net.minecraft.client.KeyMapping[] all = allKeys();
         net.minecraft.client.KeyMapping[] current = minecraft.options.keyMappings;
         int missing = 0;
         for (net.minecraft.client.KeyMapping key : all) {
@@ -83,5 +96,12 @@ public final class EspectralClient implements ClientModInitializer {
             if (!present) extended[at++] = key;
         }
         ((OptionsAccessor) minecraft.options).espectral$setKeyMappings(extended);
+    }
+
+    /** Every binding this mod owns (the agent pause key exists only in agent mode). */
+    private static net.minecraft.client.KeyMapping[] allKeys() {
+        return AGENT_PAUSE_KEY == null
+                ? new net.minecraft.client.KeyMapping[] {CLIENT_KEY, ZOOM_KEY, EMOTE_KEY}
+                : new net.minecraft.client.KeyMapping[] {CLIENT_KEY, ZOOM_KEY, EMOTE_KEY, AGENT_PAUSE_KEY};
     }
 }
