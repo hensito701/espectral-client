@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.6.3] - 2026-10-31
 
 ### Fixed
 - **Joining a server no longer reloads the menu background over and over.**
