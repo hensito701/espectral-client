@@ -1,0 +1,50 @@
+[package]
+name = "espectral-engine"
+description = "Espectral Client launcher engine (native port of src/engine)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "espectral_engine"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures-util = { workspace = true }
+bytes = { workspace = true }
+reqwest = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+indexmap = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+zip = { workspace = true }
+flate2 = { workspace = true }
+tar = { workspace = true }
+sha1 = { workspace = true }
+sha2 = { workspace = true }
+md-5 = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+uuid = { workspace = true }
+url = { workspace = true }
+regex = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+# also used by test_support (compiled into the lib so integration tests can use it)
+tempfile = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
