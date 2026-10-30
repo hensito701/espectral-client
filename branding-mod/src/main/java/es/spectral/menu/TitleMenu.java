@@ -426,6 +426,27 @@ public final class TitleMenu {
 
     // ── Input ───────────────────────────────────────────────────────────────
 
+    /**
+     * Clickable regions for the agent {@code screen_tree} tool. The menu paints
+     * itself, so without this an agent would see an empty widget list and
+     * could only click blind coordinates.
+     */
+    public List<es.spectral.menu.agent.AgentWidget> agentWidgets() {
+        List<es.spectral.menu.agent.AgentWidget> out = new ArrayList<>(buttons.size() + icons.size());
+        for (int i = 0; i < buttons.size(); i++) {
+            Btn b = buttons.get(i);
+            out.add(new es.spectral.menu.agent.AgentWidget("menu." + i, "button",
+                    b.text.getString(), b.x, b.y, b.w, b.h));
+        }
+        for (int i = 0; i < icons.size(); i++) {
+            Btn b = icons.get(i);
+            String label = b.tooltip != null ? b.tooltip.getString() : b.text.getString();
+            out.add(new es.spectral.menu.agent.AgentWidget("icon." + i, "button",
+                    label, b.x, b.y, b.w, b.h));
+        }
+        return out;
+    }
+
     /** Returns true when the click landed on a button or icon. */
     public boolean mouseClicked(double mx, double my, int button) {
         // InputConstants, not a literal: 26.3 (SDL) numbers the left button 1, GLFW 0.
