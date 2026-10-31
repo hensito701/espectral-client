@@ -5,12 +5,25 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 ## [Unreleased]
 
 ### Added
-- **Agent access in the game client (opt-in).** Launches started by an AI
-  agent over the launcher's MCP surface now include an in-game relay: the
-  agent can read the screen as structured data (`screen_tree`), take
-  screenshots, and drive the title menu, the Espectral Suite and normal
-  gameplay through the same input entry points real input uses. It is inert
-  unless a launch passes `-Despectral.agent=1`.
+- **Agent access (opt-in): let your own AI agent use Espectral Client.**
+  Settings → *Agent access* turns on a local MCP server (Claude Code, Codex,
+  Cursor, Gemini CLI…): copy the ready-made config, paste it into your agent,
+  and it can launch an instance (straight into a world or server, at a window
+  size, or with a hidden window), read any screen as data — including
+  Espectral's title menu, Suite and cosmetics — click, type, chat, take
+  screenshots and leave the world. Everything goes through a private token
+  file you can rotate; nothing listens beyond your own PC. See
+  `docs/agent-access.md`.
+- **Screenshots and videos with shaders and game audio for agents.**
+  Screenshots at any size up to 7680 px (1080×1920 portrait, 4K) with or
+  without HUD; shader pack switching; live MP4 recordings with the game's
+  sound (hardware H.264 when available); and smooth 60 fps cinematic clips
+  rendered from Replay Mod replays — an orbit or a camera path, shaders on,
+  with the audio from when you played. A slow PC only renders slower: about
+  5 s per second of 1080×1920 video with Complementary on an AMD laptop iGPU.
+- **Capture tools per instance.** Instance → Config → *Capture tools*
+  installs Replay Mod plus two shader packs (Complementary Reimagined for
+  renders, MakeUp Ultra Fast for live play) on Fabric 1.21.11, 26.2 and 26.3.
 - **F8 pauses agent control.** Pressing F8 shows a small `AGENT PAUSED (F8)`
   chip and refuses every input, chat and command tool until pressed again.
   The agent cannot press that key: its own key injection is refused.

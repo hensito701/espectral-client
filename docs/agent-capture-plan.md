@@ -1,8 +1,8 @@
 # Agent access & capture — plan (2026-10-30)
 
-Status: **in progress** — P0 done (findings below), P1–P4 being built on
-devLIN (see "Handoff" at the bottom). Brainstorm context: the 2026-10-30
-session on devWIN1.
+Status: **implemented on devLIN (2026-10-31)** — P0–P4 done and proven on
+26.3 (see the phase table and findings). Open: a human F8 press, in-game runs
+on 26.2/1.21.11, Windows ffmpeg provisioning on a Windows box.
 
 ## Goals
 
@@ -231,7 +231,8 @@ Every `/api/agent/*` request needs `Authorization: Bearer <token>`
 mod's first report. `call` file results: every `data` field ending in `_path`
 holds a path relative to the gameDir; the engine rewrites it to an absolute
 path after checking it stays inside `<gameDir>/espectral-captures/`, and for
-`preview_path` also adds `preview: {mime: "image/png", base64}`.
+`preview_path` also adds `preview: {mime: "image/png", base64}` (the mod keeps
+previews' longest side ≤ 1280 px).
 
 ### Bridge agent channel (mod → engine)
 
@@ -258,7 +259,7 @@ All run on the render thread. Error codes: `TIER_REFUSED`, `PAUSED` (F8),
 
 | Tool | Tier | Args → data |
 |---|---|---|
-| `screenshot` | observe (capture when `width/height` or `hud:false`) | `{width?, height?, hud?=true, preview?=true}` → `{image_path, preview_path?, width, height}` |
+| `screenshot` | observe (capture when `width/height` or `hud:false`) | `{width?, height?, hud?=true, preview?=true}` → `{image_path, preview_path?, width, height}`; `width/height` (64…7680, ≤ 33.2 MP) render the world view at that size — 26.2+, `BAD_ARGS` while a screen is open |
 | `screen_tree` | observe | `{}` → `{screen, title, gui_width, gui_height, gui_scale, widgets:[{id, type, class, text, x, y, w, h, enabled, focused, value?}], slots?:[{id, index, x, y, w, h, item, count, name, lore}]}` |
 | `click` | act | `{id}` \| `{x, y}` (GUI-scaled coords), `button?="left"`, `double?` → `{}` |
 | `key` | act | `{key: "<vanilla key name or short form, e.g. key.keyboard.e / e / escape / f3>", action?: "press"\|"down"\|"up"}` → `{}`; `down` auto-releases after 2 s unless renewed |
@@ -267,11 +268,11 @@ All run on the render thread. Error codes: `TIER_REFUSED`, `PAUSED` (F8),
 | `disconnect` | observe | `{}` → `{}` (leave world/server to title; always allowed) |
 | `hud` | capture | `{hidden}` → `{hidden}` |
 | `shaders` | capture | `{enabled?, pack?}` → `{enabled, pack, available:[…]}` |
-| `record_start` | capture | `{preset?="evidence", width?, height?, fps?, audio?=true}` → `{video_path, width, height, fps}` |
-| `record_stop` | capture | `{}` → `{video_path, duration_s, frames, dropped, achieved_fps, audio}` |
-| `replays` | observe | `{}` → `{replays:[{name, duration_s, date}]}` |
-| `clip_render` | camera | `{replay, start_s?, duration_s, preset?="short", camera:{orbit:{center:[x,y,z], radius, height, degrees?=360, start_deg?=0}} \| {path:{points:[[x,y,z,yaw,pitch],…]}}, shaders?: pack, audio?=true}` → `{job}` |
-| `clip_status` | observe | `{job, wait_s?≤25}` → `{job, state: "rendering"\|"done"\|"failed", frames_done, total_frames, video_path?, error?}` |
+| `record_start` | capture | `{preset?="evidence", width?, height?, fps?, hud?, audio?=true}` → `{video_path, width, height, fps, audio}` |
+| `record_stop` | capture | `{}` → `{video_path, duration_s, frames, dropped, achieved_fps, game_fps, encoder, encoder_busy, width, height, fps, audio}` (`dropped` = repeated slots; `game_fps` tells whether the game or the encoder was the limit) |
+| `replays` | observe | `{}` → `{replays:[{name, duration_s, date, world, audio}]}` (`audio` = a game-audio sidecar exists); also `.mcpr` files in `replay_recordings/recording/` |
+| `clip_render` | camera | `{replay, start_s?=0, duration_s≤120, preset?="short"\|"landscape", fps?=60, camera:{orbit:{center:[x,y,z], radius, height, degrees?=360, start_deg?=0}} \| {path:{points:[[x,y,z,yaw,pitch],…]}}, shaders?: pack, audio?=true}` → `{job, total_frames}`; only from the title screen (`BAD_ARGS` in a world); every other tool answers `BUSY` until the render ends |
+| `clip_status` | observe | `{job, wait_s?≤25}` → `{job, state: "loading"\|"rendering"\|"done"\|"failed", frames_done, total_frames, video_path?, render_s?, audio?, error?}` — answered off the render thread |
 
 Presets: `short` 1080×1920@60 HUD off; `landscape` 1920×1080@60 HUD off;
 `evidence` window size @30 HUD on. H.264 `yuv420p` CRF 18, AAC 48 kHz
@@ -279,13 +280,16 @@ stereo audio, `+faststart`.
 
 ### Audio
 
-Decision: recordings carry the game's audio. Live `record_*` captures the
-game's own mix in-process (OpenAL Soft loopback device or an equivalent tap —
-mod's choice, documented in P0/P3 findings) so it is portable and sample-
-aligned with the frames; `clip_render` muxes the audio for its replay time
-range (from Replay Mod's render if it produces sound, else from a sidecar
-recorded alongside the replay). Missing audio never fails a capture: `audio`
-in the result says what happened.
+Decision: recordings carry the game's audio. Implemented in-process and
+portable: agent launches open the sound engine on an **OpenAL Soft loopback
+device** (`ALC_SOFT_loopback`); a pump thread renders the mix in 10 ms blocks,
+plays it through Java Sound (the player still hears the game) and copies it
+to any attached sink. Live `record_*` attaches a sink for its duration.
+Replay Mod renders silently, so while Replay Mod records a world the mix is
+also copied to `espectral-captures/replay-audio/<epoch ms>.pcm`;
+`clip_render` cuts the clip's replay range from the sidecar whose start is
+closest to the replay's `metaData.json` date and muxes it (AAC). Missing audio
+never fails a capture: `audio` in the result says what happened.
 
 ### Capture tools (instance)
 
@@ -361,11 +365,11 @@ hidden window, audio tap) are measured through the relay itself in P2/P3.
 
 | Phase | Scope | Acceptance (observed, not assumed) |
 |---|---|---|
-| P0 spike | Manual: 26.3 instance + Iris 1.11.7 + Replay Mod 2.6.28 + a shader pack; record 20 s singleplayer, render 1080×1920@60. Try Mine MCP jar for tool ergonomics. Check hidden-window behaviour under Wayland/XWayland. | Notes appended here: render time per output second on the Barcelo iGPU, live fps with shaders, Replay Mod render class names, hidden-window result. |
-| P1 engine | `agent`/`join`/`window` launch, bridge `state` phases, agent token, stdio shim with `launch/stop/state/logs`. | Fresh MCP client: `launch {instance, join:{world}, wait_for:"in_world"}` returns `in_world`; `npm test` green with new behaviour tests (quickPlay arg mapping, token auth, state transitions). |
+| P0 spike | Manual: 26.3 instance + Iris 1.11.7 + Replay Mod 2.6.28 + a shader pack; record 20 s singleplayer, render 1080×1920@60. Try Mine MCP jar for tool ergonomics. Check hidden-window behaviour under Wayland/XWayland. | **Done.** See P0 findings + P3 findings (render time, hidden window measured through the relay). |
+| P1 engine | `agent`/`join`/`window` launch, bridge `state` phases, agent token, stdio shim with `launch/stop/state/logs`. | **Done.** A clean MCP client (official TypeScript SDK 1.32.2, config exactly as the UI copies it): `launch {instance, join:{world}, wait_for:"in_world"}` → `in_world` in 19 s; `npm test` green apart from 3 old lunar-import failures. |
 | P2 relay + observe/act | poll/result protocol, `screenshot`, `screen_tree`, `click/key/type`, `chat`, tiers, F8. | **Done (2026-10-31, 26.3, in-game).** Agent alone: `screen_tree` on the title menu → clicks into the Suite → toggles *No Fog* → screenshot proves it (and back). `key`/`type` drive vanilla input; `chat`/`command` land in-game. Act tools answer `TIER_REFUSED` on `main.uhce.top` (context `espectral`, latched through the kick), `PAUSED` needs a human F8 (agent `key f8` is refused outright). |
-| P3 capture | portrait/hi-res screenshot with shaders, `shaders`, live `record`, Replay Mod `clip render`, ffmpeg provisioning on Windows. | Agent alone produces a 15 s 1080×1920 60 fps MP4 with shaders; `ffprobe` confirms size/fps/duration; sampled frames non-black and visibly shaded. |
-| P4 users | Settings UI, MCP config copy, capture toggle, i18n, docs/CHANGELOG. | Real UI driven in a browser + screenshot; `npm run check` 0 errors; copied config works from a clean MCP client. |
+| P3 capture | portrait/hi-res screenshot with shaders, `shaders`, live `record`, Replay Mod `clip render`, ffmpeg provisioning on Windows. | **Done on 26.3.** `clip_render` → 15.000 s, 1080×1920, 60/1, 900 frames, AAC 48 kHz stereo (ffprobe); frames non-black and shaded (Complementary). Live `record` (evidence + short) with game audio. 1080×1920 and 3840×2160 screenshots. Windows ffmpeg: pinned + sha256-verified in code, not run on Windows yet. |
+| P4 users | Settings UI, MCP config copy, capture toggle, i18n, docs/CHANGELOG. | **Done.** UI driven in a browser (es + en screenshots), `npm run check` 0 errors, copied config drives the game from a clean MCP client; `docs/agent-access.md` + CHANGELOG. |
 
 Verification recipe per `AGENTS.md` (npm test, npm run check, npm run build,
 Gradle for all three mod variants, cargo check if Rust is touched).
@@ -417,3 +421,38 @@ Gradle for all three mod variants, cargo check if Rust is touched).
   classification: a client kicked off a public server reports
   `phase: disconnected`, `context: espectral`, `server: main.uhce.top`, so act
   tools stay refused on the disconnect screen.
+
+## P3 findings (capture, devLIN, 2026-10-31)
+
+**Cinematic render time** — `clip_render` of a 15 s orbit, 1080×1920@60
+(900 frames), Complementary Reimagined (default profile), Replay Mod 2.6.28 on
+the Barcelo iGPU: **81.2 s render → ≈ 5.4 s per output second** (≈ 11 frames/s).
+Output: H.264 CRF 18 + AAC from the replay audio sidecar.
+
+**Hidden window** (26.3, SDL3 on Wayland, `SDL_HideWindow` right after
+creation): no window appears on the desktop (verified with a full-screen
+capture), rendering is not throttled — 35.5 fps hidden vs 37.3 fps visible
+(1280×720, MakeUp UF) — and captures work. No XWayland fallback needed. 26.x
+agent launches also never pause on lost focus and are never AFK/iconified
+fps-throttled (the player's options are untouched).
+
+**Live recording cost** — vanilla's screenshot readback converts per pixel on
+the render thread and halved the game's fps (28 → 13). The recorder copies the
+GPU readback in bulk from pooled buffers instead; with VAAPI (H.264 on the GPU,
+RGBA→NV12 via `scale_vaapi`) the recording now costs ~nothing: `achieved_fps`
+= `game_fps` (19.1 vs 19.2, `encoder_busy` 0, 1920×1080@30 MakeUp UF). Live
+smoothness is therefore the game's own fps; on this iGPU `short` (1080×1920)
+live runs ~14 fps — use `clip_render` for 60 fps content.
+
+**Replay Mod details** — renders are silent (no audio writer); recordings in
+progress live in `replay_recordings/recording/`, and a game that is killed
+(launcher `stop`) leaves an unsaved `.mcpr.tmp` — leave the world
+(`disconnect`) before stopping to keep the replay. Export template:
+`-y -f rawvideo -pix_fmt bgra -s %WIDTH%x%HEIGHT% -r %FPS% -i - %FILTERS%`
+followed by the encoder args; we pass our ffmpeg as the export command.
+
+**Custom-size screenshots** — `Window.setWidth/setHeight` for a few frames
+(the route vanilla's panorama capture uses) resizes the main target, the
+camera projection and Iris's targets together without re-initialising the
+open screen; 6 settle frames keep Complementary's TAA clean. 1.21.11 only
+resizes on window events → `UNSUPPORTED` there.

@@ -261,8 +261,9 @@ const TOOL_DEFS = [
     name: 'screenshot',
     description:
       'TIER observe/capture. Capture the end-of-frame main render target (after Iris/ shaders composite) to a PNG under ' +
-      '<gameDir>/espectral-captures/. Default player view at native size. Custom width/height or hud:false requires the capture tier. ' +
-      'Returns image_path (absolute), width, height and an inline preview image.',
+      '<gameDir>/espectral-captures/. Default player view at window size. width/height render the world at that size ' +
+      '(e.g. 1080x1920 portrait, 3840x2160; 64…7680 px; Minecraft 26.2+; close any open screen first) and, like hud:false, ' +
+      'need the capture tier. Returns image_path (absolute), width, height and an inline preview (longest side ≤ 1280 px).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -312,7 +313,8 @@ const TOOL_DEFS = [
     name: 'key',
     description:
       'TIER act. Send a key event (vanilla key name or short form: "e", "escape", "f3", "key.keyboard.f"). ' +
-      'action press (default) taps it; down holds it and auto-releases after 2 s unless renewed; up releases it.',
+      'action press (default) taps it; down holds it and auto-releases after 2 s unless renewed; up releases it. ' +
+      'F8 is the human\'s pause key and is always refused.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -369,7 +371,9 @@ const TOOL_DEFS = [
   },
   {
     name: 'disconnect',
-    description: 'TIER observe. Leave the current world/server and return to the title screen. Always allowed.',
+    description:
+      'TIER observe. Leave the current world/server and return to the title screen. Always allowed. Leaving a world is also ' +
+      'what makes Replay Mod save its recording (stopping the game instead loses it).',
     inputSchema: {
       type: 'object',
       properties: { key: KEY_SCHEMA },
@@ -379,7 +383,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'hud',
-    description: 'TIER capture. Show or hide the HUD for subsequent captures. Returns the current setting.',
+    description: 'TIER capture. Show or hide the HUD (like F1) for the rest of the session. Returns the current setting.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -409,9 +413,10 @@ const TOOL_DEFS = [
   {
     name: 'record_start',
     description:
-      'TIER capture. Start a live recording of the player view to an MP4 under espectral-captures/ (H.264 yuv420p, AAC audio). ' +
-      'Presets: short = 1080x1920@60 HUD off, landscape = 1920x1080@60, evidence = window size @30 with HUD. ' +
-      'Live capture is real-time, so a weak GPU drops frames; for smooth output use clip_render (Replay Mod, frame-locked).',
+      'TIER capture. Start a live recording of what the game renders to an MP4 under espectral-captures/ (H.264, AAC game audio). ' +
+      'Presets: short = 1080x1920@60 HUD off, landscape = 1920x1080@60 HUD off (both 26.2+, close screens first), evidence = ' +
+      'window size @30 with HUD. The file is constant-rate on the wall clock: frames the game could not render in time repeat, so ' +
+      'smoothness is bounded by the game\'s own fps (record_stop reports game_fps). For smooth 60 fps use clip_render.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -421,6 +426,7 @@ const TOOL_DEFS = [
         height: { type: 'integer' },
         fps: { type: 'integer' },
         audio: { type: 'boolean', description: 'Record game audio (default true).' },
+        hud: { type: 'boolean', description: 'Override the preset\'s HUD setting.' },
       },
       required: ['key'],
       additionalProperties: false,
@@ -430,7 +436,7 @@ const TOOL_DEFS = [
     name: 'record_stop',
     description:
       'TIER capture. Stop the running live recording and finalize the MP4. Returns video_path (absolute), duration_s, frames, ' +
-      'dropped frames, achieved_fps and whether audio was captured.',
+      'dropped (repeated) frames, achieved_fps, game_fps, encoder, encoder_busy and audio ("game" or why not).',
     inputSchema: {
       type: 'object',
       properties: { key: KEY_SCHEMA },
@@ -440,7 +446,9 @@ const TOOL_DEFS = [
   },
   {
     name: 'replays',
-    description: 'TIER observe. List Replay Mod recordings available in the instance (name, duration, date).',
+    description:
+      'TIER observe. List saved Replay Mod recordings (name, duration_s, date, world, audio = a game-audio sidecar exists). ' +
+      'Replay Mod records every world joined while it is installed and saves the file when the world is left (disconnect).',
     inputSchema: {
       type: 'object',
       properties: { key: KEY_SCHEMA },
@@ -451,9 +459,11 @@ const TOOL_DEFS = [
   {
     name: 'clip_render',
     description:
-      "TIER camera. Start an offline, frame-locked render of a Replay Mod replay at a preset resolution (smooth 60 fps even on a slow GPU). " +
-      'Camera is an orbit around a point or a keyframed path. Returns a job id — poll it with clip_status. ' +
-      'Camera tier: only in singleplayer, the replay viewer, localhost or the allowlist.',
+      'TIER camera. Start an offline, frame-locked render of a saved replay at a preset resolution (smooth 60 fps even on a slow GPU; ' +
+      'about 5 s of rendering per output second with Complementary Reimagined on an AMD iGPU). Must be called from the title ' +
+      'screen (disconnect first). Camera: an orbit around a point (looks at the center) or a keyframed path, at 1x replay time; ' +
+      'start_s + duration_s must fit in the replay, duration_s ≤ 120. Returns a job id — follow it with clip_status; other ' +
+      'tools answer BUSY until the render ends.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -461,7 +471,8 @@ const TOOL_DEFS = [
         replay: { type: 'string', description: 'Replay name from `replays`.' },
         start_s: { type: 'number', description: 'Start offset into the replay, in seconds.' },
         duration_s: { type: 'number', description: 'Clip length in seconds.' },
-        preset: { type: 'string', enum: ['short', 'landscape', 'evidence'], default: 'short' },
+        preset: { type: 'string', enum: ['short', 'landscape'], default: 'short', description: 'short = 1080x1920, landscape = 1920x1080.' },
+        fps: { type: 'integer', description: 'Frames per second (default 60).' },
         camera: {
           type: 'object',
           description: 'orbit {center:[x,y,z], radius, height, degrees?, start_deg?} or path {points:[[x,y,z,yaw,pitch],…]}.',
@@ -504,8 +515,8 @@ const TOOL_DEFS = [
   {
     name: 'clip_status',
     description:
-      'TIER observe. Progress of a clip_render job: state (rendering|done|failed), frames_done, total_frames and video_path when done. ' +
-      'wait_s (≤25) long-polls for the render to finish.',
+      'TIER observe. Progress of a clip_render job: state (loading|rendering|done|failed), frames_done, total_frames; when done ' +
+      'video_path, render_s and audio. wait_s (≤25) long-polls for the render to finish.',
     inputSchema: {
       type: 'object',
       properties: {
