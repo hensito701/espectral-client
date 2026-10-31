@@ -1,11 +1,10 @@
 //! Home (rail selection, server strip, MOTD), the telemetry capsule (launch /
 //! stop / account / AOT chip), the dry-run inspector, the instance wizard and
-//! the .mrpack import modal.
+//! the .mrpack import modal (now the shared library-mods MrpackModal).
 
 use std::cell::RefCell;
 use std::collections::HashSet;
 
-use espectral_engine::api::content::ImportMrpackRequest;
 use espectral_engine::api::game_launch::{LaunchOutcome, LaunchRequest};
 use espectral_engine::events::EngineEvent;
 use espectral_engine::types::{AotStatus, CreateInstanceRequest, Loader, VersionManifest};
@@ -233,102 +232,6 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
         );
     });
 
-    // ---- mrpack ----
-    let c = ctx.clone();
-    hb.on_mrpack_opened(move || {
-        let Some(ui) = c.ui() else { return };
-        let hb = ui.global::<HomeBridge>();
-        hb.set_mrpack_memory_touched(false);
-        if hb.get_mrpack_phase() == "done" || hb.get_mrpack_phase() == "error" {
-            hb.set_mrpack_phase("idle".into());
-            hb.set_mrpack_error("".into());
-        }
-        c.call_with(
-            |e| async move { e.get_config().await },
-            |ui, cfg| {
-                let hb = ui.global::<HomeBridge>();
-                if !hb.get_mrpack_memory_touched() {
-                    hb.set_mrpack_memory(cfg.default_memory_mb as i32);
-                }
-            },
-            |_ui, _e| {},
-        );
-    });
-    let c = ctx.clone();
-    hb.on_mrpack_browse(move || {
-        let Some(ui) = c.ui() else { return };
-        let hb = ui.global::<HomeBridge>();
-        if hb.get_mrpack_browsing() {
-            return;
-        }
-        hb.set_mrpack_browsing(true);
-        c.call(
-            |_e| async move { Ok(dialogs::pick_file("Modrinth .mrpack", &[("Modrinth modpack", &["mrpack"])]).await) },
-            |ui, picked| {
-                let hb = ui.global::<HomeBridge>();
-                hb.set_mrpack_browsing(false);
-                if let Some(p) = picked {
-                    hb.set_mrpack_path(p.to_string_lossy().as_ref().into());
-                }
-            },
-        );
-    });
-    let c = ctx.clone();
-    hb.on_mrpack_start(move || {
-        let Some(ui) = c.ui() else { return };
-        let hb = ui.global::<HomeBridge>();
-        let path = hb.get_mrpack_path().trim().to_string();
-        if path.is_empty() || hb.get_mrpack_importing() {
-            return;
-        }
-        hb.set_mrpack_importing(true);
-        hb.set_mrpack_error("".into());
-        hb.set_mrpack_phase("post".into());
-        hb.set_mrpack_done(0);
-        hb.set_mrpack_total(0);
-        hb.set_mrpack_created("".into());
-        hb.set_mrpack_already(false);
-        let memory_mb = hb.get_mrpack_memory_touched().then_some(hb.get_mrpack_memory() as u32);
-        c.call_with(
-            move |e| async move { e.import_mrpack(ImportMrpackRequest { path, memory_mb }).await },
-            |ui, reply| {
-                let hb = ui.global::<HomeBridge>();
-                hb.set_mrpack_importing(false);
-                hb.set_mrpack_created(reply.summary.name.as_str().into());
-                hb.set_mrpack_already(reply.already_exists == Some(true));
-                // watchdog: a lost import-done must not leave the modal spinning
-                let name = reply.summary.name.clone();
-                let w = ui.as_weak();
-                slint::Timer::single_shot(std::time::Duration::from_secs(15), move || {
-                    let Some(ui) = w.upgrade() else { return };
-                    let hb = ui.global::<HomeBridge>();
-                    if hb.get_mrpack_phase() == "post" && hb.get_mrpack_created() == name.as_str() {
-                        if let Some(c) = cx() {
-                            let n = name.clone();
-                            c.call_with(
-                                move |e| async move { e.get_instance_detail(&n).await },
-                                |ui, _| {
-                                    let hb = ui.global::<HomeBridge>();
-                                    if hb.get_mrpack_phase() == "post" {
-                                        hb.set_mrpack_phase("done".into());
-                                        store::refresh_instances();
-                                    }
-                                },
-                                |_ui, _e| {},
-                            );
-                        }
-                    }
-                });
-            },
-            |ui, e| {
-                let hb = ui.global::<HomeBridge>();
-                hb.set_mrpack_importing(false);
-                hb.set_mrpack_phase("error".into());
-                hb.set_mrpack_error(e.envelope().message.into());
-            },
-        );
-    });
-
     // ---- route enter ----
     router::on_route(|ui, route: &Route| {
         if route.page == Page::Home {
@@ -367,40 +270,7 @@ pub fn on_event(ui: &AppWindow, ev: &EngineEvent) {
                 refresh_aot(&cap);
             }
         }
-        EngineEvent::LaunchExit(x) => {
-            if x.instance == cap {
-                refresh_aot(&cap);
-            }
-        }
-        EngineEvent::ImportProgress(p) => {
-            let created = hb.get_mrpack_created();
-            if !created.is_empty() && p.instance != created.as_str() {
-                return;
-            }
-            if p.phase == "files" || p.phase == "overrides" {
-                hb.set_mrpack_phase(p.phase.as_str().into());
-                if let Some(i) = p.index {
-                    hb.set_mrpack_done(i as i32 + 1);
-                }
-                hb.set_mrpack_total(p.total as i32);
-            }
-        }
-        EngineEvent::ImportDone(d) => {
-            let created = hb.get_mrpack_created();
-            let phase = hb.get_mrpack_phase();
-            let tracking = hb.get_mrpack_importing() || matches!(phase.as_str(), "post" | "files" | "overrides");
-            if !tracking || (!created.is_empty() && d.instance != created.as_str()) {
-                return;
-            }
-            if d.ok {
-                hb.set_mrpack_phase("done".into());
-                hb.set_mrpack_created(d.instance.as_str().into());
-                hb.set_mrpack_already(d.already_exists == Some(true));
-            } else {
-                hb.set_mrpack_phase("error".into());
-                hb.set_mrpack_error(d.error.clone().unwrap_or_default().into());
-            }
-        }
+        EngineEvent::LaunchExit(x) if x.instance == cap => refresh_aot(&cap),
         _ => {}
     }
 }

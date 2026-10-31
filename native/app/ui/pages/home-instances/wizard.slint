@@ -444,7 +444,8 @@ export component InstanceWizardModal inherits Rectangle {
     }
     function reset() {
         root.step = 1;
-        root.filter = "release";
+        // a version preselected from VersionArmory may be a snapshot / old_*: show every type
+        root.filter = Shell.wizard-version != "" ? "all" : "release";
         root.version = Shell.wizard-version != "" ? Shell.wizard-version : HomeBridge.wiz-latest-release;
         Shell.wizard-version = "";
         root.loader = "fabric";
@@ -474,16 +475,19 @@ export component InstanceWizardModal inherits Rectangle {
         if root.open {
             root.reset();
             HomeBridge.wiz-opened();
+            if root.filter != "release" { HomeBridge.wiz-filter(root.query, root.filter); }
         }
     }
     init => {
         if root.open {
             root.reset();
             HomeBridge.wiz-opened();
+            if root.filter != "release" { HomeBridge.wiz-filter(root.query, root.filter); }
         }
     }
     // manifest arrived after opening: auto-fill the latest release
     changed manifest-serial => {
+        if root.filter != "release" { HomeBridge.wiz-filter(root.query, root.filter); }
         if root.version == "" && HomeBridge.wiz-latest-release != "" {
             root.version = HomeBridge.wiz-latest-release;
             root.suggest-name();
