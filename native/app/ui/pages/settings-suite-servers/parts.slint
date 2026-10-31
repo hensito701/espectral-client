@@ -1,0 +1,333 @@
+// OWNER: settings-suite-servers agent. Small building blocks shared by the
+// Settings / Client Suite / Server Radar pages (not exported to other groups).
+
+import { Theme, Icon, Icons } from "../../widgets.slint";
+
+/// CSS `.switch-control` (Settings, 44x24, accent) and `.switch` (Client Suite, 42x24, cyan).
+export component SwitchControl inherits Rectangle {
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    in property <color> on-color: Theme.accent;
+    /// Client-suite look: translucent off track + glow when on.
+    in property <bool> suite-style: false;
+    callback toggled(bool);
+
+    width: suite-style ? 42px : 44px;
+    height: 24px;
+    border-radius: 12px;
+    background: checked ? on-color : suite-style ? (Theme.dark ? rgba(255, 255, 255, 0.1) : rgba(18, 24, 41, 0.1)) : Theme.surface-up;
+    border-width: 1px;
+    border-color: checked ? on-color.with-alpha(suite-style ? 0.8 : 1) : Theme.border;
+    drop-shadow-color: checked && suite-style ? on-color.with-alpha(0.35) : transparent;
+    drop-shadow-blur: 12px;
+    opacity: enabled ? 1 : 0.45;
+    animate background, border-color { duration: Theme.dur-med; }
+
+    knob := Rectangle {
+        property <length> size: root.suite-style ? 18px : 16px;
+        width: size;
+        height: size;
+        y: (parent.height - self.height) / 2;
+        x: root.checked ? parent.width - self.width - (root.suite-style ? 3px : 4px) : (root.suite-style ? 3px : 4px);
+        border-radius: self.width / 2;
+        background: #ffffff;
+        drop-shadow-color: rgba(0, 0, 0, root.suite-style ? 0.4 : 0.3);
+        drop-shadow-blur: 3px;
+        drop-shadow-offset-y: 1px;
+        animate x { duration: Theme.dur-med; easing: ease-out; }
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+/// `.preset-chip` (memory / thread presets).
+export component PresetChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: lbl.preferred-height + 2 * 5.6px + 2px;
+    min-width: lbl.preferred-width + 24px + 2px;
+    horizontal-stretch: 0;
+    border-radius: self.height / 2;
+    background: active ? Theme.accent : Theme.surface-up;
+    border-width: 1px;
+    border-color: active ? Theme.accent : ta.has-hover ? Theme.border-focus : Theme.border;
+    opacity: enabled ? 1 : 0.5;
+    animate background, border-color { duration: Theme.dur-fast; }
+    lbl := Text {
+        text: root.text;
+        font-size: 12.8px;
+        font-weight: root.active ? 600 : 500;
+        color: root.active ? Theme.text-inverse : ta.has-hover ? Theme.text : Theme.muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Badge variant="warn" size="sm" dot (local copy so CardHead can embed it).
+export component WarnBadge inherits Rectangle {
+    in property <string> text;
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: self.height / 2;
+    background: Theme.accent-alt.with-alpha(0.14);
+    border-width: 1px;
+    border-color: Theme.accent-alt.with-alpha(0.35);
+    row := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 3px;
+        padding-bottom: 3px;
+        spacing: 4px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: Theme.accent-alt;
+            }
+        }
+        Text {
+            text: root.text;
+            color: Theme.accent-alt;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}
+
+/// `.card-head`: title (+ optional badge row) and muted description on the left, slot on the right.
+export component CardHead inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> desc;
+    /// Optional warn badge next to the title ("" = none).
+    in property <string> badge;
+    spacing: 16px;
+    VerticalLayout {
+        spacing: 4px;
+        horizontal-stretch: 1;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 16px;
+                font-weight: 600;
+                line-height-factor: 1.25;
+                vertical-alignment: center;
+            }
+            if root.badge != "": VerticalLayout {
+                alignment: center;
+                WarnBadge { text: root.badge; }
+            }
+        }
+        if root.desc != "": Text {
+            text: root.desc;
+            color: Theme.muted;
+            font-size: 13.2px;
+            line-height-factor: 1.09;
+            wrap: word-wrap;
+        }
+    }
+    @children
+}
+
+/// `.section-header`: h2 (1.15rem / 600) + muted description.
+export component SectionHeader inherits VerticalLayout {
+    in property <string> title;
+    in property <string> desc;
+    spacing: 4px;
+    Text {
+        text: root.title;
+        color: Theme.text;
+        font-size: 18.4px;
+        font-weight: 600;
+        letter-spacing: -0.18px;
+        line-height-factor: 0.94;
+    }
+    Text {
+        text: root.desc;
+        color: Theme.muted;
+        font-size: 13.6px;
+        line-height-factor: 1.25;
+        wrap: word-wrap;
+    }
+}
+
+/// Tinted rectangle with an icon + wrapped text (explainer box, probe banner, error banners).
+export component InfoBox inherits Rectangle {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    in property <string> text;
+    in property <string> icon;
+    in property <color> icon-color: Theme.accent-cyan;
+    in property <color> text-color: Theme.muted;
+    in property <length> font-size: 12.8px;
+    in property <length> pad-x: 16px;
+    in property <length> pad-y: 12px;
+    in property <bool> top-icon: true;
+    border-radius: Theme.radius-md;
+    background: Theme.surface-up;
+    border-width: 1px;
+    border-color: Theme.border;
+    inner := HorizontalLayout {
+        padding-left: root.pad-x;
+        padding-right: root.pad-x;
+        spacing: 12px;
+        VerticalLayout {
+            padding-top: root.pad-y + (root.top-icon ? 1.6px : 0px);
+            padding-bottom: root.pad-y;
+            alignment: root.top-icon ? start : center;
+            Icon { data: root.icon; size: 16px; color: root.icon-color; }
+        }
+        VerticalLayout {
+            padding-top: root.pad-y;
+            padding-bottom: root.pad-y;
+            horizontal-stretch: 1;
+            alignment: center;
+            Text {
+                text: root.text;
+                color: root.text-color;
+                font-size: root.font-size;
+                line-height-factor: 1.13;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+/// Copy of the foundation TextField (widgets/field.slint) without its
+/// `min-height` (the foundation one sets both `height` and `min-height`, which
+/// Slint 1.18 rejects as soon as the component is instantiated).
+/// Extra: `min-h` / `pad-y` (compact inputs),
+/// `fill` and `focus-color` overrides (Client Suite inputs).
+export component SsTextField inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder;
+    in property <bool> enabled: true;
+    in property <bool> read-only: false;
+    in property <bool> password: false;
+    in property <bool> has-error: false;
+    /// Leading icon (Icons.*), e.g. Icons.search.
+    in property <string> icon;
+    in property <length> font-size: Theme.text-sm;
+    /// Monospace input (paths, JVM args).
+    in property <bool> mono: false;
+    /// Show an "x" button that clears the text.
+    in property <bool> clearable: false;
+    in property <brush> fill: Theme.card-bg-soft;
+    in property <color> focus-color: Theme.border-focus;
+    in property <length> min-h: 36px;
+    in property <length> pad-y: Theme.space-2;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(text: string);
+    callback accepted(text: string);
+    callback key-pressed(event: KeyEvent) -> EventResult;
+    public function select-all() { input.select-all(); }
+    // focus(): the component forwards focus to its TextInput
+    forward-focus: input;
+
+    height: max(root.min-h, input.preferred-height + 2 * root.pad-y);
+    horizontal-stretch: 1;
+    border-radius: Theme.radius-md;
+    background: root.fill;
+    border-width: 1px;
+    border-color: has-error ? Theme.accent-red : input.has-focus ? root.focus-color : touch.has-hover ? Theme.hover-border : Theme.border;
+    opacity: enabled ? 1 : 0.5;
+    animate border-color { duration: Theme.dur-fast; }
+
+    // focus ring (0 0 0 2px bg, 0 0 0 4px accent) approximated by an outer ring
+    if input.has-focus && !root.read-only: Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: parent.border-radius + 3px;
+        border-width: 2px;
+        border-color: Theme.accent.with-alpha(0.55);
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-2;
+        if root.icon != "": VerticalLayout {
+            alignment: center;
+            Icon { data: root.icon; size: 16px; color: Theme.muted; }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+            input := TextInput {
+                y: (parent.height - self.height) / 2;
+                height: self.preferred-height;
+                width: parent.width;
+                font-size: root.font-size;
+                font-family: root.mono ? Theme.font-mono : Theme.font-body;
+                color: Theme.text;
+                selection-background-color: Theme.accent.with-alpha(0.3);
+                selection-foreground-color: Theme.text;
+                enabled: root.enabled;
+                read-only: root.read-only;
+                input-type: root.password ? InputType.password : InputType.text;
+                single-line: true;
+                edited => { root.edited(self.text); }
+                accepted => { root.accepted(self.text); }
+                key-pressed(e) => { return root.key-pressed(e); }
+            }
+            if input.text == "": Text {
+                x: 0;
+                width: parent.width;
+                height: parent.height;
+                text: root.placeholder;
+                color: Theme.muted;
+                font-size: root.font-size;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        if root.clearable && input.text != "": VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border-radius: Theme.radius-xs;
+                background: clear-touch.has-hover ? Theme.surface-up : transparent;
+                Icon { data: Icons.x; size: 12px; color: Theme.muted; }
+                clear-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        input.text = "";
+                        root.edited("");
+                        input.focus();
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Multi-line text input (JVM args, notes).

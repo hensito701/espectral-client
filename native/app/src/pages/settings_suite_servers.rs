@@ -1,29 +1,29 @@
-//! OWNER: settings-suite-servers agent. Rust side of SettingsDashboard / ClientSuite / ServerRadar (ui/pages/settings-suite-servers).
+//! OWNER: settings-suite-servers agent. Rust side of SettingsDashboard /
+//! ClientSuite / ServerRadar (ui/pages/settings-suite-servers).
 //!
-//! Contract with the shell: keep `pub fn init(ctx, ui)`; everything else in
-//! this file (and any `pages/settings_suite_servers/*.rs` child modules you add with
-//! `mod x;` here) is yours. Read native/app/UI-PORTING.md first.
+//! Contract with the shell: keep `pub fn init(ctx, ui)`. Everything lives on
+//! the `SettingsBridge` global; each page has its own child module:
+//!
+//! | module      | page                      | Svelte source                      |
+//! |-------------|---------------------------|------------------------------------|
+//! | `settings`  | `#/settings`              | pages/SettingsDashboard.svelte     |
+//! | `client`    | `#/client`                | pages/ClientSuite.svelte           |
+//! | `servers`   | `#/servers` + card helpers| pages/ServerRadar.svelte, components/ServerRadarCard + PingWaveform |
 
-#![allow(unused_imports)]
+use crate::bridge::Ctx;
+use crate::AppWindow;
 
-use espectral_engine::events::EngineEvent;
-use slint::ComponentHandle;
-
-use crate::bridge::{self, Ctx};
-use crate::router::{self, Route};
-use crate::{toast, AppWindow, Page, SettingsBridge};
+mod client;
+mod servers;
+mod settings;
 
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
-    let _bridge = ui.global::<SettingsBridge>();
+    settings::init(ctx, ui);
+    client::init(ctx, ui);
+    servers::init(ctx, ui);
+}
 
-    // Load data whenever one of this group's pages is entered.
-    let c = ctx.clone();
-    router::on_route(move |_ui, route: &Route| {
-        if matches!(route.page, Page::Settings | Page::Client | Page::Servers) {
-            let _ = &c; // e.g. c.call(|e| async move { e.list_versions().await }, |ui, v| { ... });
-        }
-    });
-
-    // React to engine events (UI thread).
-    bridge::on_event(|_ui, _ev: &EngineEvent| {});
+/// `e instanceof Error ? e.message : String(e)` for engine errors.
+pub(crate) fn err_text(e: &espectral_engine::error::EngineError) -> String {
+    e.to_string()
 }
