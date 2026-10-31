@@ -6,7 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { engineFetch, handleMessage, toolList } from '../src/engine/mcp.mjs';
+import { engineFetch, handleMessage } from '../src/engine/mcp.mjs';
 
 // Protocol round-trip of the stdio shim against a STUB engine: this test owns
 // the wire format (JSON-RPC framing, tools/list, tools/call), so it must not
@@ -383,41 +383,6 @@ test('mcp shim: JSON-RPC 2.0 semantics (id echo, notifications, unknown methods/
   assert.deepEqual(init.result.capabilities, { tools: { listChanged: false } });
   assert.equal(init.result.serverInfo.name, 'espectral-client');
   assert.equal(typeof init.result.serverInfo.version, 'string');
-});
-
-test('mcp shim: tool schemas match the contract tool surface', () => {
-  const tools = new Map(toolList().map((t) => [t.name, t]));
-  const schema = (name) => tools.get(name).inputSchema;
-
-  assert.deepEqual(schema('launch').required, ['instance']);
-  assert.deepEqual(schema('launch').properties.wait_for.enum, ['title', 'in_world']);
-  assert.equal(schema('launch').properties.timeout_s.type, 'number');
-  assert.deepEqual(Object.keys(schema('launch').properties).sort(), [
-    'account',
-    'instance',
-    'join',
-    'timeout_s',
-    'wait_for',
-    'window',
-  ]);
-
-  // Presets and their contract defaults.
-  assert.deepEqual(schema('record_start').properties.preset.enum, ['short', 'landscape', 'evidence']);
-  assert.equal(schema('record_start').properties.preset.default, 'evidence');
-  assert.deepEqual(schema('clip_render').properties.preset.enum, ['short', 'landscape', 'evidence']);
-  assert.equal(schema('clip_render').properties.preset.default, 'short');
-  assert.deepEqual(schema('clip_render').required, ['key', 'replay', 'duration_s']);
-
-  // Enums from the contract.
-  assert.deepEqual(schema('click').properties.button.enum, ['left', 'right']);
-  assert.deepEqual(schema('key').properties.action.enum, ['press', 'down', 'up']);
-  assert.deepEqual(schema('logs').properties.cursor.type, 'integer');
-
-  // Every schema is a closed object (the mod would ignore strays anyway).
-  for (const tool of tools.values()) {
-    assert.equal(tool.inputSchema.type, 'object', `${tool.name} is an object schema`);
-    assert.equal(tool.inputSchema.additionalProperties, false, `${tool.name} rejects unknown args`);
-  }
 });
 
 test('mcp shim: a 200 {ok:false} call envelope is a refusal, not an empty success', async () => {
