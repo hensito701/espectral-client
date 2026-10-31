@@ -12,14 +12,23 @@ porting it. Parity is the goal: same on-disk layout and JSON formats (existing
 users' data keeps working), same endpoints, same SHA-1 verification, same JVM
 argv, same Java tier selection, same AOT cache keys.
 
+> **Status (integration on `rust-native`):** all five clusters are merged and
+> wired. Every route of the engine as of the foundation commit has a working
+> `Engine` method (no `not_ported!` stubs remain). What is still missing is the
+> *agent access* feature that landed upstream afterwards (c22767f: routes/agent.mjs,
+> agent.mjs, ffmpeg.mjs, mcp.mjs, capture tools in mods.mjs, launch options) —
+> see [Missing and partial](#missing-and-partial). On-disk compatibility was
+> checked both ways against a data dir written by the JS engine
+> (`cargo run -p espectral-engine --example data_dir_probe -- <dir> [--write]`).
+
 ## Verify (every cluster, before merge)
 
 ```sh
 cd native
 cargo build
-cargo test -p espectral-engine
+cargo test --workspace
 cargo check --target x86_64-pc-windows-gnu --all-targets
-cargo clippy --all-targets            # keep it warning-free
+cargo clippy --workspace --all-targets  # keep it warning-free (also with --target x86_64-pc-windows-gnu)
 cargo fmt --all                       # rustfmt.toml: max_width 120
 ```
 
@@ -63,33 +72,36 @@ your own module (`src/resolver.rs` + `src/resolver/fabric.rs` with
 | server.mjs / cli.mjs (non-HTTP) | `engine.rs`, `api/core.rs` | foundation | **ported** |
 | routes/misc.mjs helpers (decodePngImage, isWithinDir) | `util.rs` | foundation | **ported** |
 | resolver.mjs rulesAllow/mavenPath/nativesClassifier/libraryDownload | `rules.rs` | foundation | **ported** |
-| resolver.mjs | `resolver.rs` | game-resolve | stub (+ `resolve_classpath`, `load_instance_meta` done) |
-| runtimes.mjs | `runtimes.rs` | game-resolve | stub |
-| jvm.mjs | `jvm.rs` | game-resolve | stub (+ `jcmd_path`) |
-| neoforge.mjs | `neoforge.rs` | game-resolve | stub (+ `neoforge_version_id`) |
-| launch.mjs | `launch.rs` | game-launch | stub |
-| aot.mjs | `aot.rs` | game-launch | stub (+ `cache_key` done) |
-| game-sessions.mjs | `game_sessions.rs` | game-launch | stub (+ `read_sessions`) |
-| version-change.mjs | `version_change.rs` | game-launch | stub |
-| instances.mjs | `instances.rs` | content | stub (+ `effective_game_dir(_by_name)`, `effective_mods_dir`) |
-| mods.mjs | `mods.rs` | content | stub |
-| mrpack.mjs | `mrpack.rs` | content | stub |
-| import.mjs | `import.rs` | content | stub |
-| servers.mjs | `servers.rs` | content | stub |
-| accounts.mjs | `accounts.rs` | accounts-skins | read side done (list/get/active/public/offline uuid); writes to port |
-| msauth.mjs | `msauth.rs` | accounts-skins | stub |
-| skins.mjs | `skins.rs` | accounts-skins | stub |
-| cosmetics.mjs | `cosmetics.rs` | accounts-skins | stub |
-| backgrounds.mjs | `backgrounds.rs` | accounts-skins | stub |
-| identity.mjs | `identity.rs` | identity-discord | stub (+ `normalize_uuid`, `identity_url`) |
-| grant.mjs | `grant.rs` | identity-discord | stub (constants) |
-| discordAuth.mjs | `discord_auth.rs` | identity-discord | stub (constants) |
-| discord.mjs | `discord.rs` | identity-discord | stub |
-| presence.mjs | `presence.rs` | identity-discord | stub |
-| bridge.mjs | `bridge.rs` | identity-discord | stub (+ `mint_token`) |
-| client.mjs (+ suite-registry.json) | `client.rs` | identity-discord | stub |
+| resolver.mjs | `resolver.rs` | game-resolve | **ported** |
+| runtimes.mjs | `runtimes.rs` | game-resolve | **ported** |
+| jvm.mjs | `jvm.rs` | game-resolve | **ported** |
+| neoforge.mjs | `neoforge.rs` | game-resolve | **ported** |
+| launch.mjs | `launch.rs` | game-launch | **ported** (incl. upstream Windows `stackFlags`); agent launch options **missing** |
+| aot.mjs | `aot.rs` | game-launch | **ported** |
+| game-sessions.mjs | `game_sessions.rs` | game-launch | **ported** |
+| version-change.mjs | `version_change.rs` | game-launch | **ported** |
+| instances.mjs | `instances.rs` | content | **ported**; `capture_tools` read-only (**partial**) |
+| mods.mjs | `mods.rs` | content | **ported**; upstream capture tools (Replay Mod / Iris / shader packs) **missing** |
+| mrpack.mjs | `mrpack.rs` | content | **ported** |
+| import.mjs | `import.rs` | content | **ported** |
+| servers.mjs | `servers.rs` | content | **ported** |
+| accounts.mjs | `accounts.rs` | accounts-skins | **ported** |
+| msauth.mjs | `msauth.rs` | accounts-skins | **ported** |
+| skins.mjs | `skins.rs` | accounts-skins | **ported** |
+| cosmetics.mjs | `cosmetics.rs` | accounts-skins | **ported** |
+| backgrounds.mjs | `backgrounds.rs` | accounts-skins | **ported** |
+| identity.mjs | `identity.rs` | identity-discord | **ported** |
+| grant.mjs | `grant.rs` | identity-discord | **ported** |
+| discordAuth.mjs | `discord_auth.rs` | identity-discord | **ported** |
+| discord.mjs | `discord.rs` | identity-discord | **ported** |
+| presence.mjs | `presence.rs` | identity-discord | **ported** |
+| bridge.mjs | `bridge.rs` | identity-discord | **ported** |
+| client.mjs (+ suite-registry.json) | `client.rs` | identity-discord | **ported** |
 | cosmetics-catalog.json | `include_str!` from `src/engine/` in `cosmetics.rs` | accounts-skins | — |
-| *(new)* loopback HTTP listener | `loopback.rs` | identity-discord | stub |
+| *(new)* loopback HTTP listener | `loopback.rs` | identity-discord | **ported** (axum: bridge/visible + discord/callback) |
+| agent.mjs, routes/agent.mjs (upstream c22767f) | — | unassigned | **missing** |
+| ffmpeg.mjs (upstream c22767f) | — | unassigned | **missing** |
+| mcp.mjs (MCP shim, separate Node process) | — | unassigned | **missing** (it talks HTTP to the engine; needs the agent API first) |
 
 Facade files: `api/game_resolve.rs`, `api/game_launch.rs`, `api/content.rs`,
 `api/accounts_skins.rs`, `api/identity_discord.rs` — each owned by the
@@ -116,84 +128,159 @@ download, decodePngImage (personalization.test).
 Binary routes (PNG) return `Vec<u8>`. Methods return the JS JSON shapes
 (reply structs serialize identically). Query/body params become arguments.
 
-| Route | Method | Cluster |
-|---|---|---|
-| GET /api/health | `health` | core ✅ |
-| POST /api/shutdown | `request_shutdown` | core ✅ |
-| GET /api/events (SSE) | `subscribe` → `broadcast::Receiver<EngineEvent>` | core ✅ |
-| POST /api/open-folder | `open_folder(path)` | core ✅ |
-| GET / PUT /api/theme | `get_theme` / `set_theme` | core ✅ |
-| GET / PUT /api/accent | `get_accent` / `set_accent` | core ✅ |
-| GET / PATCH /api/config | `get_config` / `patch_config(ConfigPatch)` (`ConfigPatch::from_json` accepts `{patch}` envelope) | core ✅ |
-| POST /api/pick-file, /api/pick-folder | — not ported (UI uses `rfd`) | — |
-| GET /api/versions | `list_versions` | game-resolve |
-| GET /api/versions/:id/resolve | `resolve_version_info(id)` | game-resolve |
-| GET /api/jvm | `jvm_info` | game-resolve |
-| POST /api/instances/:name/launch | `launch_instance(name, LaunchRequest)` → `LaunchOutcome` | game-launch |
-| POST /api/instances/:name/stop | `stop_instance` | game-launch |
-| POST /api/instances/:name/train | `train_instance` | game-launch |
-| GET /api/instances/:name/aot | `instance_aot_status` | game-launch |
-| GET /api/launch/:key/log?cursor | `launch_log(key, cursor)` | game-launch |
-| GET /api/launches | `list_launches` | game-launch |
-| GET /api/stats/launches?limit | `launch_stats(limit)` ✅ | game-launch |
-| POST /api/instances/:name/version-change/plan | `plan_version_change` | game-launch |
-| POST /api/instances/:name/version-change | `apply_version_change` | game-launch |
-| GET /api/instances | `list_instances` | content |
-| POST /api/instances | `create_instance(CreateInstanceRequest)` | content |
-| GET /api/instances/:name | `get_instance_detail` | content |
-| DELETE /api/instances/:name | `delete_instance` | content |
-| PATCH /api/instances/:name | `patch_instance(name, InstancePatch)` | content |
-| GET / PUT /api/instances/:name/servers | `instance_servers` / `put_instance_servers` | content |
-| GET /api/instances/:name/options | `instance_options` | content |
-| POST /api/instances/:name/options/import | `import_instance_options(name, source)` | content |
-| POST / DELETE / GET /api/instances/:name/icon | `upload_instance_icon` / `remove_instance_icon` / `instance_icon` | content |
-| GET /api/instances/:name/mods | `list_mods` | content |
-| GET /api/instances/:name/mods-dir | `mods_dir` | content |
-| POST …/mods/:filename/enable, /disable | `set_mod_enabled(name, filename, bool)` | content |
-| POST …/mods/install | `install_mod_preset(name, ModPreset)` | content |
-| GET …/mods/preset | `mod_preset_info` | content |
-| GET /api/modrinth/search | `search_modrinth(ModrinthSearchQuery)` | content |
-| POST …/mods/install-modrinth | `install_modrinth_mod(name, InstallModrinthRequest)` | content |
-| POST /api/instances/import-mrpack | `import_mrpack(ImportMrpackRequest)` | content |
-| GET /api/import/sources | `import_sources` | content |
-| POST /api/instances/:name/import | `import_profile(name, ImportProfileRequest)` | content |
-| GET /api/servers | `server_statuses` | content |
-| GET / PATCH /api/instances/:name/client | `get_client_info` / `patch_client(name, ClientPatch)` | content (logic in `client.rs`, identity-discord) |
-| GET / POST /api/accounts | `list_accounts` / `create_account(username)` | accounts-skins |
-| POST /api/accounts/active | `set_active_account` | accounts-skins |
-| POST / DELETE / GET /api/accounts/:u/avatar | `upload_account_avatar` / `remove_account_avatar` / `account_avatar` | accounts-skins |
-| POST /api/accounts/:u/avatar-color | `set_account_avatar_color` | accounts-skins |
-| GET / PUT /api/accounts/microsoft/client-id | `msa_client_id` / `set_msa_client_id` | accounts-skins |
-| POST /api/accounts/microsoft/device-code | `msa_device_code` | accounts-skins |
-| POST /api/accounts/microsoft/poll | `msa_poll(flow_id)` → `MsaPollOutcome` | accounts-skins |
-| POST /api/accounts/microsoft/logout | `msa_logout` | accounts-skins |
-| GET /api/accounts/:u/skin, skin.png | `account_skin` / `account_skin_png` | accounts-skins |
-| POST / DELETE /api/accounts/:u/skin | `upload_account_skin` / `reset_account_skin` | accounts-skins |
-| GET / POST /api/skins | `list_library_skins` / `save_library_skin` | accounts-skins |
-| GET /api/skins/:id.png | `library_skin_png` | accounts-skins |
-| PATCH / DELETE /api/skins/:id | `patch_library_skin` / `delete_library_skin` | accounts-skins |
-| POST /api/skins/:id/apply | `apply_library_skin(id, username)` | accounts-skins |
-| POST /api/skins/import-vanilla | `import_vanilla_skins` | accounts-skins |
-| GET /api/cosmetics, PUT /api/cosmetics/:uuid | `get_cosmetics` / `put_cosmetics` | accounts-skins |
-| POST /api/bridge/visible | `bridge_visible(token, uuids)` (HTTP via `loopback.rs`) | accounts-skins (logic in `bridge.rs`) |
-| GET / POST /api/backgrounds, POST …/frames | `list_backgrounds` / `import_image_background` / `import_frames_background` | accounts-skins |
-| DELETE /api/backgrounds/:id, GET …/image | `delete_background` / `background_image` | accounts-skins |
-| PATCH /api/instances/:name/personalization | `patch_personalization(name, PersonalizationPatch)` | accounts-skins |
-| GET /api/identity | `identity_state` | identity-discord |
-| POST /api/identity/:uuid/verify, /refresh | `verify_identity` / `identity_refresh` | identity-discord |
-| GET / DELETE /api/identity/:uuid/discord(/start) | `identity_discord_start` / `identity_discord_unlink` | identity-discord |
-| GET /api/discord/auth/start, /claim | `discord_auth_start` / `discord_claim(state)` | identity-discord |
-| GET /api/discord/callback | `discord_callback(query)` (HTTP via `loopback.rs`) | identity-discord |
-| GET /api/discord/me, POST /logout | `discord_me(session_id, mock)` / `discord_logout(session_id)` | identity-discord |
+| Route | Method | Cluster | Status |
+|---|---|---|---|
+| GET /api/health | `health` | core | ported |
+| POST /api/shutdown | `request_shutdown` | core | ported |
+| GET /api/events (SSE) | `subscribe` → `broadcast::Receiver<EngineEvent>` | core | ported |
+| POST /api/open-folder | `open_folder(path)` | core | ported |
+| GET / PUT /api/theme | `get_theme` / `set_theme` | core | ported |
+| GET / PUT /api/accent | `get_accent` / `set_accent` | core | ported |
+| GET / PATCH /api/config | `get_config` / `patch_config(ConfigPatch)` (`ConfigPatch::from_json` accepts `{patch}` envelope) | core | ported |
+| POST /api/pick-file, /api/pick-folder | — not ported (UI uses `rfd`) | — | not ported (by design) |
+| GET /api/versions | `list_versions` | game-resolve | ported |
+| GET /api/versions/:id/resolve | `resolve_version_info(id)` | game-resolve | ported |
+| GET /api/jvm | `jvm_info` | game-resolve | ported |
+| POST /api/instances/:name/launch | `launch_instance(name, LaunchRequest)` → `LaunchOutcome` | game-launch | ported |
+| POST /api/instances/:name/stop | `stop_instance` | game-launch | ported |
+| POST /api/instances/:name/train | `train_instance` | game-launch | ported |
+| GET /api/instances/:name/aot | `instance_aot_status` | game-launch | ported |
+| GET /api/launch/:key/log?cursor | `launch_log(key, cursor)` | game-launch | ported |
+| GET /api/launches | `list_launches` | game-launch | ported |
+| GET /api/stats/launches?limit | `launch_stats(limit)` | game-launch | ported |
+| POST /api/instances/:name/version-change/plan | `plan_version_change` | game-launch | ported |
+| POST /api/instances/:name/version-change | `apply_version_change` | game-launch | ported |
+| GET /api/instances | `list_instances` | content | ported |
+| POST /api/instances | `create_instance(CreateInstanceRequest)` | content | ported |
+| GET /api/instances/:name | `get_instance_detail` | content | ported |
+| DELETE /api/instances/:name | `delete_instance` | content | ported |
+| PATCH /api/instances/:name | `patch_instance(name, InstancePatch)` | content | ported |
+| GET / PUT /api/instances/:name/servers | `instance_servers` / `put_instance_servers` | content | ported |
+| GET /api/instances/:name/options | `instance_options` | content | ported |
+| POST /api/instances/:name/options/import | `import_instance_options(name, source)` | content | ported |
+| POST / DELETE / GET /api/instances/:name/icon | `upload_instance_icon` / `remove_instance_icon` / `instance_icon` | content | ported |
+| GET /api/instances/:name/mods | `list_mods` | content | ported |
+| GET /api/instances/:name/mods-dir | `mods_dir` | content | ported |
+| POST …/mods/:filename/enable, /disable | `set_mod_enabled(name, filename, bool)` | content | ported |
+| POST …/mods/install | `install_mod_preset(name, ModPreset)` | content | ported |
+| GET …/mods/preset | `mod_preset_info` | content | ported |
+| GET /api/modrinth/search | `search_modrinth(ModrinthSearchQuery)` | content | ported |
+| POST …/mods/install-modrinth | `install_modrinth_mod(name, InstallModrinthRequest)` | content | ported |
+| POST /api/instances/import-mrpack | `import_mrpack(ImportMrpackRequest)` | content | ported |
+| GET /api/import/sources | `import_sources` | content | ported |
+| POST /api/instances/:name/import | `import_profile(name, ImportProfileRequest)` | content | ported |
+| GET /api/servers | `server_statuses` | content | ported |
+| GET / PATCH /api/instances/:name/client | `get_client_info` / `patch_client(name, ClientPatch)` | content (logic in `client.rs`, identity-discord) | ported |
+| GET / POST /api/accounts | `list_accounts` / `create_account(username)` | accounts-skins | ported |
+| POST /api/accounts/active | `set_active_account` | accounts-skins | ported |
+| POST / DELETE / GET /api/accounts/:u/avatar | `upload_account_avatar` / `remove_account_avatar` / `account_avatar` | accounts-skins | ported |
+| POST /api/accounts/:u/avatar-color | `set_account_avatar_color` | accounts-skins | ported |
+| GET / PUT /api/accounts/microsoft/client-id | `msa_client_id` / `set_msa_client_id` | accounts-skins | ported |
+| POST /api/accounts/microsoft/device-code | `msa_device_code` | accounts-skins | ported |
+| POST /api/accounts/microsoft/poll | `msa_poll(flow_id)` → `MsaPollOutcome` | accounts-skins | ported |
+| POST /api/accounts/microsoft/logout | `msa_logout` | accounts-skins | ported |
+| GET /api/accounts/:u/skin, skin.png | `account_skin` / `account_skin_png` | accounts-skins | ported |
+| POST / DELETE /api/accounts/:u/skin | `upload_account_skin` / `reset_account_skin` | accounts-skins | ported |
+| GET / POST /api/skins | `list_library_skins` / `save_library_skin` | accounts-skins | ported |
+| GET /api/skins/:id.png | `library_skin_png` | accounts-skins | ported |
+| PATCH / DELETE /api/skins/:id | `patch_library_skin` / `delete_library_skin` | accounts-skins | ported |
+| POST /api/skins/:id/apply | `apply_library_skin(id, username)` | accounts-skins | ported |
+| POST /api/skins/import-vanilla | `import_vanilla_skins` | accounts-skins | ported |
+| GET /api/cosmetics, PUT /api/cosmetics/:uuid | `get_cosmetics` / `put_cosmetics` | accounts-skins | ported |
+| POST /api/bridge/visible | `bridge_visible(token, uuids)` (HTTP via `loopback.rs`) | accounts-skins (logic in `bridge.rs`) | ported |
+| GET / POST /api/backgrounds, POST …/frames | `list_backgrounds` / `import_image_background` / `import_frames_background` | accounts-skins | ported |
+| DELETE /api/backgrounds/:id, GET …/image | `delete_background` / `background_image` | accounts-skins | ported |
+| PATCH /api/instances/:name/personalization | `patch_personalization(name, PersonalizationPatch)` | accounts-skins | ported |
+| GET /api/identity | `identity_state` | identity-discord | ported |
+| POST /api/identity/:uuid/verify, /refresh | `verify_identity` / `identity_refresh` | identity-discord | ported |
+| GET / DELETE /api/identity/:uuid/discord(/start) | `identity_discord_start` / `identity_discord_unlink` | identity-discord | ported |
+| GET /api/discord/auth/start, /claim | `discord_auth_start` / `discord_claim(state)` | identity-discord | ported |
+| GET /api/discord/callback | `discord_callback(query)` (HTTP via `loopback.rs`) | identity-discord | ported |
+| GET /api/discord/me, POST /logout | `discord_me(session_id, mock)` / `discord_logout(session_id)` | identity-discord | ported |
+| GET / PUT /api/agent-access, POST /api/agent-access/rotate | — | (agent, upstream c22767f) | **missing** |
+| GET /api/agent/instances, /launches, /state, /logs | — | (agent) | **missing** |
+| POST /api/agent/launch, /stop, /call | — | (agent) | **missing** |
+| POST /api/bridge/agent/poll, /result, /state (mod relay) | — (would live on `loopback::router`) | (agent) | **missing** |
+| PATCH /api/instances/:name `capture_tools` | `patch_instance` ignores it (summary reports the stored flag) | (agent) | **partial** |
+| POST /api/instances/:name/launch agent options (`agent`, `join`, `window`) | `launch_instance` takes `dry_run` + `account` only | (agent) | **partial** |
 
 (`PATCH /api/accounts/:username` is called by the UI but never existed in the
 engine — the UI falls back to avatar-color; not a route.)
 
+## Missing and partial
+
+Everything below arrived in upstream `main` (67614f8, c22767f) after the
+foundation commit; it reached `rust-native` with the identity-discord merge.
+67614f8 (Windows `-XX:+AlwaysPreTouchStacks`) is ported. From c22767f only
+the data-format parts are ported: the `agent` config default, and
+`InstanceSummary.capture_tools` (read from instance.json; the key itself is
+preserved by `InstanceMeta.extra`).
+
+| Area | JS | Rust status |
+|---|---|---|
+| Agent access settings + token (`GET/PUT /api/agent-access`, `rotate`) | routes/agent.mjs, agent.mjs | missing |
+| Agent API (`/api/agent/*`: instances, launches, launch, stop, state, logs, call) | routes/agent.mjs | missing |
+| Mod relay (`/api/bridge/agent/poll`, `/result`, `/state`) | routes/agent.mjs | missing; belongs on `loopback::router` |
+| Launch options `agent`/`join`/`window` (`-Despectral.agent=1`, quick play, custom resolution, `-Despectral.ffmpeg`) | launch.mjs, routes/launch.mjs | missing (plain launches are unaffected) |
+| `capture_tools` toggle (installs/removes Replay Mod; 409 while running) | instances.mjs, mods.mjs | partial: flag is reported, toggling is not implemented |
+| ffmpeg provisioning | ffmpeg.mjs | missing |
+| MCP shim | mcp.mjs | missing (separate process; can keep running on Node against a future HTTP agent API, or be rewritten) |
+| `POST /api/pick-file`, `/api/pick-folder` | routes/misc.mjs | not ported by design (UI uses `rfd`) |
+| `/api/events` SSE, HTTP server, CORS/Host guards | server.mjs, events.mjs | not ported by design (`Engine::subscribe`) |
+| `SKIN_RATE_LIMITED` `retry_after` field | skins/msauth | partial: seconds only in the message (`EngineError` has no `retry_after`) |
+
+## Cross-cluster test seams
+
+Tests that cross clusters must sandbox every cluster, otherwise background
+work reaches the real network, PATH java or %APPDATA% (see
+`engine/tests/cross_cluster.rs::sandbox`):
+
+- game-resolve: `e.game_resolve_state().isolate()` and
+  `set_endpoints(ResolveEndpoints::all_on(<mock or http://127.0.0.1:9>))`;
+  `update_hooks(|h| h.path_java = ...)` + `set_probe_override(...)` for a fake JDK.
+- content: `e.update_content_settings(|s| s.background_on_create = false)`
+  (no library seeding / preset download after `create_instance`), plus
+  `modrinth_api` / `mcsrvstat_api`.
+- identity-discord: `e.identity_discord_state().set_overrides(...)`
+  (identity_url, session_server, discord_mock, ipc_candidates).
+- accounts-skins: `AccountsSkinsState.endpoints` / `no_browser` (crate-internal).
+- game-launch: `Engine::set_launch_test_hooks` (doc-hidden).
+
+The whole suite passes inside an offline network namespace with a throwaway
+`HOME` (loopback only), which is how "no real network / no real home" was
+checked at integration.
+
+## Known risks
+
+- Windows code (detached spawn flags, taskkill, PowerShell `Get-CimInstance`
+  command lines, Discord named pipes, `%LOCALAPPDATA%`) is compile-checked
+  and links (`cargo build --target x86_64-pc-windows-gnu`), but has never run
+  on Windows. The `#[cfg(unix)]` fake-JDK / NeoForge-installer tests do not
+  cover Windows.
+- `api::game_launch::tests::reopened_engine_adopts_running_game_then_stop_kills_it`
+  failed once in about eight full-suite runs (adopt found no live session);
+  it passes alone and in reruns. Likely a timing issue reading
+  `/proc/<pid>/cmdline` under load; not root-caused.
+- The JS reference moved during the port (c22767f refactored
+  routes/launch.mjs into `startLaunch` for the agent API). The plain launch
+  path was spot-checked, not re-audited line by line against the new file.
+- Packaging must stage `assets/branding` next to the binary (`<exe>/branding`
+  or `<exe>/resources/branding`); otherwise branding falls back to the repo
+  path baked in at compile time (`CARGO_MANIFEST_DIR`).
+- `src/ui/src/lib/types.ts` marks some fields non-null that the JS (and now
+  Rust) send as `null` (`ModEntry.project_slug/version_number/version_id/sha1/size`,
+  `ServerStatus.ip/version/software`); the Slint UI must treat them as optional.
+
 ## Cross-cluster contract functions
 
-Called across clusters; stubs return `EngineError::NotImplemented`. Keep the
-signatures (add parameters only with a note in the merge request). All take
-`&Engine` first.
+Called across clusters (all implemented now; ✅ marks the ones the
+foundation shipped). Keep the signatures. All take `&Engine` first.
+Integration added: `identity::flags_info` (grant + validity, used by
+`cosmetics::grant_view`), `cosmetics::presence_loadout`,
+`presence::republish_now`, `bridge::visible_for_token`,
+`loopback::bridge_url` (the bound port, used for `-Despectral.bridge.url`),
+`mods::{supports_branding, qol_pins_by_version}`, `aot::{is_cache_stale,
+aot_refusal_line}`.
 
 - **game-resolve**: `resolver::{get_version_manifest, resolve_version,
   get_version_json, read_local_version_json✅, resolve_version_chain,
@@ -364,3 +451,41 @@ native renderer); the engine only serves skin PNG bytes.
   `spawn_ms` / `boot_ms` / `phases`.
 - Health version comes from the workspace version (`native/Cargo.toml`,
   keep it equal to package.json).
+
+Per cluster (from the porters' reports; details in each module's docs):
+
+- **game-resolve**: PATH java is found by walking PATH natively (exec bit,
+  PATHEXT) instead of spawning `which`/`where`; Temurin archives are
+  extracted in-process (tar+flate2, zip) and downloaded through
+  `download_file`; `fast_client_java` is `None` without APPDATA/USERPROFILE;
+  `jvm_info` maps any discovery error to 503 UNAVAILABLE (cause logged); the
+  natives meta mtime compares with a 1 µs tolerance. Mojang version JSON is
+  cached flat at `versions/<id>.json` (as resolver.mjs does);
+  `Paths::version_json(id)` (nested) holds only local profiles (NeoForge).
+  Classpath strings are joined segment by segment, so on Windows they use
+  backslashes byte-identical to Node `path.join` (AOT stamps depend on it).
+- **game-launch**: a trainer spawn failure ends training at once; a failing
+  mod-set hash records `mod_set_hash: null`; `train-done` omits a null
+  `proof` and `AotProof` omits a null `refusal`; a game spawn failure is a
+  synchronous error reported through the launch-exit path (no stats row);
+  game output reaches `on_log` line by line.
+- **content**: `install_preset` sends a descriptive note where the JS sent
+  null when dynamic pins cannot be resolved; `localeCompare` is
+  approximated; typed request structs replace some body validation
+  (BAD_LOADER, BAD_OVERWRITE_POLICY, string memory_mb, null-body BAD_PATCH
+  cannot occur); `delete_instance` returns `(deleted, trash)`. Ported as-is,
+  probably a JS bug: profile import writes into the instance dir even when a
+  custom `game_dir` is set.
+- **accounts-skins**: a successful `msa_poll` keeps the fresh MC token in
+  memory and `msa_logout` forgets it; cosmetics.json / skin-library.json are
+  re-read per call and serialized with in-process locks; slugs fold Latin
+  diacritics with a table; `MsDeviceFlow.expires_in` defaults to 900; skin
+  endpoints use a 30 s timeout; the multipart body is built by hand.
+- **identity-discord**: Discord IPC replies are matched by nonce string (the
+  JS compared a number with a string and always timed out); extra Linux IPC
+  socket candidates (Flatpak, Snap, $TMPDIR, abstract `@discord-ipc-0`); the
+  loopback OAuth callback sets no cookie (the UI polls `discord_claim`,
+  `identity_discord_start_with_state` returns `{url, state}`); macros that do
+  not fit `ClientMacro` are dropped from the typed view but kept on disk.
+- **integration**: `ServerEntry.hidden/accept_textures/has_icon` default to
+  false when omitted (the JS PUT accepted them missing).

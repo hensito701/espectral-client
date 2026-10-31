@@ -14,8 +14,8 @@
 //!
 //! Depends on accounts-skins: `cosmetics::share_enabled` (contract) and
 //! `cosmetics::presence_loadout` (sanitized loadout for the verified flags —
-//! JS `sanitizeLoadout(getCosmeticsState(uuid).loadout, flags)`). Until those
-//! land, an error from them reads as "not sharing" / "nothing to publish".
+//! JS `sanitizeLoadout(getCosmeticsState(uuid).loadout, flags)`). An error
+//! from them reads as "not sharing" / "nothing to publish".
 
 use std::collections::HashMap;
 use std::path::PathBuf;
