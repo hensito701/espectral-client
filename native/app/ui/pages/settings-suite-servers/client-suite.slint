@@ -1,13 +1,1084 @@
 // OWNER: settings-suite-servers agent. Port of src/ui/src/pages/ClientSuite.svelte.
 // Keep the exported component name and the empty interface used by app.slint.
+//
+// Header (tagline + instance chip + reload) · instance strip · loading / error /
+// unsupported states · two columns: in-game features (master switch, search,
+// category pills, feature switches, reset) + HUD theme | macro engine editor.
+// Rust: src/pages/settings_suite_servers/client.rs.
 
-import { PlaceholderPage, T } from "../../widgets.slint";
-import { SettingsBridge } from "api.slint";
+import { Theme, T, Router, AppState, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, LoaderBadge, LoaderBadgeSize, Icon, Icons, Emoji, Spinner, PageScaffold, Select, SelectOption } from "../../widgets.slint";
+import { SettingsBridge, SuiteFeatureRow } from "api.slint";
+import { SwitchControl, SsTextField } from "parts.slint";
+
+/// base.css .glass-panel (surface fill, glass border, card shadow).
+component GlassPanel inherits Rectangle {
+    in property <color> tint-border: Theme.glass-border;
+    in property <brush> fill: Theme.surface;
+    border-radius: Theme.radius-lg;
+    background: fill;
+    border-width: 1px;
+    border-color: tint-border;
+    drop-shadow-color: Theme.shadow-card-color;
+    drop-shadow-blur: Theme.shadow-card-blur;
+    drop-shadow-offset-y: Theme.shadow-card-y;
+}
+
+/// .macro-pill-btn (category filters, macro selector).
+component SuitePill inherits Rectangle {
+    in property <string> text;
+    in property <string> keybind;
+    in property <bool> active;
+    in property <bool> mono;
+    callback clicked();
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-sm;
+    background: active ? Theme.accent-purple.with-alpha(0.15) : ta.has-hover ? (Theme.dark ? rgba(255, 255, 255, 0.08) : rgba(18, 24, 41, 0.08)) : (Theme.dark ? rgba(255, 255, 255, 0.04) : rgba(18, 24, 41, 0.04));
+    border-width: 1px;
+    border-color: active ? Theme.accent-purple : Theme.border;
+    row := HorizontalLayout {
+        padding-left: 10.4px;
+        padding-right: 10.4px;
+        padding-top: 5.6px;
+        padding-bottom: 5.6px;
+        spacing: 6.4px;
+        Text {
+            text: root.text;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: root.mono ? Theme.font-mono : Theme.font-body;
+            color: root.active ? (Theme.dark ? #ffffff : Theme.text) : ta.has-hover ? Theme.text : Theme.muted;
+            vertical-alignment: center;
+        }
+        if root.keybind != "": Rectangle {
+            width: kb.preferred-width + 9.6px;
+            border-radius: 3px;
+            background: rgba(0, 0, 0, 0.3);
+            kb := Text {
+                text: root.keybind;
+                font-family: Theme.font-pixel;
+                font-size: 9px;
+                color: Theme.accent-gold;
+            }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Card header deck: tinted icon tile + title / subhead + right slot.
+component CardDeck inherits HorizontalLayout {
+    in property <string> emoji;
+    in property <string> glyph;
+    in property <color> tint: Theme.accent-cyan;
+    in property <string> title;
+    in property <string> subhead;
+    spacing: 9.6px;
+    padding-bottom: 16px;
+    VerticalLayout {
+        alignment: center;
+        Rectangle {
+            width: 32px;
+            height: 32px;
+            border-radius: Theme.radius-md;
+            background: root.tint.with-alpha(0.15);
+            border-width: 1px;
+            border-color: root.tint.with-alpha(0.3);
+            if root.emoji != "": Emoji { char: root.emoji; size: 16px; }
+            if root.glyph != "": Text { text: root.glyph; font-size: 16px; color: Theme.text; }
+        }
+    }
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        Text { text: root.title; font-size: 16px; font-weight: 700; color: Theme.text; line-height-factor: 1.25; overflow: elide; }
+        Text { text: root.subhead; font-size: 12px; color: Theme.muted; line-height-factor: 1.25; wrap: word-wrap; }
+    }
+    @children
+}
+
+/// Badge tone="neutral" mono (pixel counter chip).
+component CountChip inherits Rectangle {
+    in property <string> text;
+    height: lbl.preferred-height + 8px;
+    width: lbl.preferred-width + 18px;
+    border-radius: self.height / 2;
+    background: Theme.card-bg-soft;
+    border-width: 1px;
+    border-color: Theme.glass-border;
+    lbl := Text {
+        text: root.text;
+        font-family: Theme.font-pixel;
+        font-size: 10.5px;
+        font-weight: 400;
+        color: Theme.muted-strong;
+    }
+}
+
+// ---- header + instance strip ----------------------------------------------------
+
+component SuiteHeader inherits HorizontalLayout {
+    spacing: 16px;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 0px;
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            padding-bottom: 4px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Theme.accent-cyan;
+                    drop-shadow-color: Theme.accent-cyan;
+                    drop-shadow-blur: 8px;
+                }
+            }
+            Text {
+                text: "ESPECTRAL IN-GAME MATRIX";
+                font-family: Theme.font-pixel;
+                font-size: 15px;
+                letter-spacing: -0.6px;
+                color: Theme.accent-cyan;
+                vertical-alignment: center;
+            }
+        }
+        GradientText {
+            text: T.tr("client.title");
+            gradient: GradientKind.emerald-gold;
+            font-size: Theme.text-2xl;
+            font-weight: 700;
+            letter-spacing: -0.56px;
+            line-height-factor: 0.94;
+        }
+        HorizontalLayout {
+            padding-top: 4px;
+            Text {
+                text: T.tr("client.subhead");
+                font-size: 14px;
+                color: Theme.muted;
+                line-height-factor: 1.25;
+                wrap: word-wrap;
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: end;
+        if SettingsBridge.client-instance != "": VerticalLayout {
+            alignment: start;
+            GlassPanel {
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    padding-top: 5.6px;
+                    padding-bottom: 5.6px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 6px;
+                            height: 6px;
+                            border-radius: 3px;
+                            background: Theme.accent;
+                            drop-shadow-color: Theme.accent;
+                            drop-shadow-blur: 6px;
+                        }
+                    }
+                    Text {
+                        text: SettingsBridge.client-instance;
+                        font-size: 15px;
+                        color: Theme.text;
+                        line-height-factor: 1.25;
+                        vertical-alignment: center;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        LoaderBadge { loader: SettingsBridge.client-loader; version: SettingsBridge.client-version; size: LoaderBadgeSize.sm; }
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: start;
+            padding-top: 4px;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                icon: Icons.refresh;
+                text: T.tr("client.reload");
+                clicked => { SettingsBridge.client-reload(); }
+            }
+        }
+    }
+}
+
+struct InstanceRowLite {
+    name: string,
+    loader: string,
+    version: string,
+}
+
+component InstanceChip inherits Rectangle {
+    in property <InstanceRowLite> inst;
+    property <bool> selected: root.inst.name == SettingsBridge.client-instance;
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-md;
+    background: selected ? Theme.accent-cyan.with-alpha(0.12) : ta.has-hover ? (Theme.dark ? rgba(255, 255, 255, 0.06) : rgba(18, 24, 41, 0.06)) : (Theme.dark ? rgba(255, 255, 255, 0.03) : rgba(18, 24, 41, 0.03));
+    border-width: 1px;
+    border-color: selected ? Theme.accent-cyan : ta.has-hover ? Theme.accent-cyan.with-alpha(0.3) : Theme.border;
+    drop-shadow-color: selected ? Theme.accent-cyan.with-alpha(0.2) : transparent;
+    drop-shadow-blur: 16px;
+    row := HorizontalLayout {
+        padding-left: 13.6px;
+        padding-right: 13.6px;
+        padding-top: 7.2px;
+        padding-bottom: 7.2px;
+        spacing: 8px;
+        Text {
+            text: root.inst.name;
+            font-size: 13px;
+            font-weight: 600;
+            color: root.selected && Theme.dark ? #ffffff : Theme.text;
+            line-height-factor: 1.25;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.inst.loader + " · " + root.inst.version;
+            font-size: 11px;
+            color: root.selected && Theme.dark ? rgba(255, 255, 255, 0.75) : Theme.muted;
+            vertical-alignment: center;
+        }
+        if root.selected: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: Theme.accent-cyan;
+                drop-shadow-color: Theme.accent-cyan;
+                drop-shadow-blur: 6px;
+            }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { SettingsBridge.client-select(root.inst.name); }
+    }
+}
+
+component InstanceStrip inherits GlassPanel {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    inner := VerticalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 8px;
+        HorizontalLayout {
+            Text {
+                text: T.tr("client.instance").to-uppercase();
+                font-size: 12px;
+                font-weight: 600;
+                letter-spacing: 0.6px;
+                color: Theme.muted;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            if SettingsBridge.client-has-info && SettingsBridge.client-supported: Badge { text: T.tr("client.statusReady"); variant: BadgeVariant.ok; dot: true; }
+            if SettingsBridge.client-has-info && !SettingsBridge.client-supported: Badge { text: T.tr("client.managed"); variant: BadgeVariant.warn; dot: true; }
+        }
+        if AppState.instances.length == 0: HorizontalLayout {
+            padding-top: 8px;
+            padding-bottom: 8px;
+            Text {
+                text: T.tr("client.createFirst");
+                color: Theme.muted;
+                font-size: 15px;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+            }
+            Btn {
+                variant: BtnVariant.primary;
+                size: BtnSize.sm;
+                text: T.tr("nav.instances");
+                clicked => { Router.navigate("#/instances"); }
+            }
+        }
+        if AppState.instances.length > 0: HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            padding-bottom: 2px;
+            for i in AppState.instances: InstanceChip {
+                inst: { name: i.name, loader: i.loader, version: i.version };
+            }
+        }
+    }
+}
+
+component Banner inherits GlassPanel {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    in property <string> text;
+    in property <color> tone: Theme.accent-red;
+    in property <color> text-color: tone;
+    fill: tone.with-alpha(0.1);
+    tint-border: tone.with-alpha(0.3);
+    inner := HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 8px;
+        Text {
+            text: root.text;
+            font-size: 13px;
+            color: root.text-color;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            wrap: word-wrap;
+        }
+        @children
+    }
+}
+
+// ---- features -------------------------------------------------------------------------
+
+component FeatureItem inherits GlassPanel {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    in property <SuiteFeatureRow> feat;
+    tint-border: root.feat.on ? Theme.accent-cyan.with-alpha(0.3) : Theme.glass-border;
+    opacity: SettingsBridge.client-suite-enabled ? 1 : 0.75;
+    inner := HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 12px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 0px;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Text {
+                    text: root.feat.name;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: Theme.text;
+                    line-height-factor: 1.25;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Badge {
+                        text: root.feat.managed ? T.tr("client.managed") : T.tr("client.owned");
+                        variant: root.feat.managed ? BadgeVariant.warn : BadgeVariant.ok;
+                    }
+                }
+            }
+            HorizontalLayout {
+                padding-top: 3.2px;
+                Text {
+                    text: root.feat.desc;
+                    font-size: 13px;
+                    color: Theme.muted;
+                    line-height-factor: 1.25;
+                    wrap: word-wrap;
+                }
+            }
+            HorizontalLayout {
+                padding-top: 4px;
+                Text {
+                    text: root.feat.managed ? T.tr("client.restartHint") : T.tr("client.liveHint");
+                    font-size: 15px;
+                    color: Theme.muted;
+                    opacity: 0.8;
+                    line-height-factor: 1.25;
+                    wrap: word-wrap;
+                }
+            }
+            HorizontalLayout {
+                padding-top: 4px;
+                Text {
+                    text: (root.feat.on ? T.tr("instance.featureEnabled") : T.tr("instance.featureDisabled")) + (SettingsBridge.client-suite-enabled ? "" : " · " + T.tr("client.suppressed"));
+                    font-size: 15px;
+                    color: Theme.muted;
+                    opacity: 0.9;
+                    line-height-factor: 1.25;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            SwitchControl {
+                suite-style: true;
+                on-color: Theme.accent-cyan;
+                checked: root.feat.on;
+                enabled: SettingsBridge.client-toggling-feature != root.feat.id;
+                toggled(v) => { SettingsBridge.client-toggle-feature(root.feat.id, v); }
+            }
+        }
+    }
+}
+
+component FeaturesCard inherits GlassCard {
+    elevation: Elevation.md;
+    spacing: 0px;
+    CardDeck {
+        emoji: "⚡";
+        title: T.tr("client.features");
+        subhead: T.tr("client.featuresSub");
+        VerticalLayout {
+            alignment: center;
+            CountChip { text: T.tr2("client.resultsCount", "shown", SettingsBridge.client-features.length, "total", SettingsBridge.client-feature-total); }
+        }
+    }
+    // suite master switch
+    VerticalLayout {
+        padding-bottom: 12px;
+        GlassPanel {
+            tint-border: SettingsBridge.client-suite-enabled ? Theme.glass-border : Theme.accent-gold.with-alpha(0.4);
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 9.6px;
+                padding-bottom: 9.6px;
+                spacing: 12px;
+                Text {
+                    text: SettingsBridge.client-suite-enabled ? T.tr("client.suiteEnabled") : T.tr("client.suiteDisabled");
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: SettingsBridge.client-suite-enabled ? Theme.accent-green : Theme.accent-gold;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                SwitchControl {
+                    suite-style: true;
+                    on-color: Theme.accent-cyan;
+                    checked: SettingsBridge.client-suite-enabled;
+                    enabled: !SettingsBridge.client-toggling-suite;
+                    toggled(v) => { SettingsBridge.client-toggle-suite(v); }
+                }
+            }
+        }
+    }
+    if !SettingsBridge.client-suite-enabled: VerticalLayout {
+        padding-bottom: 12px;
+        Banner { tone: Theme.accent-gold; text-color: Theme.text; text: T.tr("client.suiteOffBanner"); }
+    }
+    // search
+    VerticalLayout {
+        spacing: 4.8px;
+        padding-bottom: 9.6px;
+        Text {
+            text: T.tr("client.searchLabel").to-uppercase();
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.6px;
+            color: Theme.muted;
+        }
+        SsTextField {
+            text <=> SettingsBridge.client-search;
+            placeholder: T.tr("client.searchPlaceholder");
+            font-size: 13px;
+            fill: rgba(0, 0, 0, Theme.dark ? 0.3 : 0.05);
+            focus-color: Theme.accent-purple;
+            min-h: 32px;
+            pad-y: 6.4px;
+            edited => { SettingsBridge.client-filter-changed(); }
+        }
+    }
+    // categories
+    if SettingsBridge.client-categories.length > 1: HorizontalLayout {
+        spacing: 5.6px;
+        alignment: start;
+        padding-bottom: 12px;
+        for c in SettingsBridge.client-categories: SuitePill {
+            text: c.label;
+            active: SettingsBridge.client-category == c.id;
+            clicked => {
+                SettingsBridge.client-category = c.id;
+                SettingsBridge.client-filter-changed();
+            }
+        }
+    }
+    VerticalLayout {
+        spacing: 8px;
+        for f in SettingsBridge.client-features: FeatureItem { feat: f; }
+    }
+    // reset row
+    HorizontalLayout {
+        padding-top: 12px;
+        spacing: 9.6px;
+        alignment: start;
+        if SettingsBridge.client-confirming-reset: Text {
+            text: T.tr("client.resetConfirm");
+            font-size: 13px;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+        if SettingsBridge.client-confirming-reset: Btn {
+            variant: BtnVariant.danger;
+            size: BtnSize.sm;
+            loading: SettingsBridge.client-resetting;
+            text: T.tr("client.resetConfirmYes");
+            clicked => { SettingsBridge.client-reset(); }
+        }
+        if SettingsBridge.client-confirming-reset: Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            enabled: !SettingsBridge.client-resetting;
+            text: T.tr("client.resetCancel");
+            clicked => { SettingsBridge.client-confirming-reset = false; }
+        }
+        if !SettingsBridge.client-confirming-reset: Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            text: T.tr("client.reset");
+            clicked => { SettingsBridge.client-confirming-reset = true; }
+        }
+    }
+}
+
+// ---- HUD theme ---------------------------------------------------------------------------
+
+component HudTile inherits Rectangle {
+    in property <string> id;
+    in property <string> name;
+    in property <string> desc;
+    property <bool> active: SettingsBridge.client-hud-theme == root.id;
+    horizontal-stretch: 1;
+    min-width: 0px;
+    preferred-width: 1px;
+    border-radius: Theme.radius-md;
+    background: ta.has-hover ? (Theme.dark ? rgba(255, 255, 255, 0.06) : rgba(18, 24, 41, 0.06)) : (Theme.dark ? rgba(255, 255, 255, 0.03) : rgba(18, 24, 41, 0.03));
+    border-width: active ? 2px : 1px;
+    border-color: active ? Theme.accent-cyan : Theme.border;
+    opacity: SettingsBridge.client-saving-hud ? 0.6 : 1;
+    HorizontalLayout {
+        padding: 12px;
+        VerticalLayout {
+            spacing: 5.6px;
+            // swatch: mirrors the in-game box (fill + frame + text colour)
+            Rectangle {
+                height: 41.6px;
+                border-radius: 5.6px;
+                clip: true;
+                background: root.id == "oro" ? #140f08 : root.id == "pixel" ? #000000 : root.id == "minimo" ? transparent : rgba(0, 0, 0, 0.5);
+                border-width: root.id == "oro" || root.id == "pixel" ? 1px : 0px;
+                border-color: root.id == "pixel" ? #ffffff : rgba(217, 169, 59, 0.35);
+                if root.id != "pixel": Text {
+                    x: (parent.width - self.width) / 2 + 1px;
+                    y: (parent.height - self.height) / 2 + 1px;
+                    text: "123 · FPS 60";
+                    font-family: Theme.font-mono;
+                    font-size: 11.5px;
+                    color: rgba(0, 0, 0, 0.8);
+                }
+                Text {
+                    text: "123 · FPS 60";
+                    font-family: Theme.font-mono;
+                    font-size: 11.5px;
+                    color: root.id == "oro" ? #efe6d4 : root.id == "pixel" ? #8cff6a : #ffffff;
+                }
+            }
+            Text { text: root.name; font-size: 13px; font-weight: 600; color: Theme.text; line-height-factor: 1.25; }
+            Text { text: root.desc; font-size: 11.5px; color: Theme.muted; line-height-factor: 1.05; wrap: word-wrap; }
+        }
+    }
+    ta := TouchArea {
+        enabled: !SettingsBridge.client-saving-hud;
+        mouse-cursor: pointer;
+        clicked => { SettingsBridge.client-set-hud(root.id); }
+    }
+}
+
+component HudCard inherits GlassCard {
+    elevation: Elevation.md;
+    spacing: 0px;
+    CardDeck {
+        emoji: "🎨";
+        title: T.tr("perso.hudTitle");
+        subhead: T.tr("perso.hudHint");
+    }
+    HorizontalLayout {
+        spacing: 10.4px;
+        HudTile { id: "cristal"; name: T.tr("perso.hud.cristal"); desc: T.tr("perso.hud.cristalDesc"); }
+        HudTile { id: "oro"; name: T.tr("perso.hud.oro"); desc: T.tr("perso.hud.oroDesc"); }
+        HudTile { id: "minimo"; name: T.tr("perso.hud.minimo"); desc: T.tr("perso.hud.minimoDesc"); }
+        HudTile { id: "pixel"; name: T.tr("perso.hud.pixel"); desc: T.tr("perso.hud.pixelDesc"); }
+    }
+}
+
+// ---- macros ---------------------------------------------------------------------------------
+
+/// Read-only input that captures the next key press as the macro keybind.
+component KeybindCapture inherits Rectangle {
+    in property <string> value;
+    property <bool> capturing: fs.has-focus;
+    height: 32px;
+    horizontal-stretch: 1;
+    min-width: 120px;
+    border-radius: Theme.radius-sm;
+    background: rgba(0, 0, 0, Theme.dark ? 0.3 : 0.05);
+    border-width: 1px;
+    border-color: capturing ? Theme.accent-cyan : Theme.border;
+    drop-shadow-color: capturing ? Theme.accent-cyan : transparent;
+    drop-shadow-blur: 1px;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        Text {
+            text: root.value != "" ? root.value : root.capturing ? T.tr("client.keybindCapture") : T.tr("client.keybindPlaceholder");
+            color: root.value != "" ? Theme.text : Theme.muted;
+            font-family: Theme.font-mono;
+            font-size: 13px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { fs.focus(); }
+    }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                // abort capture WITHOUT assigning
+                self.clear-focus();
+                return accept;
+            }
+            if SettingsBridge.macro-capture-key(e.text) {
+                self.clear-focus();
+            }
+            return accept;
+        }
+    }
+}
+
+component FieldLabel inherits Text {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.24px;
+    color: Theme.text;
+}
+
+component ActionRow inherits GlassPanel {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    in property <int> index;
+    in property <string> kind;
+    in property <string> text-value;
+    in property <bool> can-remove;
+    inner := HorizontalLayout {
+        padding-left: 9.6px;
+        padding-right: 9.6px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        VerticalLayout {
+            spacing: 8px;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    width: 16px;
+                    text: root.index + 1;
+                    font-family: Theme.font-pixel;
+                    font-size: 10px;
+                    color: Theme.muted;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                Select {
+                    horizontal-stretch: 0;
+                    width: 150px;
+                    options: [{ value: "chat", label: T.tr("client.actionChat") }, { value: "command", label: T.tr("client.actionCommand") }];
+                    current-index: root.kind == "command" ? 1 : 0;
+                    selected(i, v) => { SettingsBridge.action-set-kind(root.index, v); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: Theme.radius-sm;
+                    opacity: root.can-remove ? 1 : 0.3;
+                    Text {
+                        text: "×";
+                        font-size: 17.6px;
+                        color: rm.has-hover && root.can-remove ? Theme.accent-red : Theme.muted;
+                    }
+                    rm := TouchArea {
+                        enabled: root.can-remove;
+                        mouse-cursor: pointer;
+                        clicked => { SettingsBridge.action-remove(root.index); }
+                    }
+                }
+            }
+            SsTextField {
+                text: root.text-value;
+                placeholder: root.kind == "command" ? T.tr("client.actionCommandPlaceholder") : T.tr("client.actionChatPlaceholder");
+                font-size: 13px;
+                fill: rgba(0, 0, 0, Theme.dark ? 0.3 : 0.05);
+                focus-color: Theme.accent-purple;
+                min-h: 40px;
+                pad-y: 9.6px;
+                edited(t) => { SettingsBridge.action-set-text(root.index, t); }
+            }
+        }
+    }
+}
+
+component MacroEditor inherits GlassPanel {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    property <int> serial: SettingsBridge.macro-serial;
+    changed serial => { name-field.text = SettingsBridge.macro-name; }
+    inner := HorizontalLayout {
+        padding: 16px;
+        VerticalLayout {
+            spacing: 16px;
+            HorizontalLayout {
+                spacing: 16px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    horizontal-stretch: 1;
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+                        FieldLabel { text: T.tr("client.macroName"); }
+                        name-field := SsTextField {
+                            text: SettingsBridge.macro-name;
+                            placeholder: T.tr("client.macroNamePlaceholder");
+                            font-size: 13px;
+                            fill: rgba(0, 0, 0, Theme.dark ? 0.3 : 0.05);
+                            focus-color: Theme.accent-purple;
+                            min-h: 32px;
+                            pad-y: 6.4px;
+                            edited(t) => { SettingsBridge.macro-set-name(t); }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+                        FieldLabel { text: T.tr("client.keybind"); }
+                        KeybindCapture { value: SettingsBridge.macro-keybind; }
+                    }
+                }
+                VerticalLayout {
+                    alignment: end;
+                    Btn {
+                        variant: BtnVariant.danger;
+                        size: BtnSize.sm;
+                        icon: Icons.trash;
+                        text: T.tr("client.remove");
+                        clicked => { SettingsBridge.macro-remove(SettingsBridge.macro-active); }
+                    }
+                }
+            }
+            VerticalLayout {
+                spacing: 8px;
+                Rectangle { height: 1px; background: Theme.border; }
+                HorizontalLayout {
+                    padding-top: 4px;
+                    Text {
+                        text: (T.tr("client.actions") + " (" + SettingsBridge.macro-actions.length + " / 16)").to-uppercase();
+                        font-size: 12px;
+                        font-weight: 600;
+                        letter-spacing: 0.6px;
+                        color: Theme.muted;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Btn {
+                        variant: BtnVariant.ghost;
+                        size: BtnSize.sm;
+                        enabled: SettingsBridge.macro-actions.length < 16;
+                        text: "+ " + T.tr("client.addAction");
+                        clicked => { SettingsBridge.action-add(); }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 6.4px;
+                    for a[i] in SettingsBridge.macro-actions: ActionRow {
+                        index: i;
+                        kind: a.kind;
+                        text-value: a.text;
+                        can-remove: SettingsBridge.macro-actions.length > 1;
+                    }
+                }
+            }
+        }
+    }
+}
+
+component EmptyMacros inherits GlassPanel {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    inner := VerticalLayout {
+        padding-top: 32px;
+        padding-bottom: 32px;
+        spacing: 8px;
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            Text { text: "⌨"; font-size: 32px; color: Theme.text; horizontal-alignment: center; }
+        }
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            Text {
+                text: T.tr("client.noMacros");
+                font-size: 18px;
+                font-weight: 700;
+                color: Theme.text;
+                line-height-factor: 1.0;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            Text {
+                text: T.tr("client.noMacrosHint");
+                font-size: 15px;
+                color: Theme.muted;
+                line-height-factor: 1.25;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+        HorizontalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.primary;
+                size: BtnSize.sm;
+                text: T.tr("client.add");
+                clicked => { SettingsBridge.macro-add(); }
+            }
+        }
+    }
+}
+
+component MacrosCard inherits GlassCard {
+    elevation: Elevation.md;
+    spacing: 0px;
+    featured: SettingsBridge.macros-dirty;
+    CardDeck {
+        glyph: "⌨";
+        tint: Theme.accent-purple;
+        title: T.tr("client.macros");
+        subhead: T.tr("client.macrosSub");
+        HorizontalLayout {
+            spacing: 8px;
+            if SettingsBridge.macros-dirty: VerticalLayout {
+                alignment: center;
+                Badge { text: T.tr("client.unsavedChanges"); variant: BadgeVariant.warn; dot: true; }
+            }
+            VerticalLayout {
+                alignment: center;
+                CountChip { text: T.tr2("client.macroCount", "count", SettingsBridge.macro-count, "max", 32); }
+            }
+        }
+    }
+    if SettingsBridge.macro-error != "": VerticalLayout {
+        padding-bottom: 12px;
+        Banner { text: SettingsBridge.macro-error; }
+    }
+    if SettingsBridge.macro-saved-msg != "": VerticalLayout {
+        padding-bottom: 12px;
+        Banner { text: "✓ " + SettingsBridge.macro-saved-msg; tone: Theme.accent-green; }
+    }
+    if SettingsBridge.macro-count == 0: EmptyMacros { }
+    if SettingsBridge.macro-count > 0: VerticalLayout {
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 6.4px;
+            HorizontalLayout {
+                spacing: 5.6px;
+                alignment: start;
+                horizontal-stretch: 1;
+                for m[i] in SettingsBridge.macros: SuitePill {
+                    text: m.label;
+                    keybind: m.keybind;
+                    mono: true;
+                    active: i == SettingsBridge.macro-active;
+                    clicked => { SettingsBridge.macro-select(i); }
+                }
+            }
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: Theme.radius-sm;
+                background: add-ta.has-hover ? (Theme.dark ? rgba(255, 255, 255, 0.12) : rgba(18, 24, 41, 0.12)) : (Theme.dark ? rgba(255, 255, 255, 0.06) : rgba(18, 24, 41, 0.06));
+                border-width: 1px;
+                border-color: Theme.border;
+                opacity: SettingsBridge.macro-count < 32 ? 1 : 0.45;
+                Text { text: "+"; font-size: 17.6px; color: Theme.text; }
+                add-ta := TouchArea {
+                    enabled: SettingsBridge.macro-count < 32;
+                    mouse-cursor: pointer;
+                    clicked => { SettingsBridge.macro-add(); }
+                }
+            }
+        }
+        MacroEditor { }
+    }
+    // footer (.glass-card__footer)
+    VerticalLayout {
+        padding-top: 16px;
+        Rectangle { height: 1px; background: Theme.border; }
+        HorizontalLayout {
+            padding-top: 12px;
+            height: 50px;
+            alignment: space-between;
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.md;
+                enabled: SettingsBridge.macro-count < 32;
+                text: T.tr("client.add");
+                clicked => { SettingsBridge.macro-add(); }
+            }
+            Btn {
+                variant: BtnVariant.primary;
+                size: BtnSize.md;
+                loading: SettingsBridge.saving-macros;
+                enabled: SettingsBridge.macros-dirty && SettingsBridge.macros-valid && !SettingsBridge.saving-macros;
+                text: T.tr("client.save");
+                clicked => { SettingsBridge.macros-save(); }
+            }
+        }
+    }
+}
+
+/// .console-grid (1fr 1fr, align-items: start), positioned by hand so each
+/// column measures its wrapped texts at its real width.
+component ConsoleGrid inherits Rectangle {
+    property <length> cw: (root.width - 16px) / 2;
+    height: max(left.preferred-height, right.preferred-height);
+    left := VerticalLayout {
+        x: 0;
+        y: 0;
+        width: root.cw;
+        height: self.preferred-height;
+        spacing: 16px;
+        FeaturesCard { }
+        HudCard { }
+    }
+    right := VerticalLayout {
+        x: root.cw + 16px;
+        y: 0;
+        width: root.cw;
+        height: self.preferred-height;
+        MacrosCard { }
+    }
+}
+
+// ---- page -------------------------------------------------------------------------------------
+
+component UnsupportedCard inherits GlassPanel {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    inner := HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        VerticalLayout {
+            padding-top: 32px;
+            padding-bottom: 32px;
+            spacing: 12px;
+            alignment: center;
+            HorizontalLayout {
+                alignment: center;
+                Emoji { char: "⚠️"; size: 40px; }
+            }
+            Text { text: "Instancia no compatible"; font-size: 22px; font-weight: 700; color: Theme.text; horizontal-alignment: center; }
+            Text { text: T.tr("client.unsupported"); font-size: 15px; color: Theme.muted; horizontal-alignment: center; wrap: word-wrap; }
+            HorizontalLayout {
+                alignment: center;
+                spacing: 12px;
+                padding-top: 8px;
+                Btn {
+                    variant: BtnVariant.primary;
+                    text: T.tr("nav.instances");
+                    clicked => { Router.navigate("#/instances"); }
+                }
+                Btn {
+                    variant: BtnVariant.secondary;
+                    text: T.tr("mods.presetsTab");
+                    clicked => { Router.navigate("#/mods"); }
+                }
+            }
+        }
+    }
+}
 
 export component ClientPage inherits Rectangle {
-    PlaceholderPage {
-        title: T.tr("client.title");
-        subtitle: "";
-        source: "src/ui/src/pages/ClientSuite.svelte";
+    property <bool> narrow: root.width <= 1024px;
+    // the instance list arrives / changes: keep the selection valid
+    property <int> instance-count: AppState.instances.length;
+    changed instance-count => { SettingsBridge.client-ensure(); }
+    init => { SettingsBridge.client-ensure(); }
+    // feature names come from Rust: re-translate on a language switch
+    property <string> lang: T.lang;
+    changed lang => { SettingsBridge.client-filter-changed(); }
+
+    PageScaffold {
+        content-padding: 24px;
+        content-padding-bottom: 48px;
+        spacing: 16px;
+
+        SuiteHeader { }
+        InstanceStrip { }
+
+        if SettingsBridge.client-instance != "" && SettingsBridge.client-loading: GlassPanel {
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 12px;
+                padding-bottom: 12px;
+                spacing: 8px;
+                alignment: start;
+                VerticalLayout {
+                    alignment: center;
+                    Spinner { size: 16px; tint: Theme.accent-cyan; }
+                }
+                Text { text: T.tr("client.loading"); color: Theme.muted; font-size: 15px; vertical-alignment: center; }
+            }
+        }
+        if !SettingsBridge.client-loading && SettingsBridge.client-error != "": Banner {
+            text: SettingsBridge.client-error;
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.ghost;
+                    size: BtnSize.sm;
+                    text: "Reintentar";
+                    clicked => { SettingsBridge.client-reload(); }
+                }
+            }
+        }
+        if !SettingsBridge.client-loading && SettingsBridge.client-error == "" && SettingsBridge.client-has-info && !SettingsBridge.client-supported: UnsupportedCard { }
+        if !SettingsBridge.client-loading && SettingsBridge.client-error == "" && SettingsBridge.client-has-info && SettingsBridge.client-supported && SettingsBridge.client-patch-error != "": Banner {
+            text: SettingsBridge.client-patch-error;
+        }
+        if !SettingsBridge.client-loading && SettingsBridge.client-error == "" && SettingsBridge.client-has-info && SettingsBridge.client-supported && !root.narrow: ConsoleGrid { }
+        if !SettingsBridge.client-loading && SettingsBridge.client-error == "" && SettingsBridge.client-has-info && SettingsBridge.client-supported && root.narrow: VerticalLayout {
+            spacing: 16px;
+            FeaturesCard { }
+            HudCard { }
+            MacrosCard { }
+        }
     }
 }
