@@ -4,14 +4,20 @@
 // Usage (account-wardrobe pages):
 //     SkinView { source: "account:" + username; variant: "slim"; height: 340px; }
 //     SkinView { source: "library:" + skin-id; autoplay: false; }
+//     SkinView { source: "file:" + path; clicked => { ... } }   // click = press + release without drag
 //
 // How it works: the Image below asks Rust for a frame through the pure
 // callback SkinBridge.render(...). Rust (src/skin.rs) loads + decodes the skin
-// texture for `source` asynchronously, caches it, and bumps
+// texture for `source` asynchronously (espectral-skin3d), caches it, and bumps
 // SkinBridge.revision when it arrives so the binding re-evaluates. Dragging
-// changes yaw/pitch -> new frame. Nothing re-renders while inputs are
-// unchanged, so an idle viewer costs 0% CPU (auto-rotate, when on, ticks at a
-// throttled rate only while visible).
+// changes yaw/pitch -> new frame. While `rotating`, a 30 fps Timer advances the
+// spin (skinview3d autoRotate, 1 rad/s) and the idle arm sway; it runs only
+// while the texture is loaded and the view is on screen (not hidden, not
+// scrolled out of the window), so a paused or off-screen viewer costs 0% CPU.
+// Still frames (paused, not dragging) are rendered with 2x2 antialiasing.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
 
 export struct SkinFrameRequest {
     /// "account:<username>" | "library:<id>" | "file:<path>" (decoded by src/skin.rs)
@@ -25,63 +31,183 @@ export struct SkinFrameRequest {
     zoom: float,
     time: float,
     revision: int,
+    /// Nothing is moving: render the (slower) antialiased frame.
+    still: bool,
 }
 
 export global SkinBridge {
-    /// Bumped by Rust whenever a texture finished loading (forces a re-render).
+    /// Bumped by Rust whenever a texture finished loading / failed / was invalidated.
     in property <int> revision;
+    /// Window height in logical px, kept by Rust (0 = unknown): off-screen views stop animating.
+    in property <length> window-height;
     /// Implemented in Rust: returns the rendered frame (or an empty image while loading).
     pure callback render(request: SkinFrameRequest) -> image;
     /// Implemented in Rust: true once the texture for `source` is loaded.
     pure callback ready(source: string, revision: int) -> bool;
+    /// Implemented in Rust: true when loading `source` failed (bad PNG, no skin, network).
+    pure callback failed(source: string, revision: int) -> bool;
+    /// Implemented in Rust: start loading `source` now (SkinView calls it on creation
+    /// and when its source changes, so the texture is ready by the first paint).
+    callback preload(source: string);
+}
+
+// Square spin toggle (skin-viewer__spin): 32px, 8px radius, dark glass.
+component SpinButton inherits Rectangle {
+    in property <bool> rotating;
+    callback toggled();
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: touch.has-hover ? rgba(20, 28, 42, 0.85) : rgba(10, 14, 22, 0.72);
+    // Svelte: var(--text) while spinning, accent while paused. The button is
+    // dark in both themes, so the light-theme --text (near black) would vanish:
+    // use the dark-theme text colour instead.
+    property <color> ink: root.rotating ? #e8eef7 : Theme.accent;
+
+    if root.rotating: Rectangle {
+        // pause: two 3x9 bars, rx 1 (viewBox 12)
+        width: 12px;
+        height: 12px;
+        Rectangle { x: 2px; y: 1.5px; width: 3px; height: 9px; border-radius: 1px; background: root.ink; }
+        Rectangle { x: 7px; y: 1.5px; width: 3px; height: 9px; border-radius: 1px; background: root.ink; }
+    }
+    if !root.rotating: Path {
+        width: 12px;
+        height: 12px;
+        viewbox-width: 12;
+        viewbox-height: 12;
+        fill: root.ink;
+        commands: "M 3 1.8 L 3 10.2 C 3 11 3.9 11.5 4.6 11.1 L 10.6 6.9 C 11.2 6.5 11.2 5.5 10.6 5.1 L 4.6 0.9 C 3.9 0.5 3 1 3 1.8 Z";
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
 }
 
 export component SkinView inherits Rectangle {
     in property <string> source;
     in property <string> variant: "classic";
-    /// Spin on by default (gallery cards pass false).
+    /// Spin on by default (gallery cards pass false; they boot frozen).
     in property <bool> autoplay: true;
-    in-out property <float> yaw: -25;
-    in-out property <float> pitch: 8;
+    /// Current spin state; the overlay button flips it.
+    in-out property <bool> rotating: root.autoplay;
+    /// Show the spin toggle once the skin is loaded.
+    in property <bool> show-spin-button: true;
+    /// Allow drag-to-rotate.
+    in property <bool> interactive: true;
+    /// Player rotation (degrees, 0 = facing the viewer) and camera elevation.
+    in-out property <float> yaw: 0;
+    in-out property <float> pitch: 0;
     in property <float> zoom: 1;
+    /// Canvas width cap (the Svelte canvas is `max-width: 300px`).
+    in property <length> max-frame-width: 300px;
+    /// Press + release without dragging (gallery cards use it to preview).
+    callback clicked();
 
+    out property <bool> loaded: SkinBridge.ready(root.source, SkinBridge.revision);
+    out property <bool> failed: SkinBridge.failed(root.source, SkinBridge.revision);
+
+    property <float> time: 0;
     property <float> drag-start-yaw;
     property <float> drag-start-pitch;
+    property <bool> dragged;
+    property <length> abs-y: root.absolute-position.y;
+    property <bool> in-view: root.visible && root.width > 0 && root.height > 0
+        && root.abs-y + root.height > 0
+        && (SkinBridge.window-height <= 0 || root.abs-y < SkinBridge.window-height);
+    property <bool> animating: root.loaded && root.rotating && root.in-view;
 
-    min-width: 120px;
-    min-height: 160px;
+    min-width: 60px;
+    min-height: 80px;
+
+    init => { SkinBridge.preload(root.source); }
+    changed source => { SkinBridge.preload(root.source); }
+
+    // 30 fps while spinning; stopped (no wake-ups at all) otherwise.
+    Timer {
+        interval: 33ms;
+        running: root.animating;
+        triggered => {
+            // skinview3d: IdleAnimation progress += dt, autoRotate += dt * 1 rad/s
+            // (paused while the user drags). Both wrap to keep f32 precision.
+            root.time = mod(root.time + 0.033, 100 * 3.14159265);
+            if !(touch.pressed && root.dragged) {
+                root.yaw = mod(root.yaw + 0.033 * 57.29578, 360);
+            }
+        }
+    }
 
     frame := Image {
-        width: 100%;
-        height: 100%;
+        width: min(root.width, root.max-frame-width);
+        height: root.height;
+        x: (root.width - self.width) / 2;
+        y: 0;
         image-fit: contain;
         image-rendering: pixelated;
+        visible: !root.failed;
         source: SkinBridge.render({
             source: root.source,
             variant: root.variant,
-            width: root.width / 1phx,
-            height: root.height / 1phx,
+            width: self.width / 1phx,
+            height: self.height / 1phx,
             yaw: root.yaw,
             pitch: root.pitch,
             zoom: root.zoom,
-            time: 0,
+            time: root.time,
             revision: SkinBridge.revision,
+            still: !root.animating && !touch.pressed,
         });
     }
 
-    TouchArea {
-        mouse-cursor: self.pressed ? grabbing : grab;
+    touch := TouchArea {
+        mouse-cursor: root.interactive ? (self.pressed ? MouseCursor.grabbing : MouseCursor.grab) : MouseCursor.default;
         pointer-event(e) => {
             if e.kind == PointerEventKind.down {
                 root.drag-start-yaw = root.yaw;
                 root.drag-start-pitch = root.pitch;
+                root.dragged = false;
             }
         }
         moved => {
             if self.pressed {
-                root.yaw = root.drag-start-yaw + (self.mouse-x - self.pressed-x) / 1px * 0.6;
-                root.pitch = clamp(root.drag-start-pitch + (self.mouse-y - self.pressed-y) / 1px * 0.4, -60, 60);
+                if abs(self.mouse-x - self.pressed-x) > 3px || abs(self.mouse-y - self.pressed-y) > 3px {
+                    root.dragged = true;
+                }
+                if root.interactive && root.dragged {
+                    // OrbitControls: a drag across the canvas height = one full turn.
+                    root.yaw = root.drag-start-yaw + (self.mouse-x - self.pressed-x) / root.height * 360;
+                    root.pitch = clamp(root.drag-start-pitch + (self.mouse-y - self.pressed-y) / root.height * 360, -85, 85);
+                }
             }
+        }
+        clicked => {
+            if !root.dragged {
+                root.clicked();
+            }
+        }
+    }
+
+    if root.loaded && !root.failed && root.show-spin-button: SpinButton {
+        x: root.width - self.width - 8px;
+        y: root.height - self.height - 8px;
+        rotating: root.rotating;
+        toggled => { root.rotating = !root.rotating; }
+    }
+
+    if root.failed: HorizontalLayout {
+        alignment: center;
+        padding-left: 8px;
+        padding-right: 8px;
+        Text {
+            text: T.tr("vault.skin.viewerError");
+            font-size: Theme.text-xs;
+            color: Theme.muted;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            wrap: word-wrap;
         }
     }
 }
