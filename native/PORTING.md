@@ -12,14 +12,15 @@ porting it. Parity is the goal: same on-disk layout and JSON formats (existing
 users' data keeps working), same endpoints, same SHA-1 verification, same JVM
 argv, same Java tier selection, same AOT cache keys.
 
-> **Status (integration on `rust-native`):** all five clusters are merged and
-> wired. Every route of the engine as of the foundation commit has a working
-> `Engine` method (no `not_ported!` stubs remain). What is still missing is the
-> *agent access* feature that landed upstream afterwards (c22767f: routes/agent.mjs,
-> agent.mjs, ffmpeg.mjs, mcp.mjs, capture tools in mods.mjs, launch options) —
-> see [Missing and partial](#missing-and-partial). On-disk compatibility was
+> **Status (integration on `rust-native`, agent access on `rust-agent`):** all
+> five clusters are merged and wired, and the *agent access* feature that
+> landed upstream afterwards (c22767f + the MCP tool texts of 5fc98f7:
+> routes/agent.mjs, agent.mjs, ffmpeg.mjs, mcp.mjs, capture tools in mods.mjs,
+> launch options) is ported too — see [Agent access](#agent-access). Every route
+> of the JS engine has a working `Engine` method or loopback HTTP handler. On-disk compatibility was
 > checked both ways against a data dir written by the JS engine
-> (`cargo run -p espectral-engine --example data_dir_probe -- <dir> [--write]`).
+> (`cargo run -p espectral-engine --example data_dir_probe -- <dir> [--write]`,
+> agent config + token included).
 
 ## Verify (every cluster, before merge)
 
@@ -77,12 +78,12 @@ your own module (`src/resolver.rs` + `src/resolver/fabric.rs` with
 | runtimes.mjs | `runtimes.rs` | game-resolve | **ported** |
 | jvm.mjs | `jvm.rs` | game-resolve | **ported** |
 | neoforge.mjs | `neoforge.rs` | game-resolve | **ported** |
-| launch.mjs | `launch.rs` | game-launch | **ported** (incl. upstream Windows `stackFlags`); agent launch options **missing** |
+| launch.mjs | `launch.rs` | game-launch | **ported** (incl. upstream Windows `stackFlags` and the agent launch options) |
 | aot.mjs | `aot.rs` | game-launch | **ported** |
 | game-sessions.mjs | `game_sessions.rs` | game-launch | **ported** |
 | version-change.mjs | `version_change.rs` | game-launch | **ported** |
-| instances.mjs | `instances.rs` | content | **ported**; `capture_tools` read-only (**partial**) |
-| mods.mjs | `mods.rs` | content | **ported**; upstream capture tools (Replay Mod / Iris / shader packs) **missing** |
+| instances.mjs | `instances.rs` | content | **ported** (incl. the `capture_tools` toggle) |
+| mods.mjs | `mods.rs` | content | **ported** (incl. capture tools: Replay Mod pins, Iris/Sodium pins, shader packs) |
 | mrpack.mjs | `mrpack.rs` | content | **ported** |
 | import.mjs | `import.rs` | content | **ported** |
 | servers.mjs | `servers.rs` | content | **ported** |
@@ -99,10 +100,10 @@ your own module (`src/resolver.rs` + `src/resolver/fabric.rs` with
 | bridge.mjs | `bridge.rs` | identity-discord | **ported** |
 | client.mjs (+ suite-registry.json) | `client.rs` | identity-discord | **ported** |
 | cosmetics-catalog.json | `include_str!` from `src/engine/` in `cosmetics.rs` | accounts-skins | — |
-| *(new)* loopback HTTP listener | `loopback.rs` | identity-discord | **ported** (axum: bridge/visible + discord/callback) |
-| agent.mjs, routes/agent.mjs (upstream c22767f) | — | unassigned | **missing** |
-| ffmpeg.mjs (upstream c22767f) | — | unassigned | **missing** |
-| mcp.mjs (MCP shim, separate Node process) | — | unassigned | **missing** (it talks HTTP to the engine; needs the agent API first) |
+| *(new)* loopback HTTP listener | `loopback.rs` | identity-discord + agent | **ported** (axum: bridge/visible, discord/callback, `/api/agent/*`, `/api/bridge/agent/*`) |
+| agent.mjs, routes/agent.mjs (upstream c22767f) | `agent.rs`, `api/agent.rs` (UI routes), `loopback.rs` (HTTP routes) | agent | **ported** |
+| ffmpeg.mjs (upstream c22767f) | `ffmpeg.rs` | agent | **ported** |
+| mcp.mjs (MCP shim) | `mcp.rs` + `mcp/tools.json` (`include_str!`, dumped verbatim from the JS `toolList()`) | agent | **ported** (stdio server run as `espectral-client --mcp`; no Node needed) |
 
 Facade files: `api/game_resolve.rs`, `api/game_launch.rs`, `api/content.rs`,
 `api/accounts_skins.rs`, `api/identity_discord.rs` — each owned by the
@@ -198,37 +199,64 @@ Binary routes (PNG) return `Vec<u8>`. Methods return the JS JSON shapes
 | GET /api/discord/auth/start, /claim | `discord_auth_start` / `discord_claim(state)` | identity-discord | ported |
 | GET /api/discord/callback | `discord_callback(query)` (HTTP via `loopback.rs`) | identity-discord | ported |
 | GET /api/discord/me, POST /logout | `discord_me(session_id, mock)` / `discord_logout(session_id)` | identity-discord | ported |
-| GET / PUT /api/agent-access, POST /api/agent-access/rotate | — | (agent, upstream c22767f) | **missing** |
-| GET /api/agent/instances, /launches, /state, /logs | — | (agent) | **missing** |
-| POST /api/agent/launch, /stop, /call | — | (agent) | **missing** |
-| POST /api/bridge/agent/poll, /result, /state (mod relay) | — (would live on `loopback::router`) | (agent) | **missing** |
-| PATCH /api/instances/:name `capture_tools` | `patch_instance` ignores it (summary reports the stored flag) | (agent) | **partial** |
-| POST /api/instances/:name/launch agent options (`agent`, `join`, `window`) | `launch_instance` takes `dry_run` + `account` only | (agent) | **partial** |
+| GET / PUT /api/agent-access, POST /api/agent-access/rotate | `agent_access` / `set_agent_access(AgentAccessPatch)` / `rotate_agent_token` | agent | ported |
+| GET /api/agent/instances, /launches, /state, /logs | HTTP only (`loopback.rs`, Bearer token) | agent | ported |
+| POST /api/agent/launch, /stop, /call | HTTP only (`loopback.rs`, Bearer token) | agent | ported |
+| POST /api/bridge/agent/poll, /result, /state (mod relay) | HTTP only (`loopback.rs`, bridge token) | agent | ported |
+| PATCH /api/instances/:name `capture_tools` | `patch_instance` (`InstancePatch.capture_tools`; 409 ALREADY_RUNNING while running) | content | ported |
+| POST /api/instances/:name/launch agent options (`agent`, `join`, `window`) | `launch_instance(LaunchRequest { agent, join, window, .. })` | game-launch | ported |
 
 (`PATCH /api/accounts/:username` is called by the UI but never existed in the
 engine — the UI falls back to avatar-color; not a route.)
 
 ## Missing and partial
 
-Everything below arrived in upstream `main` (67614f8, c22767f) after the
-foundation commit; it reached `rust-native` with the identity-discord merge.
-67614f8 (Windows `-XX:+AlwaysPreTouchStacks`) is ported. From c22767f only
-the data-format parts are ported: the `agent` config default, and
-`InstanceSummary.capture_tools` (read from instance.json; the key itself is
-preserved by `InstanceMeta.extra`).
+Everything that arrived in upstream `main` after the foundation commit
+(67614f8, c22767f, 5fc98f7) is ported. What remains differs by design:
 
 | Area | JS | Rust status |
 |---|---|---|
-| Agent access settings + token (`GET/PUT /api/agent-access`, `rotate`) | routes/agent.mjs, agent.mjs | missing |
-| Agent API (`/api/agent/*`: instances, launches, launch, stop, state, logs, call) | routes/agent.mjs | missing |
-| Mod relay (`/api/bridge/agent/poll`, `/result`, `/state`) | routes/agent.mjs | missing; belongs on `loopback::router` |
-| Launch options `agent`/`join`/`window` (`-Despectral.agent=1`, quick play, custom resolution, `-Despectral.ffmpeg`) | launch.mjs, routes/launch.mjs | missing (plain launches are unaffected) |
-| `capture_tools` toggle (installs/removes Replay Mod; 409 while running) | instances.mjs, mods.mjs | partial: flag is reported, toggling is not implemented |
-| ffmpeg provisioning | ffmpeg.mjs | missing |
-| MCP shim | mcp.mjs | missing (separate process; can keep running on Node against a future HTTP agent API, or be rewritten) |
 | `POST /api/pick-file`, `/api/pick-folder` | routes/misc.mjs | not ported by design (UI uses `rfd`) |
-| `/api/events` SSE, HTTP server, CORS/Host guards | server.mjs, events.mjs | not ported by design (`Engine::subscribe`) |
+| `/api/events` SSE, the general HTTP server, CORS | server.mjs, events.mjs | not ported by design (`Engine::subscribe`); the loopback listener keeps the Host / `x-espectral-client` guards for the routes it serves |
 | `SKIN_RATE_LIMITED` `retry_after` field | skins/msauth | partial: seconds only in the message (`EngineError` has no `retry_after`) |
+
+## Agent access
+
+Port of c22767f + the MCP tool texts of 5fc98f7. Design decisions:
+
+1. **Where the agent API is served.** The UI routes (`/api/agent-access*`)
+   are in-process `Engine` methods like every other route (`api/agent.rs`).
+   External processes need HTTP, so the agent API (`/api/agent/*`, Bearer
+   token) and the mod relay (`/api/bridge/agent/*`, per-launch bridge token)
+   are on the existing loopback router (`loopback.rs`, 127.0.0.1:4199 or
+   `ESPECTRAL_PORT`). They are always routed, like the JS, and answer 403
+   `AGENT_DISABLED` while agent access is off (before auth, so a disabled
+   engine never confirms a token). Same Host / `x-espectral-client` guards and
+   `{ error: { code, message } }` envelope as the JS server.
+2. **MCP shim.** Rewritten in Rust (`mcp.rs`) instead of keeping `mcp.mjs`:
+   the native app must not need Node. The app binary runs it with `--mcp`
+   (dispatched first thing in `main()`, before the single-instance lock,
+   tokio and Slint), so nothing extra is packaged. `Engine::mcp_entry()`
+   returns `{ command: <current exe>, args: ["--mcp"], env: { ESPECTRAL_DATA_DIR,
+   ESPECTRAL_PORT } }`. The release build's `windows_subsystem = "windows"`
+   does not break it: MCP clients spawn it with pipes, which a GUI-subsystem
+   process inherits. The shim's HTTP contract is the JS one, so
+   `tests/mcp-shim.test.mjs` still describes it; `tools/list` is
+   byte-identical to the JS `toolList()` (descriptors in `mcp/tools.json`).
+
+Registry: `AgentState` (`Engine::agent_state()`) holds the per-launch command
+queue. Agent launches are registered when the key is minted and again on
+spawn (with the game dir), re-registered when an agent game is adopted after a
+restart (`GameSession.agent`), and released (in-flight calls fail with 502
+`GAME_GONE`, parked polls get `[]`) on every exit path. A parked poll whose
+HTTP client hangs up is dropped by axum; its guard puts any handed-over batch
+back in the queue. An `/api/agent/call` whose client hangs up drops its
+still-queued command (the JS left it queued; nobody would read the result).
+
+Tests: `engine/tests/agent_http.rs`, `agent_relay.rs`, `agent_launch.rs`
+(tests/agent-api, agent-route, agent-launch), `capture_ffmpeg.rs`
+(tests/ffmpeg + the capture parts of tests/mods), `mcp_shim.rs`
+(tests/mcp-shim).
 
 ## Cross-cluster test seams
 
