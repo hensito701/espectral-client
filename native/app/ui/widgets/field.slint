@@ -44,21 +44,10 @@ export component TextField inherits Rectangle {
     horizontal-stretch: 1;
     border-radius: Theme.radius-md;
     background: root.fill;
-    border-width: 1px;
-    border-color: has-error ? Theme.accent-red : input.has-focus ? root.focus-color : touch.has-hover ? Theme.hover-border : Theme.border;
+    border-width: 2px;
+    border-color: has-error ? Theme.accent-red : input.has-focus ? root.focus-color : touch.has-hover ? Theme.hover-border : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
     animate border-color { duration: Theme.dur-fast; }
-
-    // focus ring (0 0 0 2px bg, 0 0 0 4px accent) approximated by an outer ring
-    if input.has-focus && !root.read-only: Rectangle {
-        x: -3px;
-        y: -3px;
-        width: parent.width + 6px;
-        height: parent.height + 6px;
-        border-radius: parent.border-radius + 3px;
-        border-width: 2px;
-        border-color: Theme.accent.with-alpha(0.55);
-    }
 
     touch := TouchArea {
         mouse-cursor: MouseCursor.text;
@@ -136,8 +125,8 @@ export component TextArea inherits Rectangle {
     min-height: 72px;
     border-radius: Theme.radius-md;
     background: Theme.card-bg-soft;
-    border-width: 1px;
-    border-color: input.has-focus ? Theme.border-focus : Theme.border;
+    border-width: 2px;
+    border-color: input.has-focus ? Theme.hover-border : Theme.border-solid;
     clip: true;
     Flickable {
         x: Theme.space-3;

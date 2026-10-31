@@ -72,7 +72,7 @@ native/app/
     widgets.slint          barrel: import everything shared from here                       [foundation]
     widgets/*.slint        shared widgets (catalogue below)                                  [foundation]
     shell/*.slint          TopChrome, AmbientBackdrop, ToastHost, CommandPalette, LoginGate  [foundation]
-    fonts/                 Space Grotesk 400-700 + Press Start 2P (static TTF + OFL licenses) [foundation]
+    fonts/                 Space Grotesk 400-700 (OFL) + Minecraft Espectral pixel font (regular/bold) [foundation]
     assets/                logo, favicon, Twemoji SVGs (assets/emoji, CC-BY 4.0)             [foundation]
     pages/<group>/         one directory per page group                                      [group agent]
     skin3d/skin-view.slint SkinView + SkinBridge                                             [skin-renderer]
@@ -80,7 +80,7 @@ native/app/
     main.rs                startup / shutdown                                                [foundation]
     bridge.rs              Ctx (engine calls), on_event (engine events)                      [foundation]
     router.rs toast.rs i18n.rs theme.rs prefs.rs util.rs store.rs session.rs
-    palette.rs backdrop.rs dialogs.rs single_instance.rs screenshot.rs                       [foundation]
+    palette.rs dialogs.rs single_instance.rs screenshot.rs                                  [foundation]
     pages/mod.rs           group list + init_all                                             [foundation]
     pages/<group>.rs       one Rust module per page group (+ pages/<group>/*.rs children)    [group agent]
     skin.rs                SkinBridge glue                                                   [skin-renderer]
@@ -235,48 +235,54 @@ pinned). Text inputs consume `/` and Space first (same as the Svelte
 
 ---
 
-## 5. Theme (tokens.css → `Theme`)
+## 5. Theme — the "poster" look
 
-`ui/theme.slint` ports every token of `styles/tokens.css` for both schemes and
-all five accents (`oro carmesi amatista esmeralda glaciar`). `Theme.mode` /
-`Theme.accent-id` are set from the engine config (`theme`, `accent`) by
-`src/theme.rs`; `"system"` follows `Palette.color-scheme`.
+The native UI follows the espectral.uhce.top house style (ops workspace
+`notes/espectral-web-style.md`), not the old Svelte glass look: flat deep
+purple + gold (cream paper + purple ink in light mode), 2px solid borders,
+hard offset shadows with no blur, pill buttons, and titles in the Minecraft
+pixel font with a one-game-pixel purple shadow. Rule of thumb: if it glows,
+blurs, shimmers, is translucent glass or fades through a gradient, make it a
+flat block with a hard shadow instead (image scrims over photos excepted).
 
-| CSS | Slint |
+`ui/theme.slint` holds the tokens for both schemes and all five accents
+(`oro carmesi amatista esmeralda glaciar`; "oro" keeps the brand gold for
+primary buttons). `Theme.mode` / `Theme.accent-id` are set from the engine
+config (`theme`, `accent`) by `src/theme.rs`; `"system"` follows
+`Palette.color-scheme`.
+
+| Token | Use |
 |---|---|
-| `var(--accent)` / `rgba(var(--accent-rgb), .12)` | `Theme.accent` / `Theme.accent.with-alpha(0.12)` |
-| `--bg --surface --surface-solid --surface-up(-solid) --card-bg(-soft) --chrome-bg --topbar-bg --rail-bg --log-bg --backdrop` | same names |
-| `--text --text-inverse --muted --muted-strong` | same |
-| `--accent-ink/-bright/-2/-gold/-alt/-cyan/-purple/-red/-green`, `--loader-*` (brushes), `--mode-*` | same |
-| `--border --border-solid --border-focus --glass-border --hover-border` | same |
-| `--shadow-sm/md/lg/card` | `drop-shadow-color: Theme.shadow-md-color; drop-shadow-blur: Theme.shadow-md-blur; drop-shadow-offset-y: Theme.shadow-md-y;` (one shadow per element) |
-| `--radius-xs..xl/tile/pill`, `--space-1..16` | `Theme.radius-md`, `Theme.space-4`, … |
-| `--text-xs..3xl`, `--text-hero` | `Theme.text-sm`, …, `Theme.text-hero(window-width)` |
-| `--font-body`, `.font-pixel`, `--font-mono` | `Theme.font-body` (default), `Theme.font-pixel`, `Theme.font-mono` |
-| `--dur-fast/med/slow` | `Theme.dur-fast` (120ms), `dur-med`/`dur-slow` capped at 180/200 ms |
-| `hsla(h, s%, l%, a)` | `Theme.hsla(h, s, l, a)` (s, l in 0..1) |
-| `--topbar-height --content-max --max-width` | same |
+| `bg`, `surface`/`surface-solid`, `surface-up`, `card-bg-soft`, `rail-bg`, `log-bg` | opaque page / card / raised / inset fills (the translucent names resolve to solid colours) |
+| `text`, `muted`, `muted-strong`, `title-color` | body text; gold (dark) / orange (light) titles |
+| `brand-ink`, `brand-purple` | hard-shadow ink; title / hover / button shadow purple |
+| `gold`, `gold-hover`, `on-gold`, `btn-fill(-hover)`, `btn-ink` | primary buttons and gold surfaces, purple ink on gold |
+| `border-solid`, `hover-border` | the 2px card border; gold on hover / focus / selected |
+| `shadow-{sm,md,lg}-{x,y}` (2/4/6 px), `*-blur` = 0, colours = `brand-ink` | hard shadows (or a sibling Rectangle offset by N px, as GlassCard does) |
+| `topbar-bg`, `header-rule` | the header: always purple #0C0626 with a 4px gold rule |
+| `font-body` (Space Grotesk), `font-title` / `font-display` / `font-pixel` ("Minecraft Espectral"), `font-mono` | pixel font only for titles and short labels, sizes in multiples of 8px |
+| `accent*`, `loader-*` (flat), `mode-*`, `radius-*`, `space-*`, `text-*`, `dur-*`, `hsla()` | as named |
 
-Glass `backdrop-filter: blur()` cannot be reproduced: use the semi-opaque fills
-(already in the tokens), a border, the 1px top highlight (GlassCard does it)
-and a drop shadow. Scrims are a bit denser than the CSS ones instead of blurring.
-
-Fonts: `ui/fonts/` holds static instances (400/500/600/700) of the Space
-Grotesk variable font the Svelte UI ships, and Press Start 2P, with their OFL
-licenses; `font-weight: 800` renders as 700 (as in the browser).
+Fonts: `ui/fonts/` holds static instances (400/500/600/700) of Space Grotesk
+(OFL) and the "Minecraft Espectral" pixel font (built by
+`espectral-web/scripts/build-mc-font.py` from the game's font atlases, the
+same font the website serves; see `LICENSE-MinecraftEspectral.txt`).
 
 ## 6. Widget catalogue (`import { ... } from "../../widgets.slint";`)
 
 | Widget | Svelte | Notes |
 |---|---|---|
-| `Btn { text; variant: BtnVariant.primary\|secondary\|ghost\|danger; size: BtnSize.sm\|md\|lg; icon: Icons.x; emoji: "📦"; loading; enabled; block; clicked }` | Btn.svelte | hover lift, press, spinner |
+| `Btn { text; variant: BtnVariant.primary\|secondary\|ghost\|danger; size: BtnSize.sm\|md\|lg; icon: Icons.x; emoji: "📦"; loading; enabled; block; clicked }` | Btn.svelte | primary = gold pill on a hard purple shadow (lifts on hover, sinks on press); secondary = gold outline; spinner |
 | `IconBtn { icon; size; icon-size; flat; active; clicked }` | square icon buttons | |
 | `Spinner { size; tint }` | btn spinner | animates only while visible |
-| `GlassCard { title; subtitle; footer; elevation: Elevation.*; interactive; clickable; featured; flat; padding-size; spacing; clicked; <children> }` | GlassCard.svelte | children in a VerticalLayout |
+| `GlassCard { title; subtitle; footer; elevation: Elevation.*; interactive; clickable; featured; flat; padding-size; spacing; clicked; <children> }` | GlassCard.svelte | the poster card: flat fill, 2px border, hard ink shadow (2/4/6px by elevation); hover lifts 2px with a gold border + purple shadow; pixel-font title |
 | `Surface { soft; solid; hoverable; clicked }` | .card-surface / .glass-row | plain container |
 | `Badge { text; variant: BadgeVariant.neutral\|ok\|warn\|err\|info\|accent\|gold\|purple\|vanilla\|fabric\|neoforge\|quilt; dot; pixel; large }` | Badge.svelte | |
 | `Kbd { text; accent }` | `<kbd class=font-pixel>` | |
-| `GradientText { text; gradient: GradientKind.emerald-gold\|cyan-emerald\|gold-amber\|purple-pink\|accent; font-size… }` | GradientText.svelte | inherits Text |
+| `GradientText { text; gradient: GradientKind.*; font-size… }` | GradientText.svelte | kept for callers; draws a SOLID colour (gradient text is off-style) |
+| `McTitle { text; font-size: 16px\|24px\|32px\|48px…; ink; shadow-ink; horizontal-alignment; wrap }` | site `h1`–`h4` | pixel-font title with a one-game-pixel purple shadow; never widens its parent when wrapping |
+| `Wordmark { font-size }` | site logo | per-letter gold "Espectral" wordmark |
+| `Sticker { text; fill; ink; tilt }` | site "CLIENT" tag | tilted pixel label with a hard shadow; one per section at most |
 | `LoaderBadge { loader; version; size: LoaderBadgeSize.*; show-icon }` | LoaderBadge.svelte | |
 | `MonogramTile { name; hue; avatar; has-avatar; size; shape: MonogramShape.tile\|rounded\|circle }` | MonogramTile.svelte | |
 | `TextField { text <=>; placeholder; icon; password; mono; clearable; has-error; field-height; pad-y; fill; focus-color; edited(t); accepted(t) }`, `TextArea` | `<input>` / `<textarea>` | focus ring; sets only `height` (never `min-height`), so it works inside layouts. `HiTextField` / `SsTextField` are thin aliases |
@@ -325,7 +331,7 @@ Shell components (foundation): `TopChrome` (+ `ThemeToggle`, `LanguageToggle`),
 |---|---|---|
 | App.svelte | ui/app.slint, src/main.rs, src/router.rs | foundation |
 | components/TopChrome, ThemeToggle, LanguageToggle | ui/shell/top-chrome.slint | foundation |
-| components/AmbientBackdrop | ui/shell/backdrop.slint + src/backdrop.rs | foundation |
+| components/AmbientBackdrop | ui/shell/backdrop.slint (flat background) | foundation |
 | components/Toast + lib/toast | ui/shell/toast-host.slint + src/toast.rs | foundation |
 | components/CommandPalette | ui/shell/command-palette.slint + src/palette.rs | foundation |
 | components/LoginGate + lib/discord.svelte.ts | ui/shell/login-gate.slint + src/session.rs | foundation |
@@ -407,8 +413,8 @@ Captured from the JS engine with a fresh data dir (instance "Espectral default",
 | account-popover.png | TopChrome account popover |
 | piplog-open.png | Home after Space |
 
-Note: the Svelte orbs drift (animated), so backdrop pixels differ slightly
-from the static native backdrop; compare layout, sizes and colors of content.
+Note: the reference screenshots show the old Svelte glass look; the native UI
+now uses the poster look (§5), so compare layout and content, not colours.
 
 ---
 
@@ -507,8 +513,8 @@ Every reference screenshot was re-taken with the Slint app
 
 | Page / component | Status | Notes |
 |---|---|---|
-| Shell (TopChrome, theme / language toggles, palette, toasts, login gate, hotkeys) | done | dark/light and ES/EN switch live; backdrop is static (no drifting orbs), no glass blur; gradient text needs femtovg (software = first stop) |
-| Home (`#/`) | done | greeting, quick actions, MOTD ticker, rail, telemetry capsule, server strip; wizard, dry-run, shared .mrpack modal |
+| Shell (TopChrome, theme / language toggles, palette, toasts, login gate, hotkeys) | done | poster look: purple header bar with gold rule, wordmark, text nav; flat background; dark/light and ES/EN switch live |
+| Home (`#/`) | done | photo hero (pixel greeting, quick actions, MOTD strip), rail, telemetry capsule, server strip; wizard, dry-run, shared .mrpack modal |
 | Instance wizard | done | 3 steps; preselected version from VersionArmory |
 | InstanceHub (`#/instances/:name`) | done | config / servers / mods / danger tabs + live console; capture tools toggle (Replay Mod install/remove) |
 | PiP launch log | done | Space / palette / hub button |

@@ -113,6 +113,8 @@ export struct ServerRow {
 export global AppState {
     /// Engine version (health()).
     in property <string> version;
+    /// "v1.7" — major.minor of `version`, for the header lockup badge.
+    in property <string> version-label;
     /// Engine data dir (config.data_dir).
     in property <string> data-dir;
     in property <[InstanceRow]> instances;

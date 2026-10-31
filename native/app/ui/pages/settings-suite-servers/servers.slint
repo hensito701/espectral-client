@@ -5,8 +5,10 @@
 // network health, last update) · server card grid (auto-fill 340px columns) /
 // static skeleton / empty state · custom servers guidance.
 // Data: AppState.servers (shared store, polled every 60 s while shown).
+//
+// Poster look: flat blocks, 2px borders, hard ink shadows, pixel titles.
 
-import { Theme, T, Router, AppState, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, Emoji, Icon, Icons, PageScaffold } from "../../widgets.slint";
+import { Theme, T, Router, AppState, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Sticker, Emoji, Icons, PageScaffold } from "../../widgets.slint";
 import { SettingsBridge, ServerRadarSummary } from "api.slint";
 import { ServerRadarCard } from "server-radar-card.slint";
 
@@ -20,7 +22,10 @@ component RadarHero inherits HorizontalLayout {
         HorizontalLayout {
             spacing: 12px;
             alignment: start;
-            Badge { text: T.tr("servers.badge").to-uppercase(); variant: BadgeVariant.accent; dot: true; }
+            VerticalLayout {
+                alignment: start;
+                Sticker { text: T.tr("servers.badge").to-uppercase(); fill: Theme.gold; ink: Theme.on-gold; }
+            }
             Text {
                 text: T.tr("servers.autoPollNote");
                 font-family: Theme.font-mono;
@@ -29,13 +34,9 @@ component RadarHero inherits HorizontalLayout {
                 vertical-alignment: center;
             }
         }
-        GradientText {
+        McTitle {
             text: T.tr("servers.title");
-            gradient: GradientKind.emerald-gold;
-            font-size: Theme.text-3xl;
-            font-weight: 700;
-            letter-spacing: -1.08px;
-            line-height-factor: 0.88;
+            font-size: 32px;
         }
         HorizontalLayout {
             alignment: start;
@@ -62,6 +63,7 @@ component RadarHero inherits HorizontalLayout {
     }
 }
 
+/// Telemetry tile: flat block, 2px border, hard ink shadow, small-caps label.
 component TelemetryCard inherits Rectangle {
     in property <string> emoji;
     in property <string> label;
@@ -72,11 +74,12 @@ component TelemetryCard inherits Rectangle {
     preferred-height: inner.preferred-height;
     border-radius: Theme.radius-lg;
     background: Theme.card-bg;
-    border-width: 1px;
-    border-color: Theme.border;
-    drop-shadow-color: Theme.shadow-sm-color;
-    drop-shadow-blur: Theme.shadow-sm-blur;
-    drop-shadow-offset-y: Theme.shadow-sm-y;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
     inner := HorizontalLayout {
         padding-left: 16px;
         padding-right: 16px;
@@ -94,8 +97,10 @@ component TelemetryCard inherits Rectangle {
                 }
                 Text {
                     text: root.label.to-uppercase();
-                    font-size: 12px;
-                    letter-spacing: 0.6px;
+                    font-family: Theme.font-body;
+                    font-size: 11px;
+                    font-weight: 700;
+                    letter-spacing: 0.8px;
                     color: Theme.muted;
                     line-height-factor: 1.25;
                     vertical-alignment: center;
@@ -111,19 +116,21 @@ component PixelValue inherits HorizontalLayout {
     in property <string> number;
     in property <string> suffix;
     in property <color> suffix-color: Theme.accent;
-    in property <length> suffix-size: 11px;
+    in property <length> suffix-size: 8px;
     spacing: 8px;
     alignment: start;
     min-height: 28px;
     Text {
         text: root.number;
         font-family: Theme.font-pixel;
-        font-size: 22px;
-        color: Theme.text;
+        font-size: 24px;
+        font-weight: 700;
+        color: Theme.title-color;
         vertical-alignment: bottom;
     }
     VerticalLayout {
         alignment: end;
+        padding-bottom: 4px;
         Text {
             text: root.suffix;
             font-family: Theme.font-pixel;
@@ -145,12 +152,12 @@ component TelemetryStrip inherits VerticalLayout {
         TelemetryCard {
             emoji: "👥";
             label: T.tr("server.players");
-            PixelValue { number: root.sum.players; suffix: T.tr("common.online"); }
+            PixelValue { number: root.sum.players; suffix: T.tr("common.online"); suffix-size: 8px; }
         }
         TelemetryCard {
             emoji: "📡";
             label: T.tr("servers.onlineNodes");
-            PixelValue { number: root.sum.online; suffix: "/ " + root.sum.total; suffix-color: Theme.muted; suffix-size: 12px; }
+            PixelValue { number: root.sum.online; suffix: "/ " + root.sum.total; suffix-color: Theme.muted; suffix-size: 8px; }
         }
         if !root.two-rows: TelemetryCard {
             emoji: "🛡️";
@@ -208,18 +215,25 @@ component SkeletonCard inherits GlassCard {
         alignment: stretch;
         VerticalLayout {
             alignment: start;
-            Rectangle { width: 48px; height: 48px; border-radius: Theme.radius-md; background: Theme.surface-up; }
+            Rectangle {
+                width: 48px;
+                height: 48px;
+                border-radius: Theme.radius-md;
+                background: Theme.card-bg-soft;
+                border-width: 2px;
+                border-color: Theme.border-solid;
+            }
         }
         VerticalLayout {
             spacing: 8px;
             alignment: start;
             horizontal-stretch: 1;
             HorizontalLayout {
-                Rectangle { height: 18px; horizontal-stretch: 6; border-radius: Theme.radius-xs; background: Theme.surface-up; }
+                Rectangle { height: 18px; horizontal-stretch: 6; border-radius: Theme.radius-xs; background: Theme.card-bg-soft; border-width: 2px; border-color: Theme.border-solid; }
                 Rectangle { horizontal-stretch: 4; }
             }
             HorizontalLayout {
-                Rectangle { height: 14px; horizontal-stretch: 9; border-radius: Theme.radius-xs; background: Theme.surface-up; }
+                Rectangle { height: 14px; horizontal-stretch: 9; border-radius: Theme.radius-xs; background: Theme.card-bg-soft; border-width: 2px; border-color: Theme.border-solid; }
                 Rectangle { horizontal-stretch: 1; }
             }
         }
@@ -273,12 +287,16 @@ component EmptyRadar inherits GlassCard {
                         viewbox-width: 24;
                         viewbox-height: 24;
                         commands: "M 12 12 L 19 5";
-                        stroke: Theme.accent;
+                        stroke: Theme.hover-border;
                         stroke-width: 2px;
                     }
                 }
             }
-            Text { text: T.tr("servers.empty"); font-size: 18px; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
+            McTitle {
+                text: T.tr("servers.empty");
+                font-size: 24px;
+                horizontal-alignment: center;
+            }
             Text { text: T.tr("servers.noServers"); font-size: 14px; color: Theme.muted; horizontal-alignment: center; wrap: word-wrap; }
             HorizontalLayout {
                 alignment: center;
@@ -293,7 +311,7 @@ component EmptyRadar inherits GlassCard {
 }
 
 component GuidanceCard inherits GlassCard {
-    elevation: Elevation.sm;
+    elevation: Elevation.md;
     HorizontalLayout {
         spacing: 16px;
         VerticalLayout {
@@ -307,8 +325,8 @@ component GuidanceCard inherits GlassCard {
                     width: chip.preferred-width;
                     border-radius: self.height / 2;
                     background: Theme.card-bg-soft;
-                    border-width: 1px;
-                    border-color: Theme.glass-border;
+                    border-width: 2px;
+                    border-color: Theme.border-solid;
                     chip := HorizontalLayout {
                         padding-left: 8px;
                         padding-right: 8px;
@@ -323,7 +341,14 @@ component GuidanceCard inherits GlassCard {
                     }
                 }
             }
-            Text { text: T.tr("servers.customTitle"); font-size: 16px; font-weight: 700; color: Theme.text; line-height-factor: 0.94; }
+            Text {
+                text: T.tr("servers.customTitle");
+                font-family: Theme.font-title;
+                font-size: 16px;
+                font-weight: 700;
+                color: Theme.title-color;
+                line-height-factor: 1.1;
+            }
             HorizontalLayout {
                 alignment: start;
                 Text {

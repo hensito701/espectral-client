@@ -1,17 +1,18 @@
 // OWNER: home-instances agent. Building blocks of the InstanceHub workbench.
+//
+// Poster look: HubCard is the GlassCard recipe (solid surface, 2px border,
+// hard 4px/6px ink shadow), pills are flat blocks, and every control is a
+// flat colour with a 2px border — no glass, no sheen line, no glow.
 
-import { Theme, T, Icon, Icons } from "../../widgets.slint";
+import { Theme, T, Icon, Icons, McTitle } from "../../widgets.slint";
 
 component CardHead inherits VerticalLayout {
     in property <string> title;
     in property <string> subtitle;
     spacing: Theme.space-1;
-    Text {
+    McTitle {
         text: root.title;
-        color: Theme.text;
-        font-size: Theme.text-lg;
-        font-weight: 600;
-        wrap: word-wrap;
+        font-size: 16px;
     }
     if root.subtitle != "": Text {
         text: root.subtitle;
@@ -25,7 +26,7 @@ component CardFoot inherits VerticalLayout {
     in property <string> text;
     padding-top: Theme.space-3;
     spacing: Theme.space-3;
-    Rectangle { height: 1px; background: Theme.border; }
+    Rectangle { height: 2px; background: Theme.border-solid; }
     Text { text: root.text; color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
 }
 
@@ -35,29 +36,38 @@ export component HubCard inherits Rectangle {
     in property <string> subtitle;
     in property <string> footer;
     in property <brush> fill: Theme.card-bg;
-    in property <color> stroke: Theme.border;
+    in property <color> stroke: Theme.border-solid;
     in property <length> pad: Theme.space-5;
     in property <length> gap: Theme.space-3;
     in property <bool> large-shadow;
-    border-radius: Theme.radius-lg;
-    drop-shadow-color: large-shadow ? Theme.shadow-lg-color : Theme.shadow-md-color;
-    drop-shadow-blur: large-shadow ? Theme.shadow-lg-blur : Theme.shadow-md-blur;
-    drop-shadow-offset-y: large-shadow ? Theme.shadow-lg-y : Theme.shadow-md-y;
-    min-height: content.min-height;
-    preferred-height: content.preferred-height;
+
+    property <length> depth: large-shadow ? 6px : 4px;
+
+    // size from the content, plus room for the shadow block
+    min-width: content.min-width + depth;
+    min-height: content.min-height + depth;
+    preferred-width: content.preferred-width + depth;
+    preferred-height: content.preferred-height + depth;
+    background: transparent;
+
+    // hard ink shadow
     Rectangle {
-        border-radius: root.border-radius;
+        x: root.depth;
+        y: root.depth;
+        width: parent.width - root.depth;
+        height: parent.height - root.depth;
+        border-radius: Theme.radius-lg;
+        background: Theme.brand-ink;
+    }
+
+    face := Rectangle {
+        width: parent.width - root.depth;
+        height: parent.height - root.depth;
+        border-radius: Theme.radius-lg;
         background: root.fill;
-        border-width: 1px;
+        border-width: 2px;
         border-color: root.stroke;
         clip: true;
-        Rectangle {
-            x: 0;
-            y: 0;
-            width: parent.width;
-            height: 1px;
-            background: @linear-gradient(90deg, transparent 0%, Theme.glass-border 25%, Theme.glass-highlight 50%, Theme.glass-border 75%, transparent 100%);
-        }
         content := HorizontalLayout {
             padding-left: root.pad;
             padding-right: root.pad;
@@ -93,15 +103,16 @@ export component PresetPill inherits Rectangle {
     min-width: l.preferred-width + 21px;
     horizontal-stretch: 0;
     border-radius: Theme.radius-sm;
-    background: active ? Theme.accent.with-alpha(0.18) : t.has-hover ? Theme.surface-up : Theme.surface;
-    border-width: 1px;
-    border-color: active ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+    background: active ? Theme.gold : t.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: active ? Theme.brand-ink : t.has-hover ? Theme.hover-border : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
+    animate background, border-color { duration: Theme.dur-fast; }
     l := Text {
         text: root.text;
-        color: root.active ? Theme.accent : t.has-hover ? Theme.text : Theme.muted-strong;
+        color: root.active ? Theme.on-gold : t.has-hover ? Theme.text : Theme.muted-strong;
         font-size: Theme.text-xs;
-        font-weight: 600;
+        font-weight: 700;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -112,11 +123,13 @@ export component PresetPill inherits Rectangle {
     }
 }
 
-/// Dark inset panel (jvm-spec-grid / aot-stats-grid background).
+/// Inset panel (jvm-spec-grid / aot-stats-grid background): flat soft block.
 export component Inset inherits Rectangle {
     in property <length> pad: Theme.space-3;
     border-radius: Theme.radius-md;
-    background: Theme.dark ? rgba(0, 0, 0, 0.2) : rgba(18, 24, 41, 0.05);
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     HorizontalLayout {
         padding-left: root.pad;
         padding-right: root.pad;
@@ -130,8 +143,8 @@ export component Inset inherits Rectangle {
 /// Uppercase micro label (spec-label / stat-label).
 export component MicroLabel inherits Text {
     color: Theme.muted;
-    font-size: 11.2px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
     letter-spacing: 0.56px;
 }
 
@@ -158,11 +171,11 @@ export component CheckRow inherits Rectangle {
             Rectangle {
                 width: 18px;
                 height: 18px;
-                border-radius: 4px;
-                background: root.checked ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.06) : #ffffff;
-                border-width: 1px;
-                border-color: root.checked ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.35) : #767676;
-                if root.checked: Icon { data: Icons.check; size: 14px; color: Theme.dark ? #0d1222 : #ffffff; weight: 3.5; }
+                border-radius: 3px;
+                background: root.checked ? Theme.gold : Theme.card-bg-soft;
+                border-width: 2px;
+                border-color: root.checked ? Theme.brand-ink : Theme.border-solid;
+                if root.checked: Icon { data: Icons.check; size: 14px; color: Theme.on-gold; weight: 3.5; }
             }
         }
         VerticalLayout {
@@ -183,27 +196,26 @@ export component Note inherits Text {
     wrap: word-wrap;
 }
 
-/// Pill switch (client-feature toggle).
+/// Pill switch (client-feature toggle): flat track, flat square knob.
 export component Switch inherits Rectangle {
     in property <bool> on;
     in property <bool> enabled: true;
     callback clicked();
     width: 44px;
     height: 24px;
-    border-radius: 12px;
-    background: on ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.12) : rgba(18, 24, 41, 0.15);
+    border-radius: 4px;
+    background: on ? Theme.gold : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: on ? Theme.brand-ink : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
     animate background { duration: Theme.dur-fast; }
     Rectangle {
         x: root.on ? 22px : 2px;
         y: 2px;
-        width: 20px;
-        height: 20px;
-        border-radius: 10px;
-        background: #ffffff;
-        drop-shadow-color: rgba(0, 0, 0, 0.3);
-        drop-shadow-blur: 4px;
-        drop-shadow-offset-y: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 2px;
+        background: root.on ? Theme.on-gold : Theme.muted;
         animate x { duration: Theme.dur-fast; easing: ease-out; }
     }
     TouchArea {
@@ -221,15 +233,17 @@ export component FileBtn inherits Rectangle {
     height: l.preferred-height + 13px;
     min-width: l.preferred-width + 26px;
     horizontal-stretch: 0;
-    border-radius: 8px;
-    background: t.has-hover ? rgba(255, 255, 255, 0.1) : rgba(255, 255, 255, 0.05);
-    border-width: 1px;
-    border-color: Theme.border;
+    border-radius: Theme.radius-sm;
+    background: t.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: t.has-hover ? Theme.hover-border : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
+    animate background, border-color { duration: Theme.dur-fast; }
     l := Text {
         text: root.text;
         color: Theme.text;
         font-size: 12.8px;
+        font-weight: 600;
         horizontal-alignment: center;
         vertical-alignment: center;
     }

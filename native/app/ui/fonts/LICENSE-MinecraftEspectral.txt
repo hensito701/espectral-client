@@ -1,0 +1,7 @@
+Minecraft Espectral (MinecraftEspectral-Regular.ttf, MinecraftEspectral-Bold.ttf)
+
+Pixel font built by espectral-web/scripts/build-mc-font.py from the glyph
+atlases of the Minecraft client's `default` font (ascii, accented,
+nonlatin_european). The glyph artwork belongs to Mojang Studios; it is the
+same font espectral.uhce.top serves as minecraft-espectral-*.woff2, converted
+to TTF for the native launcher.

@@ -1,13 +1,11 @@
-// GlassCard — port of components/GlassCard.svelte (and the .glass-panel /
-// .card-surface utilities of base.css).
+// GlassCard — the poster "card / section block" (espectral.uhce.top): solid
+// surface, 2px border, hard 4px ink shadow down-right. Interactive cards lift
+// 2px up-left on hover; the border turns gold and the shadow becomes a 6px
+// purple block. No glass, no sheen. (The name is kept for the callers.)
 //
 //     GlassCard { title: "..."; subtitle: "..."; VerticalLayout { ... } }
 //     GlassCard { elevation: Elevation.lg; featured: true; padding-size: 0px; ... }
-//     GlassCard { clickable: true; clicked => { ... } ... }   // hover lift + accent border
-//
-// backdrop-filter: blur() cannot be reproduced: the card uses the (semi-opaque)
-// --card-bg fill + border + drop shadow + the specular 1px top highlight.
-// The hover "sheen sweep" is omitted (it would need a running animation).
+//     GlassCard { clickable: true; clicked => { ... } ... }   // hover lift + gold border
 
 import { Theme } from "../theme.slint";
 
@@ -22,7 +20,7 @@ export component GlassCard inherits Rectangle {
     in property <bool> interactive: false;
     /// Clickable card (implies interactive): emits clicked().
     in property <bool> clickable: false;
-    /// Accent border + glow (CSS --featured).
+    /// Gold border + purple block shadow (the highlighted card).
     in property <bool> featured: false;
     /// Opaque --surface-solid fill (CSS backdrop=false / --flat-surface).
     in property <bool> flat: false;
@@ -34,20 +32,21 @@ export component GlassCard inherits Rectangle {
     out property <bool> hovered: touch.has-hover && (interactive || clickable);
     callback clicked();
 
-    // size from the content layout (it sits inside the lifted inner rectangle)
-    min-width: content.min-width;
-    min-height: content.min-height;
-    preferred-width: content.preferred-width;
-    preferred-height: content.preferred-height;
+    // size from the content layout, plus room for the shadow block
+    min-width: content.min-width + shadow;
+    min-height: content.min-height + shadow;
+    preferred-width: content.preferred-width + shadow;
+    preferred-height: content.preferred-height + shadow;
 
-    property <length> lift: hovered ? -4px : 0px;
-    animate lift { duration: Theme.dur-med; easing: ease-out; }
+    property <bool> hot: hovered || featured;
+    /// Shadow block offset: none / 2 / 4 / 6px. Constant, so hovering never
+    /// changes the layout: the face lifts 2px instead, which makes the visible
+    /// shadow 2px deeper.
+    property <length> shadow: elevation == Elevation.none && !featured ? 0px : featured || elevation == Elevation.lg ? 6px : elevation == Elevation.sm ? 2px : 4px;
+    property <length> lift: hovered ? -2px : 0px;
+    animate lift { duration: Theme.dur-fast; easing: ease-out; }
 
-    border-radius: radius;
-    // shadow lives on the outer rectangle (does not move with the lift, close enough)
-    drop-shadow-color: featured ? Theme.glow-color : elevation == Elevation.none ? transparent : hovered ? Theme.shadow-lg-color : elevation == Elevation.sm ? Theme.shadow-sm-color : elevation == Elevation.lg ? Theme.shadow-lg-color : Theme.shadow-md-color;
-    drop-shadow-blur: featured ? 32px : hovered ? Theme.shadow-lg-blur : elevation == Elevation.sm ? Theme.shadow-sm-blur : elevation == Elevation.lg ? Theme.shadow-lg-blur : Theme.shadow-md-blur;
-    drop-shadow-offset-y: featured ? 8px : hovered ? Theme.shadow-lg-y : elevation == Elevation.sm ? Theme.shadow-sm-y : elevation == Elevation.lg ? Theme.shadow-lg-y : Theme.shadow-md-y;
+    background: transparent;
 
     touch := TouchArea {
         enabled: root.clickable;
@@ -55,25 +54,28 @@ export component GlassCard inherits Rectangle {
         clicked => { root.clicked(); }
     }
 
+    // hard shadow block (box-shadow: Npx Npx 0 ink)
     Rectangle {
+        x: root.shadow;
+        y: root.shadow;
+        width: root.width - root.shadow;
+        height: root.height - root.shadow;
+        border-radius: root.radius;
+        background: root.hot ? Theme.brand-purple : Theme.brand-ink;
+        visible: root.shadow > 0;
+    }
+
+    Rectangle {
+        x: root.lift;
         y: root.lift;
-        width: 100%;
-        height: 100%;
+        width: root.width - root.shadow;
+        height: root.height - root.shadow;
         border-radius: root.radius;
         background: root.fill;
-        border-width: 1px;
-        border-color: root.featured ? Theme.border-focus : root.hovered ? Theme.hover-border : Theme.border;
+        border-width: 2px;
+        border-color: root.hot ? Theme.hover-border : Theme.border-solid;
         clip: true;
-        animate border-color { duration: Theme.dur-med; }
-
-        // specular top highlight (::before)
-        Rectangle {
-            x: 0;
-            y: 0;
-            width: parent.width;
-            height: root.featured ? 2px : 1px;
-            background: root.featured ? @linear-gradient(90deg, transparent 0%, Theme.accent 50%, transparent 100%) : @linear-gradient(90deg, transparent 0%, Theme.glass-border 25%, Theme.glass-highlight 50%, Theme.glass-border 75%, transparent 100%);
-        }
+        animate border-color { duration: Theme.dur-fast; }
 
         // horizontal padding on a HorizontalLayout (see UI-PORTING.md "wrapped text")
         content := HorizontalLayout {
@@ -88,9 +90,10 @@ export component GlassCard inherits Rectangle {
                 spacing: Theme.space-1;
                 if root.title != "": Text {
                     text: root.title;
-                    color: Theme.text;
-                    font-size: Theme.text-lg;
-                    font-weight: 600;
+                    color: Theme.title-color;
+                    font-family: Theme.font-title;
+                    font-size: 16px;
+                    font-weight: 700;
                     wrap: word-wrap;
                 }
                 if root.subtitle != "": Text {
@@ -105,7 +108,7 @@ export component GlassCard inherits Rectangle {
 
             if root.footer != "": VerticalLayout {
                 padding-top: Theme.space-3;
-                Rectangle { height: 1px; background: Theme.border; }
+                Rectangle { height: 2px; background: Theme.border-solid; }
                 Text {
                     text: root.footer;
                     color: Theme.muted;
@@ -127,8 +130,8 @@ export component Surface inherits Rectangle {
     callback clicked();
     border-radius: Theme.radius-md;
     background: solid ? Theme.surface-solid : soft ? Theme.card-bg-soft : hovered ? Theme.surface-up : Theme.surface;
-    border-width: 1px;
-    border-color: hovered ? Theme.hover-border : Theme.glass-border;
+    border-width: 2px;
+    border-color: hovered ? Theme.hover-border : Theme.border-solid;
     animate background, border-color { duration: Theme.dur-fast; }
     touch := TouchArea {
         enabled: root.hoverable;

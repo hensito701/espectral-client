@@ -1,11 +1,14 @@
-// Btn — port of components/Btn.svelte.
+// Btn — poster buttons (espectral.uhce.top):
+//   primary   flat gold pill, purple-ink label, hard 4px purple shadow below;
+//             hover goes darker gold and lifts 2px, press sinks 2px
+//   secondary 2px gold outline + gold label, fills gold on hover
+//   ghost     bare label, gold on hover
+//   danger    flat red pill with the ink shadow
 //
 //     Btn { text: T.tr("actions.save"); clicked => { ... } }
 //     Btn { variant: BtnVariant.secondary; size: BtnSize.sm; icon: Icons.refresh; text: "..."; }
 //     Btn { emoji: "📦"; text: T.tr("home.importModpack"); variant: BtnVariant.secondary; }
 //     Btn { variant: BtnVariant.primary; loading: true; }        // spinner, not clickable
-//
-// The CSS hover lift (translateY(-2px)) is reproduced; the spring easing is not.
 
 import { Theme } from "../theme.slint";
 import { Icon } from "icon.slint";
@@ -68,53 +71,50 @@ export component Btn inherits Rectangle {
     property <length> h: size == BtnSize.sm ? 28px : size == BtnSize.lg ? 48px : 38px;
     property <length> pad: size == BtnSize.sm ? Theme.space-3 : size == BtnSize.lg ? Theme.space-6 : Theme.space-4;
     property <length> fs: font-size-override > 0 ? font-size-override : size == BtnSize.sm ? Theme.text-xs : size == BtnSize.lg ? Theme.text-base : Theme.text-sm;
-    property <color> fg: variant == BtnVariant.primary ? Theme.text-inverse : variant == BtnVariant.danger ? #ffffff : variant == BtnVariant.ghost && !hovered ? Theme.muted-strong : Theme.text;
+    property <bool> solid: variant == BtnVariant.primary || variant == BtnVariant.danger;
+    property <color> outline: Theme.accent-id == "oro" ? Theme.title-color : Theme.accent;
+    property <color> fg: variant == BtnVariant.primary ? Theme.btn-ink
+        : variant == BtnVariant.danger ? #ffffff
+        : variant == BtnVariant.secondary ? (hovered ? Theme.btn-ink : outline)
+        : hovered ? outline : Theme.muted-strong;
+    /// Shadow depth under the filled pills (0 for outline / ghost).
+    property <length> depth: !solid ? 0px : size == BtnSize.sm ? 3px : 4px;
 
-    height: h;
+    height: h + depth;
     min-width: block ? 0px : row.preferred-width;
     preferred-width: row.preferred-width;
     horizontal-stretch: block ? 1 : 0;
-    border-radius: size == BtnSize.sm ? Theme.radius-sm : size == BtnSize.lg ? Theme.radius-lg : Theme.radius-md;
+    border-radius: Theme.radius-pill;
     opacity: enabled ? 1 : 0.45;
 
-    // lift on hover (translateY(-2px)), press scale 0.97
-    property <length> lift: !interactive ? 0px : pressed ? 0px : hovered ? (variant == BtnVariant.ghost ? -1px : -2px) : 0px;
+    // hover lifts 2px off the shadow, press sinks onto it
+    property <length> lift: !interactive || !solid ? 0px : pressed ? 2px : hovered ? -2px : 0px;
     animate lift { duration: Theme.dur-fast; easing: ease-out; }
 
     background: transparent;
-    drop-shadow-color: !interactive ? transparent : variant == BtnVariant.primary ? Theme.accent.with-alpha(hovered ? 0.42 : 0.28) : variant == BtnVariant.danger ? Theme.accent-red.with-alpha(hovered ? 0.45 : 0.3) : variant == BtnVariant.secondary ? (hovered ? Theme.shadow-md-color : Theme.shadow-sm-color) : transparent;
-    drop-shadow-blur: variant == BtnVariant.secondary ? (hovered ? 20px : 10px) : (hovered ? 24px : 16px);
-    drop-shadow-offset-y: hovered ? 6px : 4px;
+
+    // hard shadow under the filled pills (box-shadow: 0 4px 0 purple)
+    if root.solid: Rectangle {
+        y: root.depth;
+        width: 100%;
+        height: root.h;
+        border-radius: Theme.radius-pill;
+        background: root.variant == BtnVariant.danger ? Theme.brand-ink : Theme.brand-purple;
+    }
 
     face := Rectangle {
         y: root.lift;
         width: 100%;
-        height: 100%;
-        border-radius: root.border-radius;
-        border-width: 1px;
+        height: root.h;
+        border-radius: Theme.radius-pill;
+        border-width: root.variant == BtnVariant.secondary ? 2px : 0px;
         clip: true;
-        background: root.variant == BtnVariant.primary ? @linear-gradient(135deg, Theme.accent 0%, Theme.accent-ink 100%)
-            : root.variant == BtnVariant.danger ? @linear-gradient(135deg, Theme.accent-red 0%, #b91c1c 100%)
-            : root.variant == BtnVariant.secondary ? (root.hovered ? Theme.surface-up : Theme.surface)
-            : (root.hovered ? Theme.surface : transparent);
-        border-color: root.variant == BtnVariant.primary ? rgba(255, 255, 255, 0.2)
-            : root.variant == BtnVariant.danger ? rgba(239, 68, 68, 0.4)
-            : root.variant == BtnVariant.secondary ? (root.hovered ? Theme.hover-border : Theme.border)
-            : (root.hovered ? Theme.glass-border : transparent);
-        animate background, border-color { duration: Theme.dur-fast; }
-
-        // inset 0 1px 0 rgba(255,255,255,.35) highlight of the filled variants
-        if root.variant == BtnVariant.primary || root.variant == BtnVariant.danger: Rectangle {
-            x: 0;
-            y: 0;
-            width: parent.width;
-            height: 1px;
-            background: rgba(255, 255, 255, root.hovered ? 0.5 : 0.35);
-        }
-        // brightness(1.08) on hover
-        if (root.variant == BtnVariant.primary || root.variant == BtnVariant.danger) && root.hovered: Rectangle {
-            background: rgba(255, 255, 255, 0.08);
-        }
+        background: root.variant == BtnVariant.primary ? (root.hovered ? Theme.btn-fill-hover : Theme.btn-fill)
+            : root.variant == BtnVariant.danger ? (root.hovered ? #c81e1e : Theme.accent-red)
+            : root.variant == BtnVariant.secondary ? (root.hovered ? root.outline : transparent)
+            : transparent;
+        border-color: root.outline;
+        animate background { duration: Theme.dur-fast; }
 
         row := HorizontalLayout {
             padding-left: root.pad;
@@ -137,7 +137,7 @@ export component Btn inherits Rectangle {
                 text: root.text;
                 color: root.fg;
                 font-size: root.fs;
-                font-weight: 600;
+                font-weight: 700;
                 vertical-alignment: center;
                 overflow: elide;
             }
@@ -166,16 +166,16 @@ export component IconBtn inherits Rectangle {
     width: size;
     height: size;
     border-radius: Theme.radius-md;
-    background: flat ? (hovered ? Theme.card-bg-soft : transparent) : hovered ? Theme.surface-up : Theme.surface;
-    border-width: flat ? 0px : 1px;
-    border-color: hovered || active ? Theme.hover-border : Theme.border;
+    background: flat ? (hovered ? Theme.surface-up : transparent) : hovered ? Theme.surface-up : Theme.surface;
+    border-width: flat ? 0px : 2px;
+    border-color: hovered || active ? Theme.hover-border : Theme.border-solid;
     opacity: enabled ? 1 : 0.45;
     animate background, border-color { duration: Theme.dur-fast; }
 
     Icon {
         data: root.icon;
         size: root.icon-size;
-        color: root.hovered || root.active ? Theme.accent : Theme.muted-strong;
+        color: root.hovered || root.active ? Theme.hover-border : Theme.muted-strong;
         animate color { duration: Theme.dur-fast; }
     }
 
