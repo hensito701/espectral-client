@@ -287,18 +287,38 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
         );
     });
 
-    // ---- capture tools (engine: toggling not implemented, see native/PORTING.md) ----
+    // ---- capture tools (Replay Mod in/out; enabling downloads, so it is slow) ----
     let w = ui.as_weak();
     hb.on_toggle_capture(move || {
         let Some(ui) = w.upgrade() else { return };
         let hb = ui.global::<HomeBridge>();
-        let cur = hb.get_hub().capture_tools;
-        hb.set_capture_tools(cur);
-        toast::err(format!(
-            "{}: {}",
-            i18n::t("instance.captureError"),
-            "capture_tools no está disponible en el motor nativo"
-        ));
+        if hb.get_saving_capture() {
+            return;
+        }
+        let Some(c) = cx() else { return };
+        let next = !hb.get_capture_tools();
+        hb.set_saving_capture(true);
+        hb.set_capture_tools(next);
+        let name = hub_name();
+        c.call_with(
+            move |e| async move {
+                e.patch_instance(&name, InstancePatch { capture_tools: Some(Some(next)), ..Default::default() }).await
+            },
+            move |ui, s| {
+                let hb = ui.global::<HomeBridge>();
+                hb.set_saving_capture(false);
+                set_summary(ui, s.clone(), None);
+                hb.set_capture_tools(s.capture_tools);
+                store::refresh_instances();
+                toast::ok(i18n::t(if next { "instance.captureOn" } else { "instance.captureOff" }));
+            },
+            move |ui, e| {
+                let hb = ui.global::<HomeBridge>();
+                hb.set_saving_capture(false);
+                hb.set_capture_tools(!next);
+                toast::err(format!("{}: {}", i18n::t("instance.captureError"), e.envelope().message));
+            },
+        );
     });
 
     // ---- JVM ----

@@ -433,7 +433,8 @@ fn launch(c: &Ctx, name: String) {
     let n = name.clone();
     c.call_with(
         move |e| async move {
-            e.launch_instance(&n, LaunchRequest { dry_run: false, account: (!acc.is_empty()).then_some(acc) }).await
+            e.launch_instance(&n, LaunchRequest { account: (!acc.is_empty()).then_some(acc), ..Default::default() })
+                .await
         },
         move |ui, outcome| {
             ui.global::<HomeBridge>().set_launching("".into());
@@ -463,7 +464,7 @@ fn dryrun(c: &Ctx, name: String) {
     hb.set_dryrun_error("".into());
     hb.set_dryrun_has_result(false);
     c.call_with(
-        move |e| async move { e.launch_instance(&name, LaunchRequest { dry_run: true, account: None }).await },
+        move |e| async move { e.launch_instance(&name, LaunchRequest { dry_run: true, ..Default::default() }).await },
         |ui, outcome| {
             let hb = ui.global::<HomeBridge>();
             hb.set_dryrun_loading(false);

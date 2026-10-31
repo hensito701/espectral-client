@@ -3,10 +3,9 @@
 //
 // Sections: hero (+ dirty dock), appearance & language (theme / language /
 // accent + reduced motion), engine (memory / downloads / JDK), feature toggles
-// (AOT, fast boot, close-on-start, Discord RPC, fullbright), data directory +
-// diagnostics, about. TODO(agent-access): the "Acceso para agentes" section
-// (MCP toggle, config snippets, token rotation, allowlist) is not ported — the
-// native engine has no agent-access routes yet (agent.json strings are kept).
+// (AOT, fast boot, close-on-start, Discord RPC, fullbright), agent access (MCP
+// toggle + safety rules, config snippets, token rotation, allowlist), data
+// directory + diagnostics, about.
 
 import { Theme, T, Router, AppState, Shell, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, Field, Slider, Segmented, Icon, Icons, Emoji, PageScaffold } from "../../widgets.slint";
 import { ThemeToggle } from "../../shell/top-chrome.slint";
@@ -1195,6 +1194,497 @@ component AboutCard inherits Rectangle {
     }
 }
 
+// ---- agent access (MCP) ----------------------------------------------------------------------
+//
+// Port of SettingsDashboard.svelte "SECTION 4: AGENT ACCESS (MCP)": toggle +
+// safety rules + token rotation, MCP snippets (JSON / TOML) with copy buttons,
+// allowlist editor. State lives on SettingsBridge (`agent-*`), the engine calls
+// in src/pages/settings_suite_servers/agent.rs.
+
+/// `.section-header` with the "ACTIVO" badge on the right (Svelte has no
+/// badge slot in SectionHeader, so this is the local variant with its metrics).
+component AgentHeader inherits HorizontalLayout {
+    spacing: 16px;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 4px;
+        alignment: start;
+        Text {
+            text: T.tr("dash.agent.title");
+            color: Theme.text;
+            font-size: 18.4px;
+            font-weight: 600;
+            letter-spacing: -0.18px;
+            line-height-factor: 0.94;
+        }
+        Text {
+            text: T.tr("dash.agent.subtitle");
+            color: Theme.muted;
+            font-size: 13.6px;
+            line-height-factor: 1.25;
+            wrap: word-wrap;
+        }
+    }
+    // `.section-header { align-items: center }`
+    if SettingsBridge.agent-active: VerticalLayout {
+        alignment: center;
+        Badge { text: T.tr("dash.agent.enabledBadge"); variant: BadgeVariant.ok; dot: true; }
+    }
+}
+
+/// `.agent-host-chip` (mono `code` chip; `blocked` = never-allowlisted host).
+component HostChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> blocked: false;
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    preferred-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-sm;
+    background: Theme.surface-up;
+    border-width: 1px;
+    border-color: blocked ? rgba(239, 68, 68, 0.35) : Theme.border;
+    row := HorizontalLayout {
+        padding-left: 7.2px;
+        padding-right: 7.2px;
+        padding-top: 3.2px;
+        padding-bottom: 3.2px;
+        Text {
+            text: root.text;
+            font-family: Theme.font-mono;
+            font-size: 11.5px;
+            color: root.blocked ? Theme.accent-red : Theme.text;
+            vertical-alignment: center;
+        }
+    }
+}
+
+/// One safety rule (`<li>`; the Svelte list is a flex column with bullets).
+component RuleItem inherits HorizontalLayout {
+    in property <string> text;
+    spacing: 8px;
+    alignment: start;
+    padding-left: 6.4px;
+    Text {
+        text: "•";
+        color: Theme.muted;
+        font-size: 12.8px;
+        line-height-factor: 1.13;
+        vertical-alignment: top;
+    }
+    Text {
+        horizontal-stretch: 1;
+        min-width: 0px;
+        text: root.text;
+        color: Theme.muted;
+        font-size: 12.8px;
+        line-height-factor: 1.13;
+        wrap: word-wrap;
+    }
+}
+
+/// `.agent-config-block`: mono label + copy button + the `<pre>` snippet.
+component AgentConfigBlock inherits VerticalLayout {
+    in property <string> label;
+    in property <string> code;
+    in property <string> copy-label;
+    in property <bool> copied;
+    callback copy();
+    spacing: 8px;
+    HorizontalLayout {
+        spacing: 12px;
+        Text {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            text: root.label;
+            font-family: Theme.font-mono;
+            font-size: 11.5px;
+            color: Theme.muted;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            icon: root.copied ? Icons.check : Icons.copy;
+            text: root.copied ? T.tr("dash.agent.copied") : root.copy-label;
+            clicked => { root.copy(); }
+        }
+    }
+    // `.agent-config-code`: --log-bg, `white-space: pre`, max-height 15rem,
+    // overflow-x: auto -> no wrapping, scroll both ways.
+    Rectangle {
+        border-radius: Theme.radius-md;
+        background: Theme.log-bg;
+        border-width: 1px;
+        border-color: Theme.border;
+        height: min(240px, code-text.preferred-height + 24px);
+        clip: true;
+        flick := Flickable {
+            x: 14px;
+            y: 12px;
+            width: parent.width - 28px;
+            height: parent.height - 24px;
+            content-width: max(flick.width, code-text.preferred-width);
+            content-height: code-text.preferred-height;
+            code-text := Text {
+                x: 0;
+                y: 0;
+                width: self.preferred-width;
+                height: self.preferred-height;
+                text: root.code;
+                color: Theme.text;
+                font-family: Theme.font-mono;
+                font-size: 11.5px;
+                line-height-factor: 1.17;
+                wrap: no-wrap;
+            }
+        }
+    }
+}
+
+/// One allowlist row (`.agent-allow-item`) with its remove button.
+component AgentAllowRow inherits Rectangle {
+    in property <string> host;
+    border-radius: Theme.radius-md;
+    background: Theme.surface-up;
+    border-width: 1px;
+    border-color: Theme.border;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 7.2px;
+        padding-bottom: 7.2px;
+        spacing: 12px;
+        Text {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            text: root.host;
+            font-family: Theme.font-mono;
+            font-size: 12.8px;
+            color: Theme.text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Rectangle {
+            width: 24px;
+            height: 24px;
+            border-radius: Theme.radius-sm;
+            background: rm-touch.has-hover ? rgba(239, 68, 68, 0.12) : transparent;
+            Text {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                text: "✕";
+                font-size: 12.8px;
+                color: rm-touch.has-hover ? Theme.accent-red : Theme.muted;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            rm-touch := TouchArea {
+                enabled: !SettingsBridge.agent-allow-saving;
+                mouse-cursor: pointer;
+                // the Svelte aria-label / title = t('dash.agent.allowRemove', { host })
+                accessible-role: AccessibleRole.button;
+                accessible-label: T.tr1("dash.agent.allowRemove", "host", root.host);
+                clicked => { SettingsBridge.agent-allow-remove(root.host); }
+            }
+        }
+    }
+}
+
+/// Card 1: master toggle, safety rules, token path + rotation (with confirm).
+component AgentToggleCard inherits SettingCard {
+    in-out property <bool> checked;
+    VerticalLayout {
+        spacing: 20px;
+        CardHead {
+            title: T.tr("dash.agent.toggleTitle");
+            desc: T.tr("dash.agent.toggleDesc");
+            VerticalLayout {
+                alignment: start;
+                SwitchControl {
+                    checked <=> root.checked;
+                    enabled: SettingsBridge.agent-loaded && !SettingsBridge.agent-saving;
+                    toggled(v) => { SettingsBridge.agent-set-enabled(v); }
+                }
+            }
+        }
+        InfoBox { text: T.tr("dash.agent.rulesTitle"); icon: Icons.shield; }
+        VerticalLayout {
+            spacing: 6.4px;
+            RuleItem { text: T.tr("dash.agent.ruleEspectral"); }
+            RuleItem { text: T.tr("dash.agent.ruleF8"); }
+            RuleItem { text: T.tr("dash.agent.ruleLocal"); }
+        }
+        // `.agent-token-block`: border-top + 1rem padding, 0.6rem gaps
+        VerticalLayout {
+            spacing: 0px;
+            Rectangle { height: 1px; background: Theme.border; }
+            VerticalLayout {
+                padding-top: 16px;
+                spacing: 9.6px;
+                VerticalLayout {
+                    spacing: 2.4px;
+                    Text {
+                        text: T.tr("dash.agent.tokenTitle");
+                        font-size: 15.2px;
+                        font-weight: 600;
+                        color: Theme.text;
+                        line-height-factor: 1.25;
+                    }
+                    Text {
+                        text: T.tr("dash.agent.tokenDesc");
+                        font-size: 12.5px;
+                        color: Theme.muted;
+                        line-height-factor: 1.13;
+                        wrap: word-wrap;
+                    }
+                }
+                if SettingsBridge.agent-token-path != "": Rectangle {
+                    border-radius: Theme.radius-md;
+                    background: Theme.surface-up;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        padding-top: 12px;
+                        padding-bottom: 12px;
+                        spacing: 12px;
+                        Text {
+                            text: T.tr("dash.agent.tokenPath");
+                            font-size: 13.6px;
+                            color: Theme.muted;
+                            line-height-factor: 1.25;
+                            vertical-alignment: center;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            height: path-text.preferred-height + 11.2px;
+                            border-radius: Theme.radius-sm;
+                            background: Theme.log-bg;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            clip: true;
+                            path-text := Text {
+                                x: 9.6px;
+                                y: 5.6px;
+                                width: parent.width - 19.2px;
+                                text: SettingsBridge.agent-token-path;
+                                font-family: Theme.font-mono;
+                                font-size: 11.5px;
+                                color: Theme.text;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    if SettingsBridge.agent-confirming-rotate: Text {
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        text: T.tr("dash.agent.rotateConfirm");
+                        font-size: 12.8px;
+                        color: Theme.text;
+                        line-height-factor: 1.13;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    if SettingsBridge.agent-confirming-rotate: VerticalLayout {
+                        alignment: center;
+                        Btn {
+                            variant: BtnVariant.danger;
+                            size: BtnSize.sm;
+                            loading: SettingsBridge.agent-rotating;
+                            enabled: !SettingsBridge.agent-rotating;
+                            text: T.tr("dash.agent.rotateConfirmYes");
+                            clicked => { SettingsBridge.agent-rotate(); }
+                        }
+                    }
+                    if SettingsBridge.agent-confirming-rotate: VerticalLayout {
+                        alignment: center;
+                        Btn {
+                            variant: BtnVariant.ghost;
+                            size: BtnSize.sm;
+                            enabled: !SettingsBridge.agent-rotating;
+                            text: T.tr("dash.agent.rotateCancel");
+                            clicked => { SettingsBridge.agent-confirming-rotate = false; }
+                        }
+                    }
+                    if !SettingsBridge.agent-confirming-rotate: VerticalLayout {
+                        alignment: center;
+                        Btn {
+                            variant: BtnVariant.secondary;
+                            size: BtnSize.sm;
+                            text: T.tr("dash.agent.rotate");
+                            clicked => { SettingsBridge.agent-confirming-rotate = true; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Card 2: MCP configuration snippets (JSON for Claude Code / Cursor, TOML for
+/// Codex) with copy buttons, or the empty state while the agent is disabled.
+component AgentConfigCard inherits SettingCard {
+    VerticalLayout {
+        spacing: 20px;
+        CardHead {
+            title: T.tr("dash.agent.configTitle");
+            desc: T.tr("dash.agent.configDesc");
+        }
+        if SettingsBridge.agent-active && SettingsBridge.agent-json != "": VerticalLayout {
+            spacing: 20px;
+            AgentConfigBlock {
+                label: "mcpServers.espectral";
+                code: SettingsBridge.agent-json;
+                copy-label: T.tr("dash.agent.copyJson");
+                copied: SettingsBridge.agent-json-copied;
+                copy => { SettingsBridge.agent-copy("json"); }
+            }
+            AgentConfigBlock {
+                label: "~/.codex/config.toml";
+                code: SettingsBridge.agent-toml;
+                copy-label: T.tr("dash.agent.copyToml");
+                copied: SettingsBridge.agent-toml-copied;
+                copy => { SettingsBridge.agent-copy("toml"); }
+            }
+        }
+        if !SettingsBridge.agent-active || SettingsBridge.agent-json == "": Text {
+            text: T.tr("dash.agent.configEmpty");
+            font-size: 12.8px;
+            color: Theme.muted;
+            line-height-factor: 1.25;
+            wrap: word-wrap;
+        }
+    }
+}
+
+/// Card 3: allowed-servers editor (add / remove / save the draft).
+component AgentAllowCard inherits SettingCard {
+    VerticalLayout {
+        spacing: 20px;
+        CardHead {
+            title: T.tr("dash.agent.allowTitle");
+            desc: T.tr("dash.agent.allowDesc");
+        }
+        // `.agent-always-row` wraps in CSS; split in two rows (Slint has no
+        // wrapping layout) so the Spanish labels still fit at 1/3 width.
+        VerticalLayout {
+            spacing: 6.4px;
+            HorizontalLayout {
+                spacing: 6.4px;
+                alignment: start;
+                Badge { text: T.tr("dash.agent.allowAlways"); variant: BadgeVariant.ok; }
+                HostChip { text: "singleplayer"; }
+                HostChip { text: "localhost"; }
+            }
+            HorizontalLayout {
+                spacing: 6.4px;
+                alignment: start;
+                Badge { text: T.tr("dash.agent.allowNever"); variant: BadgeVariant.err; }
+                HostChip { text: "*.uhce.top"; blocked: true; }
+                HostChip { text: "*.espectral.es"; blocked: true; }
+            }
+        }
+        HorizontalLayout {
+            spacing: 9.6px;
+            SsTextField {
+                text <=> SettingsBridge.agent-allow-input;
+                placeholder: T.tr("dash.agent.allowPlaceholder");
+                enabled: !SettingsBridge.agent-allow-saving;
+                min-h: 32px;
+                pad-y: 6.4px;
+                accepted => { SettingsBridge.agent-allow-add(); }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    enabled: !SettingsBridge.agent-allow-saving;
+                    text: T.tr("dash.agent.allowAdd");
+                    clicked => { SettingsBridge.agent-allow-add(); }
+                }
+            }
+        }
+        if SettingsBridge.agent-allow-error != "": Text {
+            text: SettingsBridge.agent-allow-error;
+            font-size: 12.5px;
+            color: Theme.accent-red;
+            line-height-factor: 1.25;
+            wrap: word-wrap;
+        }
+        VerticalLayout {
+            spacing: 6.4px;
+            for h in SettingsBridge.agent-allow-list: AgentAllowRow { host: h; }
+            if SettingsBridge.agent-allow-list.length == 0: Text {
+                text: T.tr("dash.agent.allowEmpty");
+                font-size: 12.8px;
+                color: Theme.muted;
+                line-height-factor: 1.25;
+                wrap: word-wrap;
+            }
+        }
+        HorizontalLayout {
+            padding-top: 4px;
+            Rectangle { horizontal-stretch: 1; min-width: 0px; }
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                loading: SettingsBridge.agent-allow-saving;
+                enabled: !SettingsBridge.agent-allow-saving && SettingsBridge.agent-allow-dirty;
+                text: T.tr("dash.agent.allowSave");
+                clicked => { SettingsBridge.agent-allow-save(); }
+            }
+        }
+    }
+}
+
+component AgentSection inherits VerticalLayout {
+    in property <bool> narrow;
+    spacing: 16px;
+    AgentHeader { }
+    // `.agent-grid`: 3 columns at >= 1100px, `align-items: start` (cards keep
+    // their natural height, so each sits in a top-aligned wrapper).
+    if !root.narrow: HorizontalLayout {
+        spacing: 20px;
+        VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 1;
+            preferred-width: 1px;
+            min-width: 0px;
+            AgentToggleCard { checked <=> SettingsBridge.agent-enabled; }
+        }
+        VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 1;
+            preferred-width: 1px;
+            min-width: 0px;
+            AgentConfigCard { }
+        }
+        VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 1;
+            preferred-width: 1px;
+            min-width: 0px;
+            AgentAllowCard { }
+        }
+    }
+    if root.narrow: VerticalLayout {
+        spacing: 20px;
+        AgentToggleCard { checked <=> SettingsBridge.agent-enabled; }
+        AgentConfigCard { }
+        AgentAllowCard { }
+    }
+}
+
 // ---- page ------------------------------------------------------------------------------------
 
 export component SettingsPage inherits Rectangle {
@@ -1330,8 +1820,8 @@ export component SettingsPage inherits Rectangle {
                 }
             }
 
-            // SECTION 4: agent access (MCP) — TODO(agent-access): not ported, the
-            // native engine does not implement get/put agent-access nor token rotation.
+            // SECTION 4: agent access (MCP)
+            AgentSection { narrow: root.narrow; }
 
             // SECTION 5: system storage & diagnostics
             VerticalLayout {

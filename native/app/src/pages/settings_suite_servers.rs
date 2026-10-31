@@ -7,18 +7,21 @@
 //! | module      | page                      | Svelte source                      |
 //! |-------------|---------------------------|------------------------------------|
 //! | `settings`  | `#/settings`              | pages/SettingsDashboard.svelte     |
+//! | `agent`     | `#/settings` agent section| pages/SettingsDashboard.svelte (agent) |
 //! | `client`    | `#/client`                | pages/ClientSuite.svelte           |
 //! | `servers`   | `#/servers` + card helpers| pages/ServerRadar.svelte, components/ServerRadarCard + PingWaveform |
 
 use crate::bridge::Ctx;
 use crate::AppWindow;
 
+mod agent;
 mod client;
 mod servers;
 mod settings;
 
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
     settings::init(ctx, ui);
+    agent::init(ctx, ui);
     client::init(ctx, ui);
     servers::init(ctx, ui);
 }
