@@ -1,0 +1,797 @@
+// OWNER: home-instances agent. InstanceHub "Configuración" tab (two card
+// stacks + the full-width client-suite card).
+
+import { Theme, T, AppState, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, Slider, ProgressBar, ProgressTone, Emoji } from "../../widgets.slint";
+import { HomeBridge } from "api.slint";
+import { HiSelect, HiCheck, HiTextField } from "common.slint";
+import { HubCard, ActionFooter, PresetPill, Inset, MicroLabel, CheckRow, Note, Switch, FileBtn } from "hub-parts.slint";
+
+component VersionCard inherits HubCard {
+    title: T.tr("instance.vcTitle");
+    subtitle: T.tr("instance.vcHint");
+    property <bool> locked: HomeBridge.vc-applying || HomeBridge.hub-running;
+    HorizontalLayout {
+        spacing: Theme.space-3;
+        Field {
+            horizontal-stretch: 2;
+            label: T.tr("instance.vcVersion");
+            HiSelect {
+                options: HomeBridge.vc-versions;
+                current-index: HomeBridge.vc-version-index;
+                enabled: !root.locked;
+                selected(i, v) => { HomeBridge.vc-select(i, HomeBridge.vc-loader-index); }
+            }
+        }
+        Field {
+            horizontal-stretch: 1;
+            label: T.tr("instance.vcLoader");
+            HiSelect {
+                options: [{ value: "fabric", label: "Fabric" }, { value: "vanilla", label: "Vanilla" }, { value: "neoforge", label: "NeoForge" }];
+                current-index: HomeBridge.vc-loader-index;
+                enabled: !root.locked;
+                selected(i, v) => { HomeBridge.vc-select(HomeBridge.vc-version-index, i); }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 7px;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            HiCheck {
+                checked: HomeBridge.vc-show-all;
+                toggled(v) => { HomeBridge.vc-toggle-all(v); }
+            }
+        }
+        Text {
+            text: T.tr("instance.vcShowSnapshots");
+            color: Theme.muted;
+            font-size: Theme.text-xs;
+            vertical-alignment: center;
+        }
+    }
+    if HomeBridge.vc-has-plan: Rectangle {
+        border-radius: 9.6px;
+        background: Theme.dark ? rgba(8, 12, 24, 0.45) : rgba(18, 24, 41, 0.04);
+        border-width: 1px;
+        border-color: Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+        HorizontalLayout {
+            padding-left: Theme.space-3;
+            padding-right: Theme.space-3;
+            VerticalLayout {
+                padding-top: Theme.space-3;
+                padding-bottom: Theme.space-3;
+                spacing: Theme.space-2;
+                HorizontalLayout {
+                    alignment: start;
+                    Text { text: HomeBridge.vc-plan-from; color: Theme.text; font-size: 13.6px; }
+                    Text { text: HomeBridge.vc-plan-to; color: Theme.text; font-size: 13.6px; font-weight: 700; }
+                }
+                if HomeBridge.vc-warn-downgrade != "": Text { text: HomeBridge.vc-warn-downgrade; color: #f5b14c; font-size: 12.5px; wrap: word-wrap; }
+                if HomeBridge.vc-warn-menu != "": Text { text: HomeBridge.vc-warn-menu; color: #f5b14c; font-size: 12.5px; wrap: word-wrap; }
+                if HomeBridge.vc-summary != "": Note { hint: true; text: HomeBridge.vc-summary; }
+                if HomeBridge.vc-mods.length > 0: Rectangle {
+                    height: min(224px, HomeBridge.vc-mods.length * 20px);
+                    Flickable {
+                        content-height: HomeBridge.vc-mods.length * 20px;
+                        for m[i] in HomeBridge.vc-mods: HorizontalLayout {
+                            y: i * 20px;
+                            height: 20px;
+                            spacing: Theme.space-3;
+                            Text { text: m.title; color: Theme.text; font-size: 12.5px; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
+                            Text {
+                                text: m.what;
+                                color: m.kind == "update" || m.kind == "add" ? Theme.accent : m.kind == "disable" ? #f5b14c : Theme.muted;
+                                font-size: 12.5px;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if HomeBridge.vc-error != "": Text { text: HomeBridge.vc-error; color: Theme.accent-red; font-size: Theme.text-xs; wrap: word-wrap; }
+    if HomeBridge.hub-running: Note { hint: true; text: T.tr("instance.vcRunning"); }
+    ActionFooter {
+        if HomeBridge.vc-has-plan: Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            enabled: !HomeBridge.vc-applying;
+            text: T.tr("instance.vcCancel");
+            clicked => { HomeBridge.vc-cancel(); }
+        }
+        if HomeBridge.vc-has-plan: Btn {
+            variant: BtnVariant.primary;
+            size: BtnSize.sm;
+            loading: HomeBridge.vc-applying;
+            enabled: !HomeBridge.vc-applying && !HomeBridge.hub-running;
+            text: T.tr("instance.vcApply");
+            clicked => { HomeBridge.vc-apply(); }
+        }
+        if !HomeBridge.vc-has-plan: Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.sm;
+            loading: HomeBridge.vc-planning;
+            enabled: HomeBridge.vc-changed && !HomeBridge.vc-planning && !HomeBridge.hub-running;
+            text: T.tr("instance.vcReview");
+            clicked => { HomeBridge.vc-plan(); }
+        }
+    }
+}
+
+component MemoryCard inherits HubCard {
+    title: T.tr("instance.memoryTitle");
+    subtitle: T.tr("instance.memoryHint");
+    property <bool> auto-active: HomeBridge.hub.memory-auto && HomeBridge.hub-memory == HomeBridge.hub.memory-mb;
+    VerticalLayout {
+        spacing: 17.6px;
+        VerticalLayout {
+            spacing: Theme.space-2;
+            HorizontalLayout {
+                Text { text: Util.format-memory(HomeBridge.hub-memory); color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; horizontal-stretch: 1; vertical-alignment: center; }
+                Text { text: "1 GB – 16 GB"; color: Theme.muted; font-size: Theme.text-xs; vertical-alignment: center; }
+            }
+            Slider {
+                minimum: 1024;
+                maximum: 16384;
+                step: 512;
+                value: HomeBridge.hub-memory;
+                changed(v) => { HomeBridge.hub-memory = v; }
+            }
+        }
+        HorizontalLayout {
+            spacing: 6.4px;
+            alignment: start;
+            PresetPill {
+                text: T.tr("instance.memoryAuto");
+                active: root.auto-active;
+                enabled: !HomeBridge.saving-config;
+                clicked => { HomeBridge.auto-memory(); }
+            }
+            for mb in [2048, 3072, 4096, 6144, 8192, 12288]: PresetPill {
+                text: (mb / 1024) + " GB";
+                active: HomeBridge.hub-memory == mb && !root.auto-active;
+                clicked => { HomeBridge.hub-memory = mb; }
+            }
+        }
+        ActionFooter {
+            Btn {
+                variant: BtnVariant.primary;
+                size: BtnSize.sm;
+                loading: HomeBridge.saving-config;
+                enabled: !HomeBridge.saving-config && HomeBridge.hub-memory != HomeBridge.hub.memory-mb;
+                text: T.tr("instance.saveMemory");
+                clicked => { HomeBridge.save-memory(HomeBridge.hub-memory); }
+            }
+        }
+    }
+}
+
+component GameDirCard inherits HubCard {
+    title: T.tr("instance.gameDirTitle");
+    subtitle: T.tr("instance.gameDirHint");
+    Field {
+        label: T.tr("instance.gameDirLabel");
+        hint: T.tr("instance.gameDirFieldHint");
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            HiTextField {
+                text: HomeBridge.game-dir;
+                read-only: true;
+                placeholder: T.tr("instance.gameDirDefault");
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    loading: HomeBridge.picking-game-dir;
+                    text: T.tr("instance.gameDirBrowse");
+                    clicked => { HomeBridge.pick-game-dir(); }
+                }
+            }
+            if HomeBridge.hub.game-dir != "": VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.ghost;
+                    size: BtnSize.sm;
+                    enabled: !HomeBridge.saving-game-dir;
+                    text: T.tr("instance.gameDirClear");
+                    clicked => { HomeBridge.clear-game-dir(); }
+                }
+            }
+        }
+    }
+    ActionFooter {
+        Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.sm;
+            loading: HomeBridge.saving-game-dir;
+            enabled: !HomeBridge.saving-game-dir && HomeBridge.game-dir != HomeBridge.hub.game-dir;
+            text: T.tr("instance.saveGameDir");
+            clicked => { HomeBridge.save-game-dir(HomeBridge.game-dir); }
+        }
+    }
+}
+
+component CaptureCard inherits HubCard {
+    title: T.tr("instance.captureTitle");
+    subtitle: T.tr("instance.captureDesc");
+    CheckRow {
+        checked: HomeBridge.capture-tools;
+        enabled: HomeBridge.capture-supported && !HomeBridge.saving-capture;
+        title: T.tr("instance.captureLabel");
+        hint: HomeBridge.capture-supported ? T.tr("instance.captureHint") : T.tr("instance.captureUnavailable");
+        toggled => { HomeBridge.toggle-capture(); }
+        if HomeBridge.saving-capture: Text { text: T.tr("instance.captureInstalling"); color: Theme.accent; font-size: Theme.text-xs; }
+        if !HomeBridge.saving-capture && HomeBridge.capture-tools: VerticalLayout {
+            alignment: start;
+            Badge { text: T.tr("instance.captureActive"); variant: BadgeVariant.ok; dot: true; }
+        }
+    }
+}
+
+component JvmCard inherits HubCard {
+    title: T.tr("instance.jvmTitle");
+    VerticalLayout {
+        spacing: Theme.space-4;
+        Inset {
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                MicroLabel { text: T.tr("instance.jvmSource").to-uppercase(); }
+                HorizontalLayout { alignment: start; Badge { text: HomeBridge.jvm-source; variant: BadgeVariant.accent; } }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                MicroLabel { text: T.tr("instance.jvmVersion").to-uppercase(); }
+                Text { text: HomeBridge.jvm-version; color: Theme.text; font-size: Theme.text-xs; font-weight: 600; wrap: word-wrap; }
+            }
+        }
+        if HomeBridge.jvm-path != "": VerticalLayout {
+            spacing: 5px;
+            MicroLabel { text: T.tr("instance.jvmPath").to-uppercase(); }
+            Rectangle {
+                border-radius: Theme.radius-sm;
+                background: Theme.dark ? rgba(0, 0, 0, 0.3) : rgba(18, 24, 41, 0.06);
+                HorizontalLayout {
+                    padding-left: 10.4px;
+                    padding-right: 10.4px;
+                    VerticalLayout {
+                        padding-top: 8px;
+                        padding-bottom: 8px;
+                        Text { text: HomeBridge.jvm-path; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: 11.6px; wrap: char-wrap; }
+                    }
+                }
+            }
+        }
+        Field {
+            label: T.tr("instance.jdkOverrideLabel");
+            hint: T.tr("instance.jdkOverrideHint");
+            HiTextField {
+                text <=> HomeBridge.jdk-override;
+                placeholder: T.tr("instance.jdkOverridePlaceholder");
+            }
+        }
+        ActionFooter {
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                loading: HomeBridge.saving-config;
+                enabled: !HomeBridge.saving-config;
+                text: T.tr("instance.saveJdk");
+                clicked => { HomeBridge.save-jdk(HomeBridge.jdk-override); }
+            }
+        }
+    }
+}
+
+component AotCard inherits HubCard {
+    title: T.tr("instance.aotTitle");
+    subtitle: T.tr("instance.aotSubtitle");
+    VerticalLayout {
+        spacing: Theme.space-4;
+        Inset {
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                MicroLabel { text: T.tr("instance.aotStatusLabel"); }
+                HorizontalLayout {
+                    alignment: start;
+                    Badge {
+                        large: true;
+                        text: HomeBridge.aot-cache-exists ? T.tr("instance.aotReady") : T.tr("instance.aotNone");
+                        variant: HomeBridge.aot-cache-exists ? BadgeVariant.ok : BadgeVariant.neutral;
+                        dot: HomeBridge.aot-cache-exists;
+                    }
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                MicroLabel { text: T.tr("instance.aotCacheSize"); }
+                Text { text: HomeBridge.aot-size; color: Theme.text; font-family: Theme.font-mono; font-size: Theme.text-sm; font-weight: 700; }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                MicroLabel { text: T.tr("instance.aotProofLabel"); }
+                if HomeBridge.aot-proof-ok: HorizontalLayout { alignment: start; Badge { text: T.tr("instance.aotProofOk"); variant: BadgeVariant.accent; } }
+                if !HomeBridge.aot-proof-ok: Text { text: T.tr("instance.aotProofNone"); color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+            }
+        }
+        CheckRow {
+            checked: HomeBridge.aot-auto-train;
+            title: T.tr("instance.aotAutoTrain");
+            hint: T.tr("instance.aotAutoTrainHint");
+            toggled => { HomeBridge.toggle-auto-train(); }
+        }
+        if HomeBridge.train-progress-visible: ProgressBar {
+            value: HomeBridge.train-done;
+            max: max(HomeBridge.train-total, 1);
+            label: T.tr("instance.trainingAot");
+            show-value: true;
+        }
+        ActionFooter {
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                loading: HomeBridge.training-aot;
+                enabled: !HomeBridge.training-aot && !HomeBridge.hub-running;
+                text: T.tr("instance.trainAotBtn");
+                clicked => { HomeBridge.train-aot(); }
+            }
+        }
+    }
+}
+
+component BgTile inherits Rectangle {
+    in property <bool> active;
+    in property <bool> none;
+    in property <string> name;
+    in property <string> frames;
+    in property <image> thumb;
+    in property <bool> has-thumb;
+    callback pick();
+    callback remove();
+    height: 68px + 26px + (none ? 0px : 24px);
+    border-radius: Theme.radius-md;
+    background: rgba(255, 255, 255, 0.03);
+    border-width: active ? 2px : 1px;
+    border-color: active ? Theme.accent : Theme.border;
+    clip: true;
+    Rectangle {
+        y: 0;
+        height: 68px;
+        background: rgba(0, 0, 0, 0.25);
+        if root.none: Text { text: "✦"; color: Theme.muted; font-size: 20px; horizontal-alignment: center; vertical-alignment: center; }
+        if root.has-thumb: Image { width: parent.width; height: parent.height; source: root.thumb; image-fit: cover; }
+    }
+    Text {
+        x: 6px;
+        y: 68px + 5px;
+        width: parent.width - 12px;
+        text: root.name;
+        color: Theme.text;
+        font-size: Theme.text-xs;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+    if root.frames != "": Rectangle {
+        x: 5.6px;
+        y: 5.6px;
+        width: fl.preferred-width + 11px;
+        height: fl.preferred-height + 3px;
+        border-radius: 5.6px;
+        background: rgba(0, 0, 0, 0.6);
+        fl := Text { text: root.frames; color: Theme.text; font-size: 10.4px; horizontal-alignment: center; vertical-alignment: center; }
+    }
+    TouchArea {
+        y: 0;
+        height: 94px;
+        mouse-cursor: pointer;
+        clicked => { root.pick(); }
+    }
+    if !root.none: Rectangle {
+        y: parent.height - 24px;
+        height: 24px;
+        background: dt.has-hover ? rgba(255, 80, 80, 0.18) : rgba(0, 0, 0, 0.18);
+        Rectangle { y: 0; height: 1px; background: Theme.border; }
+        Text { text: T.tr("perso.bgDelete"); color: dt.has-hover ? Theme.text : Theme.muted; font-size: 11.2px; horizontal-alignment: center; vertical-alignment: center; }
+        dt := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.remove(); }
+        }
+    }
+}
+
+component AppearanceCard inherits HubCard {
+    title: T.tr("instance.appearanceTitle");
+    subtitle: T.tr("instance.appearanceHint");
+    VerticalLayout {
+        spacing: Theme.space-4;
+        Field {
+            label: T.tr("instance.hueTitle");
+            hint: T.tr("instance.hueHint");
+            HorizontalLayout {
+                spacing: Theme.space-3;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 14px;
+                        background: Theme.hsla(HomeBridge.hue-value, 0.7, 0.5, 1);
+                        border-width: 1px;
+                        border-color: rgba(255, 255, 255, 0.25);
+                        drop-shadow-color: rgba(255, 255, 255, 0.2);
+                        drop-shadow-blur: 12px;
+                    }
+                }
+                Slider {
+                    minimum: 0;
+                    maximum: 359;
+                    step: 1;
+                    value: HomeBridge.hue-value;
+                    changed(v) => {
+                        HomeBridge.hue-value = v;
+                        HomeBridge.hue-dirty = v != HomeBridge.hub.hue;
+                    }
+                }
+                Text {
+                    min-width: 48px;
+                    text: HomeBridge.hue-value + "°";
+                    color: Theme.text;
+                    font-size: Theme.text-base;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        ActionFooter {
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                loading: HomeBridge.saving-hue;
+                enabled: !HomeBridge.saving-hue && HomeBridge.hue-dirty;
+                text: T.tr("instance.saveHue");
+                clicked => { HomeBridge.save-hue(HomeBridge.hue-value); }
+            }
+        }
+        Field {
+            label: T.tr("instance.iconTitle");
+            hint: T.tr("instance.iconHint");
+            HorizontalLayout {
+                spacing: Theme.space-3;
+                alignment: start;
+                Rectangle {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 10px;
+                    background: rgba(255, 255, 255, 0.04);
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    clip: true;
+                    if HomeBridge.hub.has-icon: Image { width: parent.width; height: parent.height; source: HomeBridge.hub.icon; image-fit: cover; }
+                    if !HomeBridge.hub.has-icon: Emoji { char: "🖼️"; size: 22px; }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    FileBtn {
+                        text: HomeBridge.uploading-icon ? T.tr("instance.iconUploading") : T.tr("instance.iconUpload");
+                        enabled: !HomeBridge.uploading-icon;
+                        clicked => { HomeBridge.upload-icon(); }
+                    }
+                }
+                if HomeBridge.hub.has-icon: VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        variant: BtnVariant.ghost;
+                        size: BtnSize.sm;
+                        enabled: !HomeBridge.uploading-icon;
+                        text: T.tr("instance.iconRemove");
+                        clicked => { HomeBridge.remove-icon(); }
+                    }
+                }
+            }
+            if HomeBridge.icon-error != "": Note { text: HomeBridge.icon-error; }
+        }
+        Field {
+            label: T.tr("perso.taglineTitle");
+            hint: T.tr1("perso.taglineHint", "max", 40);
+            HorizontalLayout {
+                spacing: Theme.space-3;
+                HiTextField {
+                    text <=> HomeBridge.tagline;
+                    placeholder: T.tr("perso.taglinePlaceholder");
+                    accepted(t) => { HomeBridge.save-tagline(t); }
+                }
+                Text {
+                    min-width: 48px;
+                    text: HomeBridge.tagline.character-count + "/40";
+                    color: HomeBridge.tagline.character-count > 40 ? Theme.accent-red : Theme.muted;
+                    font-size: Theme.text-xs;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        ActionFooter {
+            if HomeBridge.saved-tagline != "": Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                enabled: !HomeBridge.saving-tagline;
+                text: T.tr("perso.taglineReset");
+                clicked => { HomeBridge.save-tagline(""); }
+            }
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                loading: HomeBridge.saving-tagline;
+                enabled: !HomeBridge.saving-tagline && HomeBridge.tagline != HomeBridge.saved-tagline;
+                text: T.tr("perso.taglineSave");
+                clicked => { HomeBridge.save-tagline(HomeBridge.tagline); }
+            }
+        }
+        Field {
+            label: T.tr("perso.bgTitle");
+            hint: T.tr("perso.bgHint");
+            if HomeBridge.bg-loading: Note { text: T.tr("perso.bgLoading"); }
+            if !HomeBridge.bg-loading: grid := Rectangle {
+                property <int> n: HomeBridge.bg-packs.length + 1;
+                property <int> cols: max(1, floor((self.width + 9.6px) / (120px + 9.6px)));
+                property <length> cw: (self.width - (self.cols - 1) * 9.6px) / self.cols;
+                property <int> rows: ceil(self.n / self.cols);
+                property <length> rh: HomeBridge.bg-packs.length > 0 ? 118px : 94px;
+                height: self.rows * self.rh + max(0, self.rows - 1) * 9.6px + (HomeBridge.bg-packs.length == 0 ? 24px : 0px) + 12px;
+                BgTile {
+                    x: 0;
+                    y: 0;
+                    width: grid.cw;
+                    none: true;
+                    active: HomeBridge.bg-selected == "";
+                    name: T.tr("perso.bgNone");
+                    pick => { HomeBridge.bg-select(""); }
+                }
+                for p[i] in HomeBridge.bg-packs: BgTile {
+                    x: mod(i + 1, grid.cols) * (grid.cw + 9.6px);
+                    y: floor((i + 1) / grid.cols) * (grid.rh + 9.6px);
+                    width: grid.cw;
+                    active: HomeBridge.bg-selected == p.id;
+                    name: p.name;
+                    frames: p.frames;
+                    thumb: p.thumb;
+                    has-thumb: p.has-thumb;
+                    pick => { HomeBridge.bg-select(p.id); }
+                    remove => { HomeBridge.bg-delete(p.id, p.name); }
+                }
+                if HomeBridge.bg-packs.length == 0: Note {
+                    x: 0;
+                    y: grid.rh + 6px;
+                    width: grid.width;
+                    text: T.tr("perso.bgEmpty");
+                }
+            }
+            if !HomeBridge.bg-loading: HorizontalLayout {
+                spacing: Theme.space-2;
+                alignment: start;
+                HiTextField {
+                    max-width: 160px;
+                    min-width: 120px;
+                    font-size: 12.8px;
+                    field-height: 32px;
+                    enabled: !HomeBridge.bg-importing;
+                    text <=> HomeBridge.bg-name;
+                    placeholder: T.tr("perso.bgNamePlaceholder");
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        variant: BtnVariant.secondary;
+                        size: BtnSize.sm;
+                        loading: HomeBridge.bg-importing;
+                        text: T.tr("perso.bgImportImage");
+                        clicked => { HomeBridge.bg-import("image", HomeBridge.bg-name); }
+                    }
+                }
+            }
+            if !HomeBridge.bg-loading: HorizontalLayout {
+                spacing: Theme.space-2;
+                alignment: start;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    loading: HomeBridge.bg-importing;
+                    text: T.tr("perso.bgImportFrames");
+                    clicked => { HomeBridge.bg-import("frames", HomeBridge.bg-name); }
+                }
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    loading: HomeBridge.bg-importing;
+                    text: T.tr("perso.bgImportFolder");
+                    clicked => { HomeBridge.bg-import("folder", HomeBridge.bg-name); }
+                }
+            }
+            if !HomeBridge.bg-loading: Note { hint: true; text: T.tr("perso.bgImportHint"); }
+            if HomeBridge.bg-error != "": Note { text: HomeBridge.bg-error; }
+        }
+    }
+}
+
+component OptionsCard inherits HubCard {
+    title: T.tr("instance.optionsTitle");
+    subtitle: T.tr("instance.optionsSubtitle");
+    footer: T.tr1("instance.optionsCount", "count", HomeBridge.options-count);
+    property <bool> show-preview;
+    VerticalLayout {
+        spacing: 13.6px;
+        if HomeBridge.options-sources.length > 0: Field {
+            label: T.tr("instance.importOptionsFrom");
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                HiSelect {
+                    options: HomeBridge.options-sources;
+                    current-index: HomeBridge.options-source-index;
+                    placeholder: T.tr("instance.selectInstance");
+                    selected(i, v) => { HomeBridge.options-source-index = i; }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        variant: BtnVariant.secondary;
+                        size: BtnSize.sm;
+                        enabled: HomeBridge.options-source-index >= 0 && !HomeBridge.importing-options;
+                        loading: HomeBridge.importing-options;
+                        text: T.tr("instance.importOptionsBtn");
+                        clicked => { HomeBridge.import-options(HomeBridge.options-sources[HomeBridge.options-source-index].value); }
+                    }
+                }
+            }
+        }
+        if HomeBridge.options-note != "": Note { text: HomeBridge.options-note; }
+        if HomeBridge.options-count > 0: VerticalLayout {
+            spacing: Theme.space-2;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Icon {
+                    data: root.show-preview ? "M 6 9 L 12 15 L 18 9 Z" : "M 9 6 L 15 12 L 9 18 Z";
+                    filled: true;
+                    weight: 0;
+                    size: 10px;
+                    color: Theme.muted;
+                }
+                Text {
+                    text: T.tr1("instance.optionsCount", "count", HomeBridge.options-count);
+                    color: Theme.muted;
+                    font-size: Theme.text-xs;
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.show-preview = !root.show-preview; }
+                    }
+                }
+            }
+            if root.show-preview: Rectangle {
+                height: min(180px, HomeBridge.options-rows.length * 22px + 16px);
+                border-radius: Theme.radius-sm;
+                background: Theme.dark ? rgba(0, 0, 0, 0.25) : rgba(18, 24, 41, 0.05);
+                clip: true;
+                Flickable {
+                    x: 8px;
+                    y: 8px;
+                    width: parent.width - 16px;
+                    height: parent.height - 16px;
+                    content-height: HomeBridge.options-rows.length * 22px;
+                    for o[i] in HomeBridge.options-rows: HorizontalLayout {
+                        y: i * 22px;
+                        height: 22px;
+                        spacing: Theme.space-2;
+                        Text { text: o.key; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: Theme.text-xs; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
+                        Text { text: o.value; color: Theme.text; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component SuiteCard inherits HubCard {
+    title: T.tr("instance.clientTitle");
+    subtitle: T.tr("instance.clientSubtitle");
+    if !HomeBridge.suite-enabled: HorizontalLayout {
+        alignment: start;
+        Rectangle {
+            height: chip.preferred-height + 10px;
+            width: chip.preferred-width + 21px;
+            border-radius: Theme.radius-md;
+            background: Theme.accent-gold.with-alpha(0.1);
+            border-width: 1px;
+            border-color: Theme.accent-gold.with-alpha(0.4);
+            chip := HorizontalLayout {
+                x: 10.4px;
+                y: 5px;
+                spacing: 6.4px;
+                VerticalLayout { alignment: center; Rectangle { width: 6px; height: 6px; border-radius: 3px; background: Theme.accent-gold; } }
+                Text { text: T.tr("client.suiteDisabled"); color: Theme.accent-gold; font-size: Theme.text-xs; font-weight: 700; }
+            }
+        }
+    }
+    grid := Rectangle {
+        property <int> cols: max(1, floor((self.width + 10.4px) / (384px + 10.4px)));
+        property <length> cw: (self.width - (self.cols - 1) * 10.4px) / self.cols;
+        property <length> rh: 92px;
+        property <int> rows: ceil(HomeBridge.features.length / self.cols);
+        height: self.rows * self.rh + max(0, self.rows - 1) * 10.4px;
+        for f[i] in HomeBridge.features: Rectangle {
+            x: mod(i, grid.cols) * (grid.cw + 10.4px);
+            y: floor(i / grid.cols) * (grid.rh + 10.4px);
+            width: grid.cw;
+            height: grid.rh;
+            border-radius: Theme.radius-md;
+            background: Theme.dark ? rgba(0, 0, 0, 0.2) : rgba(18, 24, 41, 0.05);
+            opacity: HomeBridge.suite-enabled ? 1 : 0.75;
+            HorizontalLayout {
+                padding-left: Theme.space-3;
+                padding-right: Theme.space-3;
+                padding-top: 9.6px;
+                padding-bottom: 9.6px;
+                spacing: Theme.space-4;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text { text: f.name; color: Theme.text; font-size: Theme.text-sm; font-weight: 600; overflow: elide; }
+                    Text { text: f.desc; color: Theme.muted; font-size: Theme.text-xs; overflow: elide; }
+                    if f.keybind != "": Text { text: T.tr1("instance.keybind", "key", f.keybind); color: Theme.accent-alt; font-size: 11.2px; font-weight: 700; }
+                    Text {
+                        text: (f.enabled ? T.tr("instance.featureEnabled") : T.tr("instance.featureDisabled")) + (HomeBridge.suite-enabled ? "" : " · " + T.tr("client.suppressed"));
+                        color: Theme.muted;
+                        font-size: Theme.text-xs;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Switch {
+                        on: f.enabled;
+                        enabled: HomeBridge.toggling-feature != f.id;
+                        clicked => { HomeBridge.toggle-feature(f.id, !f.enabled); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ConfigTab inherits VerticalLayout {
+    spacing: 20px;
+    HorizontalLayout {
+        spacing: 20px;
+        VerticalLayout {
+            min-width: 100px;
+            preferred-width: 100px;
+            horizontal-stretch: 1;
+            spacing: 20px;
+            alignment: start;
+            VersionCard { }
+            MemoryCard { }
+            GameDirCard { }
+            CaptureCard { }
+            JvmCard { }
+            AotCard { }
+        }
+        VerticalLayout {
+            min-width: 100px;
+            preferred-width: 100px;
+            horizontal-stretch: 1;
+            spacing: 20px;
+            alignment: start;
+            AppearanceCard { }
+            OptionsCard { }
+        }
+    }
+    if HomeBridge.client-visible: SuiteCard { }
+}

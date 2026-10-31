@@ -1,29 +1,41 @@
 //! OWNER: home-instances agent. Rust side of Home / InstanceHub / PipLogDrawer (ui/pages/home-instances).
 //!
-//! Contract with the shell: keep `pub fn init(ctx, ui)`; everything else in
-//! this file (and any `pages/home_instances/*.rs` child modules you add with
-//! `mod x;` here) is yours. Read native/app/UI-PORTING.md first.
+//! * `launchlog` — per-launch ring buffers (lib/stores.ts launchLog) feeding
+//!   the PiP drawer, the hub console and the capsule telemetry line.
+//! * `home` — rail selection, server strip, capsule (launch / stop / account /
+//!   AOT chip), dry-run, instance wizard, .mrpack import.
+//! * `hub` — InstanceHub data + every action of its four tabs.
+//!
+//! Contract with the shell: `pub fn init(ctx, ui)`.
 
-#![allow(unused_imports)]
+mod home;
+mod hub;
+mod launchlog;
 
 use espectral_engine::events::EngineEvent;
 use slint::ComponentHandle;
 
 use crate::bridge::{self, Ctx};
-use crate::router::{self, Route};
-use crate::{toast, AppWindow, HomeBridge, Page};
+use crate::{AppWindow, HomeBridge};
 
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
-    let _bridge = ui.global::<HomeBridge>();
+    launchlog::init(ctx, ui);
+    home::init(ctx, ui);
+    hub::init(ctx, ui);
 
-    // Load data whenever one of this group's pages is entered.
-    let c = ctx.clone();
-    router::on_route(move |_ui, route: &Route| {
-        if matches!(route.page, Page::Home | Page::Instance) {
-            let _ = &c; // e.g. c.call(|e| async move { e.list_versions().await }, |ui, v| { ... });
-        }
+    // AppState lists changed (PipLogDrawer watches them: it is always mounted).
+    let w = ui.as_weak();
+    ui.global::<HomeBridge>().on_shared_changed(move || {
+        let Some(ui) = w.upgrade() else { return };
+        home::shared_changed(&ui);
+        hub::shared_changed(&ui);
+        launchlog::launches_changed(&ui);
     });
 
-    // React to engine events (UI thread).
-    bridge::on_event(|_ui, _ev: &EngineEvent| {});
+    // Engine events (UI thread, batched by the bridge pump).
+    bridge::on_event(|ui, ev: &EngineEvent| {
+        launchlog::on_event(ui, ev);
+        home::on_event(ui, ev);
+        hub::on_event(ui, ev);
+    });
 }

@@ -1,0 +1,542 @@
+// OWNER: home-instances agent. Ports of components/DryRunModal.svelte and
+// components/MrpackModal.svelte (state in HomeBridge dryrun-* / mrpack-*).
+
+import { Theme, T, AppState, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, Slider, Modal, Emoji, Spinner, ProgressBar, ProgressTone, ProgressThickness } from "../../widgets.slint";
+import { HiTextField } from "common.slint";
+import { HomeBridge } from "api.slint";
+
+/// Shared modal header: title (+ optional badge) / subtitle / close.
+component ModalHead inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> badge;
+    in property <bool> can-close: true;
+    callback close();
+    background: rgba(16, 22, 42, 0.4);
+    HorizontalLayout {
+        padding-left: Theme.space-6;
+        padding-right: Theme.space-6;
+        padding-top: Theme.space-5;
+        padding-bottom: Theme.space-5;
+        spacing: Theme.space-4;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: Theme.space-3;
+                alignment: start;
+                Text { text: root.title; color: Theme.text; font-size: Theme.text-xl; font-weight: 700; overflow: elide; }
+                if root.badge != "": VerticalLayout {
+                    alignment: center;
+                    Badge { text: root.badge; variant: BadgeVariant.accent; }
+                }
+            }
+            Text { text: root.subtitle; color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                opacity: root.can-close ? 1 : 0.4;
+                Icon { data: Icons.x; size: 16px; color: xt.has-hover ? Theme.text : Theme.muted; }
+                xt := TouchArea {
+                    enabled: root.can-close;
+                    mouse-cursor: pointer;
+                    clicked => { root.close(); }
+                }
+            }
+        }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: rgba(255, 255, 255, 0.08); }
+}
+
+component ModalFoot inherits Rectangle {
+    background: rgba(16, 22, 42, 0.4);
+    Rectangle { y: 0; height: 1px; background: rgba(255, 255, 255, 0.08); }
+    HorizontalLayout {
+        padding-left: Theme.space-6;
+        padding-right: Theme.space-6;
+        padding-top: Theme.space-4;
+        padding-bottom: Theme.space-4;
+        spacing: Theme.space-3;
+        @children
+    }
+}
+
+component DryTab inherits Rectangle {
+    in property <string> text;
+    in property <string> emoji;
+    in property <bool> active;
+    callback clicked();
+    min-width: row.preferred-width + 24px;
+    height: 42px;
+    row := HorizontalLayout {
+        x: 12px;
+        spacing: 6px;
+        alignment: center;
+        VerticalLayout { alignment: center; Emoji { char: root.emoji; size: 12px; } }
+        Text {
+            text: root.text;
+            color: root.active ? Theme.accent : t.has-hover ? Theme.text : Theme.muted;
+            font-size: Theme.text-xs;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+    Rectangle {
+        y: parent.height - 2px;
+        height: 2px;
+        background: root.active ? Theme.accent : transparent;
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Scrollable mono list box.
+component MonoList inherits Rectangle {
+    in property <[string]> items;
+    in property <bool> numbered;
+    in property <length> max-h: 220px;
+    property <length> row-h: 22px;
+    height: min(root.max-h, items.length * row-h + 16px);
+    border-radius: Theme.radius-md;
+    background: rgba(8, 12, 24, 0.5);
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.06);
+    clip: true;
+    Flickable {
+        x: 8px;
+        y: 8px;
+        width: parent.width - 16px;
+        height: parent.height - 16px;
+        content-height: root.items.length * root.row-h;
+        for it[i] in root.items: HorizontalLayout {
+            y: i * root.row-h;
+            height: root.row-h;
+            spacing: Theme.space-2;
+            Text {
+                width: 20px;
+                text: root.numbered ? i : "▸";
+                color: root.numbered ? Theme.muted : Theme.accent;
+                font-size: Theme.text-xs;
+                font-family: Theme.font-mono;
+                vertical-alignment: center;
+            }
+            Text {
+                text: it;
+                color: Theme.text;
+                font-size: Theme.text-xs;
+                font-family: Theme.font-mono;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+        }
+    }
+}
+
+component CopyBtn inherits Btn {
+    in property <string> payload;
+    in property <string> idle-text;
+    property <bool> copied;
+    variant: BtnVariant.secondary;
+    size: BtnSize.sm;
+    text: copied ? T.tr("home.dryRunCopied") : idle-text;
+    clicked => {
+        AppState.copy-text(root.payload);
+        root.copied = true;
+    }
+    Timer {
+        running: root.copied;
+        interval: 1800ms;
+        triggered => { root.copied = false; }
+    }
+}
+
+component BoxHeader inherits HorizontalLayout {
+    in property <string> label;
+    spacing: Theme.space-2;
+    Text {
+        text: root.label;
+        color: Theme.muted-strong;
+        font-size: Theme.text-xs;
+        font-weight: 700;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+        overflow: elide;
+    }
+    @children
+}
+
+component MetaCard inherits Rectangle {
+    in property <string> label;
+    border-radius: Theme.radius-md;
+    background: rgba(255, 255, 255, 0.03);
+    border-width: 1px;
+    border-color: Theme.border;
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        VerticalLayout {
+            padding-top: Theme.space-3;
+            padding-bottom: Theme.space-3;
+            spacing: 6px;
+            Text { text: root.label.to-uppercase(); color: Theme.muted; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+            @children
+        }
+    }
+}
+
+export component DryRunModal inherits Rectangle {
+    property <int> tab: 0;
+    property <bool> open: HomeBridge.dryrun-open;
+    changed open => { if root.open { root.tab = 0; } }
+
+    Modal {
+        open: root.open;
+        show-close: false;
+        dialog-width: 760px;
+        close => { HomeBridge.dryrun-open = false; }
+
+        ModalHead {
+            title: T.tr("home.dryRunTitle");
+            subtitle: T.tr("home.dryRunSubtitle");
+            badge: HomeBridge.dryrun-instance;
+            close => { HomeBridge.dryrun-open = false; }
+        }
+        Rectangle {
+            background: rgba(10, 15, 30, 0.4);
+            HorizontalLayout {
+                padding-left: Theme.space-6;
+                padding-right: Theme.space-6;
+                spacing: Theme.space-1;
+                alignment: start;
+                DryTab { emoji: "💻"; text: T.tr("home.dryRunCommand"); active: root.tab == 0; clicked => { root.tab = 0; } }
+                DryTab { emoji: "📦"; text: T.tr1("home.dryRunClasspath", "count", HomeBridge.dryrun-classpath.length); active: root.tab == 1; clicked => { root.tab = 1; } }
+                DryTab { emoji: "⚙️"; text: "Entorno JVM"; active: root.tab == 2; clicked => { root.tab = 2; } }
+                DryTab { emoji: "⚠️"; text: T.tr1("home.dryRunWarnings", "count", HomeBridge.dryrun-warnings.length); active: root.tab == 3; clicked => { root.tab = 3; } }
+            }
+            Rectangle { y: parent.height - 1px; height: 1px; background: rgba(255, 255, 255, 0.06); }
+        }
+        HorizontalLayout {
+            padding-left: Theme.space-6;
+            padding-right: Theme.space-6;
+            VerticalLayout {
+                padding-top: Theme.space-6;
+                padding-bottom: Theme.space-6;
+                spacing: Theme.space-2;
+                if HomeBridge.dryrun-loading: VerticalLayout {
+                    padding-top: Theme.space-8;
+                    padding-bottom: Theme.space-8;
+                    spacing: Theme.space-3;
+                    HorizontalLayout { alignment: center; Spinner { size: 28px; tint: Theme.accent; } }
+                    Text { text: T.tr("home.dryRunLoading"); color: Theme.muted; font-size: Theme.text-sm; horizontal-alignment: center; }
+                }
+                if !HomeBridge.dryrun-loading && HomeBridge.dryrun-error != "": Rectangle {
+                    border-radius: Theme.radius-md;
+                    background: rgba(239, 68, 68, 0.15);
+                    border-width: 1px;
+                    border-color: rgba(239, 68, 68, 0.4);
+                    HorizontalLayout {
+                        padding: Theme.space-3;
+                        spacing: Theme.space-2;
+                        Emoji { char: "⚠️"; size: 16px; }
+                        Text { text: HomeBridge.dryrun-error; color: #fca5a5; font-size: Theme.text-sm; wrap: word-wrap; horizontal-stretch: 1; }
+                    }
+                }
+                if !HomeBridge.dryrun-loading && HomeBridge.dryrun-has-result && root.tab == 0: VerticalLayout {
+                    spacing: Theme.space-2;
+                    BoxHeader {
+                        label: T.tr("home.dryRunCommand");
+                        CopyBtn { payload: HomeBridge.dryrun-command; idle-text: T.tr("home.dryRunCopyCmd"); }
+                    }
+                    Rectangle {
+                        height: min(140px, cmd.preferred-height + 24px);
+                        border-radius: Theme.radius-md;
+                        background: Theme.log-bg;
+                        border-width: 1px;
+                        border-color: rgba(255, 255, 255, 0.06);
+                        clip: true;
+                        Flickable {
+                            x: 12px;
+                            y: 12px;
+                            width: parent.width - 24px;
+                            height: parent.height - 24px;
+                            content-height: cmd.preferred-height;
+                            cmd := Text {
+                                width: parent.width;
+                                text: HomeBridge.dryrun-command;
+                                color: Theme.dark ? #a7f3d0 : #047857;
+                                font-family: Theme.font-mono;
+                                font-size: Theme.text-xs;
+                                wrap: char-wrap;
+                            }
+                        }
+                    }
+                    BoxHeader {
+                        padding-top: Theme.space-4;
+                        label: "Argumentos Detallados (" + HomeBridge.dryrun-argv.length + ")";
+                    }
+                    MonoList { items: HomeBridge.dryrun-argv; numbered: true; }
+                }
+                if !HomeBridge.dryrun-loading && HomeBridge.dryrun-has-result && root.tab == 1: VerticalLayout {
+                    spacing: Theme.space-2;
+                    BoxHeader {
+                        label: T.tr1("home.dryRunClasspath", "count", HomeBridge.dryrun-classpath.length);
+                        CopyBtn { payload: HomeBridge.dryrun-classpath-joined; idle-text: T.tr("home.dryRunCopyClasspath"); }
+                    }
+                    if HomeBridge.dryrun-missing.length > 0: Rectangle {
+                        border-radius: Theme.radius-md;
+                        background: rgba(239, 68, 68, 0.1);
+                        border-width: 1px;
+                        border-color: rgba(239, 68, 68, 0.3);
+                        VerticalLayout {
+                            padding: Theme.space-3;
+                            spacing: 4px;
+                            Text { text: T.tr1("home.dryRunMissingCp", "count", HomeBridge.dryrun-missing.length) + ":"; color: #fca5a5; font-size: Theme.text-xs; font-weight: 700; }
+                            for m in HomeBridge.dryrun-missing: Text { text: m; color: #fca5a5; font-family: Theme.font-mono; font-size: 11px; overflow: elide; }
+                        }
+                    }
+                    MonoList { items: HomeBridge.dryrun-classpath; max-h: 320px; }
+                }
+                if !HomeBridge.dryrun-loading && HomeBridge.dryrun-has-result && root.tab == 2: VerticalLayout {
+                    spacing: Theme.space-3;
+                    MetaCard {
+                        label: T.tr("home.dryRunJava");
+                        Text { text: HomeBridge.dryrun-java; color: Theme.text; font-family: Theme.font-mono; font-size: Theme.text-xs; wrap: char-wrap; }
+                    }
+                    MetaCard {
+                        label: T.tr("home.dryRunNatives");
+                        Text { text: HomeBridge.dryrun-natives; color: Theme.text; font-family: Theme.font-mono; font-size: Theme.text-xs; wrap: char-wrap; }
+                    }
+                    MetaCard {
+                        label: T.tr("home.dryRunAssets");
+                        HorizontalLayout {
+                            alignment: start;
+                            Badge {
+                                text: HomeBridge.dryrun-assets-ok ? "✓ " + T.tr("home.dryRunAssetsOk") : "✗ " + T.tr("home.dryRunAssetsMissing");
+                                variant: HomeBridge.dryrun-assets-ok ? BadgeVariant.ok : BadgeVariant.err;
+                            }
+                        }
+                    }
+                }
+                if !HomeBridge.dryrun-loading && HomeBridge.dryrun-has-result && root.tab == 3 && HomeBridge.dryrun-warnings.length > 0: VerticalLayout {
+                    spacing: Theme.space-2;
+                    for w in HomeBridge.dryrun-warnings: Rectangle {
+                        border-radius: Theme.radius-md;
+                        background: Theme.accent-alt.with-alpha(0.1);
+                        border-width: 1px;
+                        border-color: Theme.accent-alt.with-alpha(0.3);
+                        HorizontalLayout {
+                            padding: Theme.space-3;
+                            spacing: Theme.space-2;
+                            Emoji { char: "⚠️"; size: 14px; }
+                            Text { text: w; color: Theme.text; font-size: Theme.text-xs; wrap: word-wrap; horizontal-stretch: 1; }
+                        }
+                    }
+                }
+                if !HomeBridge.dryrun-loading && HomeBridge.dryrun-has-result && root.tab == 3 && HomeBridge.dryrun-warnings.length == 0: VerticalLayout {
+                    padding-top: Theme.space-6;
+                    padding-bottom: Theme.space-6;
+                    spacing: Theme.space-2;
+                    Text { text: "✓"; color: Theme.accent-green; font-size: 28px; font-weight: 700; horizontal-alignment: center; }
+                    Text { text: T.tr("home.dryRunNoWarnings"); color: Theme.muted-strong; font-size: Theme.text-sm; horizontal-alignment: center; }
+                }
+            }
+        }
+        ModalFoot {
+            if HomeBridge.dryrun-has-result && HomeBridge.dryrun-assets-ok: Text {
+                text: "● Entorno Verificado";
+                color: Theme.accent-green;
+                font-size: Theme.text-xs;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Btn {
+                variant: BtnVariant.primary;
+                text: T.tr("home.dryRunClose");
+                clicked => { HomeBridge.dryrun-open = false; }
+            }
+        }
+    }
+}
+
+export component MrpackModal inherits Rectangle {
+    property <bool> open: HomeBridge.mrpack-open;
+    property <bool> working: HomeBridge.mrpack-importing || HomeBridge.mrpack-phase == "post" || HomeBridge.mrpack-phase == "files" || HomeBridge.mrpack-phase == "overrides";
+    property <float> mem: HomeBridge.mrpack-memory;
+    changed open => { if root.open { HomeBridge.mrpack-opened(); } }
+    function close-modal() {
+        if !root.working { HomeBridge.mrpack-open = false; }
+    }
+
+    Modal {
+        open: root.open;
+        show-close: false;
+        dialog-width: 600px;
+        dismissable: !root.working;
+        close => { root.close-modal(); }
+
+        ModalHead {
+            title: T.tr("home.mrpackTitle");
+            subtitle: T.tr("home.mrpackSubtitle");
+            can-close: !root.working;
+            close => { root.close-modal(); }
+        }
+        HorizontalLayout {
+            padding-left: Theme.space-6;
+            padding-right: Theme.space-6;
+            VerticalLayout {
+                padding-top: Theme.space-6;
+                padding-bottom: Theme.space-6;
+                spacing: Theme.space-4;
+                if HomeBridge.mrpack-error != "": Rectangle {
+                    border-radius: Theme.radius-md;
+                    background: rgba(239, 68, 68, 0.15);
+                    border-width: 1px;
+                    border-color: rgba(239, 68, 68, 0.4);
+                    HorizontalLayout {
+                        padding: Theme.space-3;
+                        spacing: Theme.space-2;
+                        Emoji { char: "⚠️"; size: 16px; }
+                        Text { text: T.tr1("home.mrpackError", "error", HomeBridge.mrpack-error); color: #fca5a5; font-size: Theme.text-sm; wrap: word-wrap; horizontal-stretch: 1; }
+                    }
+                }
+                if HomeBridge.mrpack-phase == "done": VerticalLayout {
+                    padding-top: Theme.space-4;
+                    padding-bottom: Theme.space-4;
+                    spacing: Theme.space-2;
+                    HorizontalLayout { alignment: center; Emoji { char: "✨"; size: 40px; } }
+                    Text {
+                        text: HomeBridge.mrpack-already ? T.tr("home.mrpackAlreadyExists") : T.tr("home.mrpackPhaseDone");
+                        color: Theme.text;
+                        font-size: Theme.text-lg;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: "Instancia: " + HomeBridge.mrpack-created;
+                        color: Theme.muted-strong;
+                        font-size: Theme.text-sm;
+                        horizontal-alignment: center;
+                    }
+                }
+                if HomeBridge.mrpack-phase != "done" && root.working: VerticalLayout {
+                    spacing: Theme.space-3;
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        Spinner { size: 16px; tint: Theme.accent; }
+                        Text {
+                            text: HomeBridge.mrpack-phase == "post" ? T.tr("home.mrpackPhasePost")
+                                : HomeBridge.mrpack-phase == "files" ? T.tr2("home.mrpackPhaseFiles", "done", HomeBridge.mrpack-done, "total", HomeBridge.mrpack-total)
+                                : HomeBridge.mrpack-phase == "overrides" ? T.tr("home.mrpackPhaseOverrides")
+                                : T.tr("home.mrpackImporting");
+                            color: Theme.text;
+                            font-size: Theme.text-sm;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    ProgressBar {
+                        value: HomeBridge.mrpack-done;
+                        max: HomeBridge.mrpack-total > 0 ? HomeBridge.mrpack-total : 100;
+                        indeterminate: HomeBridge.mrpack-phase == "post" || HomeBridge.mrpack-total == 0;
+                        thickness: ProgressThickness.lg;
+                        show-value: HomeBridge.mrpack-total > 0;
+                    }
+                }
+                if HomeBridge.mrpack-phase != "done" && !root.working: VerticalLayout {
+                    spacing: Theme.space-5;
+                    Field {
+                        label: T.tr("home.mrpackFile");
+                        required: true;
+                        HorizontalLayout {
+                            spacing: Theme.space-2;
+                            HiTextField {
+                                text <=> HomeBridge.mrpack-path;
+                                placeholder: T.tr("home.mrpackFilePlaceholder");
+                            }
+                            Btn {
+                                variant: BtnVariant.secondary;
+                                emoji: "📁";
+                                loading: HomeBridge.mrpack-browsing;
+                                text: T.tr("home.mrpackBrowse");
+                                clicked => { HomeBridge.mrpack-browse(); }
+                            }
+                        }
+                    }
+                    Field {
+                        label: T.tr("home.mrpackMemory");
+                        HorizontalLayout {
+                            spacing: Theme.space-4;
+                            Slider {
+                                minimum: 2048;
+                                maximum: 16384;
+                                step: 512;
+                                value: HomeBridge.mrpack-memory;
+                                changed(v) => {
+                                    HomeBridge.mrpack-memory = v;
+                                    HomeBridge.mrpack-memory-touched = true;
+                                }
+                            }
+                            Rectangle {
+                                width: ml.preferred-width + 20px;
+                                height: 28px;
+                                border-radius: Theme.radius-sm;
+                                background: Theme.accent.with-alpha(0.12);
+                                border-width: 1px;
+                                border-color: Theme.accent.with-alpha(0.3);
+                                ml := Text {
+                                    text: Util.format-memory(HomeBridge.mrpack-memory);
+                                    color: Theme.accent;
+                                    font-size: Theme.text-sm;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ModalFoot {
+            if HomeBridge.mrpack-phase == "done": Btn {
+                variant: BtnVariant.primary;
+                emoji: "🚀";
+                text: T.tr("home.mrpackGoToInstance");
+                clicked => {
+                    HomeBridge.mrpack-open = false;
+                    HomeBridge.open-instance(HomeBridge.mrpack-created);
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            if HomeBridge.mrpack-phase == "done": Btn {
+                variant: BtnVariant.secondary;
+                text: T.tr("home.mrpackClose");
+                clicked => { root.close-modal(); }
+            }
+            if HomeBridge.mrpack-phase != "done": Btn {
+                variant: BtnVariant.ghost;
+                enabled: !root.working;
+                text: T.tr("home.wizardCancelBtn");
+                clicked => { root.close-modal(); }
+            }
+            if HomeBridge.mrpack-phase != "done": Btn {
+                variant: BtnVariant.primary;
+                emoji: "📥";
+                loading: root.working;
+                enabled: HomeBridge.mrpack-path != "" && !root.working;
+                text: T.tr("home.mrpackImportBtn");
+                clicked => { HomeBridge.mrpack-start(); }
+            }
+        }
+    }
+}

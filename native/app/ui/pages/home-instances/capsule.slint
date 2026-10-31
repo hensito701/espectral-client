@@ -1,0 +1,425 @@
+// OWNER: home-instances agent. Port of components/TelemetryCapsule.svelte —
+// the docked "flight deck": account picker, instance link + AOT status chip,
+// boot-phase readout, Dry-Run and the JUGAR / DETENER button.
+//
+//     TelemetryCapsule { instance-name: HomeBridge.selected-instance; }
+//
+// Data lives in HomeBridge (capsule-*, aot-chip-*, launching / stopping);
+// the capsule announces its instance with HomeBridge.capsule-target().
+
+import { Theme, T, AppState, Router, Util, Icon, Icons, MonogramTile, MonogramShape, Badge, BadgeVariant, Spinner } from "../../widgets.slint";
+import { HomeBridge } from "api.slint";
+
+component PlayButton inherits Rectangle {
+    in property <bool> running;
+    in property <bool> busy;
+    in property <bool> enabled: true;
+    in property <string> label;
+    callback clicked();
+    property <bool> hovered: touch.has-hover && enabled && !busy;
+    property <length> lift: hovered && !touch.pressed ? -2px : 0px;
+    animate lift { duration: Theme.dur-fast; easing: ease-out; }
+    min-width: max(140px, row.preferred-width);
+    height: 44px;
+    border-radius: 22px;
+    opacity: enabled ? 1 : 0.45;
+    drop-shadow-color: !enabled ? transparent : running ? Theme.accent-red.with-alpha(hovered ? 0.45 : 0.3) : Theme.glow-play-color;
+    drop-shadow-blur: hovered ? 28px : 22px;
+    drop-shadow-offset-y: 4px;
+    face := Rectangle {
+        y: root.lift;
+        width: 100%;
+        height: 100%;
+        border-radius: root.border-radius;
+        background: root.running ? @linear-gradient(135deg, Theme.accent-red 0%, Theme.accent-red 100%) : @linear-gradient(135deg, Theme.accent 0%, Theme.accent-ink 100%);
+        border-width: 1px;
+        border-color: root.running ? rgba(239, 68, 68, 0.4) : rgba(255, 255, 255, 0.2);
+        clip: true;
+        Rectangle { x: 0; y: 0; width: parent.width; height: 1px; background: rgba(255, 255, 255, root.hovered ? 0.5 : 0.35); }
+        if root.hovered: Rectangle { background: rgba(255, 255, 255, 0.08); }
+        row := HorizontalLayout {
+            padding-left: Theme.space-6;
+            padding-right: Theme.space-6;
+            spacing: Theme.space-2;
+            alignment: center;
+            VerticalLayout {
+                alignment: center;
+                if root.busy: Spinner { size: 15px; tint: root.running ? #ffffff : Theme.text-inverse; }
+                if !root.busy: Icon {
+                    data: root.running ? Icons.stop : Icons.play;
+                    filled: true;
+                    weight: 0;
+                    size: 14px;
+                    color: root.running ? #ffffff : Theme.text-inverse;
+                }
+            }
+            Text {
+                text: root.label;
+                color: root.running ? #ffffff : Theme.text-inverse;
+                font-size: Theme.text-md;
+                font-weight: 700;
+                letter-spacing: 0.45px;
+                vertical-alignment: center;
+            }
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled && !root.busy;
+        mouse-cursor: root.enabled && !root.busy ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+component AccountItem inherits Rectangle {
+    in property <string> name;
+    in property <int> hue;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    in property <bool> msa;
+    in property <bool> active;
+    callback clicked();
+    height: 36px;
+    border-radius: Theme.radius-sm;
+    background: active ? Theme.accent.with-alpha(0.15) : t.has-hover ? Theme.surface-up : transparent;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            alignment: center;
+            MonogramTile { name: root.name; hue: root.hue; avatar: root.avatar; has-avatar: root.has-avatar; size: 24px; shape: MonogramShape.rounded; }
+        }
+        Text {
+            text: root.name;
+            color: root.active ? Theme.accent : Theme.text;
+            font-size: Theme.text-sm;
+            font-weight: root.active ? 600 : 400;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        if root.msa: VerticalLayout {
+            alignment: center;
+            Badge { text: "MSA"; variant: BadgeVariant.accent; }
+        }
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component TelemetryCapsule inherits Rectangle {
+    in property <string> instance-name;
+    property <bool> running: HomeBridge.capsule-instance == instance-name && HomeBridge.capsule-running;
+    property <bool> launching: instance-name != "" && HomeBridge.launching == instance-name;
+    property <bool> stopping: instance-name != "" && HomeBridge.stopping == instance-name;
+    property <string> acc-name: AppState.has-active-account ? AppState.active-account.username : "";
+
+    changed instance-name => { HomeBridge.capsule-target(self.instance-name); }
+    init => { HomeBridge.capsule-target(self.instance-name); }
+
+    // dock: padding 0 16px 16px, capsule max 960px centered
+    height: 62px + Theme.space-4;
+    min-width: 0;
+
+    capsule := Rectangle {
+        x: max(Theme.space-4, (parent.width - self.width) / 2);
+        y: 0;
+        width: min(960px, root.width - 2 * Theme.space-4);
+        height: 62px;
+        border-radius: 31px;
+        background: Theme.dark ? Theme.chrome-bg : Theme.surface;
+        border-width: 1px;
+        border-color: root.running ? Theme.accent-green.with-alpha(0.5) : Theme.border;
+        drop-shadow-color: root.running ? Theme.accent-green.with-alpha(0.25) : Theme.dark ? Theme.accent.with-alpha(0.13) : Theme.shadow-lg-color;
+        drop-shadow-blur: Theme.dark ? 30px : Theme.shadow-lg-blur;
+        drop-shadow-offset-y: Theme.dark ? 6px : Theme.shadow-lg-y;
+
+        HorizontalLayout {
+            padding-left: Theme.space-4;
+            padding-right: Theme.space-4;
+            padding-top: Theme.space-2;
+            padding-bottom: Theme.space-2;
+            spacing: Theme.space-4;
+
+            // ---- account picker ----
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                acc-btn := Rectangle {
+                    height: 40px;
+                    min-width: acc-row.preferred-width;
+                    border-radius: 20px;
+                    background: acc-touch.has-hover ? Theme.surface-up : transparent;
+                    acc-row := HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: Theme.space-2;
+                        VerticalLayout {
+                            alignment: center;
+                            MonogramTile {
+                                name: root.acc-name != "" ? root.acc-name : "Steve";
+                                hue: AppState.has-active-account ? AppState.active-account.monogram-hue : Util.name-hue("Steve", -1);
+                                avatar: AppState.active-account.avatar;
+                                has-avatar: AppState.has-active-account && AppState.active-account.has-avatar;
+                                size: 32px;
+                                shape: MonogramShape.rounded;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
+                            Text {
+                                text: root.acc-name != "" ? root.acc-name : T.tr("home.noActiveAccount");
+                                color: Theme.text;
+                                font-size: Theme.text-sm;
+                                font-weight: 700;
+                                min-width: 80px;
+                                max-width: 160px;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: AppState.has-active-account && AppState.active-account.token-kind == "msa" ? "Microsoft" : "Offline";
+                                color: Theme.muted-strong;
+                                font-size: 11px;
+                                font-weight: 500;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Icon { data: Icons.chevron-down; size: 14px; color: Theme.muted-strong; weight: 2.5; }
+                        }
+                    }
+                    acc-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { acc-popup.show(); }
+                    }
+                    acc-popup := PopupWindow {
+                        x: 0;
+                        y: -self.height - 12px;
+                        width: 240px;
+                        height: 6px + 30px + AppState.accounts.length * 40px + 41px + 6px;
+                        close-policy: close-on-click-outside;
+                        Rectangle {
+                            border-radius: Theme.radius-lg;
+                            background: Theme.surface-solid;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            drop-shadow-color: Theme.shadow-lg-color;
+                            drop-shadow-blur: Theme.shadow-lg-blur;
+                            drop-shadow-offset-y: Theme.shadow-lg-y;
+                            VerticalLayout {
+                                padding: 6px;
+                                spacing: 4px;
+                                Rectangle {
+                                    height: 26px;
+                                    Text {
+                                        x: 8px;
+                                        y: 6px;
+                                        text: T.tr("home.capsuleSelectAccount").to-uppercase();
+                                        color: Theme.muted-strong;
+                                        font-size: Theme.text-xs;
+                                        font-weight: 600;
+                                        letter-spacing: 0.6px;
+                                    }
+                                }
+                                for acc in AppState.accounts: AccountItem {
+                                    name: acc.username;
+                                    hue: acc.monogram-hue;
+                                    avatar: acc.avatar;
+                                    has-avatar: acc.has-avatar;
+                                    msa: acc.token-kind == "msa";
+                                    active: acc.username == root.acc-name;
+                                    clicked => {
+                                        HomeBridge.select-account(acc.username);
+                                        acc-popup.close();
+                                    }
+                                }
+                                Rectangle {
+                                    height: 37px;
+                                    Rectangle { y: 0; height: 1px; background: Theme.border; }
+                                    link := Rectangle {
+                                        y: 5px;
+                                        height: 30px;
+                                        border-radius: Theme.radius-sm;
+                                        background: link-t.has-hover ? Theme.accent.with-alpha(0.1) : transparent;
+                                        Text {
+                                            x: 8px;
+                                            text: "+ Administrar Cuentas";
+                                            color: Theme.accent;
+                                            font-size: Theme.text-xs;
+                                            font-weight: 600;
+                                            vertical-alignment: center;
+                                        }
+                                        link-t := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                acc-popup.close();
+                                                Router.navigate("#/account");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // divider
+            VerticalLayout {
+                alignment: center;
+                Rectangle { width: 1px; height: 36px; background: Theme.border; }
+            }
+
+            // ---- instance + phase ----
+            VerticalLayout {
+                horizontal-stretch: 1;
+                min-width: 0;
+                alignment: center;
+                spacing: 2px;
+                HorizontalLayout {
+                    spacing: Theme.space-3;
+                    alignment: start;
+                    if root.instance-name != "": Rectangle {
+                        min-width: inst-row.preferred-width;
+                        max-width: 220px;
+                        horizontal-stretch: 0;
+                        inst-row := HorizontalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: root.instance-name;
+                                color: inst-t.has-hover ? Theme.accent : Theme.text;
+                                font-size: Theme.text-base;
+                                font-weight: 700;
+                                overflow: elide;
+                                vertical-alignment: center;
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Icon { data: Icons.more-vertical; size: 14px; color: Theme.muted-strong; weight: 3.2; }
+                            }
+                        }
+                        inst-t := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { HomeBridge.open-instance(root.instance-name); }
+                        }
+                    }
+                    if root.instance-name == "": Text {
+                        text: T.tr("home.capsuleSelectInstance");
+                        color: Theme.muted-strong;
+                        font-size: Theme.text-sm;
+                        font-italic: true;
+                        vertical-alignment: center;
+                    }
+                    if root.instance-name != "" && HomeBridge.aot-chip-kind != "" && HomeBridge.capsule-instance == root.instance-name: VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            property <string> kind: HomeBridge.aot-chip-kind;
+                            height: chip.preferred-height + 6px;
+                            min-width: chip.preferred-width + 18px;
+                            border-radius: self.height / 2;
+                            border-width: 1px;
+                            border-color: kind == "ok" ? Theme.accent-green.with-alpha(0.35) : kind == "warn" ? Theme.accent-alt.with-alpha(0.35) : Theme.border;
+                            background: kind == "ok" ? Theme.accent-green.with-alpha(0.12) : kind == "warn" ? Theme.accent-alt.with-alpha(0.12) : Theme.surface-up;
+                            opacity: kind == "off" ? 0.85 : 1;
+                            chip := Text {
+                                text: "⚡ " + T.tr(HomeBridge.aot-chip-key);
+                                color: parent.kind == "ok" ? Theme.accent-green : parent.kind == "warn" ? Theme.accent-alt : Theme.muted-strong;
+                                font-size: 11px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    if root.running: HorizontalLayout {
+                        spacing: 6px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 6px;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: Theme.accent-green;
+                                drop-shadow-color: Theme.accent-green;
+                                drop-shadow-blur: 6px;
+                            }
+                        }
+                        Text { text: T.tr("home.capsuleStatusRunning"); color: Theme.accent-green; font-size: Theme.text-xs; font-weight: 600; }
+                    }
+                    if root.running && HomeBridge.capsule-tail != "": Text {
+                        text: HomeBridge.capsule-tail;
+                        color: Theme.muted-strong;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    if !root.running && root.launching: Text { text: T.tr("home.capsuleStatusStarting"); color: Theme.accent-alt; font-size: Theme.text-xs; font-weight: 600; }
+                    if !root.running && !root.launching: Text { text: T.tr("home.capsuleStatusIdle"); color: Theme.muted-strong; font-size: Theme.text-xs; }
+                }
+                if HomeBridge.capsule-timing != "" && HomeBridge.capsule-instance == root.instance-name: Text {
+                    text: HomeBridge.capsule-timing;
+                    color: Theme.muted-strong;
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                    opacity: 0.9;
+                }
+            }
+
+            // ---- actions ----
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                horizontal-stretch: 0;
+                VerticalLayout {
+                    alignment: center;
+                    dry := Rectangle {
+                        property <bool> enabled: root.instance-name != "";
+                        height: 40px;
+                        min-width: dry-t.preferred-width + 2 * Theme.space-3;
+                        border-radius: 20px;
+                        background: dry-touch.has-hover && self.enabled ? Theme.surface-solid : Theme.surface-up;
+                        border-width: 1px;
+                        border-color: dry-touch.has-hover && self.enabled ? Theme.accent : Theme.border;
+                        opacity: self.enabled ? 1 : 0.4;
+                        dry-t := Text {
+                            text: T.tr("home.capsuleDryRun");
+                            color: Theme.text;
+                            font-size: Theme.text-xs;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        dry-touch := TouchArea {
+                            enabled: dry.enabled;
+                            mouse-cursor: pointer;
+                            clicked => { HomeBridge.dryrun(root.instance-name); }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    PlayButton {
+                        running: root.running;
+                        busy: root.running ? root.stopping : root.launching;
+                        enabled: root.instance-name != "";
+                        label: root.running ? T.tr("home.capsuleStop") : root.launching ? T.tr("home.capsuleLaunching") : T.tr("home.capsuleLaunch");
+                        clicked => {
+                            if root.running {
+                                HomeBridge.stop(root.instance-name);
+                            } else {
+                                HomeBridge.launch(root.instance-name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
