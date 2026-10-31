@@ -12,7 +12,7 @@ use std::time::Duration;
 use espectral_engine::api::content::{InstallModrinthRequest, ModrinthSearchQuery};
 use espectral_engine::events::{EngineEvent, ProgressEvent};
 use espectral_engine::types::{
-    InstanceSummary, Loader, ModEntry, ModInstallPlan, ModPreset, ModPresetInfo, ModRef, ModrinthProject,
+    InstanceSummary, ModEntry, ModInstallPlan, ModPreset, ModPresetInfo, ModRef, ModrinthProject,
 };
 use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 
@@ -672,7 +672,7 @@ fn run_search(append: bool) {
     let query = ModrinthSearchQuery {
         q,
         version: sel.as_ref().map(|i| i.version.clone()),
-        loader: sel.as_ref().map(|i| if i.loader == Loader::Neoforge { "neoforge" } else { "fabric" }.to_string()),
+        loader: sel.as_ref().map(|i| i.loader.content_loader().to_string()),
         instance: sel.as_ref().map(|i| i.name.clone()),
         offset,
     };

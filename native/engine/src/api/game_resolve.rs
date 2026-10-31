@@ -6,7 +6,7 @@
 //! | GET /api/versions/:id/resolve   | [`Engine::resolve_version_info`] |
 //! | GET /api/jvm                    | [`Engine::jvm_info`] |
 //!
-//! Domain modules: crate::{resolver, runtimes, jvm, neoforge}.
+//! Domain modules: crate::{resolver, runtimes, jvm, neoforge, forge}.
 //!
 //! [`GameResolveState`] also carries the cluster's **test seams**: every
 //! upstream base URL ([`ResolveEndpoints`]) and every probe of the user's
@@ -41,6 +41,10 @@ pub struct ResolveEndpoints {
     pub asset_base: String,
     /// neoforge.NEOFORGE_MAVEN (no trailing slash)
     pub neoforge_maven: String,
+    /// forge.FORGE_MAVEN (no trailing slash)
+    pub forge_maven: String,
+    /// forge.FORGE_PROMOS_URL: `{ promos: { "<mc>-recommended": "<build>" } }`
+    pub forge_promos: String,
     /// `https://api.adoptium.net/v3` (runtimes.downloadTemurin)
     pub adoptium_api: String,
 }
@@ -53,6 +57,8 @@ impl Default for ResolveEndpoints {
             fabric_maven: crate::resolver::FABRIC_MAVEN.to_string(),
             asset_base: crate::resolver::ASSET_BASE.to_string(),
             neoforge_maven: crate::neoforge::NEOFORGE_MAVEN.to_string(),
+            forge_maven: crate::forge::FORGE_MAVEN.to_string(),
+            forge_promos: crate::forge::FORGE_PROMOS_URL.to_string(),
             adoptium_api: crate::runtimes::ADOPTIUM_API.to_string(),
         }
     }
@@ -61,7 +67,7 @@ impl Default for ResolveEndpoints {
 impl ResolveEndpoints {
     /// Every endpoint on one base URL (a `MockServer`): `<base>/manifest.json`,
     /// `<base>/fabric-meta/v2`, `<base>/fabric-maven/`, `<base>/assets`,
-    /// `<base>/neoforge`, `<base>/adoptium/v3`.
+    /// `<base>/neoforge`, `<base>/forge-maven`, `<base>/adoptium/v3`.
     pub fn all_on(base: &str) -> Self {
         let b = base.trim_end_matches('/');
         ResolveEndpoints {
@@ -70,6 +76,8 @@ impl ResolveEndpoints {
             fabric_maven: format!("{b}/fabric-maven/"),
             asset_base: format!("{b}/assets"),
             neoforge_maven: format!("{b}/neoforge"),
+            forge_maven: format!("{b}/forge-maven"),
+            forge_promos: format!("{b}/forge-promotions.json"),
             adoptium_api: format!("{b}/adoptium/v3"),
         }
     }
@@ -139,6 +147,8 @@ pub struct GameResolveState {
     pub(crate) probe_memo: Mutex<HashMap<String, JavaProbe>>,
     pub(crate) major_locks: KeyedLocks<u32>,
     pub(crate) neoforge_locks: KeyedLocks<String>,
+    /// Per `forge-<mc>-<build>` installer lock.
+    pub(crate) forge_locks: KeyedLocks<String>,
 }
 
 impl GameResolveState {

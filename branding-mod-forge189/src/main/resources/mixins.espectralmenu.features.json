@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.7",
+  "package": "es.spectral.menu.mixin.feature",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "mixins.espectralmenu.refmap.json",
+  "client": [
+    "EntityRendererFeatureMixin",
+    "GuiNewChatMixin",
+    "GuiPlayerTabOverlayMixin",
+    "ItemRendererMixin",
+    "NetHandlerPlayClientBrandMixin",
+    "RenderPlayerMixin",
+    "ThreadDownloadImageDataAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

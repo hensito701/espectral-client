@@ -50,6 +50,14 @@ pub const MAX_CACHE_KEYS: usize = 4;
 /// Keep at most this many aot-<pid>.log proof logs (and none older than 24h).
 pub const MAX_AOT_LOGS: usize = 8;
 
+/// Whether the loader's launch can be AOT-trained. Forge and NeoForge launch
+/// through their own module/bootstrap layer, which cannot be represented by a
+/// JEP 483 class cache (the same reason the JS skipped NeoForge) — their
+/// launches run without `-XX:AOTCache*` and report AOT as unavailable.
+pub fn loader_supports_aot(loader: Loader) -> bool {
+    !matches!(loader, Loader::Neoforge | Loader::Forge)
+}
+
 /// AOT cache key: `sha256("<version>|<javaBuild>|<osArch>")`, null-safe
 /// (`unknown` build, Node `process.arch` default). Existing caches stay valid.
 pub fn cache_key(version: &str, java_build: Option<&str>, os_arch: Option<&str>) -> String {
@@ -374,13 +382,13 @@ pub async fn train_instance(engine: &Engine, instance: &InstanceMeta, opts: Trai
         p.skipped = Some(true);
         return p;
     }
-    if instance.loader == Loader::Neoforge {
-        tracing::info!("[aot] skipped for NeoForge instance {name}");
+    if !loader_supports_aot(instance.loader) {
+        tracing::info!("[aot] skipped for {} instance {name}", instance.loader);
         return train_payload(
             &name,
             key,
             false,
-            Some("AOT unavailable for NeoForge (requires a JDK 25-tier runtime)".into()),
+            Some(format!("AOT unavailable for {} (needs a plain launcher classpath)", instance.loader)),
         );
     }
     let progress = |key: &Option<String>, phase: &str, message: String| {
@@ -577,13 +585,13 @@ pub async fn queue_train_instance(
     instance: &InstanceMeta,
     opts: TrainOptions,
 ) -> EngineResult<TrainDoneEvent> {
-    if instance.loader == Loader::Neoforge {
-        tracing::info!("[aot] skipped for NeoForge instance {}", instance.name);
+    if !loader_supports_aot(instance.loader) {
+        tracing::info!("[aot] skipped for {} instance {}", instance.loader, instance.name);
         return Ok(train_payload(
             &instance.name,
             opts.key,
             false,
-            Some("AOT unavailable for NeoForge (requires a JDK 25-tier runtime)".into()),
+            Some(format!("AOT unavailable for {} (needs a plain launcher classpath)", instance.loader)),
         ));
     }
     if instance.name.is_empty() {
@@ -909,9 +917,13 @@ mod tests {
         let r = train_instance(&e, &opt_out, TrainOptions::default()).await;
         assert!(!r.ok);
         assert_eq!(r.skipped, Some(true));
-        let nf = InstanceMeta { name: "nf".into(), loader: Loader::Neoforge, ..Default::default() };
-        let r = queue_train_instance(&e, &nf, TrainOptions::default()).await.unwrap();
-        assert!(r.error.unwrap().contains("NeoForge"));
+        for loader in [Loader::Neoforge, Loader::Forge] {
+            let inst = InstanceMeta { name: "nf".into(), loader, ..Default::default() };
+            let r = queue_train_instance(&e, &inst, TrainOptions::default()).await.unwrap();
+            assert!(!r.ok, "{loader}");
+            let err = r.error.unwrap();
+            assert!(err.contains("AOT unavailable") && err.contains(loader.as_str()), "{err}");
+        }
     }
 
     #[tokio::test]

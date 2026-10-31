@@ -413,7 +413,7 @@ impl Engine {
         let inst =
             crate::resolver::load_instance_meta(self, name).map_err(|e| send_error(e, 404, "instance_not_found"))?;
         let note = match inst.loader {
-            Loader::Neoforge => Some("Conjunto de rendimiento solo disponible en Fabric".to_string()),
+            Loader::Neoforge | Loader::Forge => Some("Conjunto de rendimiento solo disponible en Fabric".to_string()),
             Loader::Vanilla => {
                 Some("vanilla instances use integrated no-fog/fullbright (Settings → Client)".to_string())
             }
@@ -460,7 +460,7 @@ impl Engine {
         }
         let fail = |e| send_error(e, 500, "mod_install_modrinth_failed");
         let inst = crate::resolver::load_instance_meta(self, name).map_err(fail)?;
-        let loader = if inst.loader == Loader::Neoforge { "neoforge" } else { "fabric" };
+        let loader = inst.loader.content_loader();
         let plan = crate::mods::plan_mod_install(self, &inst, &req.project_id, loader).await.map_err(fail)?;
         if !plan.conflicts.is_empty() && !req.force {
             let titles: Vec<&str> = plan.conflicts.iter().map(|c| c.title.as_str()).collect();
