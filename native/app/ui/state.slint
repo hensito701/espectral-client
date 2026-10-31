@@ -1,0 +1,263 @@
+// Shared app state + shell globals. FOUNDATION-OWNED.
+// Page agents READ these and call their callbacks; they never add members.
+// Page-specific state goes in the group's own bridge global
+// (ui/pages/<group>/api.slint).
+
+/// Routes (App.svelte hash router). Rust: src/router.rs parses "#/..." into these.
+export enum Page {
+    home,        // #/  (and #/instances)
+    instance,    // #/instances/:name     (Router.instance-name)
+    servers,     // #/servers
+    versions,    // #/library/versions    (legacy #/versions)
+    import,      // #/library/import      (legacy #/import)
+    mods,        // #/mods
+    client,      // #/client
+    account,     // #/account             (Router.query e.g. "section=skin")
+    settings,    // #/settings
+    wardrobe,    // #/armario
+    donations,   // #/donaciones
+}
+
+export global Router {
+    /// Current page. Read-only for pages: navigate with Router.navigate().
+    in-out property <Page> page: Page.home;
+    /// Decoded :name of #/instances/:name ("" otherwise).
+    in-out property <string> instance-name;
+    /// Query string after '?', without the '?' (e.g. "section=skin" or "tab=mods").
+    in-out property <string> query;
+    /// The full hash route currently shown ("#/instances/Foo?tab=mods").
+    in-out property <string> route: "#/";
+    /// Bumped on every navigation (reset scroll positions, replay enter transitions).
+    in-out property <int> serial;
+
+    /// Navigate to a hash route exactly like `window.location.hash = route` did.
+    callback navigate(route: string);
+    /// History back (ESC hotkey); falls back to #/.
+    callback back();
+}
+
+// ---- shared data rows (snapshots of engine types, built in src/store.rs) ----
+
+/// engine types::InstanceSummary
+export struct InstanceRow {
+    name: string,
+    version: string,
+    loader: string,           // "vanilla" | "fabric" | "neoforge"
+    loader-version: string,   // "" when null
+    modpack: string,          // "" when null
+    modpack-version: string,
+    memory-mb: int,
+    memory-auto: bool,
+    hue: int,                 // -1 when null
+    game-dir: string,
+    has-icon: bool,
+    icon: image,              // loaded when has-icon (else empty)
+    mod-count: int,
+    enabled-mod-count: int,
+    aot-key: string,
+    aot-cache-exists: bool,
+    imported-from: string,
+    capture-tools: bool,
+    created-at: string,
+    running: bool,
+}
+
+/// engine types::PublicAccount
+export struct AccountRow {
+    username: string,
+    uuid: string,
+    token-kind: string,       // "offline" | "msa"
+    avatar-color: int,        // -1 when null
+    monogram-hue: int,        // avatar-color, or the MonogramTile name hash
+    has-avatar: bool,
+    avatar: image,            // loaded when has-avatar
+    created-at: string,
+    last-used: string,
+}
+
+/// engine types::LaunchHandle (GET /api/launches)
+export struct LaunchRow {
+    key: string,
+    instance: string,
+    version: string,
+    account: string,
+    running: bool,
+    // epoch ms as decimal strings ("" when null) — Slint floats are f32 and
+    // cannot hold epoch milliseconds. Format with Util.relative-time().
+    started-at: string,
+    menu-at: string,
+    ended-at: string,
+    agent: bool,
+}
+
+/// engine types::ServerStatus (GET /api/servers, polled every 60 s while Home / Servers is shown)
+export struct ServerRow {
+    host: string,
+    online: bool,
+    hostname: string,
+    ip: string,
+    port: int,
+    version: string,
+    software: string,
+    /// MOTD lines with § color codes (lib/motd.ts parses them)
+    motd-raw: [string],
+    motd-clean: [string],
+    players-online: int,
+    players-max: int,
+    has-icon: bool,
+    icon: image,
+    fetched-at: string,       // epoch ms (string: see LaunchRow)
+    error: string,
+}
+
+export global AppState {
+    /// Engine version (health()).
+    in property <string> version;
+    /// Engine data dir (config.data_dir).
+    in property <string> data-dir;
+    in property <[InstanceRow]> instances;
+    /// false until the first list_instances() answered.
+    in property <bool> instances-loaded;
+    in property <[AccountRow]> accounts;
+    /// Most recently used account (TopChrome logic) — valid when has-active-account.
+    in property <AccountRow> active-account;
+    in property <bool> has-active-account;
+    in property <[LaunchRow]> launches;
+    /// Number of launches with running == true.
+    in property <int> running-count;
+    in property <[ServerRow]> servers;
+    in property <bool> servers-loaded;
+
+    /// Re-fetch shared lists (the Svelte stores' refresh()).
+    callback refresh-instances();
+    callback refresh-accounts();
+    callback refresh-launches();
+    callback refresh-servers();
+    /// Open an http(s) URL in the system browser.
+    callback open-url(url: string);
+    /// Open a folder with the system file manager (engine.open_folder: must be inside the data dir / an instance dir).
+    callback open-folder(path: string);
+    /// Put text on the system clipboard.
+    callback copy-text(text: string);
+}
+
+export enum ToastKind { ok, err, info }
+
+export struct ToastItem {
+    id: int,
+    kind: ToastKind,
+    text: string,
+    href: string,             // "" | "#/route" | "https://..."
+}
+
+/// Shell UI state + actions that cross page boundaries.
+export global Shell {
+    // theme / language (src/theme.rs, src/i18n.rs)
+    /// "dark" | "light" | "system"
+    callback set-theme-mode(mode: string);
+    /// Flip the resolved theme (ThemeToggle).
+    callback toggle-theme();
+    /// "oro" | "carmesi" | "amatista" | "esmeralda" | "glaciar"
+    callback set-accent(id: string);
+    /// "es" | "en"
+    callback set-language(lang: string);
+    callback toggle-language();
+
+    /// Ambient backdrop hue (CSS --ambient-hue, default 160). Home rail / instance hub set it.
+    in-out property <int> ambient-hue: 160;
+
+    // overlays
+    in-out property <bool> palette-open;
+    in-out property <bool> account-popover-open;
+    /// PiP launch-log drawer expanded (Space hotkey / palette). Owned by home-instances' PipLogDrawer.
+    in-out property <bool> pip-log-open;
+    /// PiP drawer pinned open (Esc does not collapse it).
+    in-out property <bool> pip-log-pinned;
+    /// Instance wizard modal (Home). The palette's "new instance" sets it.
+    in-out property <bool> wizard-open;
+    /// Optional version to preselect the next time the wizard opens (VersionArmory
+    /// "Crear instancia"). The wizard consumes and clears it on open.
+    in-out property <string> wizard-version;
+    /// Number of open modal dialogs (Modal widget increments/decrements) — hotkeys are off while > 0.
+    in-out property <int> modal-depth;
+    /// Screenshot tool only (--scroll): PageScaffold scrolls to this offset (px).
+    in property <float> debug-scroll;
+    /// Hide the hotkey legend (Settings toggle; persisted by Rust).
+    in-out property <bool> hide-hotkeys;
+
+    // toasts (src/toast.rs) — push from Rust with toast::push(), or from Slint:
+    in property <[ToastItem]> toasts;
+    callback toast(kind: ToastKind, text: string, href: string);
+    callback dismiss-toast(id: int);
+    callback toast-clicked(id: int);
+
+    // signed-update CTA (placeholder: the updater is not ported yet)
+    /// "idle" | "available" | "downloading" | "installing" | "ready"
+    in property <string> update-status: "idle";
+    in property <string> update-version;
+    in property <float> update-progress;      // 0..1
+    callback install-update();
+}
+
+/// Discord identity session (lib/discord.svelte.ts). src/session.rs.
+export global Session {
+    /// "loading" | "anon" | "authed"
+    in property <string> status: "loading";
+    in property <bool> anon-chosen;
+    /// LoginGate visible (status != authed && !anon-chosen).
+    in property <bool> show-gate;
+    in property <string> user-id;
+    in property <string> user-name;
+    in property <image> user-avatar;
+    in property <bool> has-user-avatar;
+    in property <bool> authenticating;
+    in property <string> auth-error;
+    /// Brief success state of the gate before it closes.
+    in property <bool> just-authed;
+
+    callback login-discord();
+    callback continue-anonymous();
+    callback logout();
+}
+
+/// Pure helpers implemented in Rust (src/util.rs). Safe to call from bindings.
+export global Util {
+    /// First letter, uppercased ("?" for empty) — MonogramTile.
+    pure callback initial(name: string) -> string;
+    /// MonogramTile hue: hue >= 0 ? hue : hash(name) % 360.
+    pure callback name-hue(name: string, hue: int) -> int;
+    /// 1536 -> "1.5 KB" (lib/format.ts formatBytes).
+    pure callback format-bytes(bytes: float) -> string;
+    /// "hace 5 min" / "5 min ago" from an ISO date or epoch-ms string (lib/format.ts relative time).
+    pure callback relative-time(iso-or-ms: string, lang: string) -> string;
+    /// 3072 -> "3 GB" (memory chips).
+    pure callback format-memory(mb: int) -> string;
+}
+
+/// Command palette model (src/palette.rs builds it; shell/command-palette.slint renders it).
+export struct PaletteItem {
+    id: string,
+    /// Section header text when this item starts a new section, else "".
+    section: string,
+    title: string,
+    description: string,
+    /// "instance" | "play" | "stop" | "nav" | "action" | "theme" | "lang" | "folder" | "wizard" | "logs"
+    icon-kind: string,
+    badge: string,
+    /// "launch" | "nav" | "action" | "running" | "default"
+    badge-type: string,
+    /// Layout metrics for scroll-into-view (px from the list top; computed in Rust).
+    top: float,
+    height: float,
+}
+
+export global PaletteState {
+    in-out property <string> query;
+    in property <[PaletteItem]> items;
+    in-out property <int> highlighted;
+    /// Text shown by the empty state.
+    in property <string> empty-query;
+    callback query-edited(text: string);
+    callback execute(index: int);
+    callback opened();
+}

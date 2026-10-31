@@ -1,0 +1,398 @@
+// OWNER: settings-suite-servers agent. Port of src/ui/src/pages/ServerRadar.svelte.
+// Keep the exported component name and the empty interface used by app.slint.
+//
+// Hero (badge, poll note, title, re-scan) · telemetry strip (players, nodes,
+// network health, last update) · server card grid (auto-fill 340px columns) /
+// static skeleton / empty state · custom servers guidance.
+// Data: AppState.servers (shared store, polled every 60 s while shown).
+
+import { Theme, T, Router, AppState, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, Emoji, Icon, Icons, PageScaffold } from "../../widgets.slint";
+import { SettingsBridge, ServerRadarSummary } from "api.slint";
+import { ServerRadarCard } from "server-radar-card.slint";
+
+component RadarHero inherits HorizontalLayout {
+    spacing: 16px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: start;
+            Badge { text: T.tr("servers.badge").to-uppercase(); variant: BadgeVariant.accent; dot: true; }
+            Text {
+                text: T.tr("servers.autoPollNote");
+                font-family: Theme.font-mono;
+                font-size: 12px;
+                color: Theme.muted;
+                vertical-alignment: center;
+            }
+        }
+        GradientText {
+            text: T.tr("servers.title");
+            gradient: GradientKind.emerald-gold;
+            font-size: Theme.text-3xl;
+            font-weight: 700;
+            letter-spacing: -1.08px;
+            line-height-factor: 0.88;
+        }
+        HorizontalLayout {
+            alignment: start;
+            Text {
+                max-width: 620px;
+                text: T.tr("servers.subtitle");
+                font-size: 14px;
+                color: Theme.muted-strong;
+                line-height-factor: 1.25;
+                wrap: word-wrap;
+            }
+        }
+    }
+    VerticalLayout {
+        alignment: start;
+        Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.md;
+            icon: Icons.refresh;
+            loading: SettingsBridge.servers-refreshing;
+            text: SettingsBridge.servers-refreshing ? T.tr("servers.refreshing") : T.tr("servers.refresh");
+            clicked => { SettingsBridge.servers-refresh(); }
+        }
+    }
+}
+
+component TelemetryCard inherits Rectangle {
+    in property <string> emoji;
+    in property <string> label;
+    horizontal-stretch: 1;
+    preferred-width: 1px;
+    min-width: 0px;
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    border-radius: Theme.radius-lg;
+    background: Theme.card-bg;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-color: Theme.shadow-sm-color;
+    drop-shadow-blur: Theme.shadow-sm-blur;
+    drop-shadow-offset-y: Theme.shadow-sm-y;
+    inner := HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        VerticalLayout {
+            padding-top: 12px;
+            padding-bottom: 12px;
+            spacing: 8px;
+            alignment: start;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                VerticalLayout {
+                    alignment: center;
+                    Emoji { char: root.emoji; size: 15px; }
+                }
+                Text {
+                    text: root.label.to-uppercase();
+                    font-size: 12px;
+                    letter-spacing: 0.6px;
+                    color: Theme.muted;
+                    line-height-factor: 1.25;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+            @children
+        }
+    }
+}
+
+component PixelValue inherits HorizontalLayout {
+    in property <string> number;
+    in property <string> suffix;
+    in property <color> suffix-color: Theme.accent;
+    in property <length> suffix-size: 11px;
+    spacing: 8px;
+    alignment: start;
+    min-height: 28px;
+    Text {
+        text: root.number;
+        font-family: Theme.font-pixel;
+        font-size: 22px;
+        color: Theme.text;
+        vertical-alignment: bottom;
+    }
+    VerticalLayout {
+        alignment: end;
+        Text {
+            text: root.suffix;
+            font-family: Theme.font-pixel;
+            font-size: root.suffix-size;
+            color: root.suffix-color;
+        }
+    }
+}
+
+component TelemetryStrip inherits VerticalLayout {
+    in property <ServerRadarSummary> sum;
+    in property <bool> two-rows;
+    spacing: 12px;
+    property <string> health-label: root.sum.health == "optimal" ? T.tr("servers.networkOptimal") : root.sum.health == "degraded" ? T.tr("servers.networkDegraded") : T.tr("servers.networkOffline");
+    property <BadgeVariant> health-variant: root.sum.health == "optimal" ? BadgeVariant.ok : root.sum.health == "degraded" ? BadgeVariant.warn : BadgeVariant.err;
+    property <string> updated: root.sum.last-fetched == "" ? T.tr("servers.noData") : T.tr1("servers.lastUpdated", "time", Util.relative-time(root.sum.last-fetched, T.lang));
+    HorizontalLayout {
+        spacing: 12px;
+        TelemetryCard {
+            emoji: "👥";
+            label: T.tr("server.players");
+            PixelValue { number: root.sum.players; suffix: T.tr("common.online"); }
+        }
+        TelemetryCard {
+            emoji: "📡";
+            label: T.tr("servers.onlineNodes");
+            PixelValue { number: root.sum.online; suffix: "/ " + root.sum.total; suffix-color: Theme.muted; suffix-size: 12px; }
+        }
+        if !root.two-rows: TelemetryCard {
+            emoji: "🛡️";
+            label: T.tr("servers.networkHealth");
+            HorizontalLayout {
+                alignment: start;
+                Badge { text: root.health-label; variant: root.health-variant; dot: true; large: true; }
+            }
+        }
+        if !root.two-rows: TelemetryCard {
+            emoji: "⏱️";
+            label: root.updated;
+            Text {
+                text: root.sum.offline > 0 ? T.tr("servers.someOffline") : root.sum.total > 0 ? T.tr("servers.allOnline") : T.tr("servers.noData");
+                font-size: 12px;
+                color: root.sum.offline > 0 ? Theme.accent-alt : root.sum.total > 0 ? Theme.accent-green : Theme.muted;
+                line-height-factor: 1.25;
+                wrap: word-wrap;
+            }
+        }
+    }
+    if root.two-rows: HorizontalLayout {
+        spacing: 12px;
+        TelemetryCard {
+            emoji: "🛡️";
+            label: T.tr("servers.networkHealth");
+            HorizontalLayout {
+                alignment: start;
+                Badge { text: root.health-label; variant: root.health-variant; dot: true; large: true; }
+            }
+        }
+        TelemetryCard {
+            emoji: "⏱️";
+            label: root.updated;
+            Text {
+                text: root.sum.offline > 0 ? T.tr("servers.someOffline") : root.sum.total > 0 ? T.tr("servers.allOnline") : T.tr("servers.noData");
+                font-size: 12px;
+                color: root.sum.offline > 0 ? Theme.accent-alt : root.sum.total > 0 ? Theme.accent-green : Theme.muted;
+                line-height-factor: 1.25;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+/// Static loading skeleton (the CSS shimmer is omitted: no idle animation).
+component SkeletonCard inherits GlassCard {
+    elevation: Elevation.md;
+    min-height: 180px;
+    horizontal-stretch: 1;
+    preferred-width: 1px;
+    padding-size: 36px;
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: stretch;
+        VerticalLayout {
+            alignment: start;
+            Rectangle { width: 48px; height: 48px; border-radius: Theme.radius-md; background: Theme.surface-up; }
+        }
+        VerticalLayout {
+            spacing: 8px;
+            alignment: start;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                Rectangle { height: 18px; horizontal-stretch: 6; border-radius: Theme.radius-xs; background: Theme.surface-up; }
+                Rectangle { horizontal-stretch: 4; }
+            }
+            HorizontalLayout {
+                Rectangle { height: 14px; horizontal-stretch: 9; border-radius: Theme.radius-xs; background: Theme.surface-up; }
+                Rectangle { horizontal-stretch: 1; }
+            }
+        }
+    }
+}
+
+component EmptyRadar inherits GlassCard {
+    elevation: Elevation.md;
+    HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            padding-top: 32px;
+            padding-bottom: 32px;
+            spacing: 12px;
+            max-width: 400px;
+            HorizontalLayout {
+                alignment: center;
+                // radar dish (stroke-dasharray circle drawn solid at low opacity)
+                Rectangle {
+                    width: 64px;
+                    height: 64px;
+                    Path {
+                        width: 100%;
+                        height: 100%;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M 22 12 A 10 10 0 1 1 2 12 A 10 10 0 1 1 22 12 M 12 2 L 12 6 M 12 18 L 12 22 M 2 12 L 6 12 M 18 12 L 22 12";
+                        stroke: Theme.muted.with-alpha(0.4);
+                        stroke-width: 1.5px;
+                    }
+                    Path {
+                        width: 100%;
+                        height: 100%;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M 18 12 A 6 6 0 1 1 6 12 A 6 6 0 1 1 18 12";
+                        stroke: Theme.muted.with-alpha(0.6);
+                        stroke-width: 1.5px;
+                    }
+                    Path {
+                        width: 100%;
+                        height: 100%;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M 14 12 A 2 2 0 1 1 10 12 A 2 2 0 1 1 14 12 Z";
+                        fill: Theme.muted;
+                    }
+                    Path {
+                        width: 100%;
+                        height: 100%;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M 12 12 L 19 5";
+                        stroke: Theme.accent;
+                        stroke-width: 2px;
+                    }
+                }
+            }
+            Text { text: T.tr("servers.empty"); font-size: 18px; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
+            Text { text: T.tr("servers.noServers"); font-size: 14px; color: Theme.muted; horizontal-alignment: center; wrap: word-wrap; }
+            HorizontalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    text: T.tr("servers.refresh");
+                    clicked => { SettingsBridge.servers-refresh(); }
+                }
+            }
+        }
+    }
+}
+
+component GuidanceCard inherits GlassCard {
+    elevation: Elevation.sm;
+    HorizontalLayout {
+        spacing: 16px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 4px;
+            alignment: center;
+            HorizontalLayout {
+                alignment: start;
+                Rectangle {
+                    height: chip.preferred-height;
+                    width: chip.preferred-width;
+                    border-radius: self.height / 2;
+                    background: Theme.card-bg-soft;
+                    border-width: 1px;
+                    border-color: Theme.glass-border;
+                    chip := HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        padding-top: 3px;
+                        padding-bottom: 3px;
+                        spacing: 3px;
+                        VerticalLayout {
+                            alignment: center;
+                            Emoji { char: "💡"; size: 12px; }
+                        }
+                        Text { text: T.tr("servers.customTitle"); font-size: 12px; font-weight: 600; color: Theme.muted; vertical-alignment: center; }
+                    }
+                }
+            }
+            Text { text: T.tr("servers.customTitle"); font-size: 16px; font-weight: 700; color: Theme.text; line-height-factor: 0.94; }
+            HorizontalLayout {
+                alignment: start;
+                Text {
+                    max-width: 700px;
+                    text: T.tr("servers.customDesc");
+                    font-size: 12px;
+                    color: Theme.muted;
+                    line-height-factor: 1.05;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                spacing: 8px;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    text: T.tr("servers.manageInstances");
+                    clicked => { Router.navigate("#/instances"); }
+                }
+                Btn {
+                    variant: BtnVariant.ghost;
+                    size: BtnSize.sm;
+                    text: T.tr("servers.openSettings");
+                    clicked => { Router.navigate("#/settings"); }
+                }
+            }
+        }
+    }
+}
+
+export component ServersPage inherits Rectangle {
+    /// content width inside the page padding (content-max 1312, padding 24)
+    property <length> inner-w: min(Theme.content-max, root.width) - 48px;
+    /// repeat(auto-fill, minmax(340px, 1fr)) with a 16px gap (1 column under 768px)
+    property <int> cols: root.width <= 768px ? 1 : max(1, floor((root.inner-w + 16px) / 356px));
+    property <length> card-w: (root.inner-w - (root.cols - 1) * 16px) / root.cols;
+    property <ServerRadarSummary> sum: SettingsBridge.servers-summary(AppState.servers);
+
+    PageScaffold {
+        content-padding: 24px;
+        content-padding-bottom: 48px;
+        spacing: 24px;
+
+        RadarHero { }
+        TelemetryStrip { sum: root.sum; two-rows: root.inner-w < 4 * 220px + 36px; }
+
+        if !AppState.servers-loaded && AppState.servers.length == 0: HorizontalLayout {
+            spacing: 16px;
+            SkeletonCard { }
+            SkeletonCard { }
+            SkeletonCard { }
+        }
+        if AppState.servers-loaded && AppState.servers.length == 0: EmptyRadar { }
+        if AppState.servers.length > 0: VerticalLayout {
+            spacing: 16px;
+            for row in SettingsBridge.server-grid(AppState.servers, root.cols): HorizontalLayout {
+                spacing: 16px;
+                alignment: start;
+                for s in row.items: ServerRadarCard {
+                    width: root.card-w;
+                    server: s;
+                    interactive: true;
+                }
+            }
+        }
+
+        GuidanceCard { }
+    }
+}

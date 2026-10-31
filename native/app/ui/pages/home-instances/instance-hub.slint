@@ -1,0 +1,604 @@
+// OWNER: home-instances agent. Port of pages/InstanceHub.svelte (tabs:
+// config / servers / mods / danger). Router.instance-name holds the decoded
+// :name of #/instances/:name; Router.query may carry "tab=...".
+
+import { Theme, T, Router, Shell, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, LoaderBadge, LoaderBadgeSize, ProgressBar, ProgressTone, PageScaffold, Spinner } from "../../widgets.slint";
+import { HomeBridge } from "api.slint";
+import { TelemetryCapsule } from "capsule.slint";
+import { DryRunModal } from "modals.slint";
+import { HiLogView, HiLoading, HiTextField } from "common.slint";
+import { HubCard, ActionFooter, Note } from "hub-parts.slint";
+import { ConfigTab } from "hub-config.slint";
+
+component HubTab inherits Rectangle {
+    in property <string> icon;
+    in property <string> text;
+    in property <string> count;
+    in property <bool> active;
+    in property <bool> danger;
+    callback clicked();
+    property <bool> hovered: t.has-hover;
+    height: 36px;
+    min-width: row.preferred-width;
+    border-radius: Theme.radius-md;
+    background: active ? Theme.surface-up-solid : hovered ? rgba(255, 255, 255, 0.04) : transparent;
+    border-width: active ? 1px : 0px;
+    border-color: active && danger ? rgba(239, 68, 68, 0.4) : Theme.glass-border;
+    drop-shadow-color: active ? rgba(0, 0, 0, 0.25) : transparent;
+    drop-shadow-blur: 8px;
+    drop-shadow-offset-y: 2px;
+    property <color> fg: active && danger ? #fca5a5 : active || hovered ? Theme.text : Theme.muted;
+    row := HorizontalLayout {
+        padding-left: 14.4px;
+        padding-right: 14.4px;
+        spacing: Theme.space-2;
+        VerticalLayout { alignment: center; Icon { data: root.icon; size: 16px; color: root.fg; } }
+        Text { text: root.text; color: root.fg; font-size: Theme.text-sm; font-weight: 600; vertical-alignment: center; }
+        if root.count != "": VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: cl.preferred-height + 3px;
+                width: cl.preferred-width + 13px;
+                border-radius: self.height / 2;
+                background: rgba(255, 255, 255, 0.08);
+                cl := Text { text: root.count; color: root.fg; font-size: 11.2px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            }
+        }
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component HubHeader inherits VerticalLayout {
+    in property <length> vw: 1280px;
+    spacing: Theme.space-4;
+    // nav row
+    HorizontalLayout {
+        back := HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            horizontal-stretch: 0;
+            VerticalLayout { alignment: center; Icon { data: Icons.chevron-left; size: 16px; weight: 2.5; color: bt.has-hover ? Theme.text : Theme.muted; } }
+            Text {
+                text: T.tr("instance.back");
+                color: bt.has-hover ? Theme.text : Theme.muted;
+                font-size: Theme.text-sm;
+                font-weight: 500;
+                vertical-alignment: center;
+                bt := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Router.navigate("#/"); }
+                }
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if HomeBridge.hub-loaded: Rectangle {
+            height: 28px;
+            width: frow.preferred-width;
+            border-radius: Theme.radius-md;
+            background: ft.has-hover ? Theme.surface-up : Theme.surface;
+            border-width: 1px;
+            border-color: ft.has-hover ? rgba(255, 255, 255, 0.16) : Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+            frow := HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 6.4px;
+                VerticalLayout { alignment: center; Icon { data: Icons.folder; size: 15px; color: ft.has-hover ? Theme.text : Theme.muted-strong; } }
+                Text { text: T.tr("instance.openFolder"); color: ft.has-hover ? Theme.text : Theme.muted-strong; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
+            }
+            ft := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { HomeBridge.hub-open-folder(); }
+            }
+        }
+    }
+    // title row
+    VerticalLayout {
+        spacing: 10.4px;
+        if !HomeBridge.rename-open: HorizontalLayout {
+            spacing: 9.6px;
+            alignment: start;
+            Text {
+                text: HomeBridge.hub.name != "" ? HomeBridge.hub.name : Router.instance-name;
+                color: Theme.text;
+                font-size: Theme.text-hero(root.vw);
+                font-weight: 700;
+                letter-spacing: -0.94px;
+                overflow: elide;
+            }
+            if HomeBridge.hub-loaded: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: Theme.radius-md;
+                    background: rt.has-hover ? Theme.surface-up : transparent;
+                    border-width: 1px;
+                    border-color: rt.has-hover ? rgba(255, 255, 255, 0.16) : transparent;
+                    Icon { data: Icons.edit; size: 15px; color: rt.has-hover ? Theme.text : Theme.muted; }
+                    rt := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            HomeBridge.rename-draft = HomeBridge.hub.name;
+                            HomeBridge.rename-open = true;
+                        }
+                    }
+                }
+            }
+        }
+        if HomeBridge.rename-open: HorizontalLayout {
+            spacing: 9.6px;
+            alignment: start;
+            HiTextField {
+                min-width: 192px;
+                max-width: 384px;
+                font-size: Theme.text-lg;
+                text <=> HomeBridge.rename-draft;
+                placeholder: T.tr("instance.renamePlaceholder");
+                enabled: !HomeBridge.rename-saving;
+                accepted(t) => { HomeBridge.rename-save(t); }
+                key-pressed(e) => {
+                    if e.text == Key.Escape {
+                        HomeBridge.rename-open = false;
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.primary;
+                    size: BtnSize.sm;
+                    loading: HomeBridge.rename-saving;
+                    enabled: !HomeBridge.rename-saving && HomeBridge.rename-draft != "";
+                    text: T.tr("instance.renameSave");
+                    clicked => { HomeBridge.rename-save(HomeBridge.rename-draft); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.ghost;
+                    size: BtnSize.sm;
+                    enabled: !HomeBridge.rename-saving;
+                    text: T.tr("instance.cancelEdit");
+                    clicked => { HomeBridge.rename-open = false; }
+                }
+            }
+        }
+        if HomeBridge.hub-loaded: HorizontalLayout {
+            spacing: 9.6px;
+            alignment: start;
+            LoaderBadge { loader: HomeBridge.hub.loader; version: HomeBridge.hub.version; size: LoaderBadgeSize.lg; }
+            VerticalLayout {
+                alignment: center;
+                Badge {
+                    large: true;
+                    text: HomeBridge.hub-running ? T.tr("instance.running") : T.tr("instance.stopped");
+                    variant: HomeBridge.hub-running ? BadgeVariant.ok : BadgeVariant.neutral;
+                    dot: HomeBridge.hub-running;
+                }
+            }
+            if HomeBridge.hub.modpack != "": VerticalLayout {
+                alignment: center;
+                Badge { large: true; variant: BadgeVariant.gold; text: HomeBridge.hub.modpack + (HomeBridge.hub.modpack-version != "" ? " " + HomeBridge.hub.modpack-version : ""); }
+            }
+            if HomeBridge.hub.imported-from != "": VerticalLayout {
+                alignment: center;
+                Badge { large: true; variant: BadgeVariant.purple; text: T.tr("instance.imported"); }
+            }
+        }
+    }
+}
+
+component ServersTab inherits HubCard {
+    title: T.tr("instance.serversTitle");
+    subtitle: T.tr("instance.serversSubtitle");
+    if HomeBridge.editing-servers: VerticalLayout {
+        spacing: Theme.space-4;
+        VerticalLayout {
+            spacing: Theme.space-2;
+            for d[i] in HomeBridge.server-draft: HorizontalLayout {
+                spacing: Theme.space-2;
+                n := HiTextField {
+                    horizontal-stretch: 2;
+                    text: d.name;
+                    placeholder: T.tr("instance.serverName");
+                    edited(t) => { HomeBridge.set-server-row(i, t, ip.text); }
+                }
+                ip := HiTextField {
+                    horizontal-stretch: 3;
+                    text: d.ip;
+                    placeholder: T.tr("instance.serverIp");
+                    edited(t) => { HomeBridge.set-server-row(i, n.text, t); }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: Theme.radius-md;
+                        background: rgba(239, 68, 68, xt.has-hover ? 0.3 : 0.15);
+                        border-width: 1px;
+                        border-color: rgba(239, 68, 68, 0.3);
+                        Icon { data: Icons.x; size: 14px; color: #fca5a5; weight: 2.5; }
+                        xt := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { HomeBridge.remove-server-row(i); }
+                        }
+                    }
+                }
+            }
+        }
+        if HomeBridge.server-err != "": Text { text: HomeBridge.server-err; color: Theme.accent-red; font-size: Theme.text-xs; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: T.tr("instance.addServer");
+                clicked => { HomeBridge.add-server-row(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: T.tr("instance.cancelEdit");
+                clicked => { HomeBridge.editing-servers = false; }
+            }
+            Btn {
+                variant: BtnVariant.primary;
+                size: BtnSize.sm;
+                loading: HomeBridge.saving-servers;
+                enabled: !HomeBridge.saving-servers;
+                text: T.tr("instance.saveServers");
+                clicked => { HomeBridge.save-servers(); }
+            }
+        }
+    }
+    if !HomeBridge.editing-servers: VerticalLayout {
+        spacing: Theme.space-4;
+        if HomeBridge.servers.length == 0: Rectangle {
+            height: 32px + 32px + 20px;
+            Text { text: T.tr("instance.noServers"); color: Theme.muted; font-size: Theme.text-sm; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        if HomeBridge.servers.length > 0: grid := Rectangle {
+            property <int> cols: max(1, floor((self.width + 12px) / (288px + 12px)));
+            property <length> cw: (self.width - (self.cols - 1) * 12px) / self.cols;
+            property <length> rh: 70px;
+            property <int> rows: ceil(HomeBridge.servers.length / self.cols);
+            height: self.rows * self.rh + max(0, self.rows - 1) * 12px;
+            for s[i] in HomeBridge.servers: Rectangle {
+                x: mod(i, grid.cols) * (grid.cw + 12px);
+                y: floor(i / grid.cols) * (grid.rh + 12px);
+                width: grid.cw;
+                height: grid.rh;
+                border-radius: Theme.radius-md;
+                background: Theme.dark ? rgba(0, 0, 0, 0.25) : rgba(18, 24, 41, 0.05);
+                border-width: 1px;
+                border-color: Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+                VerticalLayout {
+                    padding: Theme.space-3;
+                    spacing: 6.4px;
+                    alignment: start;
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        Text { text: s.name; color: Theme.text; font-size: Theme.text-sm; font-weight: 700; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
+                        if s.matched: Badge { text: s.status; variant: s.online ? BadgeVariant.ok : BadgeVariant.err; dot: true; }
+                        if !s.matched: Rectangle {
+                            height: ipl.preferred-height + 5px;
+                            width: ipl.preferred-width + 13px;
+                            border-radius: Theme.radius-xs;
+                            background: rgba(255, 255, 255, 0.06);
+                            ipl := Text { text: s.ip; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: Theme.text-xs; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                    }
+                    if s.motd != "": Text { text: s.motd; color: Theme.muted; font-size: Theme.text-xs; overflow: elide; }
+                }
+            }
+        }
+        ActionFooter {
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                text: HomeBridge.servers.length > 0 ? T.tr("instance.editServers") : T.tr("instance.addServer");
+                clicked => { HomeBridge.edit-servers(); }
+            }
+        }
+    }
+}
+
+component ModsTab inherits HorizontalLayout {
+    spacing: 20px;
+    VerticalLayout {
+      alignment: start;
+      min-width: 100px;
+      preferred-width: 100px;
+      horizontal-stretch: 1;
+      HubCard {
+        title: T.tr("instance.modsTitle");
+        subtitle: T.tr("instance.modsSubtitle");
+        VerticalLayout {
+            spacing: Theme.space-4;
+            HorizontalLayout {
+                alignment: start;
+                Badge { large: true; variant: BadgeVariant.accent; text: T.tr2("instance.modsSummary", "enabled", HomeBridge.hub.enabled-mod-count, "total", HomeBridge.hub.mod-count); }
+            }
+            HorizontalLayout {
+                spacing: Theme.space-3;
+                alignment: start;
+                Btn {
+                    variant: BtnVariant.primary;
+                    text: T.tr("instance.goToMods");
+                    clicked => { Router.navigate("#/mods"); }
+                }
+                Btn {
+                    variant: BtnVariant.secondary;
+                    text: T.tr("instance.openModsFolder");
+                    clicked => { HomeBridge.open-mods-folder(); }
+                }
+            }
+        }
+    }
+    }
+    VerticalLayout {
+      alignment: start;
+      min-width: 100px;
+      preferred-width: 100px;
+      horizontal-stretch: 1;
+      if HomeBridge.preset-supported: HubCard {
+        title: T.tr("instance.perfPresetTitle");
+        subtitle: T.tr("instance.perfPresetDesc");
+        VerticalLayout {
+            spacing: Theme.space-4;
+            if HomeBridge.install-progress-visible: ProgressBar {
+                value: HomeBridge.install-done;
+                max: max(HomeBridge.install-total, 1);
+                tone: ProgressTone.cyan;
+                label: HomeBridge.install-file != "" ? T.tr1("instance.installingFile", "file", HomeBridge.install-file) : T.tr("instance.installingPreset");
+            }
+            ActionFooter {
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    loading: HomeBridge.installing-preset;
+                    enabled: !HomeBridge.installing-preset && !HomeBridge.hub-running;
+                    text: T.tr("instance.installPerfPreset");
+                    clicked => { HomeBridge.install-preset(); }
+                }
+            }
+        }
+    }
+    }
+}
+
+component DangerTab inherits HubCard {
+    title: T.tr("instance.dangerTitle");
+    subtitle: T.tr("instance.dangerSubtitle");
+    large-shadow: true;
+    stroke: rgba(239, 68, 68, 0.35);
+    fill: @radial-gradient(circle, rgba(239, 68, 68, 0.035) 0%, Theme.card-bg 70%);
+    VerticalLayout {
+        spacing: Theme.space-5;
+        Rectangle {
+            border-radius: Theme.radius-md;
+            background: rgba(239, 68, 68, 0.1);
+            border-width: 1px;
+            border-color: rgba(239, 68, 68, 0.25);
+            HorizontalLayout {
+                padding-left: Theme.space-4;
+                padding-right: Theme.space-4;
+                spacing: 13.6px;
+                VerticalLayout {
+                    padding-top: 13.6px;
+                    alignment: start;
+                    Icon { data: "M 10.29 3.86 L 1.82 18 A 2 2 0 0 0 3.53 21 L 20.47 21 A 2 2 0 0 0 22.18 18 L 13.71 3.86 A 2 2 0 0 0 10.29 3.86 Z"; filled: true; weight: 0; size: 22px; color: Theme.accent-red; }
+                }
+                VerticalLayout {
+                    padding-top: 13.6px;
+                    padding-bottom: 13.6px;
+                    spacing: 4px;
+                    horizontal-stretch: 1;
+                    Text { text: T.tr("instance.deleteInstanceTitle"); color: #fca5a5; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; }
+                    Text { text: T.tr("instance.deleteWarning"); color: Theme.muted-strong; font-size: Theme.text-xs; wrap: word-wrap; }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            Btn {
+                variant: BtnVariant.danger;
+                loading: HomeBridge.deleting;
+                enabled: !HomeBridge.deleting;
+                text: T.tr("instance.deleteBtn");
+                clicked => { HomeBridge.delete-instance(); }
+            }
+        }
+    }
+}
+
+component ConsoleCard inherits HubCard {
+    HorizontalLayout {
+        spacing: Theme.space-4;
+        HorizontalLayout {
+            spacing: 9.6px;
+            horizontal-stretch: 1;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: HomeBridge.hub-log-running ? Theme.accent-green : Theme.muted;
+                    drop-shadow-color: HomeBridge.hub-log-running ? Theme.accent-green : transparent;
+                    drop-shadow-blur: 8px;
+                }
+            }
+            Text { text: T.tr("instance.logTitle"); color: Theme.text; font-size: Theme.text-sm; font-weight: 700; vertical-alignment: center; }
+            VerticalLayout {
+                alignment: center;
+                Badge {
+                    text: HomeBridge.hub-log-running ? T.tr("instance.logLive") : T.tr("instance.logIdle");
+                    variant: HomeBridge.hub-log-running ? BadgeVariant.ok : BadgeVariant.neutral;
+                }
+            }
+            if HomeBridge.hub-log-lines.length > 0: Text {
+                text: HomeBridge.hub-log-lines.length + " líneas";
+                color: Theme.muted;
+                font-size: Theme.text-xs;
+                vertical-alignment: center;
+            }
+        }
+        HorizontalLayout {
+            spacing: 6.4px;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                icon: "M 15 3 L 21 3 L 21 9 M 9 21 L 3 21 L 3 15 M 21 3 L 14 10 M 3 21 L 10 14";
+                text: T.tr("instance.openInHud");
+                clicked => { Shell.pip-log-open = !Shell.pip-log-open; }
+            }
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: T.tr("instance.clearLog");
+                clicked => { HomeBridge.hub-clear-log(); }
+            }
+        }
+    }
+    Rectangle {
+        height: 220px;
+        border-radius: Theme.radius-md;
+        background: Theme.log-bg;
+        border-width: 1px;
+        border-color: rgba(255, 255, 255, 0.04);
+        clip: true;
+        if HomeBridge.hub-log-lines.length == 0: Text {
+            text: T.tr("instance.emptyLog");
+            color: Theme.muted;
+            font-size: Theme.text-xs;
+            font-family: Theme.font-mono;
+            font-italic: true;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        if HomeBridge.hub-log-lines.length > 0: HiLogView {
+            x: Theme.space-4;
+            y: Theme.space-3;
+            width: parent.width - 2 * Theme.space-4;
+            height: parent.height - 2 * Theme.space-3;
+            numbers: false;
+            base-color: Theme.muted-strong;
+            lines: HomeBridge.hub-log-lines;
+            serial: HomeBridge.hub-log-serial;
+        }
+    }
+}
+
+component StateCard inherits HubCard {
+    VerticalLayout {
+        padding-top: 44px;
+        padding-bottom: 44px;
+        spacing: Theme.space-4;
+        alignment: center;
+        Text { text: "✕"; color: Theme.accent-red; font-size: 32px; horizontal-alignment: center; }
+        Text { text: T.tr("instance.notFound"); color: Theme.text; font-size: Theme.text-xl; font-weight: 600; horizontal-alignment: center; }
+        HorizontalLayout {
+            alignment: center;
+            Text {
+                max-width: 480px;
+                text: HomeBridge.hub-error != "" ? HomeBridge.hub-error : T.tr("instance.notFoundHint");
+                color: Theme.muted;
+                font-size: Theme.text-sm;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+        HorizontalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.primary;
+                text: T.tr("instance.back");
+                clicked => { Router.navigate("#/"); }
+            }
+        }
+    }
+}
+
+export component InstanceHubPage inherits Rectangle {
+    PageScaffold {
+        width: root.width;
+        height: root.height;
+        max-content-width: 1320px;
+        content-padding: 32px;
+        content-padding-top: 28px;
+        content-padding-bottom: 56px;
+        spacing: Theme.space-6;
+
+        HubHeader { vw: root.width; }
+
+        TelemetryCapsule {
+            instance-name: HomeBridge.hub.name != "" ? HomeBridge.hub.name : Router.instance-name;
+        }
+
+        if HomeBridge.hub-loading: HiLoading { text: T.tr("instance.loading"); }
+        if !HomeBridge.hub-loading && HomeBridge.hub-error != "": StateCard { }
+        if !HomeBridge.hub-loading && HomeBridge.hub-error == "" && HomeBridge.hub-loaded: VerticalLayout {
+            spacing: 20px;
+            HorizontalLayout {
+                alignment: start;
+                Rectangle {
+                    width: tabs.preferred-width + 2 * 5.6px;
+                    height: 36px + 2 * 5.6px;
+                    border-radius: Theme.radius-lg;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+                    tabs := HorizontalLayout {
+                        x: 5.6px;
+                        y: 5.6px;
+                        spacing: 6.4px;
+                        HubTab {
+                            icon: Icons.settings;
+                            text: T.tr("instance.tabConfig");
+                            active: HomeBridge.hub-tab == 0;
+                            clicked => { HomeBridge.hub-tab = 0; }
+                        }
+                        HubTab {
+                            icon: Icons.server;
+                            text: T.tr("instance.tabServers");
+                            count: HomeBridge.servers.length > 0 ? HomeBridge.servers.length : "";
+                            active: HomeBridge.hub-tab == 1;
+                            clicked => { HomeBridge.hub-tab = 1; }
+                        }
+                        HubTab {
+                            icon: Icons.package;
+                            text: T.tr("instance.tabMods");
+                            count: HomeBridge.hub.mod-count > 0 ? HomeBridge.hub.enabled-mod-count + "/" + HomeBridge.hub.mod-count : "";
+                            active: HomeBridge.hub-tab == 2;
+                            clicked => { HomeBridge.hub-tab = 2; }
+                        }
+                        HubTab {
+                            icon: Icons.alert-triangle;
+                            text: T.tr("instance.tabDanger");
+                            danger: true;
+                            active: HomeBridge.hub-tab == 3;
+                            clicked => { HomeBridge.hub-tab = 3; }
+                        }
+                    }
+                }
+            }
+            if HomeBridge.hub-tab == 0: ConfigTab { }
+            if HomeBridge.hub-tab == 1: ServersTab { }
+            if HomeBridge.hub-tab == 2: ModsTab { }
+            if HomeBridge.hub-tab == 3: DangerTab { }
+        }
+        if !HomeBridge.hub-loading && HomeBridge.hub-error == "" && HomeBridge.hub-loaded: ConsoleCard { }
+    }
+
+    DryRunModal { }
+}

@@ -1,0 +1,38 @@
+[package]
+name = "espectral-client"
+description = "Espectral Client — native Minecraft launcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# Slint 1.18 needs a newer toolchain than the engine's MSRV.
+rust-version = "1.92"
+build = "build.rs"
+
+[[bin]]
+name = "espectral-client"
+path = "src/main.rs"
+
+[dependencies]
+espectral-engine = { workspace = true }
+espectral-skin3d = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+dirs = { workspace = true }
+# unstable-winit-030: OS file drag & drop (.mrpack) via WinitWindowAccessor (library-mods).
+slint = { workspace = true, features = ["unstable-winit-030"] }
+rfd = { workspace = true }
+open = { workspace = true }
+png = { workspace = true }
+image = { workspace = true }
+chrono = { workspace = true }
+base64 = { workspace = true }
+
+[build-dependencies]
+slint-build = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

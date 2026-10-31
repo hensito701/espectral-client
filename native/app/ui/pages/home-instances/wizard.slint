@@ -1,0 +1,659 @@
+// OWNER: home-instances agent. Port of components/InstanceWizardModal.svelte:
+// 3 steps (version, loader, name + memory + options) driven by Shell.wizard-open.
+
+import { Theme, T, Shell, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, LoaderBadge, LoaderBadgeSize, Field, Slider, Modal, Emoji } from "../../widgets.slint";
+import { HomeBridge, HiVersion } from "api.slint";
+import { HiSelect, HiCheck, HiTextField } from "common.slint";
+
+component StepPill inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <bool> done;
+    callback clicked();
+    min-width: 0;
+    max-width: 112px;
+    preferred-width: min(112px, l.preferred-width + 16px);
+    height: l.preferred-height + 4px;
+    border-radius: 14px;
+    background: active ? Theme.accent : transparent;
+    drop-shadow-color: active ? Theme.accent.with-alpha(0.4) : transparent;
+    drop-shadow-blur: 8px;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        l := Text {
+            text: root.text;
+            font-size: 11px;
+            font-weight: 600;
+            color: root.active ? #ffffff : root.done ? Theme.text : Theme.muted;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component SegBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    height: 26px;
+    min-width: l.preferred-width + 20px;
+    border-radius: 13px;
+    background: active ? Theme.surface-up-solid : transparent;
+    l := Text {
+        text: root.text;
+        font-size: Theme.text-xs;
+        font-weight: 600;
+        color: root.active ? (Theme.dark ? #ffffff : Theme.text) : Theme.muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component QuickVersion inherits Rectangle {
+    in property <string> tag;
+    in property <string> value;
+    in property <bool> active;
+    callback clicked();
+    height: 64px;
+    border-radius: Theme.radius-md;
+    background: active ? Theme.accent.with-alpha(0.15) : t.has-hover ? Theme.accent.with-alpha(0.08) : rgba(255, 255, 255, 0.03);
+    border-width: 1px;
+    border-color: active ? Theme.accent : t.has-hover ? Theme.accent.with-alpha(0.4) : Theme.border;
+    drop-shadow-color: active ? Theme.accent.with-alpha(0.2) : transparent;
+    drop-shadow-blur: 12px;
+    VerticalLayout {
+        padding: Theme.space-3;
+        alignment: center;
+        Text { text: root.tag.to-uppercase(); color: Theme.accent; font-size: Theme.text-xs; font-weight: 600; letter-spacing: 0.5px; }
+        Text { text: root.value; color: Theme.text; font-size: Theme.text-lg; font-weight: 700; }
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component LoaderCard inherits Rectangle {
+    in property <string> loader;
+    in property <string> version;
+    in property <string> badge;
+    in property <BadgeVariant> badge-variant;
+    in property <string> name;
+    in property <string> desc;
+    in property <bool> active;
+    callback clicked();
+    property <bool> hovered: t.has-hover;
+    border-radius: Theme.radius-lg;
+    background: active ? Theme.accent.with-alpha(0.12) : hovered ? rgba(255, 255, 255, 0.06) : rgba(255, 255, 255, 0.03);
+    border-width: 1px;
+    border-color: active ? Theme.accent : hovered ? rgba(255, 255, 255, 0.2) : Theme.border;
+    drop-shadow-color: active ? Theme.accent.with-alpha(0.2) : transparent;
+    drop-shadow-blur: 16px;
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        VerticalLayout {
+            padding-top: Theme.space-4;
+            padding-bottom: Theme.space-4;
+            spacing: 4px;
+            HorizontalLayout {
+                padding-bottom: 4px;
+                LoaderBadge { loader: root.loader; version: root.version; size: LoaderBadgeSize.lg; }
+                Rectangle { horizontal-stretch: 1; }
+                VerticalLayout {
+                    alignment: center;
+                    Badge { text: root.badge; variant: root.badge-variant; }
+                }
+            }
+            Text { text: root.name; color: Theme.text; font-size: Theme.text-lg; font-weight: 700; }
+            Text { text: root.desc; color: Theme.muted; font-size: Theme.text-sm; wrap: word-wrap; }
+        }
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component StepVersions inherits VerticalLayout {
+    in-out property <string> selected;
+    in-out property <string> query;
+    in-out property <string> filter: "release";
+    callback pick(id: string);
+    spacing: 0px;
+
+    if HomeBridge.wiz-latest-release != "" || HomeBridge.wiz-latest-snapshot != "": HorizontalLayout {
+        padding-bottom: Theme.space-4;
+        spacing: Theme.space-3;
+        if HomeBridge.wiz-latest-release != "": QuickVersion {
+            horizontal-stretch: 1;
+            tag: T.tr("home.wizardLatestRelease");
+            value: HomeBridge.wiz-latest-release;
+            active: root.selected == HomeBridge.wiz-latest-release;
+            clicked => { root.pick(HomeBridge.wiz-latest-release); }
+        }
+        if HomeBridge.wiz-latest-snapshot != "": QuickVersion {
+            horizontal-stretch: 1;
+            tag: T.tr("home.wizardLatestSnapshot");
+            value: HomeBridge.wiz-latest-snapshot;
+            active: root.selected == HomeBridge.wiz-latest-snapshot;
+            clicked => { root.pick(HomeBridge.wiz-latest-snapshot); }
+        }
+    }
+    HorizontalLayout {
+        padding-bottom: Theme.space-3;
+        spacing: Theme.space-3;
+        HiTextField {
+            icon: Icons.search;
+            placeholder: T.tr("home.wizardSearchVersion");
+            text <=> root.query;
+            edited(t) => { HomeBridge.wiz-filter(t, root.filter); }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: segs.preferred-height + 6px;
+                width: segs.preferred-width + 6px;
+                border-radius: self.height / 2;
+                background: rgba(255, 255, 255, 0.05);
+                border-width: 1px;
+                border-color: rgba(255, 255, 255, 0.08);
+                segs := HorizontalLayout {
+                    x: 3px;
+                    y: 3px;
+                    SegBtn {
+                        text: T.tr("home.wizardFilterReleases");
+                        active: root.filter == "release";
+                        clicked => { root.filter = "release"; HomeBridge.wiz-filter(root.query, root.filter); }
+                    }
+                    SegBtn {
+                        text: T.tr("home.wizardFilterSnapshots");
+                        active: root.filter == "snapshot";
+                        clicked => { root.filter = "snapshot"; HomeBridge.wiz-filter(root.query, root.filter); }
+                    }
+                    SegBtn {
+                        text: T.tr("home.wizardFilterAll");
+                        active: root.filter == "all";
+                        clicked => { root.filter = "all"; HomeBridge.wiz-filter(root.query, root.filter); }
+                    }
+                }
+            }
+        }
+    }
+    // auto-fill grid (minmax 130px), 260px max height, scrolls
+    grid := Rectangle {
+        property <int> cols: max(1, floor((self.width + 8px) / (130px + 8px)));
+        property <length> cell-w: (self.width - (self.cols - 1) * 8px) / self.cols;
+        property <int> rows: ceil(HomeBridge.wiz-versions.length / self.cols);
+        property <length> full-h: self.rows * 38px + max(0, self.rows - 1) * 8px;
+        height: min(260px, self.full-h);
+        Flickable {
+            content-height: grid.full-h;
+            for v[i] in HomeBridge.wiz-versions: Rectangle {
+                property <bool> sel: v.id == root.selected;
+                x: mod(i, grid.cols) * (grid.cell-w + 8px);
+                y: floor(i / grid.cols) * 46px;
+                width: grid.cell-w - 4px;
+                height: 38px;
+                border-radius: Theme.radius-sm;
+                background: self.sel ? Theme.accent.with-alpha(0.15) : vt.has-hover ? rgba(255, 255, 255, 0.06) : rgba(255, 255, 255, 0.03);
+                border-width: 1px;
+                border-color: self.sel ? Theme.accent : vt.has-hover ? rgba(255, 255, 255, 0.2) : Theme.border;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    Text {
+                        text: v.id;
+                        color: Theme.text;
+                        font-size: Theme.text-sm;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Badge { text: v.kind; variant: v.kind == "release" ? BadgeVariant.ok : v.kind == "snapshot" ? BadgeVariant.accent : BadgeVariant.neutral; }
+                    }
+                }
+                vt := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.pick(v.id); }
+                }
+            }
+        }
+    }
+}
+
+component StepLoader inherits VerticalLayout {
+    in property <string> version;
+    in-out property <string> loader;
+    callback pick(loader: string);
+    spacing: Theme.space-4;
+    LoaderCard {
+        loader: "fabric";
+        version: root.version;
+        badge: "Recomendado";
+        badge-variant: BadgeVariant.accent;
+        name: T.tr("home.wizardLoaderFabric");
+        desc: T.tr("home.wizardLoaderFabricDesc");
+        active: root.loader == "fabric";
+        clicked => { root.pick("fabric"); }
+    }
+    LoaderCard {
+        loader: "vanilla";
+        version: root.version;
+        badge: "Oficial";
+        badge-variant: BadgeVariant.ok;
+        name: T.tr("home.wizardLoaderVanilla");
+        desc: T.tr("home.wizardLoaderVanillaDesc");
+        active: root.loader == "vanilla";
+        clicked => { root.pick("vanilla"); }
+    }
+    LoaderCard {
+        loader: "neoforge";
+        version: root.version;
+        badge: "Avanzado";
+        badge-variant: BadgeVariant.warn;
+        name: T.tr("home.wizardLoaderNeoForge");
+        desc: T.tr("home.wizardLoaderNeoForgeDesc");
+        active: root.loader == "neoforge";
+        clicked => { root.pick("neoforge"); }
+    }
+}
+
+component StepSettings inherits VerticalLayout {
+    in-out property <string> name;
+    in-out property <float> memory;
+    in-out property <bool> memory-touched;
+    in-out property <bool> import-enabled;
+    in-out property <int> source-index;
+    spacing: Theme.space-5;
+    Field {
+        label: T.tr("home.wizardInstanceName");
+        hint: "Identificador único para tu carpeta y perfil de juego.";
+        required: true;
+        HiTextField {
+            text <=> root.name;
+            font-size: Theme.text-base;
+            placeholder: T.tr("home.wizardInstanceNamePlaceholder");
+        }
+    }
+    Field {
+        label: T.tr("home.wizardMemory");
+        hint: T.tr("home.wizardMemoryHint");
+        HorizontalLayout {
+            spacing: Theme.space-4;
+            Slider {
+                minimum: 1024;
+                maximum: 16384;
+                step: 512;
+                value <=> root.memory;
+                changed => { root.memory-touched = true; }
+            }
+            HorizontalLayout {
+                min-width: 120px;
+                alignment: end;
+                spacing: 4px;
+                Text { text: Util.format-memory(root.memory); color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; vertical-alignment: center; }
+                Text { text: "(" + root.memory + " MB)"; color: Theme.muted; font-size: Theme.text-xs; vertical-alignment: center; }
+            }
+        }
+    }
+    Field {
+        label: T.tr("home.wizardGameDirTitle");
+        hint: T.tr("home.wizardGameDirHint");
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            HiTextField {
+                text: HomeBridge.wiz-game-dir;
+                read-only: true;
+                placeholder: T.tr("home.wizardGameDirDefault");
+                font-size: Theme.text-base;
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    loading: HomeBridge.wiz-picking;
+                    text: T.tr("home.wizardGameDirBrowse");
+                    clicked => { HomeBridge.wiz-pick-dir(); }
+                }
+            }
+            if HomeBridge.wiz-game-dir != "": VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.ghost;
+                    size: BtnSize.sm;
+                    text: T.tr("home.wizardGameDirClear");
+                    clicked => { HomeBridge.wiz-game-dir = ""; }
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 14px;
+                height: 14px;
+                border-radius: 7px;
+                background: Theme.hsla(HomeBridge.wiz-hue, 0.7, 0.55, 1);
+                drop-shadow-color: rgba(255, 255, 255, 0.25);
+                drop-shadow-blur: 8px;
+            }
+        }
+        Text {
+            text: T.tr("home.wizardHueNote");
+            color: Theme.muted;
+            font-size: Theme.text-xs;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+    }
+    Rectangle {
+        border-radius: Theme.radius-md;
+        background: rgba(255, 255, 255, 0.03);
+        border-width: 1px;
+        border-color: Theme.border;
+        HorizontalLayout {
+            padding-left: Theme.space-4;
+            padding-right: Theme.space-4;
+            VerticalLayout {
+                padding-top: Theme.space-4;
+                padding-bottom: Theme.space-4;
+                spacing: Theme.space-3;
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    VerticalLayout {
+                        alignment: center;
+                        HiCheck {
+                            checked <=> root.import-enabled;
+                            toggled(v) => { if v { HomeBridge.wiz-load-sources(); } }
+                        }
+                    }
+                    Text {
+                        text: T.tr("home.wizardImportOptions");
+                        color: Theme.text;
+                        font-size: Theme.text-sm;
+                        font-weight: 600;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.import-enabled = !root.import-enabled;
+                                if root.import-enabled { HomeBridge.wiz-load-sources(); }
+                            }
+                        }
+                    }
+                }
+                if root.import-enabled: VerticalLayout {
+                    spacing: 6px;
+                    Text { text: T.tr("home.wizardImportSource") + ":"; color: Theme.muted; font-size: Theme.text-xs; }
+                    if HomeBridge.wiz-sources.length > 0: HiSelect {
+                        options: HomeBridge.wiz-sources;
+                        current-index <=> root.source-index;
+                    }
+                    if HomeBridge.wiz-sources.length == 0: Text {
+                        text: "Buscando launchers instalados...";
+                        color: Theme.muted;
+                        font-size: Theme.text-xs;
+                        font-italic: true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component InstanceWizardModal inherits Rectangle {
+    property <bool> open: Shell.wizard-open;
+    property <int> step: 1;
+    property <string> version;
+    property <string> loader: "fabric";
+    property <string> name;
+    property <string> auto-name;
+    property <float> memory: 2048;
+    property <bool> memory-touched;
+    property <bool> import-enabled;
+    property <int> source-index: 0;
+    property <string> query;
+    property <string> filter: "release";
+    property <int> manifest-serial: HomeBridge.wiz-manifest-serial;
+
+    function suggest-name() {
+        if root.name == "" || root.name.starts-with("Minecraft") || root.name == root.auto-name {
+            root.name = (root.version != "" ? root.version : "1.21.1") + "-" + root.loader;
+            root.auto-name = root.name;
+        }
+    }
+    function reset() {
+        root.step = 1;
+        // a version preselected from VersionArmory may be a snapshot / old_*: show every type
+        root.filter = Shell.wizard-version != "" ? "all" : "release";
+        root.version = Shell.wizard-version != "" ? Shell.wizard-version : HomeBridge.wiz-latest-release;
+        Shell.wizard-version = "";
+        root.loader = "fabric";
+        root.name = root.version != "" ? root.version + "-fabric" : "";
+        root.auto-name = root.name;
+        root.memory = HomeBridge.wiz-default-memory;
+        root.memory-touched = false;
+        root.import-enabled = false;
+        root.source-index = 0;
+        root.query = "";
+        HomeBridge.wiz-game-dir = "";
+        HomeBridge.wiz-error = "";
+    }
+    function close-modal() {
+        if !HomeBridge.wiz-creating { Shell.wizard-open = false; }
+    }
+    function create() {
+        if root.version == "" {
+            HomeBridge.wiz-error = T.tr("home.wizardErrorVersion");
+            return;
+        }
+        HomeBridge.wiz-create(root.name, root.version, root.loader, root.memory-touched ? root.memory : 0, HomeBridge.wiz-game-dir, HomeBridge.wiz-hue,
+            root.import-enabled && root.source-index >= 0 && root.source-index < HomeBridge.wiz-sources.length ? HomeBridge.wiz-sources[root.source-index].value : "");
+    }
+
+    changed open => {
+        if root.open {
+            root.reset();
+            HomeBridge.wiz-opened();
+            if root.filter != "release" { HomeBridge.wiz-filter(root.query, root.filter); }
+        }
+    }
+    init => {
+        if root.open {
+            root.reset();
+            HomeBridge.wiz-opened();
+            if root.filter != "release" { HomeBridge.wiz-filter(root.query, root.filter); }
+        }
+    }
+    // manifest arrived after opening: auto-fill the latest release
+    changed manifest-serial => {
+        if root.filter != "release" { HomeBridge.wiz-filter(root.query, root.filter); }
+        if root.version == "" && HomeBridge.wiz-latest-release != "" {
+            root.version = HomeBridge.wiz-latest-release;
+            root.suggest-name();
+        }
+        if !root.memory-touched { root.memory = HomeBridge.wiz-default-memory; }
+    }
+
+    Modal {
+        open: root.open;
+        show-close: false;
+        dialog-width: 680px;
+        dismissable: !HomeBridge.wiz-creating;
+        close => { root.close-modal(); }
+
+        // ---- header (title + step pills + close) ----
+        Rectangle {
+            background: rgba(16, 22, 42, 0.4);
+            HorizontalLayout {
+                padding-left: Theme.space-6;
+                padding-right: Theme.space-6;
+                padding-top: Theme.space-5;
+                padding-bottom: Theme.space-5;
+                spacing: Theme.space-4;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text { text: T.tr("home.wizardTitle"); color: Theme.text; font-size: Theme.text-xl; font-weight: 700; }
+                    Text { text: T.tr("home.wizardSubtitle"); color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    Rectangle {
+                        height: pills.preferred-height + 6px;
+                        width: pills.preferred-width + 12px;
+                        border-radius: self.height / 2;
+                        background: rgba(255, 255, 255, 0.04);
+                        border-width: 1px;
+                        border-color: rgba(255, 255, 255, 0.06);
+                        pills := HorizontalLayout {
+                            x: 6px;
+                            y: 3px;
+                            spacing: 6px;
+                            StepPill {
+                                text: T.tr("home.wizardStep1");
+                                active: root.step == 1;
+                                done: root.step > 1;
+                                clicked => { root.step = 1; }
+                            }
+                            VerticalLayout { alignment: center; Rectangle { width: 8px; height: 1px; background: rgba(255, 255, 255, 0.1); } }
+                            StepPill {
+                                text: T.tr("home.wizardStep2");
+                                active: root.step == 2;
+                                done: root.step > 2;
+                                clicked => { root.step = 2; }
+                            }
+                            VerticalLayout { alignment: center; Rectangle { width: 8px; height: 1px; background: rgba(255, 255, 255, 0.1); } }
+                            StepPill {
+                                text: T.tr("home.wizardStep3");
+                                active: root.step == 3;
+                                clicked => { root.step = 3; }
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 4px;
+                        Icon { data: Icons.x; size: 16px; color: xt.has-hover ? Theme.text : Theme.muted; }
+                        xt := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.close-modal(); }
+                        }
+                    }
+                }
+            }
+            Rectangle { y: parent.height - 1px; height: 1px; background: rgba(255, 255, 255, 0.08); }
+        }
+
+        // ---- body ----
+        HorizontalLayout {
+            padding-left: Theme.space-6;
+            padding-right: Theme.space-6;
+            VerticalLayout {
+                padding-top: Theme.space-6;
+                padding-bottom: Theme.space-6;
+                spacing: Theme.space-4;
+                if HomeBridge.wiz-error != "": Rectangle {
+                    border-radius: Theme.radius-md;
+                    background: rgba(239, 68, 68, 0.15);
+                    border-width: 1px;
+                    border-color: rgba(239, 68, 68, 0.4);
+                    HorizontalLayout {
+                        padding: Theme.space-3;
+                        spacing: Theme.space-2;
+                        Emoji { char: "⚠️"; size: 16px; }
+                        Text { text: HomeBridge.wiz-error; color: #fca5a5; font-size: Theme.text-sm; wrap: word-wrap; horizontal-stretch: 1; }
+                    }
+                }
+                if root.step == 1: StepVersions {
+                    selected: root.version;
+                    query <=> root.query;
+                    filter <=> root.filter;
+                    pick(id) => {
+                        root.version = id;
+                        root.suggest-name();
+                    }
+                }
+                if root.step == 2: StepLoader {
+                    version: root.version;
+                    loader: root.loader;
+                    pick(l) => {
+                        root.loader = l;
+                        root.suggest-name();
+                    }
+                }
+                if root.step == 3: StepSettings {
+                    name <=> root.name;
+                    memory <=> root.memory;
+                    memory-touched <=> root.memory-touched;
+                    import-enabled <=> root.import-enabled;
+                    source-index <=> root.source-index;
+                }
+            }
+        }
+
+        // ---- footer ----
+        Rectangle {
+            background: rgba(16, 22, 42, 0.4);
+            Rectangle { y: 0; height: 1px; background: rgba(255, 255, 255, 0.08); }
+            HorizontalLayout {
+                padding-left: Theme.space-6;
+                padding-right: Theme.space-6;
+                padding-top: Theme.space-4;
+                padding-bottom: Theme.space-4;
+                spacing: Theme.space-3;
+                if root.step > 1: Btn {
+                    variant: BtnVariant.secondary;
+                    text: "← " + T.tr("home.wizardPrevBtn");
+                    clicked => { root.step -= 1; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Btn {
+                    variant: BtnVariant.ghost;
+                    text: T.tr("home.wizardCancelBtn");
+                    clicked => { root.close-modal(); }
+                }
+                if root.step < 3: Btn {
+                    variant: BtnVariant.primary;
+                    text: T.tr("home.wizardNextBtn") + " →";
+                    enabled: !(root.step == 1 && root.version == "");
+                    clicked => { root.step += 1; }
+                }
+                if root.step == 3: Btn {
+                    variant: BtnVariant.primary;
+                    emoji: "✨";
+                    loading: HomeBridge.wiz-creating;
+                    enabled: root.name != "" && root.version != "";
+                    text: HomeBridge.wiz-creating ? T.tr("home.wizardCreating") : T.tr("home.wizardCreateBtn");
+                    clicked => { root.create(); }
+                }
+            }
+        }
+    }
+}

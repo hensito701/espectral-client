@@ -1,0 +1,347 @@
+// OWNER: home-instances agent. The group's single bridge global — the only
+// Slint global of this group that Rust can see (app.slint re-exports it by
+// name). Every property / callback / struct of Home, InstanceHub, the
+// launch capsule, the instance wizard, the dry-run / mrpack modals and the
+// PiP launch-log drawer lives HERE.
+// Rust side: native/app/src/pages/home_instances.rs (+ home_instances/*.rs).
+//
+// Struct names carry the `Hi` prefix: every bridge's structs become Rust types
+// at the crate root, so the prefix keeps them from clashing with other groups.
+
+import { ServerRow, InstanceRow } from "../../state.slint";
+import { SelectOption } from "../../widgets/controls.slint";
+
+/// One launch-log line (lib/stores.ts launchLog ring buffer row).
+export struct HiLogLine {
+    num: int,
+    text: string,
+    /// 0 = normal, 1 = warning, 2 = error
+    kind: int,
+}
+
+/// One launch buffer tab of the PiP drawer.
+export struct HiLogTab {
+    key: string,
+    label: string,
+    account: string,
+    running: bool,
+    agent: bool,
+}
+
+/// Version manifest row (wizard).
+export struct HiVersion {
+    id: string,
+    kind: string,
+}
+
+/// Version-change plan row (InstanceHub config tab).
+export struct HiVcMod {
+    title: string,
+    what: string,
+    /// "update" | "add" | "keep" | "disable"
+    kind: string,
+}
+
+/// Saved multiplayer server of an instance (servers.dat) + its radar match.
+export struct HiServer {
+    name: string,
+    ip: string,
+    matched: bool,
+    online: bool,
+    status: string,
+    motd: string,
+}
+
+/// Editable servers.dat row.
+export struct HiServerDraft {
+    name: string,
+    ip: string,
+}
+
+/// Menu background pack (personalization).
+export struct HiBgPack {
+    id: string,
+    name: string,
+    /// "" or "N frames"
+    frames: string,
+    thumb: image,
+    has-thumb: bool,
+}
+
+/// Client-suite feature toggle row.
+export struct HiFeature {
+    id: string,
+    name: string,
+    desc: string,
+    keybind: string,
+    enabled: bool,
+}
+
+/// options.txt preview row.
+export struct HiOption {
+    key: string,
+    value: string,
+}
+
+export global HomeBridge {
+    // =====================================================================
+    // Shared-data hook: PipLogDrawer (always mounted) calls this whenever
+    // AppState.instances / launches / servers / accounts change.
+    // =====================================================================
+    callback shared-changed();
+
+    // =====================================================================
+    // Home
+    // =====================================================================
+    /// Selected tile of the instance rail (the capsule's instance on Home).
+    in-out property <string> selected-instance;
+    /// Top 4 servers (online first, then by players) for the radar strip.
+    in-out property <[ServerRow]> top-servers;
+    /// Featured MOTD ("" = default welcome line).
+    in-out property <string> motd-server: "Espectral Network";
+    in-out property <string> motd-text;
+    /// Greeting bucket: 0 morning, 1 afternoon, 2 evening (local clock, set by Rust on route enter).
+    in-out property <int> greeting: 2;
+    callback select-instance(name: string);
+    callback open-instance(name: string);
+
+    // =====================================================================
+    // Telemetry capsule (Home + InstanceHub)
+    // =====================================================================
+    /// Instance the visible capsule controls (the capsule sets it).
+    callback capsule-target(name: string);
+    in-out property <string> capsule-instance;
+    in-out property <bool> capsule-running;
+    /// AOT chip: kind "" (hidden) | "ok" | "warn" | "off"; key = i18n key.
+    in-out property <string> aot-chip-kind;
+    in-out property <string> aot-chip-key;
+    in-out property <string> aot-chip-title;
+    /// Last log line of the capsule instance (<= 70 chars) and the launch timing line.
+    in-out property <string> capsule-tail;
+    in-out property <string> capsule-timing;
+    /// Instance currently being launched / stopped from a capsule ("" = none).
+    in-out property <string> launching;
+    in-out property <string> stopping;
+    callback launch(name: string);
+    callback stop(name: string);
+    callback select-account(username: string);
+
+    // =====================================================================
+    // Dry-run inspector
+    // =====================================================================
+    in-out property <bool> dryrun-open;
+    in-out property <string> dryrun-instance;
+    in-out property <bool> dryrun-loading;
+    in-out property <string> dryrun-error;
+    in-out property <bool> dryrun-has-result;
+    in-out property <string> dryrun-command;
+    in-out property <string> dryrun-classpath-joined;
+    in-out property <[string]> dryrun-argv;
+    in-out property <[string]> dryrun-classpath;
+    in-out property <[string]> dryrun-missing;
+    in-out property <[string]> dryrun-warnings;
+    in-out property <string> dryrun-java;
+    in-out property <string> dryrun-natives;
+    in-out property <bool> dryrun-assets-ok;
+    callback dryrun(name: string);
+
+    // =====================================================================
+    // Instance wizard (Shell.wizard-open)
+    // =====================================================================
+    in-out property <[HiVersion]> wiz-versions;
+    in-out property <string> wiz-latest-release;
+    in-out property <string> wiz-latest-snapshot;
+    in-out property <int> wiz-default-memory: 2048;
+    in-out property <[SelectOption]> wiz-sources;
+    in-out property <bool> wiz-sources-loaded;
+    in-out property <string> wiz-game-dir;
+    /// Auto-assigned accent hue of the new instance (random, set on open).
+    in-out property <int> wiz-hue;
+    in-out property <bool> wiz-picking;
+    in-out property <bool> wiz-creating;
+    in-out property <string> wiz-error;
+    /// Bumped by Rust when the manifest arrives (the wizard auto-selects the latest release).
+    in-out property <int> wiz-manifest-serial;
+    callback wiz-opened();
+    /// filter: "release" | "snapshot" | "all"
+    callback wiz-filter(query: string, filter: string);
+    callback wiz-load-sources();
+    callback wiz-pick-dir();
+    /// memory 0 = automatic; source "" = no import.
+    callback wiz-create(name: string, version: string, loader: string, memory: int, game-dir: string, hue: int, source: string);
+
+    // =====================================================================
+    // PiP launch-log drawer
+    // =====================================================================
+    in-out property <[HiLogTab]> log-tabs;
+    in-out property <string> log-active-key;
+    in-out property <[HiLogLine]> log-lines;
+    in-out property <bool> log-running;
+    in-out property <string> log-instance;
+    in-out property <bool> log-has-buffer;
+    in-out property <bool> log-autoscroll: true;
+    in-out property <bool> log-stopping;
+    in-out property <bool> log-copied;
+    /// Bumped on every append to the visible buffer (views scroll to the bottom).
+    in-out property <int> log-serial;
+    callback log-select(key: string);
+    callback log-clear();
+    callback log-copy();
+    callback log-stop();
+    callback log-collapsed();
+    callback log-pin(pinned: bool);
+
+    // =====================================================================
+    // InstanceHub (#/instances/:name)
+    // =====================================================================
+    in-out property <bool> hub-loading: true;
+    in-out property <string> hub-error;
+    in-out property <bool> hub-loaded;
+    in-out property <InstanceRow> hub;
+    in-out property <bool> hub-running;
+    /// 0 config, 1 servers, 2 mods, 3 danger
+    in-out property <int> hub-tab;
+    callback hub-open-folder();
+
+    // rename
+    in-out property <bool> rename-open;
+    in-out property <string> rename-draft;
+    in-out property <bool> rename-saving;
+    callback rename-save(name: string);
+
+    // version / platform change
+    in-out property <[SelectOption]> vc-versions;
+    in-out property <int> vc-version-index;
+    in-out property <int> vc-loader-index;
+    in-out property <bool> vc-show-all;
+    in-out property <bool> vc-changed;
+    in-out property <bool> vc-has-plan;
+    in-out property <string> vc-plan-from;
+    in-out property <string> vc-plan-to;
+    in-out property <string> vc-warn-downgrade;
+    in-out property <string> vc-warn-menu;
+    in-out property <string> vc-summary;
+    in-out property <[HiVcMod]> vc-mods;
+    in-out property <string> vc-error;
+    in-out property <bool> vc-planning;
+    in-out property <bool> vc-applying;
+    callback vc-select(version-index: int, loader-index: int);
+    callback vc-toggle-all(show: bool);
+    callback vc-plan();
+    callback vc-apply();
+    callback vc-cancel();
+
+    // memory
+    in-out property <int> hub-memory: 3072;
+    in-out property <bool> saving-config;
+    callback save-memory(mb: int);
+    callback auto-memory();
+
+    // game dir
+    in-out property <string> game-dir;
+    in-out property <bool> saving-game-dir;
+    in-out property <bool> picking-game-dir;
+    callback pick-game-dir();
+    callback save-game-dir(dir: string);
+    callback clear-game-dir();
+
+    // capture tools
+    in-out property <bool> capture-supported;
+    in-out property <bool> capture-tools;
+    in-out property <bool> saving-capture;
+    callback toggle-capture();
+
+    // JVM
+    in-out property <string> jvm-source: "Bundled";
+    in-out property <string> jvm-version: "—";
+    in-out property <string> jvm-path;
+    in-out property <string> jdk-override;
+    callback save-jdk(path: string);
+
+    // AOT
+    in-out property <bool> aot-cache-exists;
+    in-out property <string> aot-size;
+    in-out property <bool> aot-proof-ok;
+    in-out property <bool> aot-auto-train;
+    in-out property <bool> training-aot;
+    in-out property <bool> train-progress-visible;
+    in-out property <float> train-done;
+    in-out property <float> train-total: 100;
+    callback toggle-auto-train();
+    callback train-aot();
+
+    // appearance
+    in-out property <int> hue-value: 160;
+    in-out property <bool> hue-dirty;
+    in-out property <bool> saving-hue;
+    callback save-hue(hue: int);
+    in-out property <bool> uploading-icon;
+    in-out property <string> icon-error;
+    callback upload-icon();
+    callback remove-icon();
+    in-out property <string> tagline;
+    in-out property <string> saved-tagline;
+    in-out property <bool> saving-tagline;
+    callback save-tagline(text: string);
+
+    // background packs
+    in-out property <[HiBgPack]> bg-packs;
+    in-out property <string> bg-selected;
+    in-out property <bool> bg-loading;
+    in-out property <bool> bg-importing;
+    in-out property <string> bg-name;
+    in-out property <string> bg-error;
+    in-out property <string> bg-confirm-delete;
+    callback bg-select(id: string);
+    callback bg-delete(id: string, name: string);
+    /// kind: "image" | "frames" | "folder"
+    callback bg-import(kind: string, name: string);
+
+    // options import
+    in-out property <[SelectOption]> options-sources;
+    in-out property <int> options-source-index: -1;
+    in-out property <int> options-count;
+    in-out property <[HiOption]> options-rows;
+    in-out property <string> options-note;
+    in-out property <bool> importing-options;
+    callback import-options(source: string);
+
+    // client suite
+    in-out property <bool> client-visible;
+    in-out property <bool> suite-enabled: true;
+    in-out property <[HiFeature]> features;
+    in-out property <string> toggling-feature;
+    callback toggle-feature(id: string, next: bool);
+
+    // servers tab
+    in-out property <[HiServer]> servers;
+    in-out property <bool> editing-servers;
+    in-out property <[HiServerDraft]> server-draft;
+    in-out property <string> server-err;
+    in-out property <bool> saving-servers;
+    callback edit-servers();
+    callback add-server-row();
+    callback remove-server-row(index: int);
+    callback set-server-row(index: int, name: string, ip: string);
+    callback save-servers();
+
+    // mods tab
+    in-out property <bool> preset-supported;
+    in-out property <bool> installing-preset;
+    in-out property <bool> install-progress-visible;
+    in-out property <float> install-done;
+    in-out property <float> install-total;
+    in-out property <string> install-file;
+    callback install-preset();
+    callback open-mods-folder();
+
+    // danger
+    in-out property <bool> deleting;
+    callback delete-instance();
+
+    // console (latest buffer of this instance)
+    in-out property <[HiLogLine]> hub-log-lines;
+    in-out property <bool> hub-log-running;
+    in-out property <int> hub-log-serial;
+    callback hub-clear-log();
+}

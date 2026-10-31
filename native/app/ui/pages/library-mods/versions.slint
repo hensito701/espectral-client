@@ -1,0 +1,518 @@
+// OWNER: library-mods agent. Port of src/ui/src/pages/VersionArmory.svelte.
+// Keep the exported component name and the empty interface used by app.slint.
+//
+// The manifest is filtered in Rust (library_mods/versions.rs); this page shows
+// a growing slice (100 rows, +100 when the viewport nears the bottom, like the
+// Svelte IntersectionObserver sentinel). The controls card is sticky: it is
+// drawn once, positioned over a same-height slot in the flow and pinned 8px
+// below the top chrome once the slot scrolls past it (CSS position: sticky).
+
+import { Theme, T, AppState, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, Icon, Icons, Spinner, Emoji, TextField } from "../../widgets.slint";
+import { LibraryBridge, VersionRow } from "api.slint";
+import { LibScroll, Chip, VText, CenterText } from "parts.slint";
+
+component QuickStat inherits Rectangle {
+    in property <string> label;
+    in property <string> version;
+    in property <string> tag;
+    in property <BadgeVariant> tag-variant;
+    border-radius: Theme.radius-lg;
+    background: Theme.card-bg;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-color: Theme.shadow-sm-color;
+    drop-shadow-blur: Theme.shadow-sm-blur;
+    drop-shadow-offset-y: Theme.shadow-sm-y;
+    min-width: col.preferred-width;
+    height: col.preferred-height;
+    col := VerticalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        spacing: Theme.space-1;
+        Text {
+            text: root.label.to-uppercase();
+            color: Theme.muted;
+            font-size: 11px;
+            letter-spacing: 0.44px;
+        }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            VText {
+                text: root.version;
+                font-family: Theme.font-mono;
+                font-size: Theme.text-base;
+                font-weight: 700;
+            }
+            VerticalLayout {
+                alignment: center;
+                Badge { text: root.tag; variant: root.tag-variant; }
+            }
+        }
+    }
+}
+
+component Controls inherits GlassCard {
+    in property <bool> stuck;
+    elevation: Elevation.md;
+    fill: stuck ? Theme.surface-solid : Theme.card-bg;
+    spacing: 0px;
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        spacing: Theme.space-3;
+        search := Rectangle {
+            min-width: 260px;
+            horizontal-stretch: 1;
+            height: 40px;
+            border-radius: Theme.radius-md;
+            background: Theme.surface-solid;
+            border-width: 1px;
+            border-color: input.has-focus ? Theme.accent : Theme.border;
+            if input.has-focus: Rectangle {
+                x: -2px;
+                y: -2px;
+                width: parent.width + 4px;
+                height: parent.height + 4px;
+                border-radius: parent.border-radius + 2px;
+                border-width: 2px;
+                border-color: Theme.accent.with-alpha(0.25);
+            }
+            TouchArea {
+                mouse-cursor: MouseCursor.text;
+                clicked => { input.focus(); }
+            }
+            Icon {
+                x: 12px;
+                data: Icons.search;
+                size: 16px;
+                color: Theme.muted;
+            }
+            input := TextInput {
+                x: 38px;
+                width: parent.width - 38px - 36px;
+                height: self.preferred-height;
+                y: (parent.height - self.height) / 2;
+                text <=> LibraryBridge.v-query;
+                font-size: Theme.text-sm;
+                color: Theme.text;
+                single-line: true;
+                selection-background-color: Theme.accent.with-alpha(0.3);
+                edited => { LibraryBridge.v-set-query(self.text); }
+            }
+            if LibraryBridge.v-query == "": Text {
+                x: 38px;
+                width: parent.width - 38px - 36px;
+                height: parent.height;
+                text: T.tr("versions.searchPlaceholder");
+                color: Theme.muted;
+                font-size: Theme.text-sm;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if LibraryBridge.v-query != "": Rectangle {
+                x: parent.width - 32px;
+                width: 22px;
+                height: 22px;
+                border-radius: Theme.radius-xs;
+                Text {
+                    text: "✕";
+                    color: clear-touch.has-hover ? Theme.text : Theme.muted;
+                    font-size: 14px;
+                }
+                clear-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        LibraryBridge.v-query = "";
+                        LibraryBridge.v-set-query("");
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: end;
+            VerticalLayout {
+                alignment: center;
+                Chip {
+                    text: T.tr("versions.filterAll");
+                    active: LibraryBridge.v-filter == 0;
+                    clicked => { LibraryBridge.v-set-filter(0); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Chip {
+                    text: T.tr("versions.filterRelease");
+                    active: LibraryBridge.v-filter == 1;
+                    clicked => { LibraryBridge.v-set-filter(1); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Chip {
+                    text: T.tr("versions.filterSnapshot");
+                    active: LibraryBridge.v-filter == 2;
+                    clicked => { LibraryBridge.v-set-filter(2); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Chip {
+                    text: T.tr("versions.filterBeta");
+                    active: LibraryBridge.v-filter == 3;
+                    clicked => { LibraryBridge.v-set-filter(3); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Chip {
+                    text: T.tr("versions.filterAlpha");
+                    active: LibraryBridge.v-filter == 4;
+                    clicked => { LibraryBridge.v-set-filter(4); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Chip {
+                    text: T.tr("versions.filterInstalled") + " (" + LibraryBridge.v-installed-versions + ")";
+                    active: LibraryBridge.v-filter == 5;
+                    active-bg: rgba(34, 197, 94, 0.2);
+                    active-border: Theme.accent-green;
+                    active-fg: Theme.accent-green;
+                    clicked => { LibraryBridge.v-set-filter(5); }
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-bottom: Theme.space-2;
+        Text {
+            min-height: 22px;
+            vertical-alignment: center;
+            text: T.tr2("versions.showingCount", "shown", LibraryBridge.v-rows.length, "total", LibraryBridge.v-filtered);
+            color: Theme.muted;
+            font-size: 11px;
+            font-family: Theme.font-mono;
+        }
+    }
+}
+
+component VersionRowCard inherits GlassCard {
+    in property <VersionRow> entry;
+    elevation: Elevation.sm;
+    interactive: true;
+    featured: entry.latest-release || entry.installed-in != "";
+    spacing: 0px;
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        spacing: Theme.space-3;
+        // identity
+        HorizontalLayout {
+            min-width: 240px;
+            alignment: start;
+            spacing: Theme.space-3;
+            VerticalLayout {
+                alignment: center;
+                id-text := Text {
+                    text: root.entry.id;
+                    font-family: Theme.font-mono;
+                    font-size: Theme.text-base;
+                    font-weight: 700;
+                    letter-spacing: -0.32px;
+                    color: id-touch.has-hover ? Theme.accent : Theme.text;
+                    id-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { LibraryBridge.v-copy(root.entry.id); }
+                    }
+                    if id-touch.has-hover: Rectangle {
+                        y: parent.height - 3px;
+                        height: 1px;
+                        background: Theme.accent;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                if root.entry.latest-release: VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("versions.latestRelease"); variant: BadgeVariant.accent; dot: true; }
+                }
+                if root.entry.latest-snapshot: VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("versions.latestSnapshot"); variant: BadgeVariant.purple; dot: true; }
+                }
+                if root.entry.kind == "release": VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("versions.typeRelease"); variant: BadgeVariant.neutral; }
+                }
+                if root.entry.kind == "snapshot": VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("versions.typeSnapshot"); variant: BadgeVariant.purple; }
+                }
+                if root.entry.kind == "old_beta": VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("versions.typeBeta"); variant: BadgeVariant.warn; }
+                }
+                if root.entry.kind == "old_alpha": VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("versions.typeAlpha"); variant: BadgeVariant.gold; }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        border-radius: Theme.radius-xs;
+                        background: Theme.surface-up-solid;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        min-width: jdk.preferred-width + 12px;
+                        height: jdk.preferred-height + 4px;
+                        jdk := Text {
+                            text: "JDK " + root.entry.java;
+                            font-family: Theme.font-pixel;
+                            font-size: 9px;
+                            letter-spacing: 0.18px;
+                            color: Theme.accent-gold;
+                        }
+                    }
+                }
+            }
+        }
+        // cross reference
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            padding-left: Theme.space-2;
+            padding-right: Theme.space-2;
+            alignment: start;
+            if root.entry.installed-in != "": VerticalLayout {
+                alignment: center;
+                Badge {
+                    text: T.tr1("versions.installedIn", "instances", root.entry.installed-in);
+                    variant: BadgeVariant.ok;
+                    dot: true;
+                }
+            }
+        }
+        // date + action
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            VText {
+                text: root.entry.date;
+                color: Theme.muted;
+                font-size: Theme.text-xs;
+                font-family: Theme.font-mono;
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    icon: Icons.plus;
+                    text: T.tr("versions.createInstanceAction");
+                    clicked => { LibraryBridge.v-create(root.entry.id); }
+                }
+            }
+        }
+    }
+}
+
+component LoadingBlock inherits VerticalLayout {
+    padding-top: Theme.space-12;
+    padding-bottom: Theme.space-12;
+    spacing: Theme.space-3;
+    alignment: center;
+    HorizontalLayout {
+        alignment: center;
+        Spinner { size: 36px; tint: Theme.accent; }
+    }
+    CenterText { text: T.tr("versions.loading"); color: Theme.muted-strong; }
+}
+
+component ErrorBlock inherits GlassCard {
+    elevation: Elevation.lg;
+    featured: true;
+    HorizontalLayout {
+        spacing: Theme.space-4;
+        VerticalLayout {
+            alignment: center;
+            Emoji { char: "⚠️"; size: 28px; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Text {
+                text: T.tr1("versions.error", "error", LibraryBridge.v-error);
+                color: Theme.accent-red;
+                font-size: Theme.text-sm;
+                font-weight: 700;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Btn {
+                text: T.tr("versions.retry");
+                clicked => { LibraryBridge.v-retry(); }
+            }
+        }
+    }
+}
+
+component EmptyBlock inherits GlassCard {
+    elevation: Elevation.md;
+    HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            padding-top: Theme.space-8 - Theme.space-5;
+            padding-bottom: Theme.space-8 - Theme.space-5;
+            max-width: 420px;
+            spacing: Theme.space-3;
+            HorizontalLayout {
+                alignment: center;
+                Emoji { char: "🔍"; size: 32px; opacity: 0.6; }
+            }
+            CenterText {
+                text: LibraryBridge.v-query != "" ? T.tr1("versions.noResults", "query", LibraryBridge.v-query) : T.tr("versions.none");
+                color: Theme.text;
+                font-size: Theme.text-base;
+                font-weight: 700;
+            }
+            CenterText {
+                text: T.tr("versions.noResultsDesc");
+                font-size: Theme.text-xs;
+            }
+            if LibraryBridge.v-query != "" || LibraryBridge.v-filter != 0: HorizontalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    text: T.tr("versions.filterAll");
+                    clicked => {
+                        LibraryBridge.v-query = "";
+                        LibraryBridge.v-set-query("");
+                        LibraryBridge.v-set-filter(0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Matrix inherits VerticalLayout {
+    spacing: Theme.space-2;
+    for row in LibraryBridge.v-rows: VersionRowCard { entry: row; }
+    HorizontalLayout {
+        padding-top: Theme.space-4;
+        padding-bottom: Theme.space-4;
+        alignment: center;
+        Text {
+            text: LibraryBridge.v-has-more
+                ? T.tr1("versions.loadMore", "remaining", LibraryBridge.v-filtered - LibraryBridge.v-rows.length)
+                : T.tr("versions.allLoaded");
+            color: Theme.muted;
+            font-size: Theme.text-xs;
+            font-family: Theme.font-mono;
+        }
+    }
+}
+
+export component VersionsPage inherits Rectangle {
+    property <int> instance-count: AppState.instances.length;
+    changed instance-count => { LibraryBridge.instances-changed(); }
+    // the page may be instantiated after the list arrived (route entered first)
+    init => { LibraryBridge.instances-changed(); }
+    property <bool> want-more: scroll.near-bottom && LibraryBridge.v-has-more;
+    changed want-more => {
+        if self.want-more { LibraryBridge.v-load-more(); }
+    }
+
+    scroll := LibScroll {
+        spacing: Theme.space-5;
+        // hero
+        HorizontalLayout {
+            padding-top: Theme.space-2;
+            padding-bottom: Theme.space-2;
+            spacing: Theme.space-4;
+            VerticalLayout {
+                max-width: 680px;
+                horizontal-stretch: 1;
+                spacing: Theme.space-2;
+                HorizontalLayout {
+                    spacing: Theme.space-3;
+                    alignment: start;
+                    VerticalLayout {
+                        alignment: center;
+                        Badge { text: T.tr("versions.badge"); variant: BadgeVariant.accent; dot: true; }
+                    }
+                    VText {
+                        text: T.tr1("versions.totalVersions", "count", LibraryBridge.v-total);
+                        color: Theme.muted;
+                        font-size: Theme.text-xs;
+                        font-family: Theme.font-mono;
+                    }
+                }
+                GradientText {
+                    text: T.tr("versions.title");
+                    gradient: GradientKind.emerald-gold;
+                    font-size: Theme.text-3xl;
+                    font-weight: 700;
+                    letter-spacing: -1.08px;
+                }
+                Text {
+                    text: T.tr("versions.subtitle");
+                    color: Theme.muted-strong;
+                    font-size: Theme.text-sm;
+                    wrap: word-wrap;
+                }
+            }
+            Rectangle { horizontal-stretch: 0.0001; }
+            HorizontalLayout {
+                spacing: Theme.space-3;
+                alignment: end;
+                if LibraryBridge.v-latest-release != "": VerticalLayout {
+                    alignment: start;
+                    QuickStat {
+                        label: T.tr("versions.latestRelease");
+                        version: LibraryBridge.v-latest-release;
+                        tag: "Stable";
+                        tag-variant: BadgeVariant.ok;
+                    }
+                }
+                if LibraryBridge.v-latest-snapshot != "": VerticalLayout {
+                    alignment: start;
+                    QuickStat {
+                        label: T.tr("versions.latestSnapshot");
+                        version: LibraryBridge.v-latest-snapshot;
+                        tag: "Snap";
+                        tag-variant: BadgeVariant.purple;
+                    }
+                }
+            }
+        }
+
+        // slot for the sticky controls card (drawn below, over the slot)
+        slot := Rectangle { height: controls.preferred-height; }
+
+        if LibraryBridge.v-loading && !LibraryBridge.v-has-manifest: LoadingBlock { }
+        if !LibraryBridge.v-loading && LibraryBridge.v-error != "" && !LibraryBridge.v-has-manifest: ErrorBlock { }
+        if LibraryBridge.v-has-manifest && LibraryBridge.v-filtered == 0: EmptyBlock { }
+        if LibraryBridge.v-has-manifest && LibraryBridge.v-filtered > 0: Matrix { }
+    }
+
+    property <length> slot-y: slot.absolute-position.y - root.absolute-position.y;
+    controls := Controls {
+        x: slot.absolute-position.x - root.absolute-position.x;
+        y: max(Theme.space-2, root.slot-y);
+        width: slot.width;
+        height: self.preferred-height;
+        stuck: root.slot-y < Theme.space-2;
+    }
+}
