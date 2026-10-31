@@ -1,0 +1,11 @@
+// OWNER: home-instances agent. The group's single bridge global — the only
+// Slint global of this group that Rust can see (app.slint re-exports it by
+// name). Add every property / callback / struct the group needs HERE.
+// Rust side: native/app/src/pages/home_instances.rs.
+
+export global HomeBridge {
+    /// Example: set by Rust on route enter. Replace freely.
+    in property <bool> loading;
+    /// Example callback wired in home_instances.rs. Replace freely.
+    callback launch(instance: string);
+}
