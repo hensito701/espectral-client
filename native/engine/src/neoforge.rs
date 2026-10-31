@@ -198,6 +198,17 @@ async fn installer_java(engine: &Engine) -> EngineResult<PathBuf> {
 /// into `<data>/libraries`. NEOFORGE_INSTALL_FAILED on a non-zero exit.
 async fn run_installer_for(engine: &Engine, v: &str, profile: &Value) -> EngineResult<()> {
     let mc = profile.get("inheritsFrom").and_then(Value::as_str).unwrap_or("").to_string();
+    let installer = engine.paths().neoforge_installer(v);
+    if !installer.exists() {
+        engine.http().download_file(&installer_url(engine, v), &installer, &Default::default()).await?;
+    }
+    run_official_installer(engine, &installer, &mc).await
+}
+
+/// `java -jar <installer> --installClient <data>` for the processor-based
+/// installers NeoForge and modern Forge (1.13+) share.
+pub(crate) async fn run_official_installer(engine: &Engine, installer: &Path, mc: &str) -> EngineResult<()> {
+    let mc = mc.to_string();
     // The installer wants versions/<mc>/<mc>.json (the launcher caches it flat
     // at versions/<mc>.json) and a launcher_profiles.json stub at the root.
     let nested = engine.paths().version_json(&mc);
@@ -219,10 +230,6 @@ async fn run_installer_for(engine: &Engine, v: &str, profile: &Value) -> EngineR
         tokio::fs::write(&profiles, serde_json::to_string(&stub)?).await?;
     }
 
-    let installer = engine.paths().neoforge_installer(v);
-    if !installer.exists() {
-        engine.http().download_file(&installer_url(engine, v), &installer, &Default::default()).await?;
-    }
     let java = installer_java(engine).await?;
     let mut cmd = crate::jvm::hidden_command(&java);
     cmd.arg("-jar")

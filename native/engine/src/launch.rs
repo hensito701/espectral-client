@@ -425,6 +425,7 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     put("clientid", "0".into());
     put("auth_xuid", "0".into());
     put("version_type", "release".into());
+    put("user_properties", "{}".into());
 
     let mut jvm: Vec<String> = memory_args(engine, Some(effective_mb)).to_vec();
     // --add-opens/--add-exports/--enable-native-access are Java 9+ (the
@@ -433,6 +434,9 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         jvm.extend(FIXED_JVM_ARGS.iter().map(|s| s.to_string()));
     }
     jvm.push(format!("-Djava.library.path={natives}"));
+    if let Some(a) = logging_config_arg(engine, &resolved.version.json) {
+        jvm.push(a);
+    }
     if java_major >= 21 {
         jvm.extend(boot_flags(engine, instance, Some(java_major)));
         jvm.extend(stack_flags(cfg!(windows)).iter().map(|s| s.to_string()));
@@ -462,7 +466,7 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
             let arch = crate::platform::node_arch();
             jvm.extend(expand_jvm_args(&loader.jvm_args, os, arch).iter().map(|a| substitute_placeholders(a, &subst)));
         }
-        if loader.kind.as_deref() == Some("neoforge") {
+        if matches!(loader.kind.as_deref(), Some("neoforge" | "forge")) {
             // bootstraplauncher skips module-izing files whose NAME STARTS WITH
             // an ignoreList entry: the vanilla client jar must be exempt too.
             if let Some(il) = jvm.iter().position(|a| a.starts_with("-DignoreList=")) {
@@ -530,9 +534,30 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         join: join.clone(),
         window: window.clone(),
     });
+    // Pre-1.13 profiles have no `arguments.game` template, only a flat string.
+    let legacy_args = resolved
+        .version
+        .json
+        .get("minecraftArguments")
+        .and_then(Value::as_str)
+        .filter(|_| {
+            resolved.version.json.pointer("/arguments/game").and_then(Value::as_array).is_none_or(|a| a.is_empty())
+        })
+        .map(str::to_string);
     let prog: Vec<String> = match &resolved.loader {
         Some(l) if !l.game_args.is_empty() => {
             expand_game_args(&l.game_args, &features).iter().map(|a| substitute_placeholders(a, &subst)).collect()
+        }
+        _ if legacy_args.is_some() => {
+            // Pre-1.13 versions (and legacy Forge, whose profile string carries
+            // --tweakClass): the version's own `minecraftArguments` string.
+            let mut prog: Vec<String> = legacy_args
+                .unwrap_or_default()
+                .split_whitespace()
+                .map(|a| substitute_placeholders(a, &subst))
+                .collect();
+            prog.extend(legacy_fragment(fragment));
+            prog
         }
         _ => {
             let mut prog = vec![
@@ -567,6 +592,92 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     argv.push(main_class);
     argv.extend(prog);
     argv
+}
+
+/// Pre-1.20 clients have no quick play: a server join becomes the old
+/// `--server host --port N` pair; a singleplayer world join has no
+/// equivalent and is dropped. `--width/--height` exist since 1.6.
+fn legacy_fragment(fragment: Vec<String>) -> Vec<String> {
+    let mut out = Vec::with_capacity(fragment.len() + 2);
+    let mut it = fragment.into_iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--quickPlaySingleplayer" => {
+                it.next();
+            }
+            "--quickPlayMultiplayer" => {
+                let target = it.next().unwrap_or_default();
+                let (host, port) = match target.rsplit_once(':') {
+                    Some((h, p)) if p.parse::<u16>().is_ok() => (h.to_string(), p.to_string()),
+                    _ => (target, "25565".into()),
+                };
+                out.extend(["--server".into(), host, "--port".into(), port]);
+            }
+            _ => out.push(a),
+        }
+    }
+    out
+}
+
+/// Log4Shell mitigation for the log4j 2.0-beta9 versions (1.7–1.11.2, whose
+/// `logging.client` is `client-1.7.xml`). Mojang's file has the same filter
+/// but an `<XMLLayout/>` console, which would break the plain-text stdout
+/// the launcher parses ("Sound engine started", presence markers), so the
+/// console keeps the default pattern here.
+const LEGACY_LOG4J_ID: &str = "client-1.7.xml";
+const LEGACY_LOG4J_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="SysOut" target="SYSTEM_OUT">
+            <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg%n" />
+        </Console>
+        <RollingRandomAccessFile name="File" fileName="logs/latest.log" filePattern="logs/%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg%n" />
+            <Policies>
+                <TimeBasedTriggeringPolicy />
+                <OnStartupTriggeringPolicy />
+            </Policies>
+        </RollingRandomAccessFile>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <filters>
+                <MarkerFilter marker="NETWORK_PACKETS" onMatch="DENY" onMismatch="NEUTRAL" />
+                <RegexFilter regex="(?s).*\$\{[^}]*\}.*" onMatch="DENY" onMismatch="NEUTRAL"/>
+            </filters>
+            <AppenderRef ref="SysOut"/>
+            <AppenderRef ref="File"/>
+        </Root>
+    </Loggers>
+</Configuration>
+"#;
+
+fn legacy_log4j_path(engine: &Engine) -> PathBuf {
+    engine.paths().assets_dir().join("log_configs").join("espectral-client-1.7.xml")
+}
+
+fn uses_legacy_log4j(version_json: &Value) -> bool {
+    version_json.pointer("/logging/client/file/id").and_then(Value::as_str) == Some(LEGACY_LOG4J_ID)
+}
+
+/// Write the patched config (non-dry launches only).
+fn ensure_legacy_log4j(engine: &Engine, version_json: &Value) -> std::io::Result<()> {
+    if !uses_legacy_log4j(version_json) {
+        return Ok(());
+    }
+    let path = legacy_log4j_path(engine);
+    if std::fs::read_to_string(&path).is_ok_and(|s| s == LEGACY_LOG4J_XML) {
+        return Ok(());
+    }
+    if let Some(p) = path.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    std::fs::write(path, LEGACY_LOG4J_XML)
+}
+
+fn logging_config_arg(engine: &Engine, version_json: &Value) -> Option<String> {
+    let path = legacy_log4j_path(engine);
+    (uses_legacy_log4j(version_json) && path.is_file()).then(|| format!("-Dlog4j.configurationFile={}", lossy(&path)))
 }
 
 fn redact_preview(argv: &[String], access_token: Option<&str>) -> Vec<String> {
@@ -848,6 +959,16 @@ pub async fn resolve_launch(
         neoforge_id = Some(nf_id);
         progress("[espectral] perfil NeoForge cargado");
     }
+    let mut forge_id: Option<String> = None;
+    if instance.loader == Loader::Forge {
+        let build = instance.loader_version.clone().filter(|s| !s.is_empty()).ok_or_else(|| {
+            EngineError::api(400, "LOADER_VERSION_REQUIRED", "loader_version es obligatorio para Forge")
+        })?;
+        let fj = crate::forge::ensure_forge_loader(engine, &instance.version, &build).await?;
+        version_json = crate::resolver::resolve_version_chain(engine, fj).await?;
+        forge_id = Some(crate::forge::forge_version_id(&instance.version, &build));
+        progress("[espectral] perfil Forge cargado");
+    }
     let asset_index_id = version_json.pointer("/assetIndex/id").and_then(Value::as_str).map(str::to_string);
     let version_main =
         version_json.get("mainClass").and_then(Value::as_str).unwrap_or("net.minecraft.client.main.Main").to_string();
@@ -938,6 +1059,9 @@ pub async fn resolve_launch(
             }
         }
 
+        if let Err(e) = ensure_legacy_log4j(engine, &version_json) {
+            warnings.push(format!("legacy log4j config write failed: {e}"));
+        }
         let _ = crate::mods::ensure_branding_seeded(engine, instance).await;
         phase("branding");
         apply_launch_preferences(engine, instance, Some(&game_dir));
@@ -1001,13 +1125,16 @@ pub async fn resolve_launch(
             jvm_args.push(Value::String(format!("-Dfabric.modsFolder={}", lossy(&mods))));
         }
         Some(LoaderLaunch { main_class: f.main_class.clone(), jvm_args, game_args: vec![], kind: None })
-    } else if neoforge_id.is_some() {
+    } else if neoforge_id.is_some() || forge_id.is_some() {
+        // NeoForge and modern Forge: the merged profile's argument templates.
+        // Legacy Forge has none (empty arrays): build_argv then expands its
+        // `minecraftArguments` string, which carries `--tweakClass`.
         let arr = |p: &str| version_json.pointer(p).and_then(Value::as_array).cloned().unwrap_or_default();
         Some(LoaderLaunch {
             main_class: version_main.clone(),
             jvm_args: arr("/arguments/jvm"),
             game_args: arr("/arguments/game"),
-            kind: Some("neoforge".into()),
+            kind: Some(if neoforge_id.is_some() { "neoforge" } else { "forge" }.into()),
         })
     } else {
         None
@@ -1034,7 +1161,7 @@ pub async fn resolve_launch(
 
     Ok(ResolvedLaunch {
         version: ResolvedVersionRef {
-            id: neoforge_id.unwrap_or_else(|| instance.version.clone()),
+            id: neoforge_id.or(forge_id).unwrap_or_else(|| instance.version.clone()),
             main_class: version_main,
             asset_index_id,
             json: version_json,
