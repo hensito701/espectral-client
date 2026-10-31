@@ -144,37 +144,42 @@ component HeroBtn inherits Rectangle {
 component MotdTicker inherits HorizontalLayout {
     spacing: Theme.space-3;
     alignment: center;
-    // flat red sticker chip (no glow): white sticker dot, then the pixel label
-    Rectangle {
-        height: 24px;
-        width: live-row.preferred-width;
+    // flat red sticker chip (no glow): white sticker dot, then the pixel label.
+    // Wrapped in a VerticalLayout: a fixed-height child of a HorizontalLayout
+    // sits at the top of the row, not on the text's centre line.
+    VerticalLayout {
+        alignment: center;
         horizontal-stretch: 0;
-        border-radius: Theme.radius-xs;
-        background: #e5484d;
-        border-width: 2px;
-        border-color: #07021a;
-        // the row hugs its content (dot + label) and is centred in the chip
-        live-row := HorizontalLayout {
-            x: 0;
-            y: (parent.height - self.height) / 2;
-            padding-left: 8px;
-            padding-right: 8px;
-            spacing: 6px;
-            alignment: center;
-            VerticalLayout {
+        Rectangle {
+            height: 24px;
+            width: live-row.preferred-width;
+            border-radius: Theme.radius-xs;
+            background: #e5484d;
+            border-width: 2px;
+            border-color: #07021a;
+            // the row hugs its content (dot + label) and is centred in the chip
+            live-row := HorizontalLayout {
+                x: 0;
+                y: (parent.height - self.height) / 2;
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 6px;
                 alignment: center;
-                Rectangle {
-                    width: 6px;
-                    height: 6px;
-                    background: #ffffff;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 6px;
+                        height: 6px;
+                        background: #ffffff;
+                    }
                 }
-            }
-            live := Text {
-                text: T.tr("home.motdLive");
-                font-family: Theme.font-pixel;
-                font-size: 8px;
-                color: #ffffff;
-                vertical-alignment: center;
+                live := Text {
+                    text: T.tr("home.motdLive");
+                    font-family: Theme.font-pixel;
+                    font-size: 8px;
+                    color: #ffffff;
+                    vertical-alignment: center;
+                }
             }
         }
     }
