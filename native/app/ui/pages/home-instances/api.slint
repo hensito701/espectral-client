@@ -169,6 +169,9 @@ export global HomeBridge {
     callback wiz-pick-dir();
     /// memory 0 = automatic; source "" = no import.
     callback wiz-create(name: string, version: string, loader: string, memory: int, game-dir: string, hue: int, source: string);
+    /// Implemented in Rust (engine `instances::loader_offered`): whether the
+    /// wizard offers `loader` for Minecraft `version`.
+    pure callback wiz-loader-offered(version: string, loader: string) -> bool;
 
     // =====================================================================
     // PiP launch-log drawer

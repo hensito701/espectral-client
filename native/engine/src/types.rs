@@ -96,6 +96,7 @@ pub enum Loader {
     Vanilla,
     Fabric,
     Neoforge,
+    Forge,
 }
 
 impl Loader {
@@ -104,6 +105,7 @@ impl Loader {
             Loader::Vanilla => "vanilla",
             Loader::Fabric => "fabric",
             Loader::Neoforge => "neoforge",
+            Loader::Forge => "forge",
         }
     }
     pub fn parse(s: &str) -> Option<Loader> {
@@ -111,7 +113,19 @@ impl Loader {
             "vanilla" => Some(Loader::Vanilla),
             "fabric" => Some(Loader::Fabric),
             "neoforge" => Some(Loader::Neoforge),
+            "forge" => Some(Loader::Forge),
             _ => None,
+        }
+    }
+
+    /// Modrinth / CurseForge loader tag for this platform ("fabric", "forge",
+    /// "neoforge"). Vanilla has no tag: its browser falls back to Fabric, the
+    /// same way the catalogue did before loaders were pluggable.
+    pub fn content_loader(self) -> &'static str {
+        match self {
+            Loader::Fabric | Loader::Vanilla => "fabric",
+            Loader::Neoforge => "neoforge",
+            Loader::Forge => "forge",
         }
     }
 }

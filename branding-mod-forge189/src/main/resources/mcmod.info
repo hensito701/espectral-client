@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "${modid}",
+    "name": "Espectral Menu",
+    "description": "Espectral Client in-game menu, HUD and launcher bridge for Minecraft 1.8.9 (Forge).",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "https://espectral.es",
+    "updateUrl": "",
+    "authorList": ["Espectral"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

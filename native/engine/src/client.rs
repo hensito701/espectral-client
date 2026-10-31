@@ -272,9 +272,16 @@ fn write_atomic(path: &Path, obj: &Map<String, Value>) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// `supported` = fabric loader AND version in the pinned QoL set.
-pub fn is_supported(instance: &InstanceMeta) -> bool {
-    instance.loader == crate::types::Loader::Fabric && crate::mods::qol_pins_by_version(&instance.version).is_some()
+/// `supported` = the bundled mod for this version + loader speaks the suite
+/// protocol: Fabric's pinned QoL builds, or any loader with a bundled Espectral
+/// jar (e.g. the Forge 1.8.9 menu). Vanilla has no mod, so no suite.
+pub fn is_supported(engine: &Engine, instance: &InstanceMeta) -> bool {
+    if instance.loader == crate::types::Loader::Vanilla {
+        return false;
+    }
+    let fabric = instance.loader == crate::types::Loader::Fabric
+        && crate::mods::qol_pins_by_version(&instance.version).is_some();
+    fabric || crate::mods::supports_branding(engine, &instance.version, instance.loader)
 }
 
 /// instances.getInstance (409 INVALID_NAME / 404 NOT_FOUND like the JS).
@@ -292,7 +299,7 @@ pub async fn get_client_info(engine: &Engine, instance_name: &str) -> EngineResu
     Ok(ClientInfo {
         config: load_client_config(engine, instance_name)?,
         registry: registry_entries(),
-        supported: is_supported(&instance),
+        supported: is_supported(engine, &instance),
         errors: None,
     })
 }
@@ -574,7 +581,7 @@ pub async fn patch_client_config_value(
     Ok(ClientInfo {
         config: load_client_config(engine, instance_name)?,
         registry: registry_entries(),
-        supported: is_supported(&instance),
+        supported: is_supported(engine, &instance),
         errors: Some(vec![]),
     })
 }

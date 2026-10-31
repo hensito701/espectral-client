@@ -71,6 +71,19 @@ the full path.
    "ComplementaryReimagined_r5.9.3.zip"}` → job id.
 6. `clip_status {job, wait_s: 20}` until `done` → `video_path`.
 
+## Joining a world or server
+
+`launch {join: {server: "host[:port]"}}` joins the server on every version: on
+1.20+ through Minecraft's own `--quickPlayMultiplayer`, older ones through the
+classic `--server`/`--port` pair.
+
+`join: {world: "<save folder>"}` opens a singleplayer world. Minecraft 1.20+
+has `--quickPlaySingleplayer` for it; older versions (including the Forge 1.8.9
+menu port) have no such argument, so the launcher hands the save folder to the
+branded mod through the JVM property `-Despectral.join.world=<save folder>`.
+The mod opens that world from `saves/` once the title menu is ready; an empty
+property (the default) does nothing.
+
 ## Limits
 
 - Text read back from the game (chat, signs, item names, screen labels) is

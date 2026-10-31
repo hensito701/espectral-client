@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.7",
+  "package": "es.spectral.menu.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "mixins.espectralmenu.refmap.json",
+  "client": [
+    "EntityRendererMixin",
+    "MinecraftMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

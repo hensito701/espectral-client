@@ -41,7 +41,7 @@ use crate::launch::{
     self, GameExit, LaunchAccountInput, LaunchCallbacks, ProcessHandle, ResolveLaunchOptions, SpawnedGame,
 };
 use crate::types::{
-    AotStatus, DryRunResult, InstanceMeta, LaunchHandle, LaunchReply, LaunchStat, Loader, LogChunk, ResolvedLaunch,
+    AotStatus, DryRunResult, InstanceMeta, LaunchHandle, LaunchReply, LaunchStat, LogChunk, ResolvedLaunch,
     VersionChangePlan, VersionChangeResult, VersionTarget,
 };
 
@@ -1148,8 +1148,11 @@ impl Engine {
     /// deferred while the game runs; else background train (train-* events).
     pub async fn train_instance(&self, name: &str) -> EngineResult<TrainReply> {
         let instance = launch::load_instance(self, name).await?;
-        if instance.loader == Loader::Neoforge {
-            return Err(EngineError::bad_request("AOT_UNAVAILABLE", "AOT unavailable on NeoForge (requires JDK 25)"));
+        if !crate::aot::loader_supports_aot(instance.loader) {
+            return Err(EngineError::bad_request(
+                "AOT_UNAVAILABLE",
+                format!("AOT unavailable on {} (needs a plain launcher classpath)", instance.loader),
+            ));
         }
         let key = crate::aot::instance_key(self, &instance).await?;
         if self.active_instances().contains(name) {

@@ -33,13 +33,15 @@ pub fn loader_str(l: Loader) -> &'static str {
         Loader::Vanilla => "vanilla",
         Loader::Fabric => "fabric",
         Loader::Neoforge => "neoforge",
+        Loader::Forge => "forge",
     }
 }
 
 pub fn parse_loader(s: &str) -> Loader {
     match s {
         "fabric" => Loader::Fabric,
-        "neoforge" | "forge" => Loader::Neoforge,
+        "neoforge" => Loader::Neoforge,
+        "forge" => Loader::Forge,
         _ => Loader::Vanilla,
     }
 }
@@ -138,6 +140,9 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
         if let Some(ui) = w.upgrade() {
             apply_version_filter(&ui, &q, &f);
         }
+    });
+    hb.on_wiz_loader_offered(|version, loader| {
+        espectral_engine::instances::loader_offered(parse_loader(&loader), &version)
     });
     let c = ctx.clone();
     hb.on_wiz_load_sources(move || {
