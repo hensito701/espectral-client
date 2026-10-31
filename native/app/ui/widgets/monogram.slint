@@ -31,12 +31,21 @@ export component MonogramTile inherits Rectangle {
     drop-shadow-offset-y: 2px;
     clip: true;
 
+    // The face fills the whole tile (edge to edge); the ink outline is drawn
+    // over it so the image never sits inside a ring.
     if root.has-avatar: Image {
         width: 100%;
         height: 100%;
         source: root.avatar;
         image-fit: cover;
         image-rendering: pixelated;
+    }
+    if root.has-avatar: Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: root.border-radius;
+        border-width: 2px;
+        border-color: Theme.brand-ink;
     }
     if !root.has-avatar: Text {
         text: Util.initial(root.name);

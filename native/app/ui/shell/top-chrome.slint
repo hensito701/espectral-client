@@ -8,7 +8,7 @@ import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
 import { Router, Page, AppState, Shell } from "../state.slint";
 import { Icon, Icons } from "../widgets/icon.slint";
-import { Kbd, Wordmark, Sticker } from "../widgets/badge.slint";
+import { Kbd, ClientLockup } from "../widgets/badge.slint";
 import { MonogramTile, MonogramShape } from "../widgets/monogram.slint";
 
 /// The header's fixed dark palette (does not follow the theme).
@@ -107,7 +107,7 @@ export component TopChrome inherits Rectangle {
         padding-bottom: 4px;
         spacing: 0px;
 
-        // ---- brand: logo + wordmark + CLIENT sticker ----
+        // ---- brand: logo + the site's "Espectral / Client vX.Y" lockup ----
         brand := Rectangle {
             horizontal-stretch: 0;
             min-width: brand-row.preferred-width;
@@ -119,20 +119,13 @@ export component TopChrome inherits Rectangle {
                 VerticalLayout {
                     alignment: center;
                     Image {
-                        width: 34px;
-                        height: 34px;
+                        width: 44px;
+                        height: 44px;
                         source: @image-url("../assets/logo_circle.png");
                         image-fit: contain;
                     }
                 }
-                VerticalLayout {
-                    alignment: center;
-                    Wordmark { font-size: 16px; }
-                }
-                VerticalLayout {
-                    alignment: center;
-                    Sticker { text: "CLIENT"; }
-                }
+                ClientLockup { font-size: 16px; version: AppState.version-label; }
             }
             brand-ta := TouchArea {
                 mouse-cursor: pointer;
@@ -334,7 +327,7 @@ export component TopChrome inherits Rectangle {
                                     hue: AppState.active-account.monogram-hue;
                                     avatar: AppState.active-account.avatar;
                                     has-avatar: AppState.active-account.has-avatar;
-                                    size: 26px;
+                                    size: 30px;
                                     shape: MonogramShape.circle;
                                 }
                                 if !AppState.has-active-account: Text {

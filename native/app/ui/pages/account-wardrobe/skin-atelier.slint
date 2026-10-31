@@ -216,7 +216,7 @@ component Controls inherits VerticalLayout {
                 size: BtnSize.sm;
                 emoji: "🎨";
                 text: T.tr("vault.skin.editorLink");
-                clicked => { AppState.open-url("https://minecraft.novaskin.me/"); }
+                clicked => { AccountBridge.open-novaskin(); }
             }
         }
         Hint { text: T.tr("vault.skin.editorHint"); }

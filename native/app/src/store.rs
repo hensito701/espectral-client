@@ -56,10 +56,20 @@ fn ctx() -> Option<Ctx> {
     CTX.with(|c| c.borrow().clone())
 }
 
+/// "1.7.0" -> "v1.7" (the header lockup badge, as on espectral.uhce.top/client).
+fn version_label(version: &str) -> String {
+    let mut parts = version.split('.');
+    match (parts.next(), parts.next()) {
+        (Some(major), Some(minor)) => format!("v{major}.{minor}"),
+        _ => format!("v{version}"),
+    }
+}
+
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
     CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
     let s = ui.global::<AppState>();
     s.set_version(SharedString::from(espectral_engine::VERSION));
+    s.set_version_label(SharedString::from(version_label(espectral_engine::VERSION)));
     s.set_data_dir(SharedString::from(ctx.engine().paths().data_dir().to_string_lossy().as_ref()));
     s.on_refresh_instances(refresh_instances);
     s.on_refresh_accounts(refresh_accounts);

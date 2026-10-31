@@ -10,9 +10,9 @@
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
-import { Session } from "../state.slint";
+import { Session, AppState } from "../state.slint";
 import { Icon, Icons } from "../widgets/icon.slint";
-import { Wordmark, Sticker, McTitle } from "../widgets/badge.slint";
+import { ClientLockup, McTitle, Sticker } from "../widgets/badge.slint";
 import { Btn, BtnVariant, Spinner } from "../widgets/btn.slint";
 
 component GateSuccess inherits VerticalLayout {
@@ -235,22 +235,24 @@ export component LoginGate inherits Rectangle {
 
                 VerticalLayout {
                     // poster header band: always the purple brand bar with the
-                    // gold wordmark + the tilted CLIENT sticker (as on the site)
+                    // logo + "Espectral / Client vX.Y" lockup (as on the site)
                     band := Rectangle {
                         background: Theme.topbar-bg;
-                        VerticalLayout {
+                        HorizontalLayout {
                             padding-top: Theme.space-6;
-                            padding-bottom: Theme.space-4;
-                            spacing: Theme.space-3;
+                            padding-bottom: Theme.space-6;
+                            spacing: Theme.space-4;
                             alignment: center;
-                            HorizontalLayout {
+                            VerticalLayout {
                                 alignment: center;
-                                Wordmark { font-size: 40px; }
+                                Image {
+                                    width: 88px;
+                                    height: 88px;
+                                    source: @image-url("../assets/logo_circle.png");
+                                    image-fit: contain;
+                                }
                             }
-                            HorizontalLayout {
-                                alignment: center;
-                                Sticker { text: "CLIENT"; tilt: -4deg; }
-                            }
+                            ClientLockup { font-size: 32px; version: AppState.version-label; }
                         }
                     }
                     // 4px gold rule under the header band
