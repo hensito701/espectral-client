@@ -171,26 +171,6 @@ export global HomeBridge {
     callback wiz-create(name: string, version: string, loader: string, memory: int, game-dir: string, hue: int, source: string);
 
     // =====================================================================
-    // Modrinth .mrpack import
-    // =====================================================================
-    in-out property <bool> mrpack-open;
-    in-out property <string> mrpack-path;
-    in-out property <int> mrpack-memory: 2048;
-    in-out property <bool> mrpack-memory-touched;
-    /// "idle" | "post" | "files" | "overrides" | "done" | "error"
-    in-out property <string> mrpack-phase: "idle";
-    in-out property <int> mrpack-done;
-    in-out property <int> mrpack-total;
-    in-out property <string> mrpack-error;
-    in-out property <string> mrpack-created;
-    in-out property <bool> mrpack-already;
-    in-out property <bool> mrpack-browsing;
-    in-out property <bool> mrpack-importing;
-    callback mrpack-opened();
-    callback mrpack-browse();
-    callback mrpack-start();
-
-    // =====================================================================
     // PiP launch-log drawer
     // =====================================================================
     in-out property <[HiLogTab]> log-tabs;

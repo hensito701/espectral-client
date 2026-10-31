@@ -32,12 +32,20 @@ export component TextField inherits Rectangle {
     // focus(): the component forwards focus to its TextInput
     forward-focus: input;
 
-    height: max(36px, input.preferred-height + 2 * Theme.space-2);
+    /// Minimum height (the field grows with the font). Only `height` is set
+    /// (no `min-height`): Slint rejects both on one element inside layouts.
+    in property <length> field-height: 36px;
+    /// Vertical padding around the text.
+    in property <length> pad-y: Theme.space-2;
+    in property <brush> fill: Theme.card-bg-soft;
+    in property <color> focus-color: Theme.border-focus;
+
+    height: max(root.field-height, input.preferred-height + 2 * root.pad-y);
     horizontal-stretch: 1;
     border-radius: Theme.radius-md;
-    background: Theme.card-bg-soft;
+    background: root.fill;
     border-width: 1px;
-    border-color: has-error ? Theme.accent-red : input.has-focus ? Theme.border-focus : touch.has-hover ? Theme.hover-border : Theme.border;
+    border-color: has-error ? Theme.accent-red : input.has-focus ? root.focus-color : touch.has-hover ? Theme.hover-border : Theme.border;
     opacity: enabled ? 1 : 0.5;
     animate border-color { duration: Theme.dur-fast; }
 

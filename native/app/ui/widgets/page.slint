@@ -27,7 +27,11 @@ export component PageScaffold inherits Rectangle {
     public function scroll-to-top() { scroll.scroll-to-top(); }
     // screenshot tool (--scroll)
     property <float> debug-scroll: Shell.debug-scroll;
-    changed debug-scroll => { scroll.content-y = -self.debug-scroll * 1px; }
+    // clamped to the content (a large --scroll = the bottom), and kept in sync
+    // while the content grows under it (engine data landing after the jump)
+    property <length> debug-max: max(0px, scroll.content-height - scroll.visible-height);
+    changed debug-scroll => { scroll.content-y = -min(self.debug-scroll * 1px, self.debug-max); }
+    changed debug-max => { if self.debug-scroll > 0 { scroll.content-y = -min(self.debug-scroll * 1px, self.debug-max); } }
 
     scroll := ScrollArea {
         width: root.width;

@@ -8,7 +8,10 @@ import { HomeBridge } from "api.slint";
 import { HorizonRail } from "horizon.slint";
 import { TelemetryCapsule } from "capsule.slint";
 import { InstanceWizardModal } from "wizard.slint";
-import { DryRunModal, MrpackModal } from "modals.slint";
+import { DryRunModal } from "modals.slint";
+// .mrpack import: the shared library-mods modal (drag & drop aware).
+import { MrpackModal } from "../library-mods/mrpack-modal.slint";
+import { LibraryBridge } from "../library-mods/api.slint";
 
 component AccountChip inherits Rectangle {
     property <bool> hovered: t.has-hover;
@@ -251,7 +254,7 @@ export component HomePage inherits Rectangle {
                         variant: BtnVariant.secondary;
                         emoji: "📦";
                         text: T.tr("home.importModpack");
-                        clicked => { HomeBridge.mrpack-open = true; }
+                        clicked => { LibraryBridge.mrpack-open = true; }
                     }
                     Btn {
                         variant: BtnVariant.ghost;

@@ -335,9 +335,8 @@ component SkinCard inherits Rectangle {
                     source: "library:" + root.entry.id;
                     variant: root.entry.variant;
                     autoplay: false;
-                }
-                TouchArea {
-                    mouse-cursor: pointer;
+                    // SkinView's own click (press + release without drag): the
+                    // viewer keeps drag-to-rotate and its spin button.
                     clicked => { AccountBridge.preview-entry(root.entry.id); }
                 }
             }

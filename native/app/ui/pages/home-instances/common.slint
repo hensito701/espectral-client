@@ -1,7 +1,7 @@
 // OWNER: home-instances agent. Small widgets shared by Home / InstanceHub /
 // the PiP drawer that the foundation catalogue does not cover.
 
-import { Theme, T, Icon, Icons, SelectOption, Spinner } from "../../widgets.slint";
+import { Theme, T, Icon, Icons, SelectOption, Spinner, TextField } from "../../widgets.slint";
 import { HiLogLine } from "api.slint";
 import { ListView } from "std-widgets.slint";
 
@@ -223,114 +223,7 @@ export component HiLoading inherits VerticalLayout {
     }
 }
 
-/// Copy of the foundation TextField without `min-height` (TextField sets both
-/// `min-height` and `height`, which Slint 1.18 rejects once it sits in a layout).
-export component HiTextField inherits Rectangle {
-    in-out property <string> text <=> input.text;
-    in property <string> placeholder;
-    in property <bool> enabled: true;
-    in property <bool> read-only: false;
-    in property <bool> password: false;
-    in property <bool> has-error: false;
-    /// Leading icon (Icons.*), e.g. Icons.search.
-    in property <string> icon;
-    in property <length> font-size: Theme.text-sm;
-    /// Monospace input (paths, JVM args).
-    in property <bool> mono: false;
-    /// Show an "x" button that clears the text.
-    in property <bool> clearable: false;
-    out property <bool> has-focus: input.has-focus;
-    callback edited(text: string);
-    callback accepted(text: string);
-    callback key-pressed(event: KeyEvent) -> EventResult;
-    public function select-all() { input.select-all(); }
-    // focus(): the component forwards focus to its TextInput
-    forward-focus: input;
-
-    in property <length> field-height: 36px;
-    height: max(root.field-height, input.preferred-height + 2 * Theme.space-2);
-    horizontal-stretch: 1;
-    border-radius: Theme.radius-md;
-    background: Theme.card-bg-soft;
-    border-width: 1px;
-    border-color: has-error ? Theme.accent-red : input.has-focus ? Theme.border-focus : touch.has-hover ? Theme.hover-border : Theme.border;
-    opacity: enabled ? 1 : 0.5;
-    animate border-color { duration: Theme.dur-fast; }
-
-    // focus ring (0 0 0 2px bg, 0 0 0 4px accent) approximated by an outer ring
-    if input.has-focus && !root.read-only: Rectangle {
-        x: -3px;
-        y: -3px;
-        width: parent.width + 6px;
-        height: parent.height + 6px;
-        border-radius: parent.border-radius + 3px;
-        border-width: 2px;
-        border-color: Theme.accent.with-alpha(0.55);
-    }
-
-    touch := TouchArea {
-        mouse-cursor: MouseCursor.text;
-        clicked => { input.focus(); }
-    }
-
-    HorizontalLayout {
-        padding-left: Theme.space-3;
-        padding-right: Theme.space-3;
-        spacing: Theme.space-2;
-        if root.icon != "": VerticalLayout {
-            alignment: center;
-            Icon { data: root.icon; size: 16px; color: Theme.muted; }
-        }
-        Rectangle {
-            horizontal-stretch: 1;
-            clip: true;
-            input := TextInput {
-                y: (parent.height - self.height) / 2;
-                height: self.preferred-height;
-                width: parent.width;
-                font-size: root.font-size;
-                font-family: root.mono ? Theme.font-mono : Theme.font-body;
-                color: Theme.text;
-                selection-background-color: Theme.accent.with-alpha(0.3);
-                selection-foreground-color: Theme.text;
-                enabled: root.enabled;
-                read-only: root.read-only;
-                input-type: root.password ? InputType.password : InputType.text;
-                single-line: true;
-                edited => { root.edited(self.text); }
-                accepted => { root.accepted(self.text); }
-                key-pressed(e) => { return root.key-pressed(e); }
-            }
-            if input.text == "": Text {
-                x: 0;
-                width: parent.width;
-                height: parent.height;
-                text: root.placeholder;
-                color: Theme.muted;
-                font-size: root.font-size;
-                vertical-alignment: center;
-                overflow: elide;
-            }
-        }
-        if root.clearable && input.text != "": VerticalLayout {
-            alignment: center;
-            Rectangle {
-                width: 18px;
-                height: 18px;
-                border-radius: Theme.radius-xs;
-                background: clear-touch.has-hover ? Theme.surface-up : transparent;
-                Icon { data: Icons.x; size: 12px; color: Theme.muted; }
-                clear-touch := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => {
-                        input.text = "";
-                        root.edited("");
-                        input.focus();
-                    }
-                }
-            }
-        }
-    }
-}
+/// The foundation TextField (kept as an alias for the existing call sites).
+export component HiTextField inherits TextField { }
 
 /// Multi-line text input (JVM args, notes).

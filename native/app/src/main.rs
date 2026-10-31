@@ -142,6 +142,11 @@ fn main() {
 
     router::navigate(&ui, "#/");
     ui.show().expect("failed to show the window");
+    if let Ok(routes) = std::env::var("ESPECTRAL_TOUR") {
+        let dwell = std::env::var("ESPECTRAL_TOUR_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(2000);
+        let routes: Vec<String> = routes.split(',').map(|r| r.trim().to_string()).filter(|r| !r.is_empty()).collect();
+        tour(ui.as_weak(), std::rc::Rc::new(routes), 0, Duration::from_millis(dwell));
+    }
     if let Err(e) = slint::run_event_loop() {
         tracing::error!("event loop: {e}");
     }
@@ -151,6 +156,20 @@ fn main() {
         let _ = tokio::time::timeout(Duration::from_secs(5), engine.shutdown()).await;
     });
     drop(guard);
+}
+
+/// Measurement hook (`ESPECTRAL_TOUR="#/servers,#/mods,..."`, `ESPECTRAL_TOUR_MS`):
+/// visit each route in turn on the real windowed app (memory / CPU probes,
+/// UI-PORTING.md "Measurements"). Stays on the last route.
+fn tour(weak: slint::Weak<AppWindow>, routes: std::rc::Rc<Vec<String>>, i: usize, dwell: Duration) {
+    if i >= routes.len() {
+        return;
+    }
+    slint::Timer::single_shot(dwell, move || {
+        let Some(ui) = weak.upgrade() else { return };
+        router::navigate(&ui, &routes[i]);
+        tour(weak, routes, i + 1, dwell);
+    });
 }
 
 fn import_mrpacks(ctx: &Ctx, paths: Vec<String>) {
