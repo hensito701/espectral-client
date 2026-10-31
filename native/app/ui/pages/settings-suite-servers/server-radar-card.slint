@@ -2,8 +2,132 @@
 // (+ PingWaveform). SHARED: home-instances' Home page imports this component
 // for its server strip, so keep the interface below stable (add properties,
 // never rename/remove). Data: AppState.servers (src/store.rs refresh_servers).
+//
+// Click copies the host (Svelte useCopy: "✓ Copiado" for 1.8 s, no toast) and
+// also emits clicked(); set `copy-on-click: false` to only get clicked().
+// The beacon orb pulse animation is omitted (idle = 0% CPU).
 
-import { Theme, ServerRow, GlassCard, Badge, BadgeVariant } from "../../widgets.slint";
+import { Theme, T, AppState, ServerRow, GlassCard, Elevation, Badge, BadgeVariant, MonogramTile, MonogramShape } from "../../widgets.slint";
+import { SettingsBridge, MotdLineRow, PingWaveGeometry } from "api.slint";
+
+/// components/PingWaveform.svelte: deterministic sparkline seeded by the ping,
+/// emerald / amber / red by latency, dashed flat line when offline. The path is
+/// a pure function of (ping, online, size): recomputed only when one changes.
+export component PingWaveform inherits HorizontalLayout {
+    /// Latency in ms; -1 = unknown.
+    in property <int> ping-ms: -1;
+    in property <bool> online: true;
+    in property <length> wave-width: 84px;
+    in property <length> wave-height: 24px;
+    in property <bool> show-label: false;
+
+    property <bool> unknown: !root.online || root.ping-ms < 0;
+    property <color> stroke: root.unknown || root.ping-ms > 140 ? Theme.accent-red : root.ping-ms <= 65 ? Theme.accent-green : Theme.accent-alt;
+    property <PingWaveGeometry> geo: SettingsBridge.ping-wave(root.ping-ms, root.online, root.wave-width / 1px, root.wave-height / 1px);
+
+    spacing: Theme.space-2;
+    Rectangle {
+        width: root.wave-width;
+        height: root.wave-height;
+        Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: root.wave-width / 1px;
+            viewbox-height: root.wave-height / 1px;
+            commands: root.geo.area;
+            fill: @linear-gradient(180deg, root.stroke.with-alpha(0.35) 0%, root.stroke.with-alpha(0) 100%);
+        }
+        Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: root.wave-width / 1px;
+            viewbox-height: root.wave-height / 1px;
+            commands: root.geo.line;
+            stroke: root.stroke;
+            stroke-width: 1.75px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+        }
+        Rectangle {
+            x: root.geo.dot-x * 1px - 2.5px;
+            y: root.geo.dot-y * 1px - 2.5px;
+            width: 5px;
+            height: 5px;
+            border-radius: 2.5px;
+            background: root.stroke;
+        }
+        if root.online: Rectangle {
+            x: root.geo.dot-x * 1px - 4.5px;
+            y: root.geo.dot-y * 1px - 4.5px;
+            width: 9px;
+            height: 9px;
+            border-radius: 4.5px;
+            border-width: 1px;
+            border-color: root.stroke.with-alpha(0.4);
+        }
+    }
+    if root.show-label: Text {
+        text: root.online && root.ping-ms >= 0 ? root.ping-ms + "ms" : root.online ? "--ms" : "OFF";
+        font-family: Theme.font-pixel;
+        font-size: 10px;
+        color: Theme.muted-strong;
+        vertical-alignment: center;
+    }
+}
+
+/// MOTD stage: § colored runs, one HorizontalLayout per line.
+component MotdStage inherits Rectangle {
+    in property <[MotdLineRow]> lines;
+    min-height: max(48px, inner.min-height);
+    preferred-height: max(48px, inner.preferred-height);
+    border-radius: Theme.radius-sm;
+    background: Theme.surface-solid;
+    border-width: 1px;
+    border-color: Theme.border;
+    clip: true;
+    inner := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        VerticalLayout {
+            padding-top: 8px;
+            padding-bottom: 8px;
+            alignment: center;
+            for l in root.lines: HorizontalLayout {
+                alignment: start;
+                for seg in l.segments: Text {
+                    text: seg.text;
+                    font-family: Theme.font-mono;
+                    font-size: 12px;
+                    font-weight: seg.bold ? 700 : 400;
+                    font-italic: seg.italic;
+                    color: seg.has-color ? seg.color : Theme.text;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> pixel;
+    in property <color> fg: Theme.muted;
+    in property <color> edge: Theme.border;
+    height: lbl.preferred-height + 2px;
+    width: min(lbl.preferred-width + 12px, 160px);
+    border-radius: Theme.radius-xs;
+    background: Theme.surface-up;
+    border-width: 1px;
+    border-color: root.edge;
+    lbl := Text {
+        text: root.text;
+        font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
+        font-size: root.pixel ? 8px : 11px;
+        color: root.fg;
+        overflow: elide;
+        width: min(self.preferred-width, 148px);
+    }
+}
 
 export component ServerRadarCard inherits Rectangle {
     in property <ServerRow> server;
@@ -11,19 +135,200 @@ export component ServerRadarCard inherits Rectangle {
     in property <bool> interactive: false;
     in property <bool> featured: false;
     in property <bool> show-ip: true;
+    /// Copy the host on click (Svelte default). clicked() is emitted either way.
+    in property <bool> copy-on-click: true;
     callback clicked();
 
-    GlassCard {
-        clickable: root.interactive;
-        featured: root.featured;
-        title: root.server.hostname != "" ? root.server.hostname : root.server.host;
-        subtitle: root.server.online ? root.server.players-online + " / " + root.server.players-max : root.server.error;
-        clicked => { root.clicked(); }
-        Badge {
-            text: root.server.online ? "ONLINE" : "OFFLINE";
-            variant: root.server.online ? BadgeVariant.ok : BadgeVariant.err;
-            dot: true;
-            pixel: true;
+    property <bool> copied: false;
+    property <string> address: root.server.host != "" ? root.server.host : root.server.hostname;
+    property <string> direct: root.server.ip != "" ? root.server.ip + ":" + (root.server.port > 0 ? root.server.port : 25565) : "";
+    property <bool> has-players: root.server.online && root.server.players-online > 0;
+
+    function copy(text: string) {
+        if text == "" {
+            return;
+        }
+        AppState.copy-text(text);
+        root.copied = true;
+        copy-timer.running = true;
+        copy-timer.restart();
+    }
+
+    copy-timer := Timer {
+        interval: 1800ms;
+        running: false;
+        triggered => {
+            root.copied = false;
+            self.running = false;
+        }
+    }
+
+    min-height: card.min-height;
+    preferred-height: card.preferred-height;
+    min-width: 0px;
+
+    card := GlassCard {
+        width: 100%;
+        height: 100%;
+        elevation: Elevation.md;
+        clickable: true;
+        interactive: root.interactive;
+        featured: root.featured || root.has-players;
+        padding-size: root.compact ? 32px : 36px;
+        spacing: root.compact ? 8px : 12px;
+        clicked => {
+            if root.copy-on-click {
+                root.copy(root.address);
+            }
+            root.clicked();
+        }
+
+        // beacon head
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: root.compact ? 40px : 48px;
+                    height: root.compact ? 40px : 48px;
+                    if root.server.has-icon: Rectangle {
+                        border-radius: Theme.radius-md;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        clip: true;
+                        Image {
+                            width: 100%;
+                            height: 100%;
+                            source: root.server.icon;
+                            image-fit: cover;
+                            image-rendering: pixelated;
+                        }
+                    }
+                    if !root.server.has-icon: MonogramTile {
+                        name: root.server.hostname != "" ? root.server.hostname : root.server.host != "" ? root.server.host : "ES";
+                        size: root.compact ? 40px : 48px;
+                        shape: MonogramShape.rounded;
+                    }
+                    // beacon orb (pulse omitted: idle = 0% CPU)
+                    Rectangle {
+                        x: parent.width - 10px;
+                        y: parent.height - 10px;
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 6px;
+                        border-width: 2px;
+                        border-color: Theme.surface-solid;
+                        background: root.server.online ? Theme.accent-green : Theme.accent-red;
+                        drop-shadow-color: root.server.online ? Theme.accent-green : rgba(239, 68, 68, 0.6);
+                        drop-shadow-blur: root.server.online ? 10px : 6px;
+                    }
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                spacing: 4px;
+                alignment: center;
+                Text {
+                    text: root.server.hostname != "" ? root.server.hostname : root.server.host;
+                    font-size: root.compact ? Theme.text-sm : Theme.text-base;
+                    font-weight: 700;
+                    letter-spacing: -0.16px;
+                    color: Theme.text;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    if root.server.online: Badge { text: T.tr("common.online"); variant: BadgeVariant.ok; dot: true; }
+                    if !root.server.online: Badge { text: T.tr("server.offline"); variant: BadgeVariant.err; }
+                }
+                if root.server.software != "" || root.server.version != "": HorizontalLayout {
+                    alignment: start;
+                    spacing: 4px;
+                    if root.server.software != "": Chip { text: root.server.software; pixel: true; fg: Theme.accent-cyan; edge: rgba(6, 182, 212, 0.3); }
+                    if root.server.version != "": Chip { text: root.server.version; }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: T.tr("server.players").to-uppercase();
+                    font-size: 11px;
+                    letter-spacing: 0.44px;
+                    color: Theme.muted;
+                    horizontal-alignment: right;
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    Badge {
+                        text: root.server.online ? root.server.players-online + "/" + root.server.players-max : "0/0";
+                        variant: root.has-players ? BadgeVariant.accent : BadgeVariant.neutral;
+                        pixel: true;
+                        large: !root.compact;
+                    }
+                }
+            }
+        }
+
+        if !root.compact: MotdStage { lines: SettingsBridge.motd-lines(root.server); }
+
+        // connect bar
+        VerticalLayout {
+            spacing: 0px;
+            Rectangle { height: 1px; background: Theme.border; }
+            HorizontalLayout {
+                padding-top: 8px;
+                spacing: 8px;
+                HorizontalLayout {
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: root.address;
+                        font-family: Theme.font-mono;
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: Theme.muted-strong;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    if root.show-ip && root.direct != "": Rectangle {
+                        height: ip.preferred-height + 4px;
+                        width: ip.preferred-width + 12px;
+                        border-radius: Theme.radius-xs;
+                        background: Theme.surface;
+                        border-width: 1px;
+                        border-color: ip-ta.has-hover ? Theme.accent-alt : Theme.border;
+                        ip := Text {
+                            text: "IP: " + root.direct;
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: ip-ta.has-hover ? Theme.accent-alt : Theme.muted;
+                        }
+                        ip-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.copy(root.direct); }
+                        }
+                    }
+                }
+                Rectangle {
+                    height: 24px;
+                    width: hint.preferred-width + 18px;
+                    border-radius: Theme.radius-xs;
+                    background: root.copied ? Theme.accent.with-alpha(0.2) : Theme.surface-up;
+                    border-width: 1px;
+                    border-color: root.copied ? Theme.accent : Theme.border;
+                    hint := Text {
+                        text: root.copied ? "✓ " + T.tr("server.copied") : "CLICK ↵ " + T.tr("server.copy");
+                        font-family: Theme.font-pixel;
+                        font-size: 10px;
+                        letter-spacing: 0.2px;
+                        color: Theme.accent;
+                    }
+                }
+            }
         }
     }
 }
