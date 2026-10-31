@@ -203,6 +203,11 @@ public final class AgentCapture {
                         "custom-size capture renders the world view; close the open screen first "
                                 + "(key escape) or capture at the window size");
             }
+            if (AgentRecorder.sized()) {
+                throw new AgentException("BUSY",
+                        "a recording is rendering at its own size; record_stop first, or capture "
+                                + "without width/height");
+            }
         }
         Saved saved = new Saved(window.getWidth(), window.getHeight(), guiScale, hideGui,
                 request.sized());

@@ -91,7 +91,7 @@ public final class AgentStates {
             }
         }
         return new AgentState(phase, screenName, server, world, context,
-                AgentPause.paused(), false);
+                AgentPause.paused(), AgentRecorder.recording());
     }
 
     private static Screen screenOf(Minecraft minecraft) {

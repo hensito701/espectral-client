@@ -51,6 +51,12 @@ public final class AgentTools {
             // for frames rendered with it, so it must not block that thread.
             return AgentShaders.apply(minecraft, new AgentArgs(args));
         }
+        if ("record_stop".equals(tool)) {
+            // Finishing encodes/muxes off the render thread; the reply waits for the file.
+            return minecraft == null
+                    ? CompletableFuture.failedFuture(new AgentException("FAILED", "no client"))
+                    : AgentRecorder.stop(minecraft);
+        }
         CompletableFuture<JsonObject> future = new CompletableFuture<>();
         Runnable task = () -> {
             try {
@@ -102,7 +108,8 @@ public final class AgentTools {
                 requireTier(minecraft, AgentTier.CAPTURE, name);
                 return hud(minecraft, args);
             case "record_start":
-            case "record_stop":
+                requireTier(minecraft, AgentTier.CAPTURE, name);
+                return AgentRecorder.start(minecraft, args);
             case "replays":
             case "clip_render":
             case "clip_status":

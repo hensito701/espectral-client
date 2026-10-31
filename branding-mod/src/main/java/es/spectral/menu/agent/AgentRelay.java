@@ -109,6 +109,7 @@ public final class AgentRelay {
         poller.start();
         stateThread.start();
         AgentPolicy.startResolver();
+        AgentRecorder.probeEncodersAsync();
         LOGGER.info("agent: relay started ({})", base);
     }
 
