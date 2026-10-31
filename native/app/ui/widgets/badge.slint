@@ -1,6 +1,6 @@
-// Badge — port of components/Badge.svelte; Kbd — the pixel-font key chips
-// (HotkeyLegend, palette footer, TopChrome "/" hint); GradientText — port of
-// components/GradientText.svelte.
+// Badge — flat chips (no glow); Kbd — the pixel-font key chips (HotkeyLegend,
+// palette footer, TopChrome "/" hint); GradientText — kept for the callers but
+// draws solid colour (gradient text fills are off-style in the poster look).
 
 import { Theme } from "../theme.slint";
 
@@ -10,9 +10,9 @@ export enum BadgeVariant { neutral, ok, warn, err, info, accent, gold, purple, v
 export component Badge inherits Rectangle {
     in property <string> text;
     in property <BadgeVariant> variant: BadgeVariant.neutral;
-    /// Leading glowing dot.
+    /// Leading status dot.
     in property <bool> dot: false;
-    /// Press Start 2P (CSS pixel / mono).
+    /// Minecraft pixel font (8px, one game pixel per px).
     in property <bool> pixel: false;
     /// md = 5px 12px / 14px; sm = 3px 8px / 12px.
     in property <bool> large: false;
@@ -35,17 +35,15 @@ export component Badge inherits Rectangle {
     horizontal-stretch: 0;
     vertical-stretch: 0;
     border-radius: Theme.radius-pill;
-    border-width: 1px;
+    border-width: 2px;
     background: variant == BadgeVariant.neutral ? Theme.card-bg-soft
         : variant == BadgeVariant.vanilla ? Theme.loader-vanilla
         : variant == BadgeVariant.accent ? Theme.accent.with-alpha(0.2)
-        : base.with-alpha(variant == BadgeVariant.gold || variant == BadgeVariant.purple || variant == BadgeVariant.fabric || variant == BadgeVariant.neoforge || variant == BadgeVariant.quilt ? 0.15 : 0.14);
-    border-color: variant == BadgeVariant.neutral ? Theme.glass-border
-        : variant == BadgeVariant.vanilla ? rgba(16, 185, 129, 0.35)
-        : variant == BadgeVariant.accent ? Theme.accent.with-alpha(0.45)
-        : base.with-alpha(0.35);
-    drop-shadow-color: variant == BadgeVariant.accent ? Theme.accent.with-alpha(0.15) : transparent;
-    drop-shadow-blur: 12px;
+        : base.with-alpha(0.16);
+    border-color: variant == BadgeVariant.neutral ? Theme.border-solid
+        : variant == BadgeVariant.vanilla ? #0b7a56
+        : variant == BadgeVariant.accent ? Theme.accent
+        : base.with-alpha(0.6);
 
     row := HorizontalLayout {
         padding-left: large ? 12px : 8px;
@@ -61,17 +59,15 @@ export component Badge inherits Rectangle {
                 height: 6px;
                 border-radius: 3px;
                 background: root.fg;
-                drop-shadow-color: root.fg;
-                drop-shadow-blur: 6px;
             }
         }
         Text {
             text: root.text;
             color: root.fg;
-            font-size: root.pixel ? 9.9px : root.large ? Theme.text-sm : Theme.text-xs;
+            font-size: root.pixel ? 8px : root.large ? Theme.text-sm : Theme.text-xs;
             font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
-            font-weight: 600;
-            letter-spacing: root.pixel ? 0.6px : 0.3px;
+            font-weight: root.pixel ? 400 : 600;
+            letter-spacing: root.pixel ? 0px : 0.3px;
             vertical-alignment: center;
         }
     }
@@ -82,7 +78,7 @@ export component Kbd inherits Rectangle {
     in property <string> text;
     /// accent-tinted (TopChrome "/" , HotkeyLegend) vs neutral (palette footer).
     in property <bool> accent: false;
-    in property <length> font-size: 9px;
+    in property <length> font-size: 8px;
     height: label.preferred-height + 6px;
     min-width: label.preferred-width + 10px;
     preferred-width: label.preferred-width + 10px;
@@ -101,15 +97,128 @@ export component Kbd inherits Rectangle {
     }
 }
 
-/// Gradient presets of GradientText.svelte.
+/// Colour presets of the old GradientText (now solid colours).
 export enum GradientKind { emerald-gold, cyan-emerald, gold-amber, purple-pink, accent }
 
-/// Gradient-filled text. (The software renderer may fall back to a solid fill.)
+/// Title text in the poster style: solid colour (the preset's main colour; the
+/// default is the title gold/orange). Gradient text fills are off-style.
 export component GradientText inherits Text {
     in property <GradientKind> gradient: GradientKind.emerald-gold;
-    color: gradient == GradientKind.cyan-emerald ? @linear-gradient(135deg, Theme.accent-cyan 0%, Theme.accent-green 100%)
-        : gradient == GradientKind.gold-amber ? @linear-gradient(135deg, Theme.accent-gold 0%, Theme.accent-alt 100%)
-        : gradient == GradientKind.purple-pink ? @linear-gradient(135deg, Theme.accent-purple 0%, #ec4899 100%)
-        : gradient == GradientKind.accent ? @linear-gradient(135deg, Theme.accent 0%, Theme.accent-2 100%)
-        : @linear-gradient(135deg, Theme.accent-green 0%, Theme.accent-gold 100%);
+    color: gradient == GradientKind.cyan-emerald ? Theme.accent-cyan
+        : gradient == GradientKind.purple-pink ? Theme.accent-purple
+        : gradient == GradientKind.accent ? Theme.accent
+        : Theme.title-color;
+}
+
+/// The in-game title look: Minecraft pixel font, bold, title colour, with a
+/// purple shadow one game pixel (font-size / 8) down and to the right.
+/// Use font sizes that are multiples of 8px (16, 24, 32, 40, 48, 64).
+///
+///     McTitle { text: T.tr("dash.title"); font-size: 32px; }
+export component McTitle inherits Rectangle {
+    in property <string> text;
+    in property <length> font-size: 24px;
+    in property <color> ink: Theme.title-color;
+    in property <color> shadow-ink: Theme.brand-purple;
+    in property <TextHorizontalAlignment> horizontal-alignment: left;
+    in property <bool> wrap: true;
+    property <length> px: font-size / 8;
+
+    min-width: label.min-width + px;
+    preferred-width: label.preferred-width + px;
+    min-height: label.min-height + px;
+    preferred-height: label.preferred-height + px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+
+    Text {
+        x: root.px;
+        y: root.px;
+        width: root.width - root.px;
+        height: root.height - root.px;
+        text: root.text;
+        font-family: Theme.font-title;
+        font-size: root.font-size;
+        font-weight: 700;
+        color: root.shadow-ink;
+        horizontal-alignment: root.horizontal-alignment;
+        wrap: root.wrap ? word-wrap : no-wrap;
+    }
+    label := Text {
+        x: 0;
+        y: 0;
+        width: root.width - root.px;
+        height: root.height - root.px;
+        text: root.text;
+        font-family: Theme.font-title;
+        font-size: root.font-size;
+        font-weight: 700;
+        color: root.ink;
+        horizontal-alignment: root.horizontal-alignment;
+        wrap: root.wrap ? word-wrap : no-wrap;
+    }
+}
+
+/// One letter of the brand wordmark (pixel font + one-pixel purple shadow).
+component WordmarkLetter inherits Rectangle {
+    in property <string> letter;
+    in property <color> tint;
+    in property <length> font-size;
+    property <length> px: font-size / 8;
+    width: glyph.preferred-width + px;
+    height: glyph.preferred-height + px;
+    Text { x: root.px; y: root.px; text: root.letter; font-family: Theme.font-title; font-size: root.font-size; font-weight: 700; color: Theme.brand-purple; }
+    glyph := Text { x: 0; y: 0; text: root.letter; font-family: Theme.font-title; font-size: root.font-size; font-weight: 700; color: root.tint; }
+}
+
+/// The "Espectral" wordmark: per-letter gold gradient #FFAA00 → #FFD700 →
+/// #FFFF55 → #FFD700, letter by letter as the game colours it (BRAND_GRADIENT
+/// of espectral-web/src/lib/mcText.ts). Sizes: multiples of 8px.
+export component Wordmark inherits HorizontalLayout {
+    in property <length> font-size: 16px;
+    accessible-role: text;
+    accessible-label: "Espectral";
+    spacing: 0px;
+    alignment: start;
+    WordmarkLetter { letter: "E"; tint: #ffaa00; font-size: root.font-size; }
+    WordmarkLetter { letter: "s"; tint: #ffbb00; font-size: root.font-size; }
+    WordmarkLetter { letter: "p"; tint: #ffcc00; font-size: root.font-size; }
+    WordmarkLetter { letter: "e"; tint: #ffdc0b; font-size: root.font-size; }
+    WordmarkLetter { letter: "c"; tint: #ffeb2b; font-size: root.font-size; }
+    WordmarkLetter { letter: "t"; tint: #fffa4a; font-size: root.font-size; }
+    WordmarkLetter { letter: "r"; tint: #fff540; font-size: root.font-size; }
+    WordmarkLetter { letter: "a"; tint: #ffe620; font-size: root.font-size; }
+    WordmarkLetter { letter: "l"; tint: #ffd700; font-size: root.font-size; }
+}
+
+/// Sticker badge: small pixel label on a flat colour with a hard shadow,
+/// tilted about -4° (the green "CLIENT" tag). One per section at most.
+export component Sticker inherits Rectangle {
+    in property <string> text;
+    in property <color> fill: #1fae6b;
+    in property <color> ink: #ffffff;
+    in property <length> font-size: 8px;
+    in property <angle> tilt: -4deg;
+    property <length> d: 3px;
+    width: label.preferred-width + 16px + d;
+    height: label.preferred-height + 8px + d;
+    transform-rotation: root.tilt;
+    Rectangle { x: root.d; y: root.d; width: root.width - root.d; height: root.height - root.d; border-radius: 4px; background: Theme.brand-ink; }
+    Rectangle {
+        x: 0; y: 0;
+        width: root.width - root.d; height: root.height - root.d;
+        border-radius: 4px;
+        background: root.fill;
+        border-width: 2px;
+        border-color: Theme.brand-ink;
+        label := Text {
+            text: root.text;
+            font-family: Theme.font-title;
+            font-size: root.font-size;
+            font-weight: 700;
+            color: root.ink;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
 }

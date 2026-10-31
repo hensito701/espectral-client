@@ -15,7 +15,7 @@
 import { Theme } from "../theme.slint";
 import { Shell } from "../state.slint";
 import { ScrollArea } from "scroll.slint";
-import { GradientText, GradientKind } from "badge.slint";
+import { McTitle, GradientKind } from "badge.slint";
 
 export component PageScaffold inherits Rectangle {
     in property <length> max-content-width: Theme.content-max;
@@ -55,7 +55,8 @@ export component PageScaffold inherits Rectangle {
     }
 }
 
-/// Eyebrow chip + gradient title + subtitle + divider (Settings/Client/Mods headers).
+/// Eyebrow chip + pixel title + subtitle + divider (Settings/Client/Mods headers).
+/// `gradient` is kept for the callers; titles use the title colour.
 export component PageHeader inherits VerticalLayout {
     in property <string> title;
     in property <string> subtitle;
@@ -63,12 +64,9 @@ export component PageHeader inherits VerticalLayout {
     in property <bool> divider: true;
     spacing: Theme.space-2;
     @children
-    GradientText {
+    McTitle {
         text: root.title;
-        gradient: root.gradient;
-        font-size: Theme.text-3xl;
-        font-weight: 700;
-        letter-spacing: -1px;
+        font-size: 32px;
     }
     if root.subtitle != "": Text {
         text: root.subtitle;
@@ -77,8 +75,8 @@ export component PageHeader inherits VerticalLayout {
         wrap: word-wrap;
     }
     if root.divider: Rectangle {
-        height: 17px;
-        Rectangle { y: 16px; height: 1px; background: Theme.border; }
+        height: 18px;
+        Rectangle { y: 16px; height: 2px; background: Theme.border-solid; }
     }
 }
 
@@ -87,12 +85,9 @@ export component SectionTitle inherits VerticalLayout {
     in property <string> title;
     in property <string> description;
     spacing: Theme.space-1;
-    Text {
+    McTitle {
         text: root.title;
-        color: Theme.text;
-        font-size: Theme.text-xl;
-        font-weight: 600;
-        letter-spacing: -0.44px;
+        font-size: 24px;
     }
     if root.description != "": Text {
         text: root.description;
