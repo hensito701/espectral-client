@@ -1,0 +1,48 @@
+// MonogramTile — port of components/MonogramTile.svelte (account avatars,
+// instance tiles without an icon). The hue comes from Util.name-hue() or an
+// AccountRow.monogram-hue computed in Rust.
+//
+//     MonogramTile { name: acc.username; hue: acc.monogram-hue; avatar: acc.avatar; has-avatar: acc.has-avatar; size: 26px; shape: MonogramShape.circle; }
+
+import { Theme } from "../theme.slint";
+import { Util } from "../state.slint";
+
+export enum MonogramShape { tile, rounded, circle }
+
+export component MonogramTile inherits Rectangle {
+    in property <string> name;
+    /// Resolved hue (0..359). Use Util.name-hue(name, hue-or--1) when you only have a name.
+    in property <int> hue: Util.name-hue(name, -1);
+    in property <image> avatar;
+    in property <bool> has-avatar: false;
+    in property <length> size: 48px;
+    in property <MonogramShape> shape: MonogramShape.tile;
+
+    property <float> hue2: mod(hue + 40, 360);
+    width: size;
+    height: size;
+    border-radius: shape == MonogramShape.circle ? size / 2 : shape == MonogramShape.rounded ? Theme.radius-md : Theme.radius-tile;
+    background: @linear-gradient(145deg, Theme.hsla(hue, 0.45, 0.16, 0.9) 0%, Theme.hsla(hue2, 0.55, 0.10, 0.95) 100%);
+    border-width: 1px;
+    border-color: Theme.hsla(hue, 0.6, 0.45, 0.35);
+    drop-shadow-color: Theme.shadow-sm-color;
+    drop-shadow-blur: 10px;
+    drop-shadow-offset-y: 2px;
+    clip: true;
+
+    if root.has-avatar: Image {
+        width: 100%;
+        height: 100%;
+        source: root.avatar;
+        image-fit: cover;
+        image-rendering: pixelated;
+    }
+    if !root.has-avatar: Text {
+        text: Util.initial(root.name);
+        font-size: max(10px, round(root.size * 0.45 / 1px) * 1px);
+        font-weight: 700;
+        color: @linear-gradient(135deg, Theme.hsla(root.hue, 0.85, 0.70, 1) 0%, Theme.hsla(root.hue2, 0.95, 0.60, 1) 100%);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}

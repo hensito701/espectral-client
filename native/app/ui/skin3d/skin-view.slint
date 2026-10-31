@@ -1,0 +1,87 @@
+// OWNER: skin-renderer agent. Port of components/SkinViewer.svelte
+// (skinview3d / three.js) — a CPU-rendered 3D Minecraft player.
+//
+// Usage (account-wardrobe pages):
+//     SkinView { source: "account:" + username; variant: "slim"; height: 340px; }
+//     SkinView { source: "library:" + skin-id; autoplay: false; }
+//
+// How it works: the Image below asks Rust for a frame through the pure
+// callback SkinBridge.render(...). Rust (src/skin.rs) loads + decodes the skin
+// texture for `source` asynchronously, caches it, and bumps
+// SkinBridge.revision when it arrives so the binding re-evaluates. Dragging
+// changes yaw/pitch -> new frame. Nothing re-renders while inputs are
+// unchanged, so an idle viewer costs 0% CPU (auto-rotate, when on, ticks at a
+// throttled rate only while visible).
+
+export struct SkinFrameRequest {
+    /// "account:<username>" | "library:<id>" | "file:<path>" (decoded by src/skin.rs)
+    source: string,
+    /// "classic" | "slim"
+    variant: string,
+    width: int,
+    height: int,
+    yaw: float,
+    pitch: float,
+    zoom: float,
+    time: float,
+    revision: int,
+}
+
+export global SkinBridge {
+    /// Bumped by Rust whenever a texture finished loading (forces a re-render).
+    in property <int> revision;
+    /// Implemented in Rust: returns the rendered frame (or an empty image while loading).
+    pure callback render(request: SkinFrameRequest) -> image;
+    /// Implemented in Rust: true once the texture for `source` is loaded.
+    pure callback ready(source: string, revision: int) -> bool;
+}
+
+export component SkinView inherits Rectangle {
+    in property <string> source;
+    in property <string> variant: "classic";
+    /// Spin on by default (gallery cards pass false).
+    in property <bool> autoplay: true;
+    in-out property <float> yaw: -25;
+    in-out property <float> pitch: 8;
+    in property <float> zoom: 1;
+
+    property <float> drag-start-yaw;
+    property <float> drag-start-pitch;
+
+    min-width: 120px;
+    min-height: 160px;
+
+    frame := Image {
+        width: 100%;
+        height: 100%;
+        image-fit: contain;
+        image-rendering: pixelated;
+        source: SkinBridge.render({
+            source: root.source,
+            variant: root.variant,
+            width: root.width / 1phx,
+            height: root.height / 1phx,
+            yaw: root.yaw,
+            pitch: root.pitch,
+            zoom: root.zoom,
+            time: 0,
+            revision: SkinBridge.revision,
+        });
+    }
+
+    TouchArea {
+        mouse-cursor: self.pressed ? grabbing : grab;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.drag-start-yaw = root.yaw;
+                root.drag-start-pitch = root.pitch;
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.yaw = root.drag-start-yaw + (self.mouse-x - self.pressed-x) / 1px * 0.6;
+                root.pitch = clamp(root.drag-start-pitch + (self.mouse-y - self.pressed-y) / 1px * 0.4, -60, 60);
+            }
+        }
+    }
+}

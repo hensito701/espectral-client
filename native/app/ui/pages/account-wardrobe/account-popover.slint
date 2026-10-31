@@ -1,0 +1,64 @@
+// OWNER: account-wardrobe agent. Port of components/AccountPopover.svelte.
+// app.slint places it under the TopChrome account chip (top-right, 320px wide)
+// and shows it while Shell.account-popover-open. Close it by setting
+// Shell.account-popover-open = false. Placeholder: header + account list.
+
+import { Theme, T, Shell, AppState, Router, Icon, Icons, MonogramTile, MonogramShape } from "../../widgets.slint";
+import { AccountBridge } from "api.slint";
+
+export component AccountPopover inherits Rectangle {
+    width: 320px;
+    height: col.preferred-height;
+    border-radius: Theme.radius-lg;
+    background: Theme.surface-solid;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-color: Theme.shadow-lg-color;
+    drop-shadow-blur: Theme.shadow-lg-blur;
+    drop-shadow-offset-y: Theme.shadow-lg-y;
+    TouchArea { }
+    col := VerticalLayout {
+        HorizontalLayout {
+            padding: Theme.space-4;
+            spacing: Theme.space-2;
+            VerticalLayout {
+                alignment: center;
+                Rectangle { width: 7px; height: 7px; border-radius: 1px; background: Theme.accent; }
+            }
+            Text {
+                text: T.tr("account.profileTitle").to-uppercase();
+                font-size: Theme.text-sm;
+                font-weight: 700;
+                letter-spacing: 0.7px;
+                color: Theme.text;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                Icon { data: Icons.x; size: 14px; color: Theme.muted-strong; }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Shell.account-popover-open = false; }
+                }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        VerticalLayout {
+            padding: Theme.space-4;
+            spacing: Theme.space-2;
+            for acc in AppState.accounts: HorizontalLayout {
+                spacing: Theme.space-2;
+                MonogramTile { name: acc.username; hue: acc.monogram-hue; avatar: acc.avatar; has-avatar: acc.has-avatar; size: 28px; shape: MonogramShape.circle; }
+                Text { text: acc.username; color: Theme.text; font-size: Theme.text-sm; vertical-alignment: center; }
+            }
+            if AppState.accounts.length == 0: Text {
+                text: T.tr("account.noAccounts");
+                color: Theme.text;
+                font-size: Theme.text-sm;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}
