@@ -48,7 +48,11 @@ VERSION="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' n
 
 OUT_DIR="$ROOT/build/linux"
 BIN="${BIN:-$ROOT/native/target/release/$PKG}"
-STAGE="$OUT_DIR/stage"
+# Staged in a Linux temp dir: on a Windows drive (WSL /mnt/*) every file
+# reads as mode 777 and dpkg-deb refuses the control directory.
+STAGE_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/espectral-deb.XXXXXX")"
+trap 'rm -rf "$STAGE_PARENT"' EXIT
+STAGE="$STAGE_PARENT/stage"
 DEB="$OUT_DIR/${PKG}_${VERSION}_amd64.deb"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "ERROR: $1 not found ($2)" >&2; exit 1; }; }
@@ -110,6 +114,9 @@ BRANDING_SRC="$ROOT/assets/branding"
 cp -a "$BRANDING_SRC/." "$STAGE/usr/lib/Espectral Client/branding/"
 # Drop editor/OS noise that must never land in a package.
 find "$STAGE/usr/lib/Espectral Client/branding" -name '.DS_Store' -delete 2>/dev/null || true
+# cp -a keeps the source modes; from a Windows drive they read as 777.
+find "$STAGE/usr/lib/Espectral Client/branding" -type d -exec chmod 0755 {} +
+find "$STAGE/usr/lib/Espectral Client/branding" -type f -exec chmod 0644 {} +
 
 # Icons: same pixel sizes/paths as the Tauri .deb.
 install -m 0644 native/app/ui/assets/favicon.png "$STAGE/usr/share/icons/hicolor/32x32/apps/$PKG.png"
@@ -162,9 +169,9 @@ Description: Espectral Client launcher
 EOF
 
 # md5sums for every packaged file (dpkg uses it to verify/upgrade cleanly).
-# Paths in md5sums are relative to the package root; hash from there so the
-# entries match what dpkg expects (`bin/espectral-client`, not `usr/bin/...`).
-( cd "$STAGE" && find usr -type f -print0 | sort -z | sed -z 's|^|./|' | xargs -0 md5sum | sed 's|\./usr/||' > DEBIAN/md5sums )
+# Paths are relative to the package root without a leading "./"
+# (`usr/bin/espectral-client`), as dpkg --verify expects.
+( cd "$STAGE" && find usr -type f -print0 | sort -z | xargs -0 md5sum > DEBIAN/md5sums )
 
 # ---- package ------------------------------------------------------------
 mkdir -p "$OUT_DIR"
