@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.7",
+  "package": "es.spectral.menu.mixin.agent",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "mixins.espectralmenu.refmap.json",
+  "client": [
+    "GuiContainerAccessor",
+    "GuiScreenInvoker",
+    "MinecraftKeyboardMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -27,6 +27,11 @@ val mcVersion: String by project
 val modid: String by project
 val transformerFile = file("src/main/resources/accesstransformer.cfg")
 
+// Every mixin config of the mod (one per feature area): listed in the jar
+// manifest and registered for dev runs, so adding a config needs no build edit.
+val espectralMixinConfigs: List<String> = fileTree("src/main/resources") { include("mixins.$modid*.json") }
+    .files.map { it.name }.sorted()
+
 // Java 8 toolchain: 1.8.9 is compiled against MCP stable 22 names, the game
 // itself runs on Java 8. Gradle itself runs on a 21+ JDK (see gradle.properties).
 java {
@@ -41,7 +46,7 @@ loom {
     forge {
         // Architectury's pack200 adapter: Forge 1.8.9's universal jar is packed.
         pack200Provider.set(dev.architectury.pack200.java.Pack200Adapter())
-        mixinConfig("mixins.$modid.json")
+        espectralMixinConfigs.forEach { mixinConfig(it) }
         if (transformerFile.exists()) {
             println("Installing access transformer")
             accessTransformer(transformerFile)
@@ -80,8 +85,51 @@ loom {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Generated assets. The launcher repo stays the single source of truth:
+//   - suite registry: ../native/engine/data/suite-registry.json
+//   - texts: the Fabric mod's generated lang JSON (scripts/sync-suite-registry.mjs
+//     writes them from the registry + FIXED_STRINGS + ../branding-mod/lang-extra.json),
+//     converted to 1.8.9 `.lang` files, plus src/lang-1.8.9.json for strings
+//     only this port shows;
+//   - title-screen sprites from the Fabric mod.
+// ---------------------------------------------------------------------------
+val generatedAssets = layout.buildDirectory.dir("generated/espectral")
+val fabricAssets = file("../branding-mod/src/main/resources/assets/espectral-menu")
+
+val generateEspectralAssets by tasks.registering {
+    val registry = file("../native/engine/data/suite-registry.json")
+    val extra = file("src/lang-1.8.9.json")
+    inputs.file(registry)
+    inputs.file(extra)
+    inputs.dir(fabricAssets.resolve("lang"))
+    inputs.dir(fabricAssets.resolve("textures/gui/sprites"))
+    outputs.dir(generatedAssets)
+    doLast {
+        val out = generatedAssets.get().asFile.resolve("assets/$modid")
+        out.deleteRecursively()
+        out.resolve("lang").mkdirs()
+        registry.copyTo(out.resolve("suite-registry.json"), overwrite = true)
+        fabricAssets.resolve("textures/gui/sprites").copyRecursively(out.resolve("textures/gui"), overwrite = true)
+        @Suppress("UNCHECKED_CAST")
+        val extras = groovy.json.JsonSlurper().parse(extra) as Map<String, Map<String, String>>
+        for ((fabric, legacy, block) in listOf(Triple("en_us", "en_US", "en"), Triple("es_es", "es_ES", "es"))) {
+            @Suppress("UNCHECKED_CAST")
+            val strings = (groovy.json.JsonSlurper().parse(fabricAssets.resolve("lang/$fabric.json"))
+                as Map<String, String>).toSortedMap()
+            strings.putAll(extras[block] ?: emptyMap())
+            // 1.8.9 .lang: one `key=value` per line, UTF-8, no escapes.
+            out.resolve("lang/$legacy.lang").writeText(
+                strings.entries.joinToString("\n", postfix = "\n") { (k, v) -> "$k=${v.replace("\n", " ")}" },
+                Charsets.UTF_8,
+            )
+        }
+    }
+}
+
 sourceSets.main {
     output.setResourcesDir(sourceSets.main.flatMap { it.java.classesDirectory })
+    resources.srcDir(generatedAssets)
 }
 
 repositories {
@@ -131,7 +179,7 @@ tasks.withType(org.gradle.jvm.tasks.Jar::class) {
         this["FMLCorePluginContainsFMLMod"] = "true"
         this["ForceLoadAsMod"] = "true"
         this["TweakClass"] = "org.spongepowered.asm.launch.MixinTweaker"
-        this["MixinConfigs"] = "mixins.$modid.json"
+        this["MixinConfigs"] = espectralMixinConfigs.joinToString(",")
         if (transformerFile.exists()) this["FMLAT"] = "${modid}_at.cfg"
         this["Implementation-Version"] = project.version.toString()
         this["Espectral-Launcher-Version"] = launcherVersion
@@ -139,12 +187,13 @@ tasks.withType(org.gradle.jvm.tasks.Jar::class) {
 }
 
 tasks.processResources {
+    dependsOn(generateEspectralAssets)
     inputs.property("version", project.version)
     inputs.property("mcversion", mcVersion)
     inputs.property("modid", modid)
     inputs.property("basePackage", baseGroup)
 
-    filesMatching(listOf("mcmod.info", "mixins.$modid.json", "espectral-menu.properties")) {
+    filesMatching(listOf("mcmod.info", "mixins.$modid*.json", "espectral-menu.properties")) {
         expand(inputs.properties)
     }
 

@@ -4,10 +4,6 @@
   "package": "es.spectral.menu.mixin",
   "compatibilityLevel": "JAVA_8",
   "refmap": "mixins.espectralmenu.refmap.json",
-  "mixins": [
-    "EntityRendererMixin",
-    "MinecraftMixin"
-  ],
   "client": [
     "EntityRendererMixin",
     "MinecraftMixin"

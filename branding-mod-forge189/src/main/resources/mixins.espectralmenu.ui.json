@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.7",
+  "package": "es.spectral.menu.mixin.ui",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "mixins.espectralmenu.refmap.json",
+  "client": [
+    "GuiButtonMixin",
+    "GuiScreenMixin",
+    "GuiSlotMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

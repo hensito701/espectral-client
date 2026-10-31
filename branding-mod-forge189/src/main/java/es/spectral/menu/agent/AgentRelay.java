@@ -69,6 +69,8 @@ public final class AgentRelay {
             LOGGER.warn("agent: relay disabled (missing -Despectral.bridge.url/token)");
             return;
         }
+        AgentPolicy.noteServerFromArguments();
+        AgentPolicy.startResolver();
         AgentRelay relay = new AgentRelay(base, token);
         instance = relay;
         stopping = false;
@@ -151,6 +153,10 @@ public final class AgentRelay {
     private boolean pollOnce() throws IOException {
         JsonObject reply = post("/agent/poll", new JsonObject(), POLL_READ_TIMEOUT_MS);
         if (reply == null) return false;
+        JsonElement policy = reply.get("policy");
+        if (policy != null && policy.isJsonObject()) {
+            AgentPolicy.apply(policy.getAsJsonObject());
+        }
         JsonElement commands = reply.get("commands");
         if (commands != null && commands.isJsonArray()) {
             for (JsonElement element : commands.getAsJsonArray()) {
