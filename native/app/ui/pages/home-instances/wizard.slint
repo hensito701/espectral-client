@@ -444,7 +444,9 @@ export component InstanceWizardModal inherits Rectangle {
     }
     function reset() {
         root.step = 1;
-        root.version = HomeBridge.wiz-latest-release;
+        root.filter = "release";
+        root.version = Shell.wizard-version != "" ? Shell.wizard-version : HomeBridge.wiz-latest-release;
+        Shell.wizard-version = "";
         root.loader = "fabric";
         root.name = root.version != "" ? root.version + "-fabric" : "";
         root.auto-name = root.name;
@@ -453,7 +455,6 @@ export component InstanceWizardModal inherits Rectangle {
         root.import-enabled = false;
         root.source-index = 0;
         root.query = "";
-        root.filter = "release";
         HomeBridge.wiz-game-dir = "";
         HomeBridge.wiz-error = "";
     }

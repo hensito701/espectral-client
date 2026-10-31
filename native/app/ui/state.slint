@@ -175,6 +175,9 @@ export global Shell {
     in-out property <bool> pip-log-pinned;
     /// Instance wizard modal (Home). The palette's "new instance" sets it.
     in-out property <bool> wizard-open;
+    /// Optional version to preselect the next time the wizard opens (VersionArmory
+    /// "Crear instancia"). The wizard consumes and clears it on open.
+    in-out property <string> wizard-version;
     /// Number of open modal dialogs (Modal widget increments/decrements) — hotkeys are off while > 0.
     in-out property <int> modal-depth;
     /// Screenshot tool only (--scroll): PageScaffold scrolls to this offset (px).
