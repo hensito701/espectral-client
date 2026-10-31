@@ -2,13 +2,16 @@
 /* ==========================================================================
  * make-icons.mjs — PNG-in-ICO writer (Node builtins only, no ImageMagick).
  *
- * Builds src-tauri/icons/icon.ico with three PNG-compressed ICONDIRENTRYs:
+ * Builds native/app/icons/icon.ico, the single icon source for the native
+ * launcher: native/app/build.rs embeds it as the Windows exe resource and
+ * native/packaging/windows/installer.nsi as the installer/uninstaller icon.
+ * Three PNG-compressed ICONDIRENTRYs:
  *   32px  <- assets/site/favicon.png
  *   180px <- assets/site/apple-touch-icon.png
  *   256px <- assets/site/logo_circle.png  (entry width/height byte = 0)
  *
- * Also stages plain copies for Tauri window/tray use:
- *   icons/32x32.png  (favicon.png), icons/128x128.png + icons/icon.png (logo_circle.png)
+ * The .deb does not read this file — it installs the PNGs from
+ * native/app/ui/assets (see scripts/build-linux-deb.sh).
  *
  * ICO layout: 6-byte ICONDIR (reserved=0, type=1, count=N) + N x 16-byte
  * ICONDIRENTRY (width, height, 0=256, colors=0, reserved=0, planes=1, bpp=32,
@@ -17,13 +20,13 @@
  * Run: node scripts/make-icons.mjs
  * ========================================================================== */
 
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SITE_DIR = join(ROOT, 'assets', 'site');
-const OUT_DIR = join(ROOT, 'src-tauri', 'icons');
+const OUT_DIR = join(ROOT, 'native', 'app', 'icons');
 
 const ENTRIES = [
   { file: 'favicon.png', size: 32 },
@@ -88,13 +91,7 @@ function main() {
 
   const ico = buildIco(images);
   writeFileSync(join(OUT_DIR, 'icon.ico'), ico);
-  console.log(`[make-icons] escribió icon.ico (${ico.length} bytes, ${images.length} entradas)`);
-
-  // Plain copies for Tauri window/tray config.
-  copyFileSync(join(SITE_DIR, 'favicon.png'), join(OUT_DIR, '32x32.png'));
-  copyFileSync(join(SITE_DIR, 'logo_circle.png'), join(OUT_DIR, '128x128.png'));
-  copyFileSync(join(SITE_DIR, 'logo_circle.png'), join(OUT_DIR, 'icon.png'));
-  console.log('[make-icons] copió 32x32.png, 128x128.png, icon.png');
+  console.log(`[make-icons] escribió native/app/icons/icon.ico (${ico.length} bytes, ${images.length} entradas)`);
 }
 
 main();

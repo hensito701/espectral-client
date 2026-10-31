@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Modrinth modpack (.mrpack) — a ZIP with a modrinth.index.json inside.
+  Registered so file managers and "Open with" offer Espectral Client, which the
+  desktop entry lists under MimeType=. Installed to /usr/share/mime/packages/.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-modrinth-modpack">
+    <comment>Modrinth modpack</comment>
+    <comment xml:lang="es">Modpack de Modrinth</comment>
+    <acronym>MRPACK</acronym>
+    <expanded-acronym>Modrinth Modpack</expanded-acronym>
+    <sub-class-of type="application/zip"/>
+    <glob pattern="*.mrpack" weight="80"/>
+    <magic priority="60">
+      <match type="string" value="PK\003\004" offset="0"/>
+    </magic>
+    <icon name="espectral-client"/>
+  </mime-type>
+</mime-info>

@@ -1,0 +1,13 @@
+Espectral Client — Minecraft launcher.
+
+Un lanzador de Minecraft centrado en un arranque rápido (JDK gestionado y
+compilación AOT) para las instancias de Espectral.
+
+Minecraft is a trademark of Mojang Synergies AB. This launcher is not
+affiliated with or endorsed by Mojang or Microsoft.
+
+Espectral Client se distribuye bajo la licencia GPL-3.0-only; el código fuente
+está en <https://github.com/espectral/espectral-client>.
+
+On Debian systems the full text of the GNU General Public License version 3
+can be found in /usr/share/common-licenses/GPL-3.
