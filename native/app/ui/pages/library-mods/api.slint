@@ -1,0 +1,11 @@
+// OWNER: library-mods agent. The group's single bridge global — the only Slint global
+// of this group that Rust can see (app.slint re-exports it by name). Add every
+// property / callback / struct the group needs HERE.
+// Rust side: native/app/src/pages/library_mods.rs.
+
+export global LibraryBridge {
+    /// Example: set by Rust on route enter. Replace freely.
+    in property <bool> loading;
+    /// Example callback. Replace freely.
+    callback refresh();
+}

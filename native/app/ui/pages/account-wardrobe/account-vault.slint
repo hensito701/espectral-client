@@ -1,0 +1,13 @@
+// OWNER: account-wardrobe agent. Port of src/ui/src/pages/AccountVault.svelte.
+// Keep the exported component name and the empty interface used by app.slint.
+
+import { PlaceholderPage, T } from "../../widgets.slint";
+import { AccountBridge } from "api.slint";
+
+export component AccountPage inherits Rectangle {
+    PlaceholderPage {
+        title: T.tr("vault.title");
+        subtitle: T.tr("vault.subtitle");
+        source: "src/ui/src/pages/AccountVault.svelte";
+    }
+}

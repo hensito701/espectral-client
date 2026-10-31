@@ -1,0 +1,59 @@
+// OWNER: home-instances agent. Port of components/PipLogDrawer.svelte — the
+// launch-log "flight deck" pinned bottom-right on every page. app.slint gives
+// it the whole window area; draw only what you need (it must not block
+// clicks outside its own rectangles). Shell.pip-log-open toggles it (Space
+// hotkey, palette action). Placeholder: the collapsed pill only.
+
+import { Theme, T, Shell, AppState, Kbd, Icon, Icons } from "../../widgets.slint";
+import { HomeBridge } from "api.slint";
+
+export component PipLogDrawer inherits Rectangle {
+    pill := Rectangle {
+        width: row.preferred-width;
+        height: 36px;
+        x: root.width - self.width - 16px;
+        y: root.height - self.height - 36px;
+        border-radius: 18px;
+        background: Theme.surface-solid.with-alpha(0.92);
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-color: Theme.shadow-md-color;
+        drop-shadow-blur: 20px;
+        row := HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            spacing: 10px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: AppState.running-count > 0 ? Theme.accent-green : Theme.muted;
+                }
+            }
+            Text {
+                text: AppState.running-count > 0 ? T.tr1("pip.runningBadge", "count", AppState.running-count) : T.tr("pip.noActiveLaunch");
+                font-size: Theme.text-xs;
+                font-weight: 600;
+                color: Theme.text;
+                vertical-alignment: center;
+            }
+            Text {
+                text: "[ESPACIO]";
+                font-family: Theme.font-pixel;
+                font-size: 8px;
+                color: Theme.muted;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                Icon { data: Shell.pip-log-open ? Icons.chevron-down : Icons.chevron-up; size: 14px; color: Theme.text; weight: 3; }
+            }
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { Shell.pip-log-open = !Shell.pip-log-open; }
+        }
+    }
+}
