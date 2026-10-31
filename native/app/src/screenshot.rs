@@ -11,6 +11,11 @@
 //!          --size 1280x800  --wait 1500  --scroll <px>
 //!          --open palette|wizard|account|pip|gate   (repeatable)
 //!          --query <text>   (palette query, with --open palette)
+//!          --click X,Y      (logical px; press + release, then pump 400 ms; repeatable)
+//!          --type <text>    (text into the focused input; repeatable)
+//!          --key <name>     (Escape|Return|Tab|Space|Down|Up; repeatable)
+//!          --nav <route>    (navigate again mid-run; repeatable)
+//!          Actions run in command-line order after the first half of --wait.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -35,6 +40,16 @@ pub struct ShotArgs {
     pub scroll: f32,
     pub open: Vec<String>,
     pub query: Option<String>,
+    pub actions: Vec<Action>,
+}
+
+/// A scripted input event (`--click`, `--type`, `--key`, `--nav`).
+#[derive(Debug, Clone)]
+pub enum Action {
+    Click(f32, f32),
+    Type(String),
+    Key(String),
+    Nav(String),
 }
 
 impl ShotArgs {
@@ -55,6 +70,7 @@ impl ShotArgs {
             scroll: 0.0,
             open: vec![],
             query: None,
+            actions: vec![],
         };
         let mut k = 0;
         while k < args.len() {
@@ -67,6 +83,16 @@ impl ShotArgs {
                 "--scroll" => s.scroll = v.and_then(|x| x.parse().ok()).unwrap_or(0.0),
                 "--open" => s.open.extend(v),
                 "--query" => s.query = v,
+                "--click" => {
+                    if let Some((x, y)) = v.as_deref().and_then(|x| x.split_once(',')) {
+                        if let (Ok(x), Ok(y)) = (x.trim().parse(), y.trim().parse()) {
+                            s.actions.push(Action::Click(x, y));
+                        }
+                    }
+                }
+                "--type" => s.actions.extend(v.map(Action::Type)),
+                "--key" => s.actions.extend(v.map(Action::Key)),
+                "--nav" => s.actions.extend(v.map(Action::Nav)),
                 "--size" => {
                     if let Some((w, h)) = v.as_deref().and_then(|x| x.split_once('x')) {
                         s.width = w.parse().unwrap_or(1280);
@@ -132,9 +158,17 @@ pub fn install(width: u32, height: u32) {
 }
 
 /// Run queued invoke_from_event_loop jobs + timers/animations for `dur`.
+///
+/// Frames are drawn into a scratch buffer whenever the window is dirty, like
+/// the real event loop does: lazily created subtrees (page `if` blocks), their
+/// `changed` handlers, Timers, SkinView preloads and `--scroll` only come alive
+/// once the item tree has been rendered at least once.
 pub fn pump(dur: Duration) {
     let deadline = Instant::now() + dur;
-    let queue = STATE.with(|s| s.borrow().as_ref().map(|(_, q)| q.clone())).expect("headless platform not installed");
+    let (window, queue) = STATE.with(|s| s.borrow().clone()).expect("headless platform not installed");
+    let size = window.window().size();
+    let mut scratch = vec![Rgb8Pixel::default(); (size.width * size.height) as usize];
+    let mut last_draw = Instant::now() - Duration::from_secs(1);
     loop {
         loop {
             let job = queue.jobs.lock().unwrap_or_else(|p| p.into_inner()).pop_front();
@@ -144,11 +178,58 @@ pub fn pump(dur: Duration) {
             }
         }
         slint::platform::update_timers_and_animations();
+        if last_draw.elapsed() >= Duration::from_millis(40) {
+            window.draw_if_needed(|renderer| {
+                renderer.render(&mut scratch, size.width as usize);
+            });
+            last_draw = Instant::now();
+        }
         if Instant::now() >= deadline {
             break;
         }
         std::thread::sleep(Duration::from_millis(8));
     }
+}
+
+/// Dispatch one scripted input action to the headless window.
+pub fn dispatch(action: &Action) {
+    use slint::platform::{Key, PointerEventButton, WindowEvent};
+    use slint::LogicalPosition;
+    let window = STATE.with(|s| s.borrow().as_ref().map(|(w, _)| w.clone())).expect("headless platform not installed");
+    let w = window.window();
+    match action {
+        Action::Click(x, y) => {
+            let position = LogicalPosition::new(*x, *y);
+            w.dispatch_event(WindowEvent::PointerMoved { position });
+            pump(Duration::from_millis(60));
+            w.dispatch_event(WindowEvent::PointerPressed { position, button: PointerEventButton::Left });
+            w.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
+        }
+        Action::Type(text) => {
+            for ch in text.chars() {
+                let t: slint::SharedString = ch.to_string().into();
+                w.dispatch_event(WindowEvent::KeyPressed { text: t.clone() });
+                w.dispatch_event(WindowEvent::KeyReleased { text: t });
+            }
+        }
+        Action::Key(name) => {
+            let key: char = match name.as_str() {
+                "Escape" | "Esc" => Key::Escape.into(),
+                "Return" | "Enter" => Key::Return.into(),
+                "Tab" => Key::Tab.into(),
+                "Space" => ' ',
+                "Down" => Key::DownArrow.into(),
+                "Up" => Key::UpArrow.into(),
+                "Backspace" => Key::Backspace.into(),
+                other => other.chars().next().unwrap_or(' '),
+            };
+            let t: slint::SharedString = key.to_string().into();
+            w.dispatch_event(WindowEvent::KeyPressed { text: t.clone() });
+            w.dispatch_event(WindowEvent::KeyReleased { text: t });
+        }
+        Action::Nav(_) => {}
+    }
+    pump(Duration::from_millis(400));
 }
 
 /// Render the current frame and save it as PNG.

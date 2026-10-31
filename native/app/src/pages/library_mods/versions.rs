@@ -61,9 +61,9 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     b.on_v_create(|id| {
         let Some(ui) = super::ui_handle() else { return };
         router::navigate(&ui, "#/");
-        // TODO(foundation): Shell has no "wizard version" preset; the Svelte
-        // horizon:open-wizard event carried { version }. The wizard opens on
-        // its default version until a hook exists.
+        // The Svelte horizon:open-wizard event carried { version }; the wizard
+        // reads Shell.wizard-version on open and preselects it.
+        ui.global::<Shell>().set_wizard_version(id.clone());
         ui.global::<Shell>().set_wizard_open(true);
         toast::info(format!("{} ({id})", i18n::t("versions.openInWizard")));
     });

@@ -184,6 +184,12 @@ fn run_screenshot(ctx: &Ctx, ui: &AppWindow, s: screenshot::ShotArgs) {
         ui.global::<PaletteState>().set_query(q.as_str().into());
         ui.global::<PaletteState>().invoke_query_edited(q.as_str().into());
     }
+    for a in &s.actions {
+        if let screenshot::Action::Nav(route) = a {
+            router::navigate(ui, route);
+        }
+        screenshot::dispatch(a);
+    }
     if s.scroll > 0.0 {
         shell.set_debug_scroll(s.scroll);
     }

@@ -118,3 +118,9 @@ opt-level = 3
 lto = "thin"
 codegen-units = 4
 strip = "symbols"
+
+# The app crate is mostly Slint-generated Rust (one very large module). With
+# 4 codegen units rustc's peak memory exceeds 14 GB at opt-level 3; 16 units
+# keep the release build well under that with no measurable runtime cost.
+[profile.release.package.espectral-client]
+codegen-units = 16
