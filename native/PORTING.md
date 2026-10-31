@@ -3,8 +3,8 @@
 Branch `rust-native`. The Node engine (`src/engine/*.mjs`) is being rewritten
 as the Rust library crate **`espectral-engine`** (`native/engine`, lib
 `espectral_engine`). A later phase adds a Slint UI that calls it directly — no
-webview, no Node, no internal HTTP. `native/app` (`espectral-client` bin) is a
-placeholder `main` that starts the engine and prints `health()`.
+webview, no Node, no internal HTTP. `native/app` (`espectral-client` bin) is the
+native Slint UI that links the engine — see `native/app/UI-PORTING.md`.
 
 **Reference implementation:** `src/engine`, `src/ui`, `src-tauri`, `tests/` —
 never modify or delete them. Read the JS module **and** its tests before
@@ -49,7 +49,8 @@ native/
     stats.rs ziputil.rs nbt.rs fingerprint.rs onboarding.rs test_support.rs
     <domain>.rs       one file per JS module (stubs owned by a cluster)
   engine/tests/       integration tests (facade.rs is a template)
-  app/src/main.rs     placeholder binary
+  app/                the native Slint UI binary (see app/UI-PORTING.md)
+  skin3d/             espectral-skin3d: CPU 3D skin renderer used by the UI
 ```
 
 ## Ownership — module → Rust file → owner

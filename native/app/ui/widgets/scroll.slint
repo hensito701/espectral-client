@@ -1,0 +1,70 @@
+// ScrollArea — vertical scroll view with the thin themed scrollbar of base.css
+// (::-webkit-scrollbar 8px, --scrollbar-thumb). Use it instead of std
+// ScrollView so the scrollbar matches in both themes.
+//
+//     ScrollArea {
+//         VerticalLayout { padding: Theme.space-6; ... }   // ONE layout child
+//     }
+//
+// The content's preferred height drives the viewport; width follows the area.
+
+import { Theme } from "../theme.slint";
+
+export component ScrollArea inherits Rectangle {
+    in-out property <length> content-y <=> flick.content-y;
+    out property <length> content-height: flick.content-height;
+    out property <length> visible-height: flick.height;
+    /// Reserve the scrollbar gutter on the right.
+    in property <length> gutter: 0px;
+
+    public function scroll-to-top() { flick.content-y = 0; }
+
+    flick := Flickable {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        content-width: self.width - root.gutter;
+        content-height: max(self.height, content.preferred-height);
+        interactive: false; // wheel + scrollbar only (no drag-to-scroll on desktop)
+        content := VerticalLayout {
+            width: flick.content-width;
+            alignment: start;
+            @children
+        }
+    }
+
+    // scrollbar
+    property <bool> overflow: flick.content-height > flick.height + 1px;
+    if root.overflow: bar := Rectangle {
+        property <length> track-h: root.height - 4px;
+        property <length> thumb-h: max(32px, self.track-h * flick.height / flick.content-height);
+        property <float> pos: -flick.content-y / max(1px, flick.content-height - flick.height);
+        x: root.width - 10px;
+        y: 2px;
+        width: 8px;
+        height: self.track-h;
+        thumb := Rectangle {
+            x: 1px;
+            width: 6px;
+            height: bar.thumb-h;
+            y: (bar.track-h - bar.thumb-h) * bar.pos;
+            border-radius: 3px;
+            background: drag.has-hover || drag.pressed ? Theme.scrollbar-thumb-hover : Theme.scrollbar-thumb;
+            drag := TouchArea {
+                property <length> start-viewport;
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down {
+                        self.start-viewport = flick.content-y;
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        let scale = (flick.content-height - flick.height) / max(1px, bar.track-h - bar.thumb-h);
+                        flick.content-y = clamp(self.start-viewport - (self.mouse-y - self.pressed-y) * scale, flick.height - flick.content-height, 0px);
+                    }
+                }
+            }
+        }
+    }
+}

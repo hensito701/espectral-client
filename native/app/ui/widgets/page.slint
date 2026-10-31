@@ -1,0 +1,99 @@
+// Page helpers.
+//
+// Every routed page is laid out by the shell in the area below the TopChrome
+// (window minus 64px). A page that scrolls as a whole wraps its content in
+// PageScaffold (ScrollArea + centered max-width column + padding):
+//
+//     export component SettingsPage inherits Rectangle {
+//         PageScaffold {
+//             content-padding: 40px;
+//             PageHeader { eyebrow: T.tr("dash.eyebrow"); title: T.tr("dash.title"); subtitle: T.tr("dash.subtitle"); }
+//             ...
+//         }
+//     }
+
+import { Theme } from "../theme.slint";
+import { Shell } from "../state.slint";
+import { ScrollArea } from "scroll.slint";
+import { GradientText, GradientKind } from "badge.slint";
+
+export component PageScaffold inherits Rectangle {
+    in property <length> max-content-width: Theme.content-max;
+    in property <length> content-padding: Theme.space-6;
+    in property <length> content-padding-top: content-padding;
+    in property <length> content-padding-bottom: Theme.space-12;
+    in property <length> spacing: Theme.space-6;
+    in-out property <length> content-y <=> scroll.content-y;
+    public function scroll-to-top() { scroll.scroll-to-top(); }
+    // screenshot tool (--scroll)
+    property <float> debug-scroll: Shell.debug-scroll;
+    changed debug-scroll => { scroll.content-y = -self.debug-scroll * 1px; }
+
+    scroll := ScrollArea {
+        width: root.width;
+        height: root.height;
+        HorizontalLayout {
+            alignment: center;
+            // horizontal padding on a HorizontalLayout (see UI-PORTING.md "wrapped text")
+            HorizontalLayout {
+              width: min(root.max-content-width, root.width);
+              padding-left: root.content-padding;
+              padding-right: root.content-padding;
+              VerticalLayout {
+                padding-top: root.content-padding-top;
+                padding-bottom: root.content-padding-bottom;
+                spacing: root.spacing;
+                alignment: start;
+                @children
+              }
+            }
+        }
+    }
+}
+
+/// Eyebrow chip + gradient title + subtitle + divider (Settings/Client/Mods headers).
+export component PageHeader inherits VerticalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <GradientKind> gradient: GradientKind.emerald-gold;
+    in property <bool> divider: true;
+    spacing: Theme.space-2;
+    @children
+    GradientText {
+        text: root.title;
+        gradient: root.gradient;
+        font-size: Theme.text-3xl;
+        font-weight: 700;
+        letter-spacing: -1px;
+    }
+    if root.subtitle != "": Text {
+        text: root.subtitle;
+        color: Theme.muted;
+        font-size: Theme.text-base;
+        wrap: word-wrap;
+    }
+    if root.divider: Rectangle {
+        height: 17px;
+        Rectangle { y: 16px; height: 1px; background: Theme.border; }
+    }
+}
+
+/// h2-style section heading with a muted description.
+export component SectionTitle inherits VerticalLayout {
+    in property <string> title;
+    in property <string> description;
+    spacing: Theme.space-1;
+    Text {
+        text: root.title;
+        color: Theme.text;
+        font-size: Theme.text-xl;
+        font-weight: 600;
+        letter-spacing: -0.44px;
+    }
+    if root.description != "": Text {
+        text: root.description;
+        color: Theme.muted;
+        font-size: Theme.text-sm;
+        wrap: word-wrap;
+    }
+}
