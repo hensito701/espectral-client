@@ -431,7 +431,7 @@ fn execute(ui: &AppWindow, cmd: Cmd) {
         Action::Launch(name) => {
             let title = cmd.title.clone();
             ctx.call(
-                move |e| async move { e.launch_instance(&name, LaunchRequest { dry_run: false, account: None }).await },
+                move |e| async move { e.launch_instance(&name, LaunchRequest::default()).await },
                 move |_ui, outcome| {
                     if matches!(outcome, LaunchOutcome::Started(_)) {
                         toast::ok(title);

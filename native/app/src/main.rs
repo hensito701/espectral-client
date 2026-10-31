@@ -11,6 +11,12 @@
 //!
 //! `--screenshot <route> <out.png> [opts]` renders one route headless and
 //! exits (see screenshot.rs, scripts/screenshot.sh).
+//!
+//! `--mcp` runs the stdio MCP server instead of the UI (agent access, see
+//! `espectral_engine::mcp`): it is dispatched before single-instance, tokio
+//! and Slint so the MCP client talks to a bare JSON-RPC process. The release
+//! build's `windows_subsystem = "windows"` only hides a console; the client's
+//! stdin/stdout pipes are inherited and carry the frames.
 
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
@@ -42,6 +48,12 @@ use slint::ComponentHandle;
 use crate::bridge::Ctx;
 
 fn main() {
+    // MCP stdio server (`espectral-client --mcp`): before single-instance,
+    // tokio and Slint — it must own stdin/stdout and exit with its own status.
+    if std::env::args_os().skip(1).any(|a| a == espectral_engine::api::agent::MCP_ARG) {
+        std::process::exit(espectral_engine::mcp::run_stdio());
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("ESPECTRAL_LOG").unwrap_or_else(|_| "info".into()))
         .with_writer(std::io::stderr)

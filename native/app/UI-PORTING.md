@@ -34,6 +34,8 @@ AppWindow + globals  <── invoke_from_event_loop ──  Engine futures (ctx.
   exists) → `AppWindow::new()` → every module's `init` → `router::navigate("#/")`
   → `ui.show()` (the window appears only once the engine is ready) →
   `slint::run_event_loop()` → on close: `engine.shutdown()` (games keep running).
+  `--mcp` is dispatched before all of that: the binary becomes the stdio MCP
+  server (`espectral_engine::mcp::run_stdio()`) and exits with its status.
 - **Single instance** (`single_instance.rs`): exclusive lock on
   `<data>/ui.lock` + loopback port in `<data>/ui.port`. A second launch sends its
   argv and exits; the first re-shows its window and imports `.mrpack` args
@@ -485,7 +487,7 @@ Every reference screenshot was re-taken with the Slint app
 | Shell (TopChrome, theme / language toggles, palette, toasts, login gate, hotkeys) | done | dark/light and ES/EN switch live; backdrop is static (no drifting orbs), no glass blur; gradient text needs femtovg (software = first stop) |
 | Home (`#/`) | done | greeting, quick actions, MOTD ticker, rail, telemetry capsule, server strip; wizard, dry-run, shared .mrpack modal |
 | Instance wizard | done | 3 steps; preselected version from VersionArmory |
-| InstanceHub (`#/instances/:name`) | done | config / servers / mods / danger tabs + live console |
+| InstanceHub (`#/instances/:name`) | done | config / servers / mods / danger tabs + live console; capture tools toggle (Replay Mod install/remove) |
 | PiP launch log | done | Space / palette / hub button |
 | Server Radar (`#/servers`) + ServerRadarCard | done | |
 | VersionArmory (`#/library/versions`) | done | manifest unreachable in the sandbox (error card matches the reference); rows checked with `ESPECTRAL_SHOT_LIB=versions-fake` |
@@ -496,7 +498,7 @@ Every reference screenshot was re-taken with the Slint app
 | AccountVault + Skin Atelier (`#/account`) | done | 3D viewer, gallery preview / try / apply / rename / delete; MSA device-code flow not exercised (no network) |
 | Wardrobe (`#/armario`) | done | Discord-linked states not exercised visually (no Discord session in the sandbox) |
 | AccountPopover | done | |
-| Settings (`#/settings`) | partial | "Acceso para agentes" (MCP) section missing: the engine agent API (upstream c22767f) is not ported yet |
+| Settings (`#/settings`) | done | incl. "Acceso para agentes" (MCP): toggle, safety rules, JSON/TOML config copy, token path + rotate, allowlist editor. Deliberate difference: the blocked-host warning also catches `host:port` forms (`play.uhce.top:25565`), which the Svelte check let through |
 | Donations (`#/donaciones`) | done | |
 | Updater (lib/updater) | missing | `Shell.update-*` placeholders only |
 

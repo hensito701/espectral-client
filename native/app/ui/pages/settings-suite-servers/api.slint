@@ -138,6 +138,43 @@ export global SettingsBridge {
     callback copy-data-dir();
     callback recheck-health();
 
+    // ---- agent access (MCP) — Engine::agent_access / set_agent_access / rotate_agent_token ----
+    /// Status loaded (Svelte `agent != null`): the toggle stays disabled until it is.
+    in property <bool> agent-loaded;
+    /// `agent.enabled` draft (the switch binds to it; Rust reverts it when the save fails).
+    in-out property <bool> agent-enabled;
+    /// Persisted `agent.enabled` (Svelte `agent?.enabled`): the ACTIVO badge and
+    /// the snippets follow the saved status, not the in-flight switch.
+    in property <bool> agent-active;
+    in property <bool> agent-saving;
+    in property <bool> agent-rotating;
+    /// Inline "rotate the token?" confirmation (Svelte `agentConfirmRotate`).
+    in-out property <bool> agent-confirming-rotate;
+    /// `<data>/agent-token` ("" until the status loads).
+    in property <string> agent-token-path;
+    /// Ready-to-paste MCP snippets, built in Rust from `status.mcp`
+    /// (JSON for Claude Code / Cursor, TOML for Codex).
+    in property <string> agent-json;
+    in property <string> agent-toml;
+    in property <bool> agent-json-copied;
+    in property <bool> agent-toml-copied;
+    /// Allowlist draft (`host[:port]`): edited locally, persisted with one PUT.
+    in property <[string]> agent-allow-list;
+    in-out property <string> agent-allow-input;
+    in property <string> agent-allow-error;
+    in property <bool> agent-allow-saving;
+    /// Draft differs from the persisted list (enables "Guardar lista").
+    in property <bool> agent-allow-dirty;
+
+    callback agent-set-enabled(bool);
+    callback agent-rotate();
+    /// Validate + append `agent-allow-input` (invalid / duplicate / blocked -> `agent-allow-error`).
+    callback agent-allow-add();
+    callback agent-allow-remove(string);
+    callback agent-allow-save();
+    /// "json" | "toml"
+    callback agent-copy(string);
+
     // ======================= Client Suite (#/client) ==========================
     /// Selected instance name (persisted in prefs "client.instance").
     in property <string> client-instance;
