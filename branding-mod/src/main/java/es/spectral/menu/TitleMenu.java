@@ -326,12 +326,14 @@ public final class TitleMenu {
                 argb(a, 0xFFFFFF));
         Compat.uiPop(gfx);
 
-        // Wordmark: accent gradient, scaled, with a drop shadow.
+        // Wordmark: accent gradient, scaled, with the website's hard purple
+        // shadow (#6B3FA0, one game pixel down-right) instead of vanilla's.
         int wy = cy + logoSize / 2 + 12;
         if (a > 0.02f) {
             Compat.uiTextScaledGradient(gfx, font, word, cx - wpx / 2, wy, wordScale,
                     withAlpha(SuiteTheme.accentGradientLeft(), a),
-                    withAlpha(SuiteTheme.accentGradientRight(), a));
+                    withAlpha(SuiteTheme.accentGradientRight(), a),
+                    withAlpha(0xFF6B3FA0, a));
         }
 
         // Hairline divider fading out at both ends, then the tagline.

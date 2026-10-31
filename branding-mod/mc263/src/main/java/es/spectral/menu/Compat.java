@@ -372,11 +372,12 @@ public final class Compat {
     /**
      * Suite painter primitive: plain-{@code String} wordmark with a
      * horizontal per-character gradient (light left, deep right), drawn
-     * scaled about ({@code x}, {@code y}) with the vanilla drop shadow
+     * scaled about ({@code x}, {@code y}) with a hard {@code shadowArgb} shadow one
+     * game pixel down-right
      * through the 26.2 extraction pipeline. Anything else is ignored.
      */
     public static void uiTextScaledGradient(Object gfx, net.minecraft.client.gui.Font font,
-            String text, int x, int y, float scale, int argbLeft, int argbRight) {
+            String text, int x, int y, float scale, int argbLeft, int argbRight, int shadowArgb) {
         if (!(gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor)
                 || font == null || text == null || text.isEmpty()) {
             return;
@@ -384,9 +385,11 @@ public final class Compat {
         extractor.pose().pushMatrix();
         extractor.pose().translate(x, y);
         extractor.pose().scale(scale, scale);
-        uiTextGradient(extractor, font,
-                net.minecraft.network.chat.Component.literal(text),
-                0, 0, argbLeft, argbRight, true);
+        net.minecraft.network.chat.Component line = net.minecraft.network.chat.Component.literal(text);
+        // Hard shadow one game pixel down-right in the given colour (the site's
+        // purple title shadow), instead of vanilla's darkened-text shadow.
+        uiTextGradient(extractor, font, line, 1, 1, shadowArgb, shadowArgb, false);
+        uiTextGradient(extractor, font, line, 0, 0, argbLeft, argbRight, false);
         extractor.pose().popMatrix();
     }
 
