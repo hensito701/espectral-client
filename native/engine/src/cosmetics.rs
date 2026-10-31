@@ -436,6 +436,13 @@ pub fn share_enabled(engine: &Engine, flat_uuid: &str) -> EngineResult<bool> {
     Ok(get_cosmetics_state(engine, flat_uuid).share)
 }
 
+/// Sanitized loadout the presence publisher PUTs to espectral-id
+/// (JS presence.publishOnce: `sanitizeLoadout(getCosmeticsState(uuid).loadout, flags)`).
+pub fn presence_loadout(engine: &Engine, flat_uuid: &str, flags: &[String]) -> EngineResult<serde_json::Value> {
+    let state = get_cosmetics_state(engine, flat_uuid);
+    Ok(serde_json::to_value(sanitize_loadout(&state.loadout, flags))?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -584,7 +591,7 @@ mod tests {
         assert_eq!(doc["share"], true);
         assert_eq!(doc["hidden_players"], json!(["Griefer_1"]));
 
-        // the contract fn never fails and (until identity lands) writes the dead-grant doc
+        // the contract fn never fails and (unverified account) writes the dead-grant doc
         write_cosmetics_file(&e, UUID, &game_dir, None).unwrap();
         assert_eq!(read(&game_dir)["grant"], Value::Null);
     }
@@ -632,11 +639,4 @@ mod tests {
         assert_eq!(v["flags"], json!(["supporter", "mvp"]));
         assert_eq!(get_cosmetics_state(&e, "bad"), AccountCosmetics::default());
     }
-}
-
-/// Sanitized loadout the presence publisher PUTs to espectral-id
-/// (JS presence.publishOnce: `sanitizeLoadout(getCosmeticsState(uuid).loadout, flags)`).
-pub fn presence_loadout(engine: &Engine, flat_uuid: &str, flags: &[String]) -> EngineResult<serde_json::Value> {
-    let state = get_cosmetics_state(engine, flat_uuid);
-    Ok(serde_json::to_value(sanitize_loadout(&state.loadout, flags))?)
 }

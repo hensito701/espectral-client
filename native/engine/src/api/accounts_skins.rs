@@ -41,10 +41,8 @@
 //! Minecraft access tokens, the prewarm dedupe locks and the injectable
 //! endpoints / test hooks. Startup: `prewarm_msa_token` in the background.
 //!
-//! `bridge_visible` stays a stub: its logic (token registry + presence
-//! cache) lives in `bridge.rs`, owned by identity-discord, which has no
-//! contract function for it yet — wire `bridge::authenticate` +
-//! `bridge::visible` at integration.
+//! `bridge_visible` delegates to `bridge::visible_for_token` (token registry
+//! + presence cache live in `bridge.rs`, owned by identity-discord).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
