@@ -1,0 +1,28 @@
+[package]
+name = "espectral-client-ui"
+description = "Espectral Client — the Slint UI (native/app/ui/*.slint) compiled to Rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# Slint 1.18 needs a newer toolchain than the engine's MSRV.
+rust-version = "1.92"
+build = "build.rs"
+
+# The generated module is ~60 MB of Rust. Keeping it in its own crate means
+# edits to the app's Rust code (native/app/src) no longer recompile it; only a
+# .slint change does. The .slint sources stay in native/app/ui (UI-PORTING.md).
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Dev only: build with `SLINT_LIVE_PREVIEW=1` and this feature to make the
+# binary load native/app/ui/*.slint at run time (Slint interpreter) instead of
+# the compiled code, so a .slint edit needs no cargo build. Never for release.
+live-preview = ["slint/live-preview"]
+
+[dependencies]
+slint = { workspace = true }
+
+[build-dependencies]
+slint-build = { workspace = true }
