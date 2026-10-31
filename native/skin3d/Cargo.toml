@@ -1,0 +1,11 @@
+[package]
+name = "espectral-skin3d"
+description = "Software 3D Minecraft skin renderer for the Espectral Client UI (replaces skinview3d/three.js)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# OWNER: skin-renderer agent (see app/UI-PORTING.md). Keep it dependency-light:
+# it rasterizes into a plain RGBA buffer; the app wraps it into a slint::Image.
+[dependencies]

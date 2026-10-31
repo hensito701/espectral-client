@@ -1,0 +1,34 @@
+// T — runtime-switchable string table (port of lib/i18n.svelte.ts `t()`).
+// FOUNDATION-OWNED. Strings live in native/app/i18n/<namespace>.json
+// ({"es": {...}, "en": {...}}), embedded at build time and looked up in Rust
+// (src/i18n.rs). Usage from any .slint file:
+//
+//     Text { text: T.tr("home.title"); }
+//     Text { text: T.tr1("command.noResults", "query", root.query); }   // {query}
+//     Text { text: T.tr2("home.capsuleTiming", "prep", a, "jvm", b); }
+//
+// Bindings re-evaluate when the language changes because tr*() read
+// `T.lang`. Unknown keys fall back to the other language, then to the key.
+
+export global T {
+    /// "es" | "en". Set by Rust (src/i18n.rs) — change it with Shell.set-language().
+    in-out property <string> lang: "es";
+
+    /// Implemented in Rust: (key, lang) -> string.
+    pure callback lookup(key: string, lang: string) -> string;
+    /// Implemented in Rust: replaces `{name}` placeholders; params = [name1, value1, name2, value2, ...].
+    pure callback format(template: string, params: [string]) -> string;
+
+    public pure function tr(key: string) -> string {
+        return lookup(key, lang);
+    }
+    public pure function tr1(key: string, n1: string, v1: string) -> string {
+        return format(lookup(key, lang), [n1, v1]);
+    }
+    public pure function tr2(key: string, n1: string, v1: string, n2: string, v2: string) -> string {
+        return format(lookup(key, lang), [n1, v1, n2, v2]);
+    }
+    public pure function tr3(key: string, n1: string, v1: string, n2: string, v2: string, n3: string, v3: string) -> string {
+        return format(lookup(key, lang), [n1, v1, n2, v2, n3, v3]);
+    }
+}
