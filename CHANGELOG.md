@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.7.0] - 2026-11-01
 
 ### Added
 - **Forge instances** for Minecraft 1.8.9, 1.12.2, 1.21.x and 26.x: pick
@@ -14,17 +14,9 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   the Suite (fullbright, no fog, low fire, clear water, 3D skin layers, HUD
   overlays, chat and tab heads, zoom, macros) and agent access. Cosmetics,
   emotes and recording on 1.8.9 come later.
-
-### Fixed
-- Creating a NeoForge instance from the wizard no longer fails with
-  "loader_version is required"; the newest stable NeoForge is picked.
-- NeoForge 21.1.265 and newer refused the bundled Espectral brand mod.
-- Old Minecraft versions (1.7–1.11) launch with Mojang's Log4Shell
-  protection.
-
-## [1.7.0] - 2026-10-31
-
-### Added
+- **"Editar en NovaSkin" opens the skin you are looking at**, already loaded
+  in the editor (the file you just picked, the gallery skin you preview, or
+  your account's skin). The skin is passed in the link; nothing is uploaded.
 - **Agent access (opt-in): let your own AI agent use Espectral Client.**
   Settings → *Agent access* turns on a local MCP server (Claude Code, Codex,
   Cursor, Gemini CLI…): copy the ready-made config, paste it into your agent,
@@ -52,6 +44,14 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   connected by raw address); input and chat are refused there with a clear
   error, including on the kick screen. Singleplayer, replays, localhost and
   hosts you allowlist are unaffected.
+- **A new look, matching espectral.uhce.top.** Flat purple and gold (cream
+  and purple in light mode), hard shadows instead of glass and glow, titles
+  in the Minecraft font with the purple shadow, gold pill buttons, the
+  site's header bar and the "Espectral / Client" logo with the version tag.
+  Home has a hero with the community photo, the live MOTD and quick actions;
+  server cards show the address, version and MOTD like on the website.
+- **In-game title screen: the ESPECTRAL title has the website's purple
+  shadow** instead of the game's dark one.
 
 ### Changed
 - **The launcher is new, and it is much lighter.** Espectral Client is now a
@@ -78,6 +78,13 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   instead of the old `node-bin\node.exe …\mcp.mjs`. Configs copied before
   this version still point at the old Node files and must be replaced (the
   launcher shows the new block with the rotate/copy buttons).
+
+### Fixed
+- Creating a NeoForge instance from the wizard no longer fails with
+  "loader_version is required"; the newest stable NeoForge is picked.
+- NeoForge 21.1.265 and newer refused the bundled Espectral brand mod.
+- Old Minecraft versions (1.7–1.11) launch with Mojang's Log4Shell
+  protection.
 
 ## [1.6.3] - 2026-10-31
 
