@@ -114,13 +114,26 @@ opt-level = 1
 [profile.dev.package.espectral-skin3d]
 opt-level = 3
 
+# The app crate's Slint-generated module (~60 MB of Rust) makes rustc peak at
+# ~12.7 GB with full debug info; line tables keep backtraces usable.
+[profile.dev.package.espectral-client]
+debug = "line-tables-only"
+
 [profile.release]
 lto = "thin"
 codegen-units = 4
 strip = "symbols"
 
-# The app crate is mostly Slint-generated Rust (one very large module). With
-# 4 codegen units rustc's peak memory exceeds 14 GB at opt-level 3; 16 units
-# keep the release build well under that with no measurable runtime cost.
+# The app crate is mostly Slint-generated Rust (one very large module, ~2/3
+# of the binary's machine code). With 4 codegen units rustc's peak memory
+# exceeds 14 GB at opt-level 3; 16 units keep the build under that. opt-level
+# "s" roughly halves the generated code (property bindings / layout glue are
+# not hot; the skin rasterizer is its own crate and stays at opt-level 3).
+# `strip` must be repeated here: a per-package override of the root package
+# otherwise drops the profile-wide `strip` (the binary kept its 42 MB symtab).
+# panic = "abort" is NOT an option: the engine relies on unwinding
+# (catch_unwind in launch / aot / game_launch, tokio JoinError on panics).
 [profile.release.package.espectral-client]
 codegen-units = 16
+opt-level = "s"
+strip = "symbols"
