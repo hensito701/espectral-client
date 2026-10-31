@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 espectral-engine = { workspace = true }
 espectral-skin3d = { workspace = true }
+espectral-client-ui = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -30,8 +31,13 @@ image = { workspace = true }
 chrono = { workspace = true }
 base64 = { workspace = true }
 
+[features]
+# Dev only (see native/ui/Cargo.toml): with SLINT_LIVE_PREVIEW=1 at build
+# time the binary loads app/ui/*.slint when it runs, so .slint edits need no
+# rebuild. Never in release builds.
+live-preview = ["espectral-client-ui/live-preview"]
+
 [build-dependencies]
-slint-build = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
