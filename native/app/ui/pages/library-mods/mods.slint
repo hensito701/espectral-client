@@ -1,0 +1,13 @@
+// OWNER: library-mods agent. Port of src/ui/src/pages/ModCatalog.svelte.
+// Keep the exported component name and the empty interface used by app.slint.
+
+import { PlaceholderPage, T } from "../../widgets.slint";
+import { LibraryBridge } from "api.slint";
+
+export component ModsPage inherits Rectangle {
+    PlaceholderPage {
+        title: T.tr("mods.title");
+        subtitle: "";
+        source: "src/ui/src/pages/ModCatalog.svelte";
+    }
+}
