@@ -1,59 +1,411 @@
 // OWNER: home-instances agent. Port of components/PipLogDrawer.svelte — the
 // launch-log "flight deck" pinned bottom-right on every page. app.slint gives
-// it the whole window area; draw only what you need (it must not block
-// clicks outside its own rectangles). Shell.pip-log-open toggles it (Space
-// hotkey, palette action). Placeholder: the collapsed pill only.
+// it the whole window area; it draws only the pill / panel (clicks elsewhere
+// fall through). Shell.pip-log-open toggles it (Space hotkey, palette).
+//
+// It is the one home-instances component that is always mounted, so it also
+// hosts the AppState watchers that feed HomeBridge.shared-changed().
 
-import { Theme, T, Shell, AppState, Kbd, Icon, Icons } from "../../widgets.slint";
+import { Theme, T, Shell, AppState, InstanceRow, LaunchRow, ServerRow, AccountRow, Icon, Icons, Emoji } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
+import { HiLogView } from "common.slint";
 
-export component PipLogDrawer inherits Rectangle {
-    pill := Rectangle {
-        width: row.preferred-width;
-        height: 36px;
-        x: root.width - self.width - 16px;
-        y: root.height - self.height - 36px;
-        border-radius: 18px;
-        background: Theme.surface-solid.with-alpha(0.92);
-        border-width: 1px;
-        border-color: Theme.border;
-        drop-shadow-color: Theme.shadow-md-color;
-        drop-shadow-blur: 20px;
-        row := HorizontalLayout {
-            padding-left: 14px;
-            padding-right: 14px;
-            spacing: 10px;
-            VerticalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 8px;
-                    height: 8px;
-                    border-radius: 4px;
-                    background: AppState.running-count > 0 ? Theme.accent-green : Theme.muted;
-                }
-            }
-            Text {
-                text: AppState.running-count > 0 ? T.tr1("pip.runningBadge", "count", AppState.running-count) : T.tr("pip.noActiveLaunch");
-                font-size: Theme.text-xs;
-                font-weight: 600;
-                color: Theme.text;
-                vertical-alignment: center;
-            }
-            Text {
-                text: "[ESPACIO]";
-                font-family: Theme.font-pixel;
-                font-size: 8px;
-                color: Theme.muted;
-                vertical-alignment: center;
-            }
-            VerticalLayout {
-                alignment: center;
-                Icon { data: Shell.pip-log-open ? Icons.chevron-down : Icons.chevron-up; size: 14px; color: Theme.text; weight: 3; }
+component ToolBtn inherits Rectangle {
+    in property <string> icon;
+    in property <string> emoji;
+    in property <bool> active;
+    in property <bool> enabled: true;
+    in property <bool> filled;
+    in property <length> icon-size: 13px;
+    callback clicked();
+    property <bool> hovered: t.has-hover && enabled;
+    width: 26px;
+    height: 26px;
+    border-radius: Theme.radius-xs;
+    background: active ? Theme.accent.with-alpha(0.15) : hovered ? Theme.surface-up : transparent;
+    border-width: 1px;
+    border-color: active ? Theme.accent.with-alpha(0.3) : hovered ? Theme.border : transparent;
+    opacity: enabled ? 1 : 0.5;
+    if root.icon != "": Icon {
+        data: root.icon;
+        size: root.icon-size;
+        filled: root.filled;
+        weight: root.filled ? 0 : 2;
+        color: root.active ? Theme.accent : root.hovered ? Theme.text : Theme.muted;
+    }
+    if root.emoji != "": Emoji { char: root.emoji; size: 13px; }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component StopChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: l.preferred-height + 8px;
+    min-width: l.preferred-width + 14px;
+    border-radius: Theme.radius-xs;
+    background: Theme.accent-red.with-alpha(t.has-hover ? 0.3 : 0.18);
+    border-width: 1px;
+    border-color: Theme.accent-red.with-alpha(0.4);
+    opacity: enabled ? 1 : 0.5;
+    l := Text {
+        text: root.text;
+        font-family: Theme.font-pixel;
+        font-size: 9px;
+        letter-spacing: 0.45px;
+        color: Theme.accent-red;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component LogTab inherits Rectangle {
+    in property <string> label;
+    in property <string> account;
+    in property <bool> running;
+    in property <bool> agent;
+    in property <bool> active;
+    callback clicked();
+    property <bool> hovered: t.has-hover;
+    height: 26px;
+    min-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-sm;
+    background: active ? Theme.surface-up-solid : hovered ? Theme.surface-up : transparent;
+    border-width: 1px;
+    border-color: active ? Theme.border-focus : transparent;
+    row := HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: root.running ? Theme.accent : Theme.muted;
+                drop-shadow-color: root.running ? Theme.accent.with-alpha(0.6) : transparent;
+                drop-shadow-blur: 6px;
             }
         }
-        TouchArea {
+        Text {
+            text: root.label;
+            color: root.active || root.hovered ? Theme.text : Theme.muted;
+            font-size: Theme.text-xs;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        if root.agent: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: al.preferred-height + 2px;
+                width: al.preferred-width + 10px;
+                border-radius: Theme.radius-sm;
+                background: rgba(167, 139, 250, 0.16);
+                border-width: 1px;
+                border-color: rgba(167, 139, 250, 0.4);
+                al := Text {
+                    text: T.tr("pip.agentBadge");
+                    font-size: 9px;
+                    font-weight: 700;
+                    letter-spacing: 0.4px;
+                    color: Theme.accent-purple;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        if root.account != "": Text {
+            text: "(" + root.account + ")";
+            color: Theme.muted;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component PipLogDrawer inherits Rectangle {
+    // ---- AppState watchers (shared data hook) ----
+    property <[InstanceRow]> w-instances: AppState.instances;
+    property <[LaunchRow]> w-launches: AppState.launches;
+    property <[ServerRow]> w-servers: AppState.servers;
+    property <[AccountRow]> w-accounts: AppState.accounts;
+    changed w-instances => { HomeBridge.shared-changed(); }
+    changed w-launches => { HomeBridge.shared-changed(); }
+    changed w-servers => { HomeBridge.shared-changed(); }
+    changed w-accounts => { HomeBridge.shared-changed(); }
+
+    property <bool> expanded: Shell.pip-log-open;
+    changed expanded => { if !root.expanded { HomeBridge.log-collapsed(); } }
+
+    property <length> bottom-gap: Theme.statusbar-height + Theme.space-2;
+
+    // ================= collapsed pill =================
+    if !root.expanded: pill := Rectangle {
+        property <bool> hovered: pt.has-hover;
+        width: prow.preferred-width;
+        height: 36px;
+        x: root.width - self.width - Theme.space-4;
+        y: root.height - self.height - root.bottom-gap - (self.hovered ? 1px : 0px);
+        border-radius: 18px;
+        background: self.hovered ? Theme.surface-up-solid.with-alpha(0.94) : Theme.surface-solid.with-alpha(0.9);
+        border-width: 1px;
+        border-color: self.hovered ? Theme.border-focus : Theme.border;
+        drop-shadow-color: Theme.shadow-md-color;
+        drop-shadow-blur: Theme.shadow-md-blur;
+        drop-shadow-offset-y: Theme.shadow-md-y;
+        pt := TouchArea {
             mouse-cursor: pointer;
-            clicked => { Shell.pip-log-open = !Shell.pip-log-open; }
+            clicked => { Shell.pip-log-open = true; }
+        }
+        prow := HorizontalLayout {
+            padding-left: Theme.space-3;
+            padding-right: Theme.space-3;
+            spacing: Theme.space-4;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: AppState.running-count > 0 ? Theme.accent : Theme.muted;
+                        opacity: AppState.running-count > 0 ? 1 : 0.5;
+                        drop-shadow-color: AppState.running-count > 0 ? Theme.accent.with-alpha(0.7) : transparent;
+                        drop-shadow-blur: 10px;
+                    }
+                }
+                if AppState.running-count > 0: VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        height: cnt.preferred-height + 4px;
+                        width: cnt.preferred-width + 10px;
+                        border-radius: Theme.radius-xs;
+                        background: Theme.accent.with-alpha(0.15);
+                        border-width: 1px;
+                        border-color: Theme.accent.with-alpha(0.3);
+                        cnt := Text {
+                            text: AppState.running-count;
+                            font-family: Theme.font-pixel;
+                            font-size: 9px;
+                            color: Theme.accent;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                Text {
+                    text: AppState.running-count == 1 ? T.tr("pip.runningOne")
+                        : AppState.running-count > 1 ? T.tr1("pip.runningMany", "count", AppState.running-count)
+                        : HomeBridge.log-has-buffer ? (HomeBridge.log-instance != "" ? HomeBridge.log-instance : T.tr("pip.title"))
+                        : T.tr("pip.noActiveLaunch");
+                    color: Theme.text;
+                    font-size: Theme.text-xs;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                }
+            }
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                if HomeBridge.log-has-buffer && HomeBridge.log-running: VerticalLayout {
+                    alignment: center;
+                    StopChip {
+                        text: HomeBridge.log-stopping ? "…" : "■";
+                        enabled: !HomeBridge.log-stopping;
+                        clicked => { HomeBridge.log-stop(); }
+                    }
+                }
+                Text {
+                    text: "[ESPACIO]";
+                    font-family: Theme.font-pixel;
+                    font-size: 9px;
+                    color: Theme.muted;
+                    opacity: 0.7;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Icon { data: "M 12 6 L 20 18 L 4 18 Z"; filled: true; weight: 0; size: 10px; color: Theme.muted; }
+                }
+            }
+        }
+    }
+
+    // ================= expanded terminal panel =================
+    if root.expanded: panel := Rectangle {
+        width: clamp(root.width * 0.52, 520px, 840px);
+        height: max(240px, min(root.height * 0.36, root.height * 0.40));
+        x: root.width - self.width - Theme.space-4;
+        y: root.height - self.height - root.bottom-gap;
+        border-radius: Theme.radius-lg;
+        background: Theme.log-bg;
+        border-width: 1px;
+        border-color: Theme.border-solid;
+        drop-shadow-color: Theme.shadow-lg-color;
+        drop-shadow-blur: Theme.shadow-lg-blur;
+        drop-shadow-offset-y: Theme.shadow-lg-y;
+        clip: true;
+        // swallow clicks on the panel
+        TouchArea { }
+
+        // header
+        head := Rectangle {
+            y: 0;
+            height: 38px;
+            background: Theme.surface-solid;
+            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+            HorizontalLayout {
+                padding-left: Theme.space-2;
+                padding-right: Theme.space-2;
+                spacing: Theme.space-2;
+                // tabs
+                Rectangle {
+                    horizontal-stretch: 1;
+                    max-width: panel.width * 0.6;
+                    clip: true;
+                    HorizontalLayout {
+                        spacing: Theme.space-1;
+                        alignment: start;
+                        if HomeBridge.log-tabs.length == 0: VerticalLayout {
+                            alignment: center;
+                            LogTab {
+                                label: T.tr("pip.title");
+                                active: true;
+                                running: false;
+                            }
+                        }
+                        for tab in HomeBridge.log-tabs: VerticalLayout {
+                            alignment: center;
+                            LogTab {
+                                label: tab.label;
+                                account: tab.account;
+                                running: tab.running;
+                                agent: tab.agent;
+                                active: tab.key == HomeBridge.log-active-key;
+                                clicked => { HomeBridge.log-select(tab.key); }
+                            }
+                        }
+                    }
+                }
+                // actions
+                HorizontalLayout {
+                    spacing: Theme.space-1;
+                    horizontal-stretch: 0;
+                    Text {
+                        text: T.tr1("pip.linesCount", "count", HomeBridge.log-lines.length);
+                        font-family: Theme.font-pixel;
+                        font-size: 9px;
+                        color: Theme.muted;
+                        opacity: 0.8;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { width: Theme.space-2; }
+                    VerticalLayout {
+                        alignment: center;
+                        ToolBtn {
+                            icon: "M 12 5 L 12 19 M 6 13 L 12 19 L 18 13";
+                            active: HomeBridge.log-autoscroll;
+                            clicked => { HomeBridge.log-autoscroll = !HomeBridge.log-autoscroll; }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        ToolBtn {
+                            icon: HomeBridge.log-copied ? Icons.check : Icons.copy;
+                            icon-size: 12px;
+                            enabled: HomeBridge.log-lines.length > 0;
+                            clicked => { HomeBridge.log-copy(); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        ToolBtn {
+                            icon: "M 21 12 A 9 9 0 1 1 3 12 A 9 9 0 1 1 21 12 M 5.6 5.6 L 18.4 18.4";
+                            icon-size: 14px;
+                            enabled: HomeBridge.log-lines.length > 0;
+                            clicked => { HomeBridge.log-clear(); }
+                        }
+                    }
+                    if HomeBridge.log-has-buffer && HomeBridge.log-running: VerticalLayout {
+                        alignment: center;
+                        StopChip {
+                            text: HomeBridge.log-stopping ? T.tr("pip.killing") : T.tr("pip.kill");
+                            enabled: !HomeBridge.log-stopping;
+                            clicked => { HomeBridge.log-stop(); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        ToolBtn {
+                            emoji: "📌";
+                            active: Shell.pip-log-pinned;
+                            clicked => {
+                                Shell.pip-log-pinned = !Shell.pip-log-pinned;
+                                HomeBridge.log-pin(Shell.pip-log-pinned);
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        ToolBtn {
+                            icon: "M 4 6 L 20 6 L 12 18 Z";
+                            filled: true;
+                            icon-size: 12px;
+                            clicked => { Shell.pip-log-open = false; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // terminal body
+        Rectangle {
+            x: Theme.space-3;
+            y: head.height + Theme.space-2;
+            width: parent.width - 2 * Theme.space-3;
+            height: parent.height - head.height - 2 * Theme.space-2;
+            if HomeBridge.log-lines.length == 0: HorizontalLayout {
+                y: Theme.space-4;
+                height: 20px;
+                spacing: Theme.space-2;
+                alignment: start;
+                Text {
+                    text: "_";
+                    color: Theme.accent;
+                    font-family: Theme.font-mono;
+                    font-size: 12px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: T.tr("pip.waitingLogs");
+                    color: Theme.muted;
+                    font-family: Theme.font-mono;
+                    font-size: 12px;
+                    font-italic: true;
+                    vertical-alignment: center;
+                }
+            }
+            if HomeBridge.log-lines.length > 0: HiLogView {
+                lines: HomeBridge.log-lines;
+                serial: HomeBridge.log-serial;
+                autoscroll: HomeBridge.log-autoscroll;
+            }
         }
     }
 }
