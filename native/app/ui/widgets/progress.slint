@@ -21,12 +21,12 @@ export component ProgressBar inherits VerticalLayout {
     in property <bool> show-value: false;
 
     property <float> pct: max > 0 ? clamp(value / max, 0, 1) : 0;
-    property <brush> fill: tone == ProgressTone.cyan ? @linear-gradient(90deg, #0284c7 0%, Theme.accent-cyan 100%)
-        : tone == ProgressTone.gold ? @linear-gradient(90deg, Theme.accent-alt 0%, Theme.accent-gold 100%)
-        : tone == ProgressTone.purple ? @linear-gradient(90deg, #7e22ce 0%, Theme.accent-purple 100%)
-        : tone == ProgressTone.danger ? @linear-gradient(90deg, #b91c1c 0%, Theme.accent-red 100%)
-        : @linear-gradient(90deg, Theme.accent-ink 0%, Theme.accent 100%);
-    property <color> glow: tone == ProgressTone.cyan ? rgba(6, 182, 212, 0.4) : tone == ProgressTone.gold ? Theme.accent-gold.with-alpha(0.4) : tone == ProgressTone.purple ? rgba(168, 85, 247, 0.4) : tone == ProgressTone.danger ? rgba(239, 68, 68, 0.4) : Theme.accent.with-alpha(0.4);
+    // Flat poster fill: one colour per tone (no gradient, no glow).
+    property <brush> fill: tone == ProgressTone.cyan ? Theme.accent-cyan
+        : tone == ProgressTone.gold ? Theme.accent-gold
+        : tone == ProgressTone.purple ? Theme.accent-purple
+        : tone == ProgressTone.danger ? Theme.accent-red
+        : Theme.btn-fill;
 
     spacing: Theme.space-1;
 
@@ -43,34 +43,35 @@ export component ProgressBar inherits VerticalLayout {
             text: round(root.pct * 100) + "%";
             color: Theme.text;
             font-family: Theme.font-pixel;
-            font-size: 10.4px;
+            font-size: 8px;
+            vertical-alignment: center;
         }
     }
 
     track := Rectangle {
-        height: root.thickness == ProgressThickness.sm ? 4px : root.thickness == ProgressThickness.lg ? 12px : 8px;
+        height: root.thickness == ProgressThickness.sm ? 6px : root.thickness == ProgressThickness.lg ? 14px : 10px;
         border-radius: self.height / 2;
         background: Theme.card-bg-soft;
-        border-width: 1px;
-        border-color: Theme.border;
+        border-width: 2px;
+        border-color: Theme.border-solid;
         clip: true;
 
         if !root.indeterminate: Rectangle {
-            x: 0;
-            width: parent.width * root.pct;
-            height: parent.height;
-            border-radius: parent.border-radius;
+            x: 2px;
+            y: 2px;
+            width: clamp((parent.width - 4px) * root.pct, 0px, parent.width - 4px);
+            height: parent.height - 4px;
+            border-radius: (parent.height - 4px) / 2;
             background: root.fill;
-            drop-shadow-color: root.glow;
-            drop-shadow-blur: 10px;
             animate width { duration: Theme.dur-med; easing: ease-out; }
         }
         if root.indeterminate: Rectangle {
             property <float> t: mod(animation-tick(), 1400ms) / 1400ms;
             width: parent.width * 0.4;
             x: parent.width * (-0.45 + 1.45 * t);
-            height: parent.height;
-            border-radius: parent.border-radius;
+            y: 2px;
+            height: parent.height - 4px;
+            border-radius: (parent.height - 4px) / 2;
             background: root.fill;
         }
     }

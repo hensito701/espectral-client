@@ -1,8 +1,12 @@
 // OWNER: home-instances agent. Port of pages/Home.svelte (+ HorizonRail,
 // HorizonTile, TelemetryCapsule, InstanceWizardModal, MrpackModal, DryRunModal).
 // Keep the exported component name and the empty interface used by app.slint.
+//
+// Poster look: the hero is a dark photo panel in both themes (local dark
+// tokens, flat purple wash, gold pixel greeting), sections are flat blocks
+// with 2px borders and hard ink shadows, buttons are the site's gold pills.
 
-import { Theme, T, AppState, Shell, Router, MonogramTile, MonogramShape, Util, Btn, BtnVariant, BtnSize, PageScaffold } from "../../widgets.slint";
+import { Theme, T, AppState, Shell, Router, MonogramTile, MonogramShape, Util, PageScaffold, McTitle, Emoji } from "../../widgets.slint";
 import { ServerRadarCard } from "../settings-suite-servers/server-radar-card.slint";
 import { HomeBridge } from "api.slint";
 import { HorizonRail } from "horizon.slint";
@@ -14,23 +18,38 @@ import { MrpackModal } from "../library-mods/mrpack-modal.slint";
 import { LibraryBridge } from "../library-mods/api.slint";
 
 component AccountChip inherits Rectangle {
-    property <bool> hovered: t.has-hover;
-    property <string> name: AppState.has-active-account ? AppState.active-account.username : "";
+    // dark-panel scope: the hero keeps the dark palette in both themes
+    in property <bool> hovered: t.has-hover;
+    in property <string> name: AppState.has-active-account ? AppState.active-account.username : "";
     property <length> lift: hovered ? -2px : 0px;
+    property <length> depth: 3px;
     animate lift { duration: Theme.dur-fast; }
-    height: 44px;
-    min-width: row.preferred-width;
+
+    height: 44px + self.depth;
+    min-width: row.preferred-width + self.depth;
     horizontal-stretch: 0;
-    border-radius: 22px;
-    drop-shadow-color: hovered ? Theme.shadow-md-color : Theme.shadow-sm-color;
-    drop-shadow-blur: hovered ? Theme.shadow-md-blur : Theme.shadow-sm-blur;
-    drop-shadow-offset-y: Theme.shadow-sm-y;
+    background: transparent;
+
+    // hard shadow block
     Rectangle {
+        x: root.depth;
+        y: root.depth;
+        width: parent.width - root.depth;
+        height: 44px;
+        border-radius: Theme.radius-md;
+        background: root.hovered ? Theme.brand-purple : #07021a;
+        animate background { duration: Theme.dur-fast; }
+    }
+
+    face := Rectangle {
         y: root.lift;
-        border-radius: root.border-radius;
-        background: root.hovered ? Theme.surface-up : Theme.surface;
-        border-width: 1px;
-        border-color: root.hovered ? Theme.accent : Theme.border;
+        width: parent.width - root.depth;
+        height: 44px;
+        border-radius: Theme.radius-md;
+        background: root.hovered ? #2a1a66 : #1f1252;
+        border-width: 2px;
+        border-color: root.hovered ? Theme.hover-border : #3a2488;
+        animate background, border-color { duration: Theme.dur-fast; }
         row := HorizontalLayout {
             padding-left: 6px;
             padding-right: 14px;
@@ -49,8 +68,8 @@ component AccountChip inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 spacing: 1px;
-                Text { text: T.tr("home.activeAccount"); color: Theme.muted-strong; font-size: 11px; font-weight: 500; }
-                Text { text: root.name != "" ? root.name : T.tr("home.noActiveAccount"); color: Theme.text; font-size: Theme.text-sm; font-weight: 700; }
+                Text { text: T.tr("home.activeAccount"); color: #cbbcf2; font-size: 11px; font-weight: 500; }
+                Text { text: root.name != "" ? root.name : T.tr("home.noActiveAccount"); color: #f6f1ff; font-size: Theme.text-sm; font-weight: 700; }
             }
         }
     }
@@ -60,53 +79,115 @@ component AccountChip inherits Rectangle {
     }
 }
 
+/// Hero CTA: the site's button on the dark panel (gold pill + purple block
+/// shadow, or the 2px gold outline). It keeps the dark-panel colours in both
+/// themes, which the shared Btn cannot do (its outline follows the accent).
+component HeroBtn inherits Rectangle {
+    in property <string> text;
+    in property <string> emoji;
+    in property <bool> primary;
+    in property <bool> enabled: true;
+    callback clicked();
+    property <bool> hovered: t.has-hover && enabled;
+    property <length> depth: root.primary ? 4px : 0px;
+    property <length> lift: !root.primary ? 0px : root.hovered ? -2px : 0px;
+    animate lift { duration: Theme.dur-fast; easing: ease-out; }
+    height: 40px + self.depth;
+    min-width: row.preferred-width;
+    horizontal-stretch: 0;
+    opacity: enabled ? 1 : 0.5;
+    background: transparent;
+
+    if root.primary: Rectangle {
+        y: root.depth;
+        width: 100%;
+        height: 40px;
+        border-radius: Theme.radius-pill;
+        background: Theme.brand-purple;
+    }
+    face := Rectangle {
+        y: root.lift;
+        width: 100%;
+        height: 40px;
+        border-radius: Theme.radius-pill;
+        border-width: root.primary ? 0px : 2px;
+        border-color: root.primary ? transparent : Theme.gold;
+        background: root.primary ? (root.hovered ? Theme.gold-hover : Theme.gold)
+            : root.hovered ? Theme.gold : transparent;
+        animate background { duration: Theme.dur-fast; }
+        row := HorizontalLayout {
+            padding-left: Theme.space-4;
+            padding-right: Theme.space-4;
+            spacing: Theme.space-2;
+            alignment: center;
+            if root.emoji != "": VerticalLayout {
+                alignment: center;
+                Emoji { char: root.emoji; size: 14px; }
+            }
+            Text {
+                text: root.text;
+                color: root.primary || root.hovered ? Theme.on-gold : Theme.gold;
+                font-size: Theme.text-sm;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+        }
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// The live MOTD line: flat red "EN VIVO" sticker chip + server + text.
 component MotdTicker inherits HorizontalLayout {
-    spacing: Theme.space-2;
-    alignment: end;
-    VerticalLayout {
-        alignment: center;
-        Rectangle {
-            height: badge.preferred-height + 6px;
-            width: badge.preferred-width + 12px;
-            border-radius: Theme.radius-xs;
-            background: rgba(239, 68, 68, 0.15);
-            border-width: 1px;
-            border-color: rgba(239, 68, 68, 0.35);
-            badge := HorizontalLayout {
-                x: 6px;
-                y: 3px;
-                spacing: 4px;
-                VerticalLayout {
-                    alignment: center;
-                    Rectangle {
-                        width: 6px;
-                        height: 6px;
-                        border-radius: 3px;
-                        background: #ef4444;
-                        drop-shadow-color: #ef4444;
-                        drop-shadow-blur: 6px;
-                    }
+    spacing: Theme.space-3;
+    alignment: center;
+    // flat red sticker chip (no glow): white sticker dot, then the pixel label
+    Rectangle {
+        height: 24px;
+        width: live-row.preferred-width;
+        horizontal-stretch: 0;
+        border-radius: Theme.radius-xs;
+        background: #e5484d;
+        border-width: 2px;
+        border-color: #07021a;
+        // the row hugs its content (dot + label) and is centred in the chip
+        live-row := HorizontalLayout {
+            x: 0;
+            y: (parent.height - self.height) / 2;
+            padding-left: 8px;
+            padding-right: 8px;
+            spacing: 6px;
+            alignment: center;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    background: #ffffff;
                 }
-                Text {
-                    text: T.tr("home.motdLive");
-                    font-family: Theme.font-pixel;
-                    font-size: 10px;
-                    color: #ef4444;
-                    vertical-alignment: center;
-                }
+            }
+            live := Text {
+                text: T.tr("home.motdLive");
+                font-family: Theme.font-pixel;
+                font-size: 8px;
+                color: #ffffff;
+                vertical-alignment: center;
             }
         }
     }
     Text {
         text: HomeBridge.motd-server + ":";
-        color: Theme.text;
+        color: #f6f1ff;
         font-size: Theme.text-xs;
         font-weight: 700;
         vertical-alignment: center;
     }
     Text {
         text: HomeBridge.motd-text != "" ? HomeBridge.motd-text : T.tr("home.motdDefault");
-        color: Theme.muted-strong;
+        color: #cbbcf2;
         font-size: Theme.text-xs;
         vertical-alignment: center;
         overflow: elide;
@@ -115,14 +196,118 @@ component MotdTicker inherits HorizontalLayout {
     }
 }
 
+/// Home hero: photo + flat purple wash (dark panel in both themes), pixel
+/// greeting, the site's CTA buttons and the MOTD strip along the bottom.
+component HeroPanel inherits Rectangle {
+    in property <length> vw: 1280px;
+    in property <string> greeting;
+
+    height: col.preferred-height;
+    background: #120a33;
+    border-radius: Theme.radius-lg;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    clip: true;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: Theme.shadow-md-x;
+    drop-shadow-offset-y: Theme.shadow-md-y;
+
+    col := VerticalLayout {
+        padding: 0px;
+        spacing: 0px;
+        // photo band (grows only if the greeting wraps on a narrow window)
+        Rectangle {
+            height: max(hero-row.preferred-height, 248px);
+            clip: true;
+            Image {
+                width: 100%;
+                height: 100%;
+                source: @image-url("../../assets/hero-community.jpg");
+                image-fit: cover;
+            }
+            // flat purple wash (not a gradient): the site's dark hero panel
+            Rectangle {
+                background: #120a33;
+                opacity: 0.76;
+            }
+            hero-row := HorizontalLayout {
+                width: parent.width;
+                y: (parent.height - self.height) / 2;
+                alignment: center;
+                padding-left: Theme.space-8;
+                padding-right: Theme.space-8;
+                padding-top: Theme.space-6;
+                padding-bottom: Theme.space-6;
+                spacing: Theme.space-6;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: Theme.space-3;
+                    McTitle {
+                        text: root.greeting;
+                        font-size: root.vw < 1200px ? 32px : 48px;
+                        ink: #ffd700;
+                    }
+                    Text {
+                        text: T.tr("home.motdDefault");
+                        color: #cbbcf2;
+                        font-size: Theme.text-base;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        padding-top: Theme.space-2;
+                        spacing: Theme.space-3;
+                        alignment: start;
+                        HeroBtn {
+                            primary: true;
+                            text: "+ " + T.tr("home.newInstance");
+                            clicked => { Shell.wizard-open = true; }
+                        }
+                        HeroBtn {
+                            emoji: "📦";
+                            text: T.tr("home.importModpack");
+                            clicked => { LibraryBridge.mrpack-open = true; }
+                        }
+                        HeroBtn {
+                            emoji: "🧩";
+                            text: T.tr("home.clientSuite");
+                            clicked => { Router.navigate("#/client"); }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    AccountChip { }
+                }
+            }
+        }
+        // 2px rule between the photo and the ticker strip
+        Rectangle {
+            height: 2px;
+            background: #3a2488;
+        }
+        Rectangle {
+            height: 44px;
+            background: #0c0626;
+            MotdTicker {
+                x: Theme.space-8;
+                width: parent.width - 2 * Theme.space-8;
+                height: parent.height;
+            }
+        }
+    }
+}
+
 component ServersSection inherits Rectangle {
-    border-radius: Theme.radius-xl;
-    background: Theme.surface;
-    border-width: 1px;
-    border-color: Theme.border;
-    drop-shadow-color: Theme.shadow-sm-color;
-    drop-shadow-blur: Theme.shadow-sm-blur;
-    drop-shadow-offset-y: Theme.shadow-sm-y;
+    border-radius: Theme.radius-lg;
+    background: Theme.card-bg;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: Theme.shadow-md-x;
+    drop-shadow-offset-y: Theme.shadow-md-y;
     HorizontalLayout {
         padding-left: Theme.space-6;
         padding-right: Theme.space-6;
@@ -132,16 +317,14 @@ component ServersSection inherits Rectangle {
             spacing: Theme.space-4;
             HorizontalLayout {
                 spacing: Theme.space-3;
-                Text {
+                McTitle {
                     text: T.tr("home.serversTitle");
-                    color: Theme.text;
-                    font-size: Theme.text-lg;
-                    font-weight: 700;
-                    vertical-alignment: center;
+                    font-size: 24px;
+                    horizontal-stretch: 0;
                 }
                 Text {
                     text: T.tr("home.serversSubtitle");
-                    color: Theme.muted-strong;
+                    color: Theme.muted;
                     font-size: Theme.text-xs;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
@@ -151,7 +334,7 @@ component ServersSection inherits Rectangle {
                     text: T.tr("home.viewAllServers") + " →";
                     color: more-t.has-hover ? Theme.accent-alt : Theme.accent;
                     font-size: Theme.text-sm;
-                    font-weight: 600;
+                    font-weight: 700;
                     vertical-alignment: center;
                     more-t := TouchArea {
                         mouse-cursor: pointer;
@@ -172,9 +355,13 @@ component ServersSection inherits Rectangle {
             }
             if HomeBridge.top-servers.length == 0: Rectangle {
                 height: 68px;
+                border-radius: Theme.radius-md;
+                background: Theme.card-bg-soft;
+                border-width: 2px;
+                border-color: Theme.border-solid;
                 Text {
                     text: T.tr("home.noServers");
-                    color: Theme.muted-strong;
+                    color: Theme.muted;
                     font-size: Theme.text-sm;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -195,79 +382,12 @@ export component HomePage inherits Rectangle {
         content-padding-bottom: Theme.space-12;
         spacing: Theme.space-6;
 
-        // ---- hero header ----
-        HorizontalLayout {
-            padding-top: Theme.space-2;
-            spacing: Theme.space-6;
-            VerticalLayout {
-                horizontal-stretch: 1;
-                alignment: center;
-                spacing: 4px;
-                Text {
-                    text: HomeBridge.greeting == 0 ? T.tr1("home.greetingMorning", "name", root.player)
-                        : HomeBridge.greeting == 1 ? T.tr1("home.greetingAfternoon", "name", root.player)
-                        : T.tr1("home.greetingEvening", "name", root.player);
-                    font-size: Theme.text-hero(root.width);
-                    font-weight: 700;
-                    letter-spacing: Theme.text-hero(root.width) * -0.03;
-                    color: @linear-gradient(135deg, Theme.text 30%, Theme.muted-strong 100%);
-                    overflow: elide;
-                }
-                Text {
-                    text: T.tr("home.motdDefault");
-                    color: Theme.text;
-                    font-size: Theme.text-sm;
-                    overflow: elide;
-                }
-            }
-            VerticalLayout {
-                alignment: center;
-                AccountChip { }
-            }
-        }
-
-        // ---- quick action toolbar ----
-        Rectangle {
-            border-radius: Theme.radius-lg;
-            background: Theme.surface;
-            border-width: 1px;
-            border-color: Theme.border;
-            drop-shadow-color: Theme.shadow-sm-color;
-            drop-shadow-blur: Theme.shadow-sm-blur;
-            drop-shadow-offset-y: Theme.shadow-sm-y;
-            HorizontalLayout {
-                padding-left: Theme.space-4;
-                padding-right: Theme.space-4;
-                padding-top: Theme.space-3;
-                padding-bottom: Theme.space-3;
-                spacing: Theme.space-4;
-                HorizontalLayout {
-                    spacing: Theme.space-3;
-                    horizontal-stretch: 0;
-                    Btn {
-                        variant: BtnVariant.primary;
-                        emoji: "✨";
-                        text: "+ " + T.tr("home.newInstance");
-                        clicked => { Shell.wizard-open = true; }
-                    }
-                    Btn {
-                        variant: BtnVariant.secondary;
-                        emoji: "📦";
-                        text: T.tr("home.importModpack");
-                        clicked => { LibraryBridge.mrpack-open = true; }
-                    }
-                    Btn {
-                        variant: BtnVariant.ghost;
-                        emoji: "🧩";
-                        text: T.tr("home.clientSuite");
-                        clicked => { Router.navigate("#/client"); }
-                    }
-                }
-                MotdTicker {
-                    horizontal-stretch: 1;
-                    max-width: 620px;
-                }
-            }
+        // ---- hero ----
+        HeroPanel {
+            vw: root.width;
+            greeting: HomeBridge.greeting == 0 ? T.tr1("home.greetingMorning", "name", root.player)
+                : HomeBridge.greeting == 1 ? T.tr1("home.greetingAfternoon", "name", root.player)
+                : T.tr1("home.greetingEvening", "name", root.player);
         }
 
         // ---- instance rail ----
@@ -278,19 +398,18 @@ export component HomePage inherits Rectangle {
             HorizontalLayout {
                 padding-left: Theme.space-2;
                 padding-right: Theme.space-2;
-                spacing: Theme.space-2;
+                spacing: Theme.space-3;
                 alignment: start;
-                Text {
+                McTitle {
                     text: T.tr("home.instancesRailTitle");
-                    color: Theme.text;
-                    font-size: Theme.text-xl;
-                    font-weight: 700;
+                    font-size: 24px;
+                    horizontal-stretch: 0;
                 }
                 Text {
                     text: "(" + AppState.instances.length + ")";
-                    color: Theme.muted-strong;
+                    color: Theme.muted;
                     font-size: Theme.text-sm;
-                    font-weight: 600;
+                    font-weight: 700;
                     vertical-alignment: bottom;
                 }
             }

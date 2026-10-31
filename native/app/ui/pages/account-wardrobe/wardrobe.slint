@@ -3,8 +3,8 @@
 // cosmetics consent, MVP slot pickers, emotes and hidden players.
 // Keep the exported component name and the empty interface used by app.slint.
 
-import { Theme, T, Router, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, GlassCard, Elevation,
-    PageScaffold, Spinner } from "../../widgets.slint";
+import { Theme, T, Router, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GlassCard, Elevation,
+    PageScaffold, Spinner, McTitle, Sticker } from "../../widgets.slint";
 import { AccountBridge, WardrobeAccount, WardrobeSlot, WardrobeItem } from "api.slint";
 import { PlainInput } from "parts.slint";
 
@@ -16,14 +16,11 @@ component SectionTitle inherits VerticalLayout {
     in property <string> title;
     in property <string> subtitle;
     in property <bool> small;
-    spacing: 4px;
-    Text {
+    spacing: Theme.space-1;
+    McTitle {
         text: root.title;
-        font-size: root.small ? Theme.text-base : Theme.text-lg;
-        font-weight: 600;
-        letter-spacing: -0.36px;
-        color: Theme.text;
-        wrap: word-wrap;
+        font-size: root.small ? 16px : 24px;
+        min-width: 0px;
     }
     if root.subtitle != "": Text {
         text: root.subtitle;
@@ -39,11 +36,11 @@ component Note inherits Text {
     wrap: word-wrap;
 }
 
-/// .locked-note (MVP gate).
+/// .locked-note (MVP gate): flat amber block with the poster border.
 component LockedNote inherits Rectangle {
-    background: Theme.accent-alt.with-alpha(0.08);
-    border-width: 1px;
-    border-color: Theme.accent-alt.with-alpha(0.25);
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.accent-alt;
     border-radius: Theme.radius-md;
     min-height: lbl-row.preferred-height;
     lbl-row := HorizontalLayout {
@@ -54,38 +51,34 @@ component LockedNote inherits Rectangle {
         Text {
             text: T.tr("wardrobe.slots.locked");
             font-size: Theme.text-sm;
+            font-weight: 600;
             color: Theme.accent-alt;
             wrap: word-wrap;
         }
     }
 }
 
-/// .switch (42x24 pill, white thumb).
+/// .switch (44x26 pill): flat gold when on, flat card when off.
 component Switch inherits Rectangle {
     in property <bool> on;
     in property <bool> enabled: true;
     callback toggled(on: bool);
-    width: 42px;
-    height: 24px;
-    border-radius: 12px;
-    background: on ? Theme.accent : rgba(255, 255, 255, 0.1);
-    border-width: 1px;
-    border-color: on ? Theme.accent.with-alpha(0.8) : Theme.border;
-    drop-shadow-color: on ? Theme.accent.with-alpha(0.35) : transparent;
-    drop-shadow-blur: 12px;
+    width: 44px;
+    height: 26px;
+    border-radius: Theme.radius-pill;
+    background: on ? Theme.gold : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: on ? Theme.brand-ink : Theme.border-solid;
     opacity: enabled ? 1 : 0.45;
     animate background, border-color { duration: Theme.dur-slow; }
     Rectangle {
-        x: root.on ? 21px : 3px;
+        x: root.on ? 20px : 2px;
         y: 2px;
         width: 18px;
         height: 18px;
         border-radius: 9px;
-        background: #ffffff;
-        drop-shadow-color: rgba(0, 0, 0, 0.4);
-        drop-shadow-blur: 3px;
-        drop-shadow-offset-y: 1px;
-        animate x { duration: Theme.dur-slow; easing: ease-out; }
+        background: root.on ? Theme.on-gold : Theme.muted;
+        animate x, background { duration: Theme.dur-slow; easing: ease-out; }
     }
     TouchArea {
         enabled: root.enabled;
@@ -94,7 +87,7 @@ component Switch inherits Rectangle {
     }
 }
 
-/// .item-chip
+/// .item-chip: flat pill chip, gold when equipped.
 component ItemChip inherits Rectangle {
     in property <string> text;
     in property <bool> equipped;
@@ -103,16 +96,16 @@ component ItemChip inherits Rectangle {
     callback clicked();
     height: lbl.preferred-height + 12px;
     width: lbl.preferred-width + 28px;
-    border-radius: 999px;
-    background: equipped ? Theme.accent-gold.with-alpha(0.14) : Theme.surface;
-    border-width: 1px;
-    border-color: equipped ? Theme.accent-gold : (ta.has-hover && enabled) ? Theme.hover-border : conflict ? Theme.muted.with-alpha(0.6) : Theme.border;
+    border-radius: Theme.radius-pill;
+    background: equipped ? Theme.gold : ta.has-hover && enabled ? Theme.surface-up : Theme.surface;
+    border-width: 2px;
+    border-color: equipped ? Theme.brand-ink : (ta.has-hover && enabled) ? Theme.hover-border : conflict ? Theme.muted.with-alpha(0.6) : Theme.border-solid;
     animate border-color, background { duration: 150ms; }
     lbl := Text {
         text: root.text;
         font-size: Theme.text-sm;
-        font-weight: root.equipped ? 600 : 400;
-        color: root.equipped ? Theme.accent-gold : root.conflict ? Theme.muted : Theme.text;
+        font-weight: root.equipped ? 700 : 400;
+        color: root.equipped ? Theme.on-gold : root.conflict ? Theme.muted : Theme.text;
     }
     ta := TouchArea {
         enabled: root.enabled;
@@ -132,14 +125,10 @@ component Hero inherits VerticalLayout {
         alignment: start;
         Badge { text: T.tr("wardrobe.tag"); variant: BadgeVariant.gold; dot: true; }
     }
-    GradientText {
+    McTitle {
         text: T.tr("wardrobe.title");
-        gradient: GradientKind.emerald-gold;
-        font-size: Theme.text-hero(root.page-width);
-        font-weight: 700;
-        letter-spacing: -1px;
-        height: self.font-size * 1.2;
-        vertical-alignment: center;
+        font-size: root.page-width < 1024px ? 24px : root.page-width < 1400px ? 32px : 40px;
+        min-width: 0px;
     }
     // max-width: 60ch; CSS line-height 1.6 (Slint has no line-height: pad the half-leading)
     HorizontalLayout {
@@ -156,7 +145,7 @@ component Hero inherits VerticalLayout {
     }
     VerticalLayout {
         padding-top: 20px - Theme.space-2;
-        Rectangle { height: 1px; background: Theme.border; }
+        Rectangle { height: 2px; background: Theme.border-solid; }
     }
 }
 
@@ -165,6 +154,7 @@ component MessageCard inherits GlassCard {
     in property <string> action;
     callback act();
     elevation: Elevation.md;
+    min-width: 0px;
     spacing: 12px;
     Text {
         min-height: 24px;
@@ -193,39 +183,55 @@ component AccountChip inherits Rectangle {
     in property <WardrobeAccount> acc;
     in property <bool> active;
     callback clicked();
-    height: row.preferred-height;
-    width: row.preferred-width;
-    border-radius: 999px;
-    background: active ? Theme.accent.with-alpha(0.12) : Theme.surface;
-    border-width: 1px;
-    border-color: active ? Theme.accent : ta.has-hover ? Theme.hover-border : Theme.border;
-    animate border-color, background { duration: 150ms; }
+    height: row.preferred-height + 2px;
+    width: row.preferred-width + 2px;
+    border-radius: Theme.radius-pill;
+    property <bool> hot: ta.has-hover;
+    // hard 2px ink shadow under the active chip
+    Rectangle {
+        x: 2px;
+        y: 2px;
+        width: root.width - 2px;
+        height: root.height - 2px;
+        border-radius: Theme.radius-pill;
+        background: Theme.brand-ink;
+        visible: root.active;
+    }
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
-    row := HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 12px;
-        padding-top: 6px;
-        padding-bottom: 6px;
-        spacing: Theme.space-2;
-        Rectangle {
-            width: 22px;
-            height: 22px;
-            border-radius: 6px;
-            background: Theme.surface-up-solid;
-            clip: true;
-            if root.acc.has-avatar: Image {
-                width: 100%;
-                height: 100%;
-                source: root.acc.avatar;
-                image-fit: cover;
-                image-rendering: pixelated;
+    face := Rectangle {
+        width: root.width - 2px;
+        height: root.height - 2px;
+        border-radius: Theme.radius-pill;
+        background: root.active ? Theme.gold : root.hot ? Theme.surface-up : Theme.surface;
+        border-width: 2px;
+        border-color: root.active ? Theme.brand-ink : root.hot ? Theme.hover-border : Theme.border-solid;
+        animate border-color, background { duration: 150ms; }
+        row := HorizontalLayout {
+            padding-left: 6px;
+            padding-right: 12px;
+            padding-top: 6px;
+            padding-bottom: 6px;
+            spacing: Theme.space-2;
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                border-radius: 6px;
+                background: Theme.surface-up-solid;
+                clip: true;
+                if root.acc.has-avatar: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.acc.avatar;
+                    image-fit: cover;
+                    image-rendering: pixelated;
+                }
             }
+            Text { text: root.acc.username; font-size: Theme.text-sm; font-weight: 600; color: root.active ? Theme.on-gold : Theme.text; vertical-alignment: center; }
+            Text { text: root.acc.supporter ? "⚛★" : "⚛"; font-size: Theme.text-sm; color: root.active ? Theme.on-gold : Theme.accent-gold; vertical-alignment: center; }
         }
-        Text { text: root.acc.username; font-size: Theme.text-sm; color: Theme.text; vertical-alignment: center; }
-        Text { text: root.acc.supporter ? "⚛★" : "⚛"; font-size: Theme.text-sm; color: Theme.accent-gold; vertical-alignment: center; }
     }
 }
 
@@ -235,8 +241,8 @@ component AccountChip inherits Rectangle {
 
 component IdentityRow inherits Rectangle {
     background: Theme.card-bg-soft;
-    border-width: 1px;
-    border-color: Theme.border;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     border-radius: Theme.radius-md;
     min-height: row.preferred-height;
     row := HorizontalLayout {
@@ -376,6 +382,7 @@ component DiscordRow inherits IdentityRow {
 component IdentityCard inherits GlassCard {
     in property <WardrobeAccount> acc;
     elevation: Elevation.md;
+    min-width: 0px;
     spacing: Theme.space-4;
     HorizontalLayout {
         spacing: Theme.space-4;
@@ -415,6 +422,7 @@ component IdentityCard inherits GlassCard {
 component ConsentCard inherits GlassCard {
     in property <WardrobeAccount> acc;
     elevation: Elevation.sm;
+    min-width: 0px;
     HorizontalLayout {
         spacing: Theme.space-6;
         VerticalLayout {
@@ -468,6 +476,7 @@ component SlotsCard inherits GlassCard {
     in property <WardrobeAccount> acc;
     elevation: Elevation.md;
     spacing: Theme.space-4;
+    min-width: 0px;
     HorizontalLayout {
         spacing: Theme.space-4;
         SectionTitle {
@@ -477,7 +486,7 @@ component SlotsCard inherits GlassCard {
         }
         if !root.acc.mvp: VerticalLayout {
             alignment: start;
-            Badge { text: "MVP"; variant: BadgeVariant.warn; }
+            Sticker { text: "MVP"; fill: Theme.accent-red; ink: #ffffff; }
         }
     }
     if !root.acc.mvp: LockedNote { }
@@ -494,6 +503,7 @@ component SlotsCard inherits GlassCard {
 component EmotesCard inherits GlassCard {
     in property <WardrobeAccount> acc;
     elevation: Elevation.sm;
+    min-width: 0px;
     HorizontalLayout {
         spacing: Theme.space-6;
         VerticalLayout {
@@ -506,13 +516,13 @@ component EmotesCard inherits GlassCard {
                 padding-top: 6px;
                 alignment: start;
                 for e in AccountBridge.w-emotes-catalog: Rectangle {
-                    height: el.preferred-height + 8px;
+                    height: el.preferred-height + 10px;
                     width: el.preferred-width + 20px;
-                    border-radius: 999px;
+                    border-radius: Theme.radius-pill;
                     background: Theme.surface-up;
-                    border-width: 1px;
-                    border-color: Theme.border;
-                    el := Text { text: T.lang == "en" ? e.name-en : e.name-es; font-size: Theme.text-xs; color: Theme.muted-strong; }
+                    border-width: 2px;
+                    border-color: Theme.border-solid;
+                    el := Text { text: T.lang == "en" ? e.name-en : e.name-es; font-size: Theme.text-xs; font-weight: 600; color: Theme.muted-strong; }
                 }
             }
         }
@@ -533,6 +543,7 @@ component HiddenCard inherits GlassCard {
     changed serial => { input.text = ""; root.draft = ""; }
     elevation: Elevation.sm;
     spacing: Theme.space-4;
+    min-width: 0px;
     SectionTitle { title: T.tr("wardrobe.hidden.title"); subtitle: T.tr("wardrobe.hidden.desc"); }
     VerticalLayout {
         spacing: 4px;
@@ -571,12 +582,12 @@ component HiddenCard inherits GlassCard {
         spacing: Theme.space-2;
         alignment: start;
         for name in AccountBridge.w-hidden: Rectangle {
-            height: 30px;
-            width: hrow.preferred-width;
-            border-radius: 999px;
-            background: Theme.surface-up;
-            border-width: 1px;
-            border-color: Theme.border;
+            height: 32px;
+            width: hrow.preferred-width + 2px;
+            border-radius: Theme.radius-pill;
+            background: Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: Theme.border-solid;
             hrow := HorizontalLayout {
                 padding-left: 12px;
                 padding-right: 6px;
@@ -588,8 +599,8 @@ component HiddenCard inherits GlassCard {
                         width: 20px;
                         height: 20px;
                         border-radius: 10px;
-                        background: x-ta.has-hover ? Theme.accent-red.with-alpha(0.12) : transparent;
-                        Text { text: "×"; font-size: Theme.text-sm; color: x-ta.has-hover ? Theme.accent-red : Theme.muted; }
+                        background: x-ta.has-hover ? Theme.accent-red : transparent;
+                        Text { text: "×"; font-size: Theme.text-sm; font-weight: 700; color: x-ta.has-hover ? #ffffff : Theme.muted; }
                         x-ta := TouchArea {
                             mouse-cursor: pointer;
                             clicked => { AccountBridge.w-remove-hidden(name); }
@@ -603,8 +614,8 @@ component HiddenCard inherits GlassCard {
 
 component Disclaimer inherits Rectangle {
     background: Theme.card-bg-soft;
-    border-width: 1px;
-    border-color: Theme.border;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     border-radius: Theme.radius-md;
     min-height: d-row.preferred-height;
     d-row := HorizontalLayout {
@@ -626,9 +637,11 @@ component Disclaimer inherits Rectangle {
 component WardrobeBody inherits VerticalLayout {
     property <WardrobeAccount> acc: AccountBridge.w-accounts[AccountBridge.w-selected];
     spacing: Theme.space-6;
+    min-width: 0px;
     HorizontalLayout {
         spacing: Theme.space-2;
         alignment: start;
+        min-width: 0px;
         for a[i] in AccountBridge.w-accounts: AccountChip {
             acc: a;
             active: i == AccountBridge.w-selected;

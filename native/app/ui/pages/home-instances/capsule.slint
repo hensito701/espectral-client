@@ -4,6 +4,10 @@
 //
 //     TelemetryCapsule { instance-name: HomeBridge.selected-instance; }
 //
+// Poster look: a flat block with a hard 4px ink shadow, the launch button as
+// the site's gold pill (pixel label), Dry-Run as a 2px gold outline, and flat
+// status chips. No glass, glow or gradients.
+//
 // Data lives in HomeBridge (capsule-*, aot-chip-*, launching / stopping);
 // the capsule announces its instance with HomeBridge.capsule-target().
 
@@ -17,26 +21,31 @@ component PlayButton inherits Rectangle {
     in property <string> label;
     callback clicked();
     property <bool> hovered: touch.has-hover && enabled && !busy;
-    property <length> lift: hovered && !touch.pressed ? -2px : 0px;
+    property <length> depth: 4px;
+    property <length> lift: hovered && !touch.pressed ? -2px : touch.pressed ? 2px : 0px;
     animate lift { duration: Theme.dur-fast; easing: ease-out; }
-    min-width: max(140px, row.preferred-width);
-    height: 44px;
-    border-radius: 22px;
+    min-width: max(148px, row.preferred-width);
+    height: 44px + self.depth;
     opacity: enabled ? 1 : 0.45;
-    drop-shadow-color: !enabled ? transparent : running ? Theme.accent-red.with-alpha(hovered ? 0.45 : 0.3) : Theme.glow-play-color;
-    drop-shadow-blur: hovered ? 28px : 22px;
-    drop-shadow-offset-y: 4px;
+    background: transparent;
+
+    // hard shadow under the pill (purple for launch, ink for stop)
+    Rectangle {
+        y: root.depth;
+        width: 100%;
+        height: 44px;
+        border-radius: Theme.radius-pill;
+        background: root.running ? Theme.brand-ink : Theme.brand-purple;
+    }
+
     face := Rectangle {
         y: root.lift;
         width: 100%;
-        height: 100%;
-        border-radius: root.border-radius;
-        background: root.running ? @linear-gradient(135deg, Theme.accent-red 0%, Theme.accent-red 100%) : @linear-gradient(135deg, Theme.accent 0%, Theme.accent-ink 100%);
-        border-width: 1px;
-        border-color: root.running ? rgba(239, 68, 68, 0.4) : rgba(255, 255, 255, 0.2);
+        height: 44px;
+        border-radius: Theme.radius-pill;
+        background: root.running ? (root.hovered ? #c81e1e : Theme.accent-red) : (root.hovered ? Theme.gold-hover : Theme.gold);
         clip: true;
-        Rectangle { x: 0; y: 0; width: parent.width; height: 1px; background: rgba(255, 255, 255, root.hovered ? 0.5 : 0.35); }
-        if root.hovered: Rectangle { background: rgba(255, 255, 255, 0.08); }
+        animate background { duration: Theme.dur-fast; }
         row := HorizontalLayout {
             padding-left: Theme.space-6;
             padding-right: Theme.space-6;
@@ -44,21 +53,20 @@ component PlayButton inherits Rectangle {
             alignment: center;
             VerticalLayout {
                 alignment: center;
-                if root.busy: Spinner { size: 15px; tint: root.running ? #ffffff : Theme.text-inverse; }
+                if root.busy: Spinner { size: 15px; tint: root.running ? #ffffff : Theme.on-gold; }
                 if !root.busy: Icon {
                     data: root.running ? Icons.stop : Icons.play;
                     filled: true;
                     weight: 0;
                     size: 14px;
-                    color: root.running ? #ffffff : Theme.text-inverse;
+                    color: root.running ? #ffffff : Theme.on-gold;
                 }
             }
             Text {
                 text: root.label;
-                color: root.running ? #ffffff : Theme.text-inverse;
-                font-size: Theme.text-md;
-                font-weight: 700;
-                letter-spacing: 0.45px;
+                color: root.running ? #ffffff : Theme.on-gold;
+                font-family: Theme.font-pixel;
+                font-size: 16px;
                 vertical-alignment: center;
             }
         }
@@ -80,7 +88,9 @@ component AccountItem inherits Rectangle {
     callback clicked();
     height: 36px;
     border-radius: Theme.radius-sm;
-    background: active ? Theme.accent.with-alpha(0.15) : t.has-hover ? Theme.surface-up : transparent;
+    background: active ? Theme.accent.with-alpha(0.16) : t.has-hover ? Theme.surface-up : transparent;
+    border-width: active ? 2px : 0px;
+    border-color: active ? Theme.hover-border : transparent;
     HorizontalLayout {
         padding-left: 8px;
         padding-right: 8px;
@@ -93,7 +103,7 @@ component AccountItem inherits Rectangle {
             text: root.name;
             color: root.active ? Theme.accent : Theme.text;
             font-size: Theme.text-sm;
-            font-weight: root.active ? 600 : 400;
+            font-weight: root.active ? 700 : 400;
             vertical-alignment: center;
             horizontal-stretch: 1;
             overflow: elide;
@@ -120,21 +130,29 @@ export component TelemetryCapsule inherits Rectangle {
     init => { HomeBridge.capsule-target(self.instance-name); }
 
     // dock: padding 0 16px 16px, capsule max 960px centered
-    height: 62px + Theme.space-4;
+    height: 64px + 4px + Theme.space-4;
     min-width: 0;
+
+    // hard shadow block under the dock
+    Rectangle {
+        x: max(Theme.space-4, (parent.width - self.width) / 2) + 4px;
+        y: 4px;
+        width: min(960px, root.width - 2 * Theme.space-4);
+        height: 64px;
+        border-radius: Theme.radius-lg;
+        background: root.running ? Theme.brand-purple : Theme.brand-ink;
+    }
 
     capsule := Rectangle {
         x: max(Theme.space-4, (parent.width - self.width) / 2);
         y: 0;
         width: min(960px, root.width - 2 * Theme.space-4);
-        height: 62px;
-        border-radius: 31px;
-        background: Theme.dark ? Theme.chrome-bg : Theme.surface;
-        border-width: 1px;
-        border-color: root.running ? Theme.accent-green.with-alpha(0.5) : Theme.border;
-        drop-shadow-color: root.running ? Theme.accent-green.with-alpha(0.25) : Theme.dark ? Theme.accent.with-alpha(0.13) : Theme.shadow-lg-color;
-        drop-shadow-blur: Theme.dark ? 30px : Theme.shadow-lg-blur;
-        drop-shadow-offset-y: Theme.dark ? 6px : Theme.shadow-lg-y;
+        height: 64px;
+        border-radius: Theme.radius-lg;
+        background: Theme.card-bg;
+        border-width: 2px;
+        border-color: root.running ? Theme.accent-green : Theme.border-solid;
+        animate border-color { duration: Theme.dur-fast; }
 
         HorizontalLayout {
             padding-left: Theme.space-4;
@@ -150,8 +168,11 @@ export component TelemetryCapsule inherits Rectangle {
                 acc-btn := Rectangle {
                     height: 40px;
                     min-width: acc-row.preferred-width;
-                    border-radius: 20px;
+                    border-radius: Theme.radius-md;
                     background: acc-touch.has-hover ? Theme.surface-up : transparent;
+                    border-width: acc-touch.has-hover ? 2px : 0px;
+                    border-color: Theme.hover-border;
+                    animate background { duration: Theme.dur-fast; }
                     acc-row := HorizontalLayout {
                         padding-left: 8px;
                         padding-right: 8px;
@@ -181,14 +202,14 @@ export component TelemetryCapsule inherits Rectangle {
                             }
                             Text {
                                 text: AppState.has-active-account && AppState.active-account.token-kind == "msa" ? "Microsoft" : "Offline";
-                                color: Theme.muted-strong;
+                                color: Theme.muted;
                                 font-size: 11px;
                                 font-weight: 500;
                             }
                         }
                         VerticalLayout {
                             alignment: center;
-                            Icon { data: Icons.chevron-down; size: 14px; color: Theme.muted-strong; weight: 2.5; }
+                            Icon { data: Icons.chevron-down; size: 14px; color: Theme.muted; weight: 2.5; }
                         }
                     }
                     acc-touch := TouchArea {
@@ -198,19 +219,21 @@ export component TelemetryCapsule inherits Rectangle {
                     acc-popup := PopupWindow {
                         x: 0;
                         y: -self.height - 12px;
-                        width: 240px;
-                        height: 6px + 30px + AppState.accounts.length * 40px + 41px + 6px;
+                        width: 248px;
+                        // 8px padding (x2) + 26px label + 41px link row + n * (36px item) + (n + 1) * 4px gaps
+                        height: 87px + AppState.accounts.length * 40px;
                         close-policy: close-on-click-outside;
-                        Rectangle {
+                        pop := Rectangle {
                             border-radius: Theme.radius-lg;
                             background: Theme.surface-solid;
-                            border-width: 1px;
-                            border-color: Theme.border;
-                            drop-shadow-color: Theme.shadow-lg-color;
-                            drop-shadow-blur: Theme.shadow-lg-blur;
+                            border-width: 2px;
+                            border-color: Theme.border-solid;
+                            drop-shadow-color: Theme.brand-ink;
+                            drop-shadow-blur: 0px;
+                            drop-shadow-offset-x: Theme.shadow-lg-x;
                             drop-shadow-offset-y: Theme.shadow-lg-y;
                             VerticalLayout {
-                                padding: 6px;
+                                padding: 8px;
                                 spacing: 4px;
                                 Rectangle {
                                     height: 26px;
@@ -218,9 +241,9 @@ export component TelemetryCapsule inherits Rectangle {
                                         x: 8px;
                                         y: 6px;
                                         text: T.tr("home.capsuleSelectAccount").to-uppercase();
-                                        color: Theme.muted-strong;
+                                        color: Theme.muted;
                                         font-size: Theme.text-xs;
-                                        font-weight: 600;
+                                        font-weight: 700;
                                         letter-spacing: 0.6px;
                                     }
                                 }
@@ -237,19 +260,19 @@ export component TelemetryCapsule inherits Rectangle {
                                     }
                                 }
                                 Rectangle {
-                                    height: 37px;
-                                    Rectangle { y: 0; height: 1px; background: Theme.border; }
+                                    height: 41px;
+                                    Rectangle { y: 0; height: 2px; background: Theme.border-solid; }
                                     link := Rectangle {
-                                        y: 5px;
-                                        height: 30px;
+                                        y: 7px;
+                                        height: 32px;
                                         border-radius: Theme.radius-sm;
-                                        background: link-t.has-hover ? Theme.accent.with-alpha(0.1) : transparent;
+                                        background: link-t.has-hover ? Theme.accent.with-alpha(0.14) : transparent;
                                         Text {
                                             x: 8px;
                                             text: "+ Administrar Cuentas";
                                             color: Theme.accent;
                                             font-size: Theme.text-xs;
-                                            font-weight: 600;
+                                            font-weight: 700;
                                             vertical-alignment: center;
                                         }
                                         link-t := TouchArea {
@@ -270,7 +293,7 @@ export component TelemetryCapsule inherits Rectangle {
             // divider
             VerticalLayout {
                 alignment: center;
-                Rectangle { width: 1px; height: 36px; background: Theme.border; }
+                Rectangle { width: 2px; height: 40px; background: Theme.border-solid; }
             }
 
             // ---- instance + phase ----
@@ -298,7 +321,7 @@ export component TelemetryCapsule inherits Rectangle {
                             }
                             VerticalLayout {
                                 alignment: center;
-                                Icon { data: Icons.more-vertical; size: 14px; color: Theme.muted-strong; weight: 3.2; }
+                                Icon { data: Icons.more-vertical; size: 14px; color: Theme.muted; weight: 3.2; }
                             }
                         }
                         inst-t := TouchArea {
@@ -308,7 +331,7 @@ export component TelemetryCapsule inherits Rectangle {
                     }
                     if root.instance-name == "": Text {
                         text: T.tr("home.capsuleSelectInstance");
-                        color: Theme.muted-strong;
+                        color: Theme.muted;
                         font-size: Theme.text-sm;
                         font-italic: true;
                         vertical-alignment: center;
@@ -317,18 +340,18 @@ export component TelemetryCapsule inherits Rectangle {
                         alignment: center;
                         Rectangle {
                             property <string> kind: HomeBridge.aot-chip-kind;
-                            height: chip.preferred-height + 6px;
-                            min-width: chip.preferred-width + 18px;
-                            border-radius: self.height / 2;
-                            border-width: 1px;
-                            border-color: kind == "ok" ? Theme.accent-green.with-alpha(0.35) : kind == "warn" ? Theme.accent-alt.with-alpha(0.35) : Theme.border;
-                            background: kind == "ok" ? Theme.accent-green.with-alpha(0.12) : kind == "warn" ? Theme.accent-alt.with-alpha(0.12) : Theme.surface-up;
+                            height: chip.preferred-height + 8px;
+                            min-width: chip.preferred-width + 20px;
+                            border-radius: Theme.radius-xs;
+                            border-width: 2px;
+                            border-color: kind == "ok" ? Theme.accent-green : kind == "warn" ? Theme.accent-alt : Theme.border-solid;
+                            background: kind == "ok" ? Theme.accent-green.with-alpha(0.14) : kind == "warn" ? Theme.accent-alt.with-alpha(0.14) : Theme.card-bg-soft;
                             opacity: kind == "off" ? 0.85 : 1;
                             chip := Text {
                                 text: "⚡ " + T.tr(HomeBridge.aot-chip-key);
-                                color: parent.kind == "ok" ? Theme.accent-green : parent.kind == "warn" ? Theme.accent-alt : Theme.muted-strong;
-                                font-size: 11px;
-                                font-weight: 600;
+                                color: parent.kind == "ok" ? Theme.accent-green : parent.kind == "warn" ? Theme.accent-alt : Theme.muted;
+                                font-family: Theme.font-pixel;
+                                font-size: 8px;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -342,34 +365,33 @@ export component TelemetryCapsule inherits Rectangle {
                         spacing: 6px;
                         VerticalLayout {
                             alignment: center;
+                            // flat sticker dot (no glow)
                             Rectangle {
-                                width: 6px;
-                                height: 6px;
-                                border-radius: 3px;
+                                width: 8px;
+                                height: 8px;
                                 background: Theme.accent-green;
-                                drop-shadow-color: Theme.accent-green;
-                                drop-shadow-blur: 6px;
+                                border-width: 2px;
+                                border-color: Theme.brand-ink;
                             }
                         }
-                        Text { text: T.tr("home.capsuleStatusRunning"); color: Theme.accent-green; font-size: Theme.text-xs; font-weight: 600; }
+                        Text { text: T.tr("home.capsuleStatusRunning"); color: Theme.accent-green; font-size: Theme.text-xs; font-weight: 700; }
                     }
                     if root.running && HomeBridge.capsule-tail != "": Text {
                         text: HomeBridge.capsule-tail;
-                        color: Theme.muted-strong;
+                        color: Theme.muted;
                         font-family: Theme.font-mono;
                         font-size: 11px;
                         overflow: elide;
                         horizontal-stretch: 1;
                     }
-                    if !root.running && root.launching: Text { text: T.tr("home.capsuleStatusStarting"); color: Theme.accent-alt; font-size: Theme.text-xs; font-weight: 600; }
-                    if !root.running && !root.launching: Text { text: T.tr("home.capsuleStatusIdle"); color: Theme.muted-strong; font-size: Theme.text-xs; }
+                    if !root.running && root.launching: Text { text: T.tr("home.capsuleStatusStarting"); color: Theme.accent-alt; font-size: Theme.text-xs; font-weight: 700; }
+                    if !root.running && !root.launching: Text { text: T.tr("home.capsuleStatusIdle"); color: Theme.muted; font-size: Theme.text-xs; }
                 }
                 if HomeBridge.capsule-timing != "" && HomeBridge.capsule-instance == root.instance-name: Text {
                     text: HomeBridge.capsule-timing;
-                    color: Theme.muted-strong;
+                    color: Theme.muted;
                     font-family: Theme.font-mono;
                     font-size: 11px;
-                    opacity: 0.9;
                 }
             }
 
@@ -382,17 +404,18 @@ export component TelemetryCapsule inherits Rectangle {
                     dry := Rectangle {
                         property <bool> enabled: root.instance-name != "";
                         height: 40px;
-                        min-width: dry-t.preferred-width + 2 * Theme.space-3;
-                        border-radius: 20px;
-                        background: dry-touch.has-hover && self.enabled ? Theme.surface-solid : Theme.surface-up;
-                        border-width: 1px;
-                        border-color: dry-touch.has-hover && self.enabled ? Theme.accent : Theme.border;
+                        min-width: dry-t.preferred-width + 2 * Theme.space-4;
+                        border-radius: Theme.radius-pill;
+                        background: dry-touch.has-hover && self.enabled ? Theme.gold : transparent;
+                        border-width: 2px;
+                        border-color: self.enabled ? (dry-touch.has-hover ? Theme.gold : (Theme.dark ? Theme.gold : Theme.title-color)) : Theme.border-solid;
                         opacity: self.enabled ? 1 : 0.4;
+                        animate background { duration: Theme.dur-fast; }
                         dry-t := Text {
                             text: T.tr("home.capsuleDryRun");
-                            color: Theme.text;
-                            font-size: Theme.text-xs;
-                            font-weight: 600;
+                            color: dry-touch.has-hover && dry.enabled ? Theme.on-gold : (Theme.dark ? Theme.gold : Theme.title-color);
+                            font-size: Theme.text-sm;
+                            font-weight: 700;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }

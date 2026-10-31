@@ -1,8 +1,7 @@
 // OWNER: home-instances agent. Ports of components/DryRunModal.svelte and
 // components/MrpackModal.svelte (state in HomeBridge dryrun-* / mrpack-*).
 
-import { Theme, T, AppState, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, Slider, Modal, Emoji, Spinner, ProgressBar, ProgressTone, ProgressThickness } from "../../widgets.slint";
-import { HiTextField } from "common.slint";
+import { Theme, T, AppState, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Modal, Emoji, Spinner, McTitle } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 
 /// Shared modal header: title (+ optional badge) / subtitle / close.
@@ -12,7 +11,7 @@ component ModalHead inherits Rectangle {
     in property <string> badge;
     in property <bool> can-close: true;
     callback close();
-    background: rgba(16, 22, 42, 0.4);
+    background: Theme.card-bg-soft;
     HorizontalLayout {
         padding-left: Theme.space-6;
         padding-right: Theme.space-6;
@@ -26,7 +25,7 @@ component ModalHead inherits Rectangle {
             HorizontalLayout {
                 spacing: Theme.space-3;
                 alignment: start;
-                Text { text: root.title; color: Theme.text; font-size: Theme.text-xl; font-weight: 700; overflow: elide; }
+                McTitle { text: root.title; font-size: 24px; horizontal-stretch: 0; }
                 if root.badge != "": VerticalLayout {
                     alignment: center;
                     Badge { text: root.badge; variant: BadgeVariant.accent; }
@@ -49,12 +48,12 @@ component ModalHead inherits Rectangle {
             }
         }
     }
-    Rectangle { y: parent.height - 1px; height: 1px; background: rgba(255, 255, 255, 0.08); }
+    Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border-solid; }
 }
 
 component ModalFoot inherits Rectangle {
-    background: rgba(16, 22, 42, 0.4);
-    Rectangle { y: 0; height: 1px; background: rgba(255, 255, 255, 0.08); }
+    background: Theme.card-bg-soft;
+    Rectangle { y: 0; height: 2px; background: Theme.border-solid; }
     HorizontalLayout {
         padding-left: Theme.space-6;
         padding-right: Theme.space-6;
@@ -79,16 +78,16 @@ component DryTab inherits Rectangle {
         VerticalLayout { alignment: center; Emoji { char: root.emoji; size: 12px; } }
         Text {
             text: root.text;
-            color: root.active ? Theme.accent : t.has-hover ? Theme.text : Theme.muted;
+            color: root.active ? Theme.title-color : t.has-hover ? Theme.text : Theme.muted;
             font-size: Theme.text-xs;
-            font-weight: 600;
+            font-weight: 700;
             vertical-alignment: center;
         }
     }
     Rectangle {
-        y: parent.height - 2px;
-        height: 2px;
-        background: root.active ? Theme.accent : transparent;
+        y: parent.height - 3px;
+        height: 3px;
+        background: root.active ? Theme.gold : transparent;
     }
     t := TouchArea {
         mouse-cursor: pointer;
@@ -104,9 +103,9 @@ component MonoList inherits Rectangle {
     property <length> row-h: 22px;
     height: min(root.max-h, items.length * row-h + 16px);
     border-radius: Theme.radius-md;
-    background: rgba(8, 12, 24, 0.5);
-    border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.06);
+    background: Theme.log-bg;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     clip: true;
     Flickable {
         x: 8px;
@@ -175,9 +174,9 @@ component BoxHeader inherits HorizontalLayout {
 component MetaCard inherits Rectangle {
     in property <string> label;
     border-radius: Theme.radius-md;
-    background: rgba(255, 255, 255, 0.03);
-    border-width: 1px;
-    border-color: Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     HorizontalLayout {
         padding-left: Theme.space-3;
         padding-right: Theme.space-3;
@@ -209,7 +208,7 @@ export component DryRunModal inherits Rectangle {
             close => { HomeBridge.dryrun-open = false; }
         }
         Rectangle {
-            background: rgba(10, 15, 30, 0.4);
+            background: Theme.card-bg;
             HorizontalLayout {
                 padding-left: Theme.space-6;
                 padding-right: Theme.space-6;
@@ -220,7 +219,7 @@ export component DryRunModal inherits Rectangle {
                 DryTab { emoji: "⚙️"; text: "Entorno JVM"; active: root.tab == 2; clicked => { root.tab = 2; } }
                 DryTab { emoji: "⚠️"; text: T.tr1("home.dryRunWarnings", "count", HomeBridge.dryrun-warnings.length); active: root.tab == 3; clicked => { root.tab = 3; } }
             }
-            Rectangle { y: parent.height - 1px; height: 1px; background: rgba(255, 255, 255, 0.06); }
+            Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border-solid; }
         }
         HorizontalLayout {
             padding-left: Theme.space-6;
@@ -238,14 +237,14 @@ export component DryRunModal inherits Rectangle {
                 }
                 if !HomeBridge.dryrun-loading && HomeBridge.dryrun-error != "": Rectangle {
                     border-radius: Theme.radius-md;
-                    background: rgba(239, 68, 68, 0.15);
-                    border-width: 1px;
-                    border-color: rgba(239, 68, 68, 0.4);
+                    background: Theme.accent-red.with-alpha(0.14);
+                    border-width: 2px;
+                    border-color: Theme.accent-red;
                     HorizontalLayout {
                         padding: Theme.space-3;
                         spacing: Theme.space-2;
                         Emoji { char: "⚠️"; size: 16px; }
-                        Text { text: HomeBridge.dryrun-error; color: #fca5a5; font-size: Theme.text-sm; wrap: word-wrap; horizontal-stretch: 1; }
+                        Text { text: HomeBridge.dryrun-error; color: Theme.accent-red; font-size: Theme.text-sm; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
                     }
                 }
                 if !HomeBridge.dryrun-loading && HomeBridge.dryrun-has-result && root.tab == 0: VerticalLayout {
@@ -258,8 +257,8 @@ export component DryRunModal inherits Rectangle {
                         height: min(140px, cmd.preferred-height + 24px);
                         border-radius: Theme.radius-md;
                         background: Theme.log-bg;
-                        border-width: 1px;
-                        border-color: rgba(255, 255, 255, 0.06);
+                        border-width: 2px;
+                        border-color: Theme.border-solid;
                         clip: true;
                         Flickable {
                             x: 12px;
@@ -270,7 +269,7 @@ export component DryRunModal inherits Rectangle {
                             cmd := Text {
                                 width: parent.width;
                                 text: HomeBridge.dryrun-command;
-                                color: Theme.dark ? #a7f3d0 : #047857;
+                                color: Theme.dark ? Theme.accent-green : #047857;
                                 font-family: Theme.font-mono;
                                 font-size: Theme.text-xs;
                                 wrap: char-wrap;
@@ -291,14 +290,14 @@ export component DryRunModal inherits Rectangle {
                     }
                     if HomeBridge.dryrun-missing.length > 0: Rectangle {
                         border-radius: Theme.radius-md;
-                        background: rgba(239, 68, 68, 0.1);
-                        border-width: 1px;
-                        border-color: rgba(239, 68, 68, 0.3);
+                        background: Theme.accent-red.with-alpha(0.12);
+                        border-width: 2px;
+                        border-color: Theme.accent-red;
                         VerticalLayout {
                             padding: Theme.space-3;
                             spacing: 4px;
-                            Text { text: T.tr1("home.dryRunMissingCp", "count", HomeBridge.dryrun-missing.length) + ":"; color: #fca5a5; font-size: Theme.text-xs; font-weight: 700; }
-                            for m in HomeBridge.dryrun-missing: Text { text: m; color: #fca5a5; font-family: Theme.font-mono; font-size: 11px; overflow: elide; }
+                            Text { text: T.tr1("home.dryRunMissingCp", "count", HomeBridge.dryrun-missing.length) + ":"; color: Theme.accent-red; font-size: Theme.text-xs; font-weight: 700; }
+                            for m in HomeBridge.dryrun-missing: Text { text: m; color: Theme.accent-red; font-family: Theme.font-mono; font-size: 11px; overflow: elide; }
                         }
                     }
                     MonoList { items: HomeBridge.dryrun-classpath; max-h: 320px; }
@@ -328,9 +327,9 @@ export component DryRunModal inherits Rectangle {
                     spacing: Theme.space-2;
                     for w in HomeBridge.dryrun-warnings: Rectangle {
                         border-radius: Theme.radius-md;
-                        background: Theme.accent-alt.with-alpha(0.1);
-                        border-width: 1px;
-                        border-color: Theme.accent-alt.with-alpha(0.3);
+                        background: Theme.accent-alt.with-alpha(0.12);
+                        border-width: 2px;
+                        border-color: Theme.accent-alt;
                         HorizontalLayout {
                             padding: Theme.space-3;
                             spacing: Theme.space-2;

@@ -3,7 +3,7 @@
 // the named skin gallery (vanilla-launcher workflow).
 // The 3D viewer is the skin-renderer agent's SkinView (ui/skin3d).
 
-import { Theme, T, AppState, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, GlassCard, Elevation, Emoji } from "../../widgets.slint";
+import { Theme, T, AppState, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, GlassCard, Elevation, Emoji, McTitle } from "../../widgets.slint";
 import { SkinView } from "../../skin3d/skin-view.slint";
 import { AccountBridge, VaultSkinEntry } from "api.slint";
 import { LoadingRow, PlainInput, UploadChip } from "parts.slint";
@@ -36,9 +36,9 @@ component Radio inherits HorizontalLayout {
             width: 14px;
             height: 14px;
             border-radius: 7px;
-            border-width: root.checked ? 4px : 1px;
-            border-color: root.checked ? Theme.accent : Theme.muted;
-            background: root.checked ? #ffffff : transparent;
+            border-width: 2px;
+            border-color: root.checked ? Theme.brand-ink : Theme.muted;
+            background: root.checked ? Theme.gold : Theme.card-bg;
             TouchArea {
                 enabled: root.enabled;
                 mouse-cursor: pointer;
@@ -49,7 +49,8 @@ component Radio inherits HorizontalLayout {
     Text {
         text: root.text;
         font-size: Theme.text-sm;
-        color: Theme.text;
+        font-weight: root.checked ? 700 : 400;
+        color: root.checked ? Theme.title-color : Theme.text;
         vertical-alignment: center;
         TouchArea {
             enabled: root.enabled;
@@ -74,11 +75,26 @@ component Stage inherits VerticalLayout {
     }
     if root.source != "": HorizontalLayout {
         alignment: center;
-        SkinView {
-            source: root.source;
-            variant: root.variant;
-            width: 300px;
-            height: 340px;
+        // flat poster panel behind the 3D render (no glow, no radial floor)
+        Rectangle {
+            width: stage-view.width + 2 * Theme.space-4;
+            height: stage-view.height + 2 * Theme.space-4;
+            background: Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: Theme.border-solid;
+            border-radius: Theme.radius-lg;
+            drop-shadow-color: Theme.brand-ink;
+            drop-shadow-blur: 0px;
+            drop-shadow-offset-x: 4px;
+            drop-shadow-offset-y: 4px;
+            stage-view := SkinView {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                source: root.source;
+                variant: root.variant;
+                width: 300px;
+                height: 340px;
+            }
         }
     }
     if root.source != "" && AccountBridge.staged: Note { text: T.tr("vault.skin.galleryStaged"); }
@@ -314,9 +330,14 @@ component SkinCard inherits Rectangle {
     in property <VaultSkinEntry> entry;
     in property <bool> offline;
     border-radius: Theme.radius-md;
-    border-width: 1px;
-    border-color: AccountBridge.preview-id == entry.id ? Theme.accent : Theme.border;
-    background: rgba(255, 255, 255, 0.02);
+    min-width: 0px;
+    border-width: 2px;
+    border-color: AccountBridge.preview-id == entry.id ? Theme.hover-border : Theme.border-solid;
+    background: Theme.card-bg;
+    drop-shadow-color: AccountBridge.preview-id == entry.id ? Theme.brand-purple : Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 3px;
+    drop-shadow-offset-y: 3px;
     VerticalLayout {
         padding: Theme.space-3;
         spacing: Theme.space-2;
@@ -328,6 +349,8 @@ component SkinCard inherits Rectangle {
                 width: 150px;
                 height: 112px;
                 border-radius: Theme.radius-sm;
+                border-width: 2px;
+                border-color: Theme.border-solid;
                 clip: true;
                 SkinView {
                     width: 100%;
@@ -367,7 +390,7 @@ component GalleryGrid inherits Rectangle {
     property <length> gap: Theme.space-3;
     property <int> cols: max(1, floor((root.width + gap) / (180px + gap)));
     property <length> card-w: (root.width - (cols - 1) * gap) / cols;
-    property <length> card-h: AccountBridge.confirming-delete-id != "" ? 276px : 244px;
+    property <length> card-h: AccountBridge.confirming-delete-id != "" ? 280px : 248px;
     property <int> rows: ceil(AccountBridge.gallery.length / cols);
     height: rows * card-h + max(0, rows - 1) * gap;
     for e[i] in AccountBridge.gallery: SkinCard {
@@ -384,18 +407,18 @@ component Gallery inherits VerticalLayout {
     in property <bool> offline;
     spacing: Theme.space-3;
     padding-top: Theme.space-4;
+    min-width: 0px;
     HorizontalLayout {
         spacing: Theme.space-2;
         HorizontalLayout {
             spacing: Theme.space-2;
             horizontal-stretch: 1;
             alignment: start;
-            Text {
+            McTitle {
                 text: T.tr("vault.skin.galleryTitle");
-                font-size: Theme.text-base;
-                font-weight: 600;
-                color: Theme.text;
-                vertical-alignment: center;
+                font-size: 24px;
+                min-width: 0px;
+                horizontal-stretch: 0;
             }
             VerticalLayout {
                 alignment: center;
@@ -447,12 +470,15 @@ component AtelierBody inherits VerticalLayout {
         root.scroll-request(stage.absolute-position.y, stage.absolute-position.y + stage.height);
     }
     spacing: 0;
+    min-width: 0px;
     HorizontalLayout {
         spacing: Theme.space-4;
+        min-width: 0px;
         // CSS grid align-items: start (the stage keeps its own height)
         VerticalLayout {
             alignment: start;
             horizontal-stretch: 1;
+            min-width: 0px;
             stage := Stage {
                 source: root.source;
                 variant: root.variant;
@@ -466,8 +492,9 @@ component AtelierBody inherits VerticalLayout {
     // gallery: border-top + margin/padding 16
     VerticalLayout {
         padding-top: Theme.space-4;
-        Rectangle { height: 1px; background: Theme.border; }
-        Gallery { offline: root.offline; }
+        min-width: 0px;
+        Rectangle { height: 2px; background: Theme.border-solid; }
+        Gallery { offline: root.offline; min-width: 0px; }
     }
 }
 
@@ -476,6 +503,7 @@ export component SkinAtelier inherits GlassCard {
     title: T.tr("vault.skin.title");
     subtitle: T.tr("vault.skin.subtitle");
     elevation: Elevation.md;
+    min-width: 0px;
     if !AccountBridge.has-active: Note { text: T.tr("vault.heroSelectPrompt"); }
     if AccountBridge.has-active: AtelierBody {
         scroll-request(top, bottom) => { root.scroll-request(top, bottom); }

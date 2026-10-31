@@ -18,15 +18,16 @@ export component MonogramTile inherits Rectangle {
     in property <length> size: 48px;
     in property <MonogramShape> shape: MonogramShape.tile;
 
-    property <float> hue2: mod(hue + 40, 360);
     width: size;
     height: size;
-    border-radius: shape == MonogramShape.circle ? size / 2 : shape == MonogramShape.rounded ? Theme.radius-md : Theme.radius-tile;
-    background: @linear-gradient(145deg, Theme.hsla(hue, 0.45, 0.16, 0.9) 0%, Theme.hsla(hue2, 0.55, 0.10, 0.95) 100%);
-    border-width: 1px;
-    border-color: Theme.hsla(hue, 0.6, 0.45, 0.35);
-    drop-shadow-color: Theme.shadow-sm-color;
-    drop-shadow-blur: 10px;
+    border-radius: shape == MonogramShape.circle ? size / 2 : shape == MonogramShape.rounded ? Theme.radius-md : Theme.radius-lg;
+    // Flat block: one solid hue, 2px ink border, hard 2px shadow.
+    background: Theme.hsla(hue, 0.5, 0.28, 1);
+    border-width: 2px;
+    border-color: Theme.brand-ink;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 2px;
     drop-shadow-offset-y: 2px;
     clip: true;
 
@@ -39,9 +40,10 @@ export component MonogramTile inherits Rectangle {
     }
     if !root.has-avatar: Text {
         text: Util.initial(root.name);
-        font-size: max(10px, round(root.size * 0.45 / 1px) * 1px);
+        font-family: Theme.font-title;
+        font-size: max(8px, round(root.size * 0.4 / 8px) * 8px);
         font-weight: 700;
-        color: @linear-gradient(135deg, Theme.hsla(root.hue, 0.85, 0.70, 1) 0%, Theme.hsla(root.hue2, 0.95, 0.60, 1) 100%);
+        color: Theme.hsla(root.hue, 0.9, 0.78, 1);
         horizontal-alignment: center;
         vertical-alignment: center;
     }
