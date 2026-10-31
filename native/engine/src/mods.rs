@@ -2001,19 +2001,23 @@ mod tests {
         assert!(supports_branding(&e, "1.21.11", Loader::Fabric));
         assert!(supports_branding(&e, "26.2", Loader::Fabric));
         assert!(supports_branding(&e, "1.21.1", Loader::Neoforge));
+        assert!(supports_branding(&e, "1.8.9", Loader::Forge));
+        assert!(!supports_branding(&e, "1.8.9", Loader::Vanilla));
+        assert!(!supports_branding(&e, "1.12.2", Loader::Forge));
         assert!(!supports_branding(&e, "1.21.1", Loader::Fabric));
         assert!(!supports_branding(&e, "1.21.11", Loader::Neoforge));
         assert!(!supports_branding(&e, "1.21.11", Loader::Vanilla));
         assert!(!supports_branding(&e, "1.22.4", Loader::Fabric));
         assert!(!supports_branding(&e, "", Loader::Fabric));
         let versions = branding_versions(&e);
-        for v in ["1.21.11", "26.2", "1.21.1"] {
+        for v in ["1.21.11", "26.2", "1.21.1", "1.8.9"] {
             assert!(versions.iter().any(|x| x == v), "{v}");
         }
         for (v, loader, prefix) in [
             ("1.21.11", Loader::Fabric, "espectral-menu"),
             ("26.2", Loader::Fabric, "espectral-menu"),
             ("1.21.1", Loader::Neoforge, "espectral-brand"),
+            ("1.8.9", Loader::Forge, "espectral-menu"),
         ] {
             let pin = branding_pin_for_version(&e, v, loader).unwrap();
             assert_eq!(pin.slug, prefix);

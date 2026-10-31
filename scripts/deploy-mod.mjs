@@ -33,7 +33,9 @@ const JAR_RE = /^(espectral-menu|espectral-brand)-.*\.jar$/;
 const log = (msg) => console.log(`[deploy:mod] ${msg}`);
 const fail = (msg) => { console.error(`[deploy:mod] ${msg}`); process.exit(1); };
 const isWin = process.platform === 'win32';
-const gradleArgv = [isWin ? 'cmd.exe' : 'sh', ...(isWin ? ['/c', 'gradlew.bat'] : ['-c', './gradlew'])];
+// `sh gradlew <tasks>`: runs the wrapper script without needing its exec bit
+// (git does not always keep it), and the tasks reach Gradle as arguments.
+const gradleArgv = isWin ? ['cmd.exe', '/c', 'gradlew.bat'] : ['sh', 'gradlew'];
 
 // `task` calls run a plain process; `gradle` calls add Gradle's own flags.
 function run(cwd, [cmd, ...args], env) {
