@@ -9,7 +9,8 @@ use std::path::PathBuf;
 fn main() {
     // Live preview makes the binary read the .slint sources from this
     // checkout at run time: a shipped build must never do that.
-    if std::env::var_os("CARGO_FEATURE_LIVE_PREVIEW").is_some() && std::env::var("PROFILE").as_deref() == Ok("release") {
+    if std::env::var_os("CARGO_FEATURE_LIVE_PREVIEW").is_some() && std::env::var("PROFILE").as_deref() == Ok("release")
+    {
         panic!("the live-preview feature is for dev builds only; build release without it");
     }
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
