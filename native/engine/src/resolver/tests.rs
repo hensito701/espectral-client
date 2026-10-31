@@ -950,9 +950,13 @@ async fn seed_instance_fabric_writes_profile_and_creates_dirs() {
     assert_eq!(doc["libraries"][0]["relPath"], "org/ow2/asm/asm/9.10.1/asm-9.10.1.jar");
     assert!(join_rel(&e.paths().libraries_dir(), "net/fabricmc/intermediary/26.2/intermediary-26.2.jar").exists());
 
+    // A NeoForge seed with no build asks maven for the newest stable one; the
+    // mock rejects that request, surfacing as the HTTP error (not a 400):
+    // LOADER_VERSION_REQUIRED is only for a Minecraft version with no build.
     let neo =
         InstanceMeta { name: "neo".into(), version: "26.2".into(), loader: Loader::Neoforge, ..Default::default() };
-    assert!(seed_instance(&e, &neo, false).await.unwrap_err().has_code("LOADER_VERSION_REQUIRED"));
+    let err = seed_instance(&e, &neo, false).await.unwrap_err();
+    assert!(!err.has_code("LOADER_VERSION_REQUIRED"), "{err:?}");
 }
 
 #[tokio::test]

@@ -93,6 +93,7 @@ your own module (`src/resolver.rs` + `src/resolver/fabric.rs` with
 | runtimes.mjs | `runtimes.rs` | game-resolve | **ported** |
 | jvm.mjs | `jvm.rs` | game-resolve | **ported** |
 | neoforge.mjs | `neoforge.rs` | game-resolve | **ported** |
+| — (Forge loader) | `forge.rs` | game-resolve | **ported** (1.8.9 legacy installer, 1.12.2/1.21+/26.x official installer; `forge_supported`/`default_forge_build`/`forge_builds`) |
 | launch.mjs | `launch.rs` | game-launch | **ported** (incl. upstream Windows `stackFlags` and the agent launch options) |
 | aot.mjs | `aot.rs` | game-launch | **ported** |
 | game-sessions.mjs | `game_sessions.rs` | game-launch | **ported** |
@@ -341,7 +342,9 @@ aot_refusal_line}`.
   resolve_classpath✅, load_instance_meta✅}`, `runtimes::{java_for_version,
   java_for_major_exact}`, `jvm::{get_jvm_info, probe_java, jcmd_path✅}`,
   `neoforge::{neoforge_version_id✅, ensure_neoforge_loader,
-  launch_artifacts_ready, latest_neoforge_for}`.
+  launch_artifacts_ready, latest_neoforge_for}`, `forge::{forge_version_id,
+  forge_supported, default_forge_build, forge_builds, resolve_forge_version,
+  ensure_forge_loader, java_tier, installer_java_tier}`.
 - **game-launch**: `aot::{cache_key✅, queue_train_instance (+TrainOptions),
   instance_key}`, `launch::{resolve_launch (+ResolveLaunchOptions,
   LaunchAccountInput), dry_run_result}`, `game_sessions::{read_sessions✅,

@@ -10,7 +10,8 @@ Licensed **GPL-3.0** (see [LICENSE](LICENSE)).
 
 ## What it does
 
-- Launches Minecraft: vanilla, Fabric and NeoForge, versions 1.15.2 through the current release.
+- Launches Minecraft: vanilla, Fabric, NeoForge and Forge, versions 1.15.2 through the current
+  release. Forge is offered for 1.8.9, 1.12.2, 1.21.x and 26.x (the classic modpack platforms).
 - Downloads and verifies everything itself — versions, libraries, assets, natives — from Mojang's
   official manifests. No other launcher needs to be installed.
 - Provisions the right Java automatically (Temurin 8 / 16 / 17 / 21 / 25 per version).
@@ -42,7 +43,7 @@ in-game toggle menu, and a versioned config file shared with the launcher
 apply live — no third-party jars, no restart. (Gamma Utils / Clear Fog jars left from older
 versions are inert leftovers; the QoL preset stays installable but is no longer required.)
 
-Plus `branding-mod-nf/`, a brand-only NeoForge companion (MC 1.21.1) that reports `espectral:neoforge:<version>` on the `minecraft:brand` handshake — no menu port, same version wiring.
+Plus `branding-mod-nf/`, a brand-only NeoForge companion (MC 1.21.1) that reports `espectral:neoforge:<version>` on the `minecraft:brand` handshake — no menu port, same version wiring, and `branding-mod-forge189/`, the Espectral Menu port to Forge 1.8.9 (suite features, no cosmetics/recording yet).
 
 It is deliberately small and still early — the launcher is the mature half of this project.
 
@@ -80,6 +81,7 @@ cargo run --release -p espectral-client      # builds and starts the launcher
 | JS tests (config/accounts + Suite registry) | `node --test tests/*.test.mjs` |
 | Client mod (Java 21) | `cd branding-mod && ./gradlew build` |
 | Brand companion, NeoForge (Java 21) | `cd branding-mod-nf && ./gradlew build` |
+| Espectral Menu, Forge 1.8.9 (Gradle on JDK 21, Java 8 toolchain) | `cd branding-mod-forge189 && ./gradlew build -Porg.gradle.java.installations.paths=<jdk8>` |
 | Rebuild + ship the mod jars | `npm run deploy:mod` |
 
 `ESPECTRAL_DATA_DIR` overrides the data directory, `SLINT_BACKEND=winit-software` falls back to the
@@ -132,6 +134,8 @@ same Apps & Features entry, same update feed and signature format.
   GPU-specific code is needed for them.
 - **`branding-mod/`** — shared Java source with per-version overlays behind a compatibility shim.
 - **`branding-mod-nf/`** — brand-only NeoForge companion (MC 1.21.1): same handshake contract, no menu.
+- **`branding-mod-forge189/`** — the Espectral Menu ported to Forge 1.8.9 (Espectral Suite features,
+  agent relay; cosmetics, emotes and recording come later).
 
 Porting notes and the original JS→Rust conventions are kept in [native/PORTING.md](native/PORTING.md)
 and [native/app/UI-PORTING.md](native/app/UI-PORTING.md).

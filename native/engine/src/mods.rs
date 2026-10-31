@@ -420,7 +420,7 @@ fn is_brand_jar(f: &str) -> bool {
 }
 
 async fn ensure_branding_seeded_inner(engine: &Engine, instance: &InstanceMeta) -> EngineResult<()> {
-    if instance.loader != Loader::Fabric && instance.loader != Loader::Neoforge {
+    if !matches!(instance.loader, Loader::Fabric | Loader::Neoforge | Loader::Forge) {
         return Ok(());
     }
     let Some(pin) = branding_pin_for_version(engine, &instance.version, instance.loader) else { return Ok(()) };
@@ -1660,8 +1660,7 @@ pub async fn install_modrinth_mod(
     plan: Option<ModPlan>,
 ) -> EngineResult<ModrinthInstallResult> {
     let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
-    let default_loader = if instance.loader == Loader::Neoforge { "neoforge" } else { "fabric" };
-    let loader = loader.unwrap_or(default_loader);
+    let loader = loader.unwrap_or_else(|| instance.loader.content_loader());
     let plan = match plan {
         Some(p) => p,
         None => plan_mod_install(engine, &instance, project_id, loader).await?,

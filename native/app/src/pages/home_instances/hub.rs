@@ -27,7 +27,9 @@ use crate::{
 
 const TAGLINE_MAX: usize = 40;
 const CAPTURE_VERSIONS: &[&str] = &["1.21.11", "26.2", "26.3"];
-const LOADERS: [&str; 3] = ["fabric", "vanilla", "neoforge"];
+/// Version-change loader options (order matches hub-config.slint). Forge is
+/// validated by the engine (409 FORGE_UNAVAILABLE on unsupported versions).
+const LOADERS: [&str; 4] = ["fabric", "vanilla", "neoforge", "forge"];
 
 #[derive(Default)]
 struct Hub {

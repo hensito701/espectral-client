@@ -14,6 +14,7 @@
 //!
 //! Cross-cluster calls: resolver (resolve_version, get_version_manifest,
 //! fabric_supported_for_version), neoforge::latest_neoforge_for,
+//! forge::resolve_forge_version,
 //! mods::{plan_mods_for_target, apply_mods_plan, ensure_branding_seeded},
 //! mods::supports_branding, instances::{get_instance, list_instances}.
 
@@ -26,7 +27,7 @@ use crate::types::{
     VersionLoaderRef, VersionManifest, VersionTarget,
 };
 
-/// Validated target plus the loader build it needs (NeoForge only).
+/// Validated target plus the loader build it needs (NeoForge and Forge).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedTarget {
     pub version: String,
@@ -75,6 +76,9 @@ async fn resolve_target(engine: &Engine, inst: &InstanceMeta, req: &VersionTarge
                 format!("no NeoForge build for Minecraft {version}"),
             ));
         }
+    }
+    if loader == Loader::Forge {
+        loader_version = Some(crate::forge::resolve_forge_version(engine, &version, None).await?);
     }
     Ok(ResolvedTarget { version, loader, loader_version })
 }
@@ -196,7 +200,8 @@ pub async fn apply_version_change(
 
     inst.version = plan.to.version.clone();
     inst.loader = plan.to.loader;
-    // Fabric resolves the newest stable loader at launch; NeoForge needs its build.
+    // Fabric resolves the newest stable loader at launch; NeoForge and Forge
+    // need their build recorded here.
     inst.loader_version = plan.to.loader_version.clone().flatten();
     inst.updated_at = Some(crate::platform::now_iso());
     crate::paths::write_json_atomic(&engine.paths().instance_json(name), &inst)?;

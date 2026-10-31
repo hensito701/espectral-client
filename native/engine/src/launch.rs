@@ -464,7 +464,16 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         if !loader.jvm_args.is_empty() {
             let os = crate::platform::os_name();
             let arch = crate::platform::node_arch();
-            jvm.extend(expand_jvm_args(&loader.jvm_args, os, arch).iter().map(|a| substitute_placeholders(a, &subst)));
+            // The launcher owns java.library.path (natives are extracted into
+            // `<instance>/natives`). Merged 26.x profiles carry vanilla's
+            // `-Djava.library.path=${natives_directory}/java`, which would win
+            // (last definition) and hide liblwjgl.so from LWJGL.
+            jvm.extend(
+                expand_jvm_args(&loader.jvm_args, os, arch)
+                    .iter()
+                    .filter(|a| !a.starts_with("-Djava.library.path="))
+                    .map(|a| substitute_placeholders(a, &subst)),
+            );
         }
         if matches!(loader.kind.as_deref(), Some("neoforge" | "forge")) {
             // bootstraplauncher skips module-izing files whose NAME STARTS WITH
@@ -484,19 +493,27 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     jvm.push(classpath);
 
     let cache = lossy(&resolved.aot_cache_path);
-    // AOT (-XX:AOTCache*/JEP 483) exists only on JDK 25+ runtimes.
+    // AOT (-XX:AOTCache*/JEP 483) exists only on JDK 25+ runtimes, and only a
+    // plain launcher classpath can be cached: NeoForge/Forge launch through
+    // their own module/bootstrap layer (resolve_launch already reports
+    // `aot_available: false` for them).
+    let aot_jdk = java_major >= 25;
     if resolved.mode == LaunchMode::Train {
-        if java_major >= 25 {
+        if aot_jdk && resolved.aot_available {
             // The branding mod neutralizes MC's ClientShutdownWatchdog during
             // training (the AOT dump always exceeds its budget).
             jvm.push("-Despectral.aot-training=true".into());
             jvm.push(format!("-XX:AOTCacheOutput={cache}"));
+        } else if !resolved.aot_available {
+            resolved
+                .warnings
+                .push(format!("AOT is not available for {} launches; skipping -XX:AOTCacheOutput", instance.loader));
         } else {
             resolved.warnings.push(format!(
                 "AOT training requires a JDK 25-tier runtime (current major {java_major}); skipping -XX:AOTCacheOutput"
             ));
         }
-    } else if java_major >= 25 {
+    } else if aot_jdk && resolved.aot_available {
         if resolved.aot_cache_exists && !resolved.aot_cache_stale {
             jvm.push(format!("-XX:AOTCache={cache}"));
             // RELATIVE proof log — -Xlog splits on ':' so C:\... would break; cwd = gameDir.
@@ -508,6 +525,10 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         } else {
             resolved.warnings.push(format!("AOT cache {cache} not found; running without -XX:AOTCache"));
         }
+    } else if !resolved.aot_available {
+        resolved
+            .warnings
+            .push(format!("AOT is not available for {} launches; running without -XX:AOTCache", instance.loader));
     } else {
         resolved.warnings.push(format!(
             "AOT requires a JDK 25-tier runtime (current major {java_major}); running without -XX:AOTCache"
@@ -529,11 +550,23 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     features.insert("has_custom_resolution".into(), Value::Bool(window.is_some()));
     features.insert("is_quick_play_singleplayer".into(), Value::Bool(join.as_ref().is_some_and(|j| j.world.is_some())));
     features.insert("is_quick_play_multiplayer".into(), Value::Bool(join.as_ref().is_some_and(|j| j.server.is_some())));
-    let fragment = crate::agent::game_arg_fragment(&crate::agent::LaunchOptions {
+    let legacy_client = quick_play_unsupported(&resolved.version.json);
+    let mut fragment = crate::agent::game_arg_fragment(&crate::agent::LaunchOptions {
         agent,
         join: join.clone(),
         window: window.clone(),
     });
+    // Pre-1.20 clients have no `--quickPlay*` args at all: a server join becomes
+    // `--server/--port`, a world join is handed to the branded mod through
+    // `-Despectral.join.world=<save>` (the mod opens it once the title loads).
+    if legacy_client {
+        fragment = legacy_fragment(fragment);
+        if let Some(world) = join.as_ref().and_then(|j| j.world.clone()).filter(|w| !w.is_empty()) {
+            // Before `-cp` so the property is not parsed as a class name.
+            let at = jvm.iter().position(|a| a == "-cp").unwrap_or(jvm.len());
+            jvm.insert(at, format!("-Despectral.join.world={world}"));
+        }
+    }
     // Pre-1.13 profiles have no `arguments.game` template, only a flat string.
     let legacy_args = resolved
         .version
@@ -541,7 +574,7 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         .get("minecraftArguments")
         .and_then(Value::as_str)
         .filter(|_| {
-            resolved.version.json.pointer("/arguments/game").and_then(Value::as_array).is_none_or(|a| a.is_empty())
+            resolved.version.json.pointer("/arguments/game").and_then(Value::as_array).map_or(true, |a| a.is_empty())
         })
         .map(str::to_string);
     let prog: Vec<String> = match &resolved.loader {
@@ -556,7 +589,7 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
                 .split_whitespace()
                 .map(|a| substitute_placeholders(a, &subst))
                 .collect();
-            prog.extend(legacy_fragment(fragment));
+            prog.extend(fragment);
             prog
         }
         _ => {
@@ -594,9 +627,52 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     argv
 }
 
+/// True when the client has no `--quickPlay*` arguments (quick play shipped in
+/// 1.20). Decided from the merged version JSON: an `arguments.game` template is
+/// 1.13+, and the quick-play feature keys only exist on 1.20+; the loader's
+/// own `mcVersion`/`inheritsFrom` is the fallback for loader profiles that do
+/// not re-list the vanilla template.
+pub fn quick_play_unsupported(version_json: &Value) -> bool {
+    let id = version_json
+        .get("inheritsFrom")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .or_else(|| version_json.get("id").and_then(Value::as_str))
+        .unwrap_or_default();
+    let game = version_json.pointer("/arguments/game").and_then(Value::as_array);
+    if let Some(entries) = game {
+        let has_quick_play = entries.iter().any(|e| {
+            let vals: Vec<&Value> = match e {
+                Value::Object(o) => {
+                    o.get("value").and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default()
+                }
+                _ => vec![e],
+            };
+            vals.iter().any(|v| v.as_str().is_some_and(|s| s.starts_with("--quickPlay")))
+        });
+        if has_quick_play {
+            return false;
+        }
+    }
+    match mc_release_number(id) {
+        Some((major, minor)) => (major, minor) < (1, 20),
+        None => version_json.get("minecraftArguments").is_some(),
+    }
+}
+
+/// `(1, 21)` for `1.21.11`, `(26, 3)` for `26.3`; None for snapshots/odd ids.
+fn mc_release_number(id: &str) -> Option<(u32, u32)> {
+    let core = id.split(['-', ' ']).next().unwrap_or("");
+    let mut parts = core.split('.');
+    let major: u32 = parts.next()?.parse().ok()?;
+    let minor: u32 = parts.next()?.parse().ok()?;
+    Some((major, minor))
+}
+
 /// Pre-1.20 clients have no quick play: a server join becomes the old
-/// `--server host --port N` pair; a singleplayer world join has no
-/// equivalent and is dropped. `--width/--height` exist since 1.6.
+/// `--server host --port N` pair; a singleplayer world join is handed to the
+/// mod via `-Despectral.join.world` (built in [`build_argv`]). `--width/--height`
+/// exist since 1.6.
 fn legacy_fragment(fragment: Vec<String>) -> Vec<String> {
     let mut out = Vec::with_capacity(fragment.len() + 2);
     let mut it = fragment.into_iter();
@@ -855,6 +931,11 @@ pub fn select_game_dir(
 
 /// The JDK a launch runs on: per-instance override (any JDK) > NeoForge's
 /// EXACT 21 > the version's own `javaVersion.majorVersion` tier.
+///
+/// Forge follows the version's tier (1.8.9/1.12.2 = 8, 1.21.x = 21, 26.x =
+/// 25) but never on an older JVM than the loader can boot: modern Forge's
+/// bootstrap needs 21+, so an old version reported by a hand-edited profile
+/// cannot drag the launch down to 8.
 pub async fn java_for_launch(
     engine: &Engine,
     instance: &InstanceMeta,
@@ -865,6 +946,13 @@ pub async fn java_for_launch(
     }
     if instance.loader == Loader::Neoforge {
         return crate::runtimes::java_for_major_exact(engine, 21).await;
+    }
+    if instance.loader == Loader::Forge {
+        return crate::runtimes::java_for_version(
+            engine,
+            crate::forge::java_tier(&instance.version, version_java_major),
+        )
+        .await;
     }
     crate::runtimes::java_for_version(engine, version_java_major).await
 }
@@ -961,9 +1049,10 @@ pub async fn resolve_launch(
     }
     let mut forge_id: Option<String> = None;
     if instance.loader == Loader::Forge {
-        let build = instance.loader_version.clone().filter(|s| !s.is_empty()).ok_or_else(|| {
-            EngineError::api(400, "LOADER_VERSION_REQUIRED", "loader_version es obligatorio para Forge")
-        })?;
+        // Missing build (older instances / hand-written JSON): the promotions
+        // default, exactly like instance creation.
+        let build =
+            crate::forge::resolve_forge_version(engine, &instance.version, instance.loader_version.as_deref()).await?;
         let fj = crate::forge::ensure_forge_loader(engine, &instance.version, &build).await?;
         version_json = crate::resolver::resolve_version_chain(engine, fj).await?;
         forge_id = Some(crate::forge::forge_version_id(&instance.version, &build));
@@ -1140,7 +1229,7 @@ pub async fn resolve_launch(
         None
     };
 
-    let aot_available = java.major.unwrap_or(0) >= 25;
+    let aot_available = java.major.unwrap_or(0) >= 25 && crate::aot::loader_supports_aot(instance.loader);
 
     // ffmpeg for agent captures. Dry runs only look at what is already on disk
     // (a preview must not download 110 MB); a real agent launch provisions the
@@ -1360,6 +1449,7 @@ pub(crate) fn read_log_growth(log_file: &Path, seen: &mut i64) -> Option<String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::JoinOption;
     use crate::test_support::temp_engine;
     use crate::types::JvmSource;
     use serde_json::json;
@@ -1414,6 +1504,12 @@ mod tests {
 
     fn inst(name: &str) -> InstanceMeta {
         InstanceMeta { name: name.into(), ..Default::default() }
+    }
+
+    /// Program args after the main class.
+    fn prog_tail(argv: &[String], main_class: &str) -> Vec<String> {
+        let i = argv.iter().position(|a| a == main_class).unwrap_or_else(|| panic!("main class {main_class} present"));
+        argv[i + 1..].to_vec()
     }
 
     /// The memory the tests ask for must not get clamped on small CI boxes.
@@ -1872,6 +1968,169 @@ mod tests {
         assert_eq!(a.access_token, "0");
     }
 
+    // -----------------------------------------------------------------
+    // Legacy (pre-1.13 / pre-1.20) launches: minecraftArguments, quick play,
+    // log4j, Forge java tiers
+    // -----------------------------------------------------------------
+
+    fn legacy_resolved(json: Value) -> ResolvedLaunch {
+        let mut r = make_resolved();
+        r.java = java("/jdk8/bin/java", 8, "1.8.0_504");
+        r.version = ResolvedVersionRef {
+            id: "1.8.9".into(),
+            main_class: "net.minecraft.launchwrapper.Launch".into(),
+            asset_index_id: Some("1.8".into()),
+            json,
+        };
+        r.aot_available = false;
+        r
+    }
+
+    #[test]
+    fn legacy_minecraft_arguments_expand_placeholders_and_keep_tweakclass() {
+        let (_d, e) = temp_engine();
+        let mut r = legacy_resolved(json!({
+            "id": "forge-1.8.9-11.15.1.2318",
+            "minecraftArguments": "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userProperties ${user_properties} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+            "libraries": []
+        }));
+        let i = InstanceMeta {
+            name: "f189".into(),
+            version: "1.8.9".into(),
+            loader: crate::types::Loader::Forge,
+            ..Default::default()
+        };
+        let argv = build_argv(&e, &i, &mut r);
+        let tail = prog_tail(&argv, "net.minecraft.launchwrapper.Launch");
+        assert_eq!(
+            tail,
+            [
+                "--username",
+                "Tester",
+                "--version",
+                "1.8.9",
+                "--gameDir",
+                "/games/testinst",
+                "--uuid",
+                "00000000-0000-3000-8000-000000000000",
+                "--accessToken",
+                "tok",
+                "--userProperties",
+                "{}",
+                "--tweakClass",
+                "net.minecraftforge.fml.common.launcher.FMLTweaker",
+            ]
+        );
+        // No AOT flags on a JDK 8 legacy launch, and the warning says why.
+        assert!(!argv.iter().any(|a| a.starts_with("-XX:AOTCache")));
+        assert!(r.warnings.iter().any(|w| w.contains("AOT is not available for forge")), "{:?}", r.warnings);
+    }
+
+    #[test]
+    fn legacy_server_join_becomes_server_and_port() {
+        let (_d, e) = temp_engine();
+        let mut r = legacy_resolved(json!({ "id": "1.8.9", "minecraftArguments": "--username ${auth_player_name}" }));
+        r.agent = true;
+        r.join = Some(JoinOption { world: None, server: Some("play.example.com:25566".into()) });
+        let i = InstanceMeta { name: "srv".into(), version: "1.8.9".into(), ..Default::default() };
+        let argv = build_argv(&e, &i, &mut r);
+        let tail = prog_tail(&argv, "net.minecraft.launchwrapper.Launch");
+        assert_eq!(tail, ["--username", "Tester", "--server", "play.example.com", "--port", "25566"]);
+        // Without a port the default 25565 is used.
+        let mut r2 = legacy_resolved(json!({ "id": "1.8.9", "minecraftArguments": "--username ${auth_player_name}" }));
+        r2.agent = true;
+        r2.join = Some(JoinOption { world: None, server: Some("localhost".into()) });
+        let argv = build_argv(&e, &i, &mut r2);
+        let tail = prog_tail(&argv, "net.minecraft.launchwrapper.Launch");
+        assert_eq!(tail[tail.len() - 4..], ["--server", "localhost", "--port", "25565"]);
+    }
+
+    #[test]
+    fn legacy_world_join_uses_the_jvm_property_not_a_quick_play_arg() {
+        let (_d, e) = temp_engine();
+        let mut r = legacy_resolved(json!({ "id": "1.8.9", "minecraftArguments": "--username ${auth_player_name}" }));
+        r.agent = true;
+        r.join = Some(JoinOption { world: Some("Mundo nuevo".into()), server: None });
+        let i = InstanceMeta { name: "w".into(), version: "1.8.9".into(), ..Default::default() };
+        let argv = build_argv(&e, &i, &mut r);
+        assert!(argv.contains(&"-Despectral.join.world=Mundo nuevo".to_string()), "{argv:?}");
+        // The property sits before -cp, never in the program args.
+        let prop = argv.iter().position(|a| a == "-Despectral.join.world=Mundo nuevo").unwrap();
+        let cp = argv.iter().position(|a| a == "-cp").unwrap();
+        assert!(prop < cp);
+        let tail = prog_tail(&argv, "net.minecraft.launchwrapper.Launch");
+        assert_eq!(tail, ["--username", "Tester"], "no --quickPlay* on 1.8.9");
+    }
+
+    #[test]
+    fn quick_play_support_is_decided_from_the_profile() {
+        // 1.20+ vanilla template carries --quickPlay args -> supported.
+        let modern = json!({ "id": "26.3", "arguments": { "game": ["--username", { "rules": [], "value": ["--quickPlayMultiplayer"] }] } });
+        assert!(!quick_play_unsupported(&modern));
+        // 1.13..1.19: an arguments.game template without quick play.
+        assert!(quick_play_unsupported(&json!({ "id": "1.19.4", "arguments": { "game": ["--username"] } })));
+        // Legacy profile with a loader's inheritsFrom: the MC version decides.
+        assert!(quick_play_unsupported(&json!({ "inheritsFrom": "1.12.2", "minecraftArguments": "--tweakClass x" })));
+        assert!(!quick_play_unsupported(
+            &json!({ "inheritsFrom": "1.21.11", "arguments": { "game": ["--launchTarget", "forge_client"] } })
+        ));
+        assert!(
+            !quick_play_unsupported(&json!({ "id": "26.3" })),
+            "a 1.20+ profile without a template is still modern"
+        );
+        assert!(!quick_play_unsupported(&json!({ "id": "26.3", "inheritsFrom": "26.3" })));
+        assert!(quick_play_unsupported(&json!({ "id": "1.8.9" })));
+        // An unrecognizable profile keeps the previous behaviour (the fixed
+        // program list, which has no quick-play placeholders to lose).
+        assert!(!quick_play_unsupported(&json!({})));
+    }
+
+    #[test]
+    fn modern_join_world_stays_a_quick_play_argument() {
+        let (_d, e) = temp_engine();
+        let mut r = make_resolved();
+        r.agent = true;
+        r.join = Some(JoinOption { world: Some("World".into()), server: None });
+        let i = InstanceMeta { name: "m".into(), version: "26.3".into(), ..Default::default() };
+        let argv = build_argv(&e, &i, &mut r);
+        assert!(!argv.iter().any(|a| a.starts_with("-Despectral.join.world=")), "no JVM prop on 1.20+");
+        let tail = prog_tail(&argv, "net.minecraft.client.main.Main");
+        assert_eq!(tail[tail.len() - 2..], ["--quickPlaySingleplayer", "World"]);
+    }
+
+    #[test]
+    fn legacy_log4j_config_arg_only_for_the_1_7_profile() {
+        let (_d, e) = temp_engine();
+        std::fs::create_dir_all(e.paths().assets_dir().join("log_configs")).unwrap();
+        std::fs::write(legacy_log4j_path(&e), LEGACY_LOG4J_XML).unwrap();
+        let legacy = json!({ "logging": { "client": { "file": { "id": "client-1.7.xml" } } } });
+        assert!(uses_legacy_log4j(&legacy));
+        assert_eq!(
+            logging_config_arg(&e, &legacy).as_deref(),
+            Some(format!("-Dlog4j.configurationFile={}", lossy(&legacy_log4j_path(&e))).as_str())
+        );
+        // Modern profiles (client-1.12.xml+) keep Mojang's own config.
+        for modern in [json!({ "logging": { "client": { "file": { "id": "client-1.12.xml" } } } }), json!({})] {
+            assert!(!uses_legacy_log4j(&modern));
+            assert!(logging_config_arg(&e, &modern).is_none());
+        }
+        // The written file carries the Log4Shell filters and a plain console layout.
+        assert!(LEGACY_LOG4J_XML.contains("RegexFilter"));
+        assert!(LEGACY_LOG4J_XML.contains("<!--%m -->") || LEGACY_LOG4J_XML.contains("PatternLayout"));
+    }
+
+    #[test]
+    fn forge_java_tier_follows_the_loader_generation() {
+        assert_eq!(crate::forge::java_tier("1.8.9", 8), 8);
+        assert_eq!(crate::forge::java_tier("1.12.2", 8), 8);
+        assert_eq!(crate::forge::java_tier("1.21.11", 21), 21);
+        assert_eq!(crate::forge::java_tier("1.21.1", 8), 21, "modern Forge never runs on 8");
+        assert_eq!(crate::forge::java_tier("26.3", 25), 25);
+        assert_eq!(crate::forge::installer_java_tier("1.12.2", 8), 8);
+        assert_eq!(crate::forge::installer_java_tier("1.21.11", 21), 21);
+        assert_eq!(crate::forge::installer_java_tier("26.3", 25), 25);
+    }
+
     #[test]
     fn neoforge_ignore_list_gets_client_jar() {
         let (_d, e) = temp_engine();
@@ -1893,6 +2152,29 @@ mod tests {
         assert!(argv.contains(&format!("-DlibraryDirectory={}", lossy(&e.paths().libraries_dir()))));
         let main = argv.iter().position(|a| a == "cpw.mods.bootstraplauncher.BootstrapLauncher").unwrap();
         assert_eq!(argv[main + 1..], ["--username", "Tester", "--accessToken", "tok"].map(String::from));
+    }
+
+    #[test]
+    fn loader_profile_cannot_override_java_library_path() {
+        // Forge/NeoForge 26.x merge vanilla's `-Djava.library.path=${natives_directory}/java`;
+        // as the later -D it would win and LWJGL could not find liblwjgl.so.
+        let (_d, e) = temp_engine();
+        let mut r = make_resolved();
+        r.loader = Some(LoaderLaunch {
+            main_class: "net.minecraftforge.bootstrap.ForgeBootstrap".into(),
+            jvm_args: vec![
+                json!("-Djava.library.path=${natives_directory}/java"),
+                json!("-Djna.tmpdir=${natives_directory}/jna"),
+            ],
+            game_args: vec![json!("--username"), json!("${auth_player_name}")],
+            kind: Some("forge".into()),
+        });
+        let i = InstanceMeta { name: "f263".into(), version: "26.3".into(), ..Default::default() };
+        let argv = build_argv(&e, &i, &mut r);
+        let lib_paths: Vec<&String> = argv.iter().filter(|a| a.starts_with("-Djava.library.path=")).collect();
+        let natives = lossy(&r.natives_dir);
+        assert_eq!(lib_paths, [&format!("-Djava.library.path={natives}")]);
+        assert!(argv.contains(&format!("-Djna.tmpdir={natives}/jna")), "{argv:?}");
     }
 
     #[test]

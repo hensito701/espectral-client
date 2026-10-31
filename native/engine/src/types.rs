@@ -117,6 +117,17 @@ impl Loader {
             _ => None,
         }
     }
+
+    /// Modrinth / CurseForge loader tag for this platform ("fabric", "forge",
+    /// "neoforge"). Vanilla has no tag: its browser falls back to Fabric, the
+    /// same way the catalogue did before loaders were pluggable.
+    pub fn content_loader(self) -> &'static str {
+        match self {
+            Loader::Fabric | Loader::Vanilla => "fabric",
+            Loader::Neoforge => "neoforge",
+            Loader::Forge => "forge",
+        }
+    }
 }
 
 impl std::fmt::Display for Loader {

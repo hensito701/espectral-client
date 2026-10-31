@@ -26,7 +26,7 @@ component VersionCard inherits HubCard {
             horizontal-stretch: 1;
             label: T.tr("instance.vcLoader");
             HiSelect {
-                options: [{ value: "fabric", label: "Fabric" }, { value: "vanilla", label: "Vanilla" }, { value: "neoforge", label: "NeoForge" }];
+                options: [{ value: "fabric", label: "Fabric" }, { value: "vanilla", label: "Vanilla" }, { value: "neoforge", label: "NeoForge" }, { value: "forge", label: "Forge" }];
                 current-index: HomeBridge.vc-loader-index;
                 enabled: !root.locked;
                 selected(i, v) => { HomeBridge.vc-select(HomeBridge.vc-version-index, i); }
