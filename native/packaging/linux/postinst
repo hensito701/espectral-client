@@ -1,0 +1,21 @@
+#!/bin/sh
+# Espectral Client — postinst. Refreshes the desktop/mime/icon caches so a
+# freshly installed app appears in the menu and handles .mrpack immediately.
+# Every tool is optional: containers and minimal systems often lack them.
+set -e
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications || true
+fi
+
+if command -v update-mime-database >/dev/null 2>&1; then
+  update-mime-database /usr/share/mime || true
+fi
+
+# hicolor is a standard theme; gtk-update-icon-cache refuses some themes but
+# works for hicolor. `-q` keeps apt's log quiet.
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
+
+exit 0

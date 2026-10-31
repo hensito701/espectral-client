@@ -1,138 +1,135 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# build-windows-exe.sh — cross-compile the EspectralClient Windows exe + NSIS
-# installer from this WSL2 (or any Linux with the same toolchain).
+# build-windows-exe.sh — cross-compile the Espectral Client Windows binary and
+# bundle the NSIS installer (from WSL2 or any Linux with the same toolchain).
 #
-# Prerequisites (one-time, no root needed):
-#   1. Rust via rustup:            sh rustup-init.sh -y --profile minimal
-#      (must be on PATH; Tauri v2 needs Rust >= 1.77.2)
-#   2. mingw-w64: gcc-mingw-w64-x86-64-posix, g++-mingw-w64-x86-64-posix,
-#      binutils-mingw-w64-x86-64. Either `sudo apt-get install` them (system
-#      paths) or extract the debs into ~/mingw (no root).
-#      Provides x86_64-w64-mingw32-gcc, windres, ar, dlltool.
-#   3. NSIS 3.x: `sudo apt-get install nsis`, or extract nsis + nsis-common into
-#      ~/nsis (no root; ~/bin/makensis must then be a wrapper that sets NSISDIR
-#      to the extracted tree — the tauri bundler resolves stubs via NSISDIR
-#      inherited from the child env).
-#   4. Rust windows target:        rustup target add x86_64-pc-windows-gnu
+# Prerequisites (one-time, no root needed unless noted):
+#   1. Rust via rustup, on PATH, with the Windows target:
+#        rustup target add x86_64-pc-windows-gnu
+#   2. mingw-w64 (x86_64): x86_64-w64-mingw32-gcc and -windres, plus ar/dlltool.
+#      Either system packages (gcc-mingw-w64-x86-64, binutils-mingw-w64-x86-64)
+#      or debs extracted into ~/mingw. windres is also what build.rs uses for
+#      the exe's icon/version resource, so a missing one fails the build early.
+#   3. NSIS 3.x with its plugins: system `makensis`, or an extracted tree in
+#      ~/nsis (then ~/bin/makensis must set NSISDIR to it).
 #
 # Output:
-#   src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/EspectralClient_<ver>_x64-setup.exe
-#   src-tauri/target/x86_64-pc-windows-gnu/release/espectral-client.exe (portable)
+#   build/windows/EspectralClient_<ver>_x64-setup.exe (+ .sig)
+#   native/target/x86_64-pc-windows-gnu/release/espectral-client.exe (portable)
 #
-# The bundle is lean: only the engine + the extract-zip runtime deps are
-# staged (scripts/stage-tauri-resources.mjs), not the 92 MB node_modules.
+# Usage:
+#   scripts/build-windows-exe.sh                build, bundle, sign
+#   scripts/build-windows-exe.sh --skip-build   reuse the existing release exe
+#   scripts/build-windows-exe.sh --unsigned     allow a missing signing key
+#   JOBS=2 scripts/build-windows-exe.sh
+#
+# The signing key comes from $TAURI_SIGNING_PRIVATE_KEY or .keys/espectral.key;
+# the .sig is in the same format `tauri signer sign` writes (see
+# scripts/sign-update.sh).
 # ==========================================================================
 set -euo pipefail
 cd "$(dirname "$0")/.."
+ROOT="$PWD"
 
-# NOTE: this nvm node only powers the Linux-side build toolchain (tauri CLI,
-# vite, staging). The SHIPPED Windows node.exe version is pinned separately in
-# package.json `espectral.bundledNode` — do NOT bump this path to ship a newer
-# runtime (24.16.0 stalls extract-zip at game-launch natives extraction).
-export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$HOME/.cargo/bin:$HOME/mingw/usr/bin:$HOME/bin:$HOME/nsis/usr/bin:$PATH"
-export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc-posix
+SKIP_BUILD=0
+ALLOW_UNSIGNED=0
+for arg in "$@"; do
+  case "$arg" in
+    --skip-build) SKIP_BUILD=1 ;;
+    --unsigned)   ALLOW_UNSIGNED=1 ;;
+    -h|--help)    sed -n '2,30p' "$0"; exit 0 ;;
+    *) echo "ERROR: unknown argument: $arg" >&2; exit 1 ;;
+  esac
+done
+
+JOBS="${JOBS:-2}"
+TARGET=x86_64-pc-windows-gnu
+PKG=espectral-client
+VERSION="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' native/Cargo.toml | head -1)"
+[ -n "$VERSION" ] || { echo "ERROR: could not read the version from native/Cargo.toml" >&2; exit 1; }
+
+# Toolchain hints (WSL layouts; harmless when the tools are on PATH already).
+export PATH="$HOME/.cargo/bin:$HOME/mingw/usr/bin:$HOME/bin:$HOME/nsis/usr/bin:$PATH"
 if [ -z "${NSISDIR:-}" ]; then
   if [ -d "$HOME/nsis/usr/share/nsis" ]; then NSISDIR="$HOME/nsis/usr/share/nsis"; else NSISDIR=/usr/share/nsis; fi
 fi
 export NSISDIR
-export STAGE_NODE_PLATFORM=win32
+# build.rs picks its own windres, but cargo's linker for the gnu target must be
+# the cross compiler (not `cc`).
+export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="${CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER:-x86_64-w64-mingw32-gcc}"
+export CARGO_INCREMENTAL=0
 
-# The tauri bundler invokes makensis from PATH; NSISDIR must be inherited by
-# the child so stub resolution finds the extracted tree (the binary's baked-in
-# default is /usr/share/nsis, which is not writable without root).
-if ! command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then
-  echo "ERROR: mingw-w64 compiler not on PATH (look in ~/mingw/usr/bin)" >&2
+need() { command -v "$1" >/dev/null 2>&1 || { echo "ERROR: $1 not found ($2)" >&2; exit 1; }; }
+need rustc   "install the Rust toolchain (rustup)"
+need "$CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER" "install mingw-w64 x86_64 (gcc-mingw-w64-x86-64) or look in ~/mingw/usr/bin"
+need makensis "install NSIS 3.x (apt/fedora nsis) or extract it into ~/nsis"
+command -v x86_64-w64-mingw32-windres >/dev/null 2>&1 \
+  || echo "[build] WARNING: x86_64-w64-mingw32-windres not on PATH; build.rs needs it (or \$WINDRES) for the icon/version resource" >&2
+
+# ---- branding + icon inputs ---------------------------------------------
+BRANDING_SRC="$ROOT/assets/branding"
+[ -f "$BRANDING_SRC/branding.json" ] || {
+  echo "ERROR: $BRANDING_SRC/branding.json missing — run 'npm run deploy:mod'" >&2
+  echo "       (or scripts/update-branding-manifest.mjs) after building the mod jars" >&2
+  exit 1
+}
+ICON="$ROOT/native/app/icons/icon.ico"
+[ -f "$ICON" ] || { echo "ERROR: $ICON missing — run 'node scripts/make-icons.mjs'" >&2; exit 1; }
+
+# ---- build --------------------------------------------------------------
+BIN="$ROOT/native/target/$TARGET/release/$PKG.exe"
+if [ "$SKIP_BUILD" = "1" ]; then
+  [ -f "$BIN" ] || { echo "ERROR: $BIN missing and --skip-build was given" >&2; exit 1; }
+  echo "[build] --skip-build: using $BIN"
+else
+  echo "[build] cargo build --release -p $PKG --target $TARGET -j $JOBS"
+  ( cd native && cargo build --release -p "$PKG" --target "$TARGET" -j "$JOBS" )
+  [ -f "$BIN" ] || { echo "ERROR: build produced no $BIN" >&2; exit 1; }
+fi
+
+# ---- stage branding (makensis wants a plain dir; assets/branding is one) --
+STAGE="$ROOT/build/windows-stage"
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+cp -a "$BRANDING_SRC" "$STAGE/branding"
+find "$STAGE/branding" -name '.DS_Store' -delete 2>/dev/null || true
+
+OUT_DIR="$ROOT/build/windows"
+OUT="$OUT_DIR/EspectralClient_${VERSION}_x64-setup.exe"
+mkdir -p "$OUT_DIR"
+rm -f "$OUT" "$OUT.sig"
+
+# ---- bundle -------------------------------------------------------------
+echo "[build] makensis -> $OUT"
+# -INPUTCHARSET UTF8: the .nsi/.nsh files are UTF-8 (Spanish accents, ©) —
+# without it makensis reads them as the build host's ANSI codepage and the
+# translated strings arrive mangled on Windows.
+makensis -INPUTCHARSET UTF8 -V2 \
+  -DVERSION="$VERSION" \
+  -DSRC_EXE="$BIN" \
+  -DSRC_BRANDING="$STAGE/branding" \
+  -DICON="$ICON" \
+  -DOUTFILE="$OUT" \
+  "$ROOT/native/packaging/windows/installer.nsi"
+
+[ -f "$OUT" ] || { echo "ERROR: makensis produced no $OUT" >&2; exit 1; }
+echo "[build] installer: $OUT ($(du -h "$OUT" | cut -f1))"
+echo "[build] portable exe: $BIN ($(du -h "$BIN" | cut -f1))"
+
+# ---- sign ---------------------------------------------------------------
+if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] || [ -f "$ROOT/.keys/espectral.key" ]; then
+  "$ROOT/scripts/sign-update.sh" "$OUT"
+elif [ "$ALLOW_UNSIGNED" = "1" ]; then
+  echo "[build] WARNING: --unsigned and no key: $OUT.sig was NOT written. The in-app updater will refuse this artifact." >&2
+else
+  echo "ERROR: no signing key. Set TAURI_SIGNING_PRIVATE_KEY (base64 minisign secret key) or add .keys/espectral.key," >&2
+  echo "       or pass --unsigned for a local-only build." >&2
   exit 1
 fi
-if ! command -v makensis >/dev/null 2>&1; then
-  echo "ERROR: makensis not on PATH (look in ~/nsis/usr/bin or ~/bin)" >&2
-  exit 1
-fi
 
-# Guard: tauri.conf.json must be STRICT JSON — Tauri's parser rejects
-# // comments ("key must be a string"), and failing at cargo build time
-# wastes a full compile cycle. Fail here, early, with the reason.
-if ! node -e "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8'))" 2>/dev/null; then
-  echo "ERROR: src-tauri/tauri.conf.json is not strict JSON (// comments are not allowed)" >&2
-  exit 1
-fi
-
-# Auto-heal: node_modules is normally installed from Windows, so it ships only
-# the win32 @tauri-apps/cli native binary, which WSL's node cannot load.
-# Restore the Linux CLI package WITHOUT npm when possible — an npm install here
-# re-reconciles optional deps and prunes Windows-native binaries (rollup),
-# breaking the next Windows-side `npm run build`. First run installs via npm
-# and caches the whole package dir in build/tauri-cli-linux/ for later runs.
-CLI_DIR="node_modules/@tauri-apps/cli-linux-x64-gnu"
-CLI_NODE="$CLI_DIR/cli.linux-x64-gnu.node"
-CLI_CACHE="build/tauri-cli-linux"
-if [ ! -f "$CLI_NODE" ]; then
-  if [ -f "$CLI_CACHE/cli.linux-x64-gnu.node" ] && [ -f "$CLI_CACHE/package.json" ]; then
-    echo "[build] restoring Linux tauri CLI from cache…"
-    mkdir -p "$CLI_DIR"
-    find "$CLI_CACHE" -maxdepth 1 -type f -exec cp {} "$CLI_DIR/" \;
-  else
-    echo "[build] installing Linux tauri CLI native dep (first run — caches package)…"
-    CLI_V="$(node -p "require('./node_modules/@tauri-apps/cli/package.json').version")"
-    npm i --no-save --ignore-scripts "@tauri-apps/cli-linux-x64-gnu@$CLI_V"
-  fi
-fi
-ROLLUP_DIR="node_modules/@rollup/rollup-linux-x64-gnu"
-if [ ! -f "$ROLLUP_DIR/package.json" ]; then
-  if [ -f "$CLI_CACHE/rollup-linux-x64-gnu/package.json" ]; then
-    echo "[build] restoring Linux rollup native from cache…"
-    mkdir -p "$ROLLUP_DIR"
-    cp "$CLI_CACHE/rollup-linux-x64-gnu"/* "$ROLLUP_DIR/"
-  else
-    echo "[build] installing Linux rollup native (first run — caches package)…"
-    R_V="$(node -p "require('./node_modules/rollup/package.json').version")"
-    npm i --no-save --ignore-scripts "@rollup/rollup-linux-x64-gnu@$R_V"
-  fi
-fi
-if [ -f "$ROLLUP_DIR/package.json" ] && [ ! -f "$CLI_CACHE/rollup-linux-x64-gnu/package.json" ]; then
-  mkdir -p "$CLI_CACHE/rollup-linux-x64-gnu"
-  cp "$ROLLUP_DIR"/* "$CLI_CACHE/rollup-linux-x64-gnu/"
-fi
-ESBUILD_DIR="node_modules/@esbuild/linux-x64"
-if [ ! -f "$ESBUILD_DIR/package.json" ]; then
-  if [ -f "$CLI_CACHE/esbuild-linux-x64/package.json" ]; then
-    echo "[build] restoring Linux esbuild from cache…"
-    mkdir -p "$ESBUILD_DIR"
-    cp -r "$CLI_CACHE/esbuild-linux-x64"/* "$ESBUILD_DIR/" 2>/dev/null || true
-    find "$CLI_CACHE/esbuild-linux-x64" -mindepth 1 -maxdepth 1 -type d -exec cp -r {} "$ESBUILD_DIR/" \;
-  else
-    echo "[build] installing Linux esbuild (first run — caches package)…"
-    E_V="$(node -p "require('./node_modules/esbuild/package.json').version")"
-    npm i --no-save --ignore-scripts "@esbuild/linux-x64@$E_V"
-  fi
-fi
-if [ -f "$ESBUILD_DIR/package.json" ] && [ ! -f "$CLI_CACHE/esbuild-linux-x64/package.json" ]; then
-  mkdir -p "$CLI_CACHE/esbuild-linux-x64"
-  cp -r "$ESBUILD_DIR"/* "$CLI_CACHE/esbuild-linux-x64/"
-fi
-echo "[build] staging engine resources…"
-node scripts/stage-tauri-resources.mjs
-
-# Updater signing: without TAURI_SIGNING_PRIVATE_KEY, `tauri build` errors out
-# after the bundle step ("A public key has been found, but no private key")
-# and no .sig files are produced. The CLI wants the KEY CONTENT (the _PATH
-# variant is not honored by tauri build in cli 2.11.4). Key file is
-# gitignored (.keys/espectral.key); password empty by design on the build box.
-if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && [ -f ".keys/espectral.key" ]; then
-  export TAURI_SIGNING_PRIVATE_KEY="$(cat .keys/espectral.key)"
-  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
-  echo "[build] updater signing: using .keys/espectral.key"
-fi
-
-echo "[build] tauri build (x86_64-pc-windows-gnu, nsis only — conf also lists deb for Linux builds)…"
-npx tauri build --target x86_64-pc-windows-gnu --bundles nsis
-
-echo "[build] done:"
-ls -lh src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/*.exe
-ls -lh src-tauri/target/x86_64-pc-windows-gnu/release/espectral-client.exe
-
-# The updater manifest is not built here: it must point at the immutable
-# release URL and carry the signature of the artifact that actually ships.
-# A local build only needs the signed installer, which the bundler just wrote
-# next to the exe.
+# ---- summary ------------------------------------------------------------
+echo
+echo "[build] sha256:"
+sha256sum "$OUT"
+[ -f "$OUT.sig" ] && sha256sum "$OUT.sig"
+echo "[build] done."

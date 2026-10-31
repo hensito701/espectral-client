@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=Espectral Client
+Name[es]=Espectral Client
+GenericName=Minecraft launcher
+GenericName[es]=Lanzador de Minecraft
+Comment=Espectral Client launcher
+Comment[es]=Lanzador de Espectral Client
+Exec=espectral-client %f
+TryExec=espectral-client
+Icon=espectral-client
+Terminal=false
+Categories=Game;
+Keywords=minecraft;launcher;modpack;
+Keywords[es]=minecraft;lanzador;modpack;
+StartupNotify=true
+StartupWMClass=espectral-client
+MimeType=application/x-modrinth-modpack;
