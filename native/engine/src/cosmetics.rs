@@ -16,11 +16,9 @@
 //! (user intent) is never mutated by sanitization.
 //!
 //! Cross-cluster seams (identity-discord): the grant + validity come from
-//! [`grant_view`] (see its doc — needs `identity` to expose the full JS
-//! `flagsFor` shape), presence republish goes through
-//! [`crate::presence::sync_share`], and "running launches of a uuid" are read
-//! from `running-games.json` ([`crate::game_sessions::read_sessions`], live
-//! pids only) instead of the bridge registry.
+//! [`grant_view`] (`identity::flags_info`), presence republish goes through
+//! [`crate::presence::republish_now`], and "running launches of a uuid" are
+//! the bridge registry ([`crate::bridge::launches_for`]), like the JS.
 //!
 //! Tests: tests/cosmetics.test.mjs.
 //!
@@ -239,23 +237,17 @@ pub struct GrantView {
     pub grant_valid: bool,
 }
 
-/// The grant view of a uuid.
-///
-/// INTEGRATION (identity-discord): the JS read `{ flags, grant, grantValid }`
-/// from `identity.flagsFor`; the Rust contract `identity::flags_for` only
-/// returns the flags. Until identity exposes the grant + its validity, this
-/// conservatively reports `grant_valid = false` (the mod file then carries
-/// `grant: null` and an empty loadout — the documented dead-grant behaviour,
-/// never a forged ★). Replace the body with the identity call at merge.
+/// The grant view of a uuid (JS `identity.flagsFor`: flags, the grant when
+/// it still verifies for this uuid, and its validity).
 pub fn grant_view(engine: &Engine, flat_uuid: &str) -> GrantView {
-    GrantView { flags: verified_flags(engine, flat_uuid), grant: None, grant_valid: false }
+    let info = crate::identity::flags_info(engine, flat_uuid);
+    GrantView { flags: info.flags, grant: info.grant, grant_valid: info.grant_valid }
 }
 
-/// `identity::flags_for` (empty while identity is not ported / on error).
+/// `identity::flags_for` (empty on error).
 pub fn verified_flags(engine: &Engine, flat_uuid: &str) -> Vec<String> {
     match crate::identity::flags_for(engine, flat_uuid) {
         Ok(f) => f,
-        Err(EngineError::NotImplemented(_)) => vec![],
         Err(e) => {
             tracing::debug!("[cosmetics] flags_for({flat_uuid}) failed: {e}");
             vec![]
@@ -334,14 +326,16 @@ pub fn write_cosmetics_file(
     Ok(())
 }
 
-/// Game dirs of the live launches owned by a uuid (running-games.json, live pids).
+/// Game dirs of the live launches owned by a uuid (JS `bridge.launchesFor`:
+/// the bridge registry game-launch fills on spawn and on adopt).
 pub fn running_game_dirs(engine: &Engine, flat_uuid: &str) -> Vec<PathBuf> {
-    crate::game_sessions::read_sessions(engine)
-        .into_values()
-        .filter(|s| s.uuid.as_deref().and_then(normalize_uuid).as_deref() == Some(flat_uuid))
-        .filter(|s| s.pid != 0 && crate::platform::is_pid_alive(s.pid))
-        .filter_map(|s| s.game_dir.filter(|g| !g.is_empty()).map(PathBuf::from))
-        .collect()
+    let mut dirs: Vec<PathBuf> = vec![];
+    for l in crate::bridge::launches_for(engine, flat_uuid) {
+        if !l.game_dir.as_os_str().is_empty() && !dirs.contains(&l.game_dir) {
+            dirs.push(l.game_dir);
+        }
+    }
+    dirs
 }
 
 /// Rewrite the file for every running launch owned by `uuid`.
@@ -417,10 +411,8 @@ pub fn patch_cosmetics(engine: &Engine, uuid: &str, patch: &Value, flags: &[Stri
     drop(_guard);
 
     if p.contains_key("share") || p.contains_key("loadout") {
-        if let Err(e) = crate::presence::sync_share(engine, &flat) {
-            if !matches!(e, EngineError::NotImplemented(_)) {
-                tracing::warn!("[cosmetics] presence republish failed: {e}");
-            }
+        if let Err(e) = crate::presence::republish_now(engine, &flat) {
+            tracing::warn!("[cosmetics] presence republish failed: {e}");
         }
     }
     rewrite_for_running(engine, &flat);
@@ -644,10 +636,7 @@ mod tests {
 
 /// Sanitized loadout the presence publisher PUTs to espectral-id
 /// (JS presence.publishOnce: `sanitizeLoadout(getCosmeticsState(uuid).loadout, flags)`).
-///
-/// CONTRACT STUB added by identity-discord (presence.rs) — accounts-skins
-/// owns the implementation; keep the signature.
 pub fn presence_loadout(engine: &Engine, flat_uuid: &str, flags: &[String]) -> EngineResult<serde_json::Value> {
-    let _ = (engine, flat_uuid, flags);
-    crate::not_ported!("cosmetics::presence_loadout")
+    let state = get_cosmetics_state(engine, flat_uuid);
+    Ok(serde_json::to_value(sanitize_loadout(&state.loadout, flags))?)
 }

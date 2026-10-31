@@ -68,6 +68,8 @@ pub fn default_config() -> Map<String, Value> {
         "jvm": null,
         "first_launch_setup_complete": false,
         "first_launch_import_source": null,
+        // Agent access (MCP). Inert unless enabled (upstream c22767f).
+        "agent": { "enabled": false, "allowed_servers": [] },
     });
     match v {
         Value::Object(m) => m,
@@ -182,6 +184,9 @@ impl ConfigStore {
             }
             if !matches!(doc.get("accounts"), Some(Value::Array(_))) {
                 doc.insert("accounts".into(), Value::Array(vec![]));
+            }
+            if !matches!(doc.get("agent"), Some(Value::Object(_))) {
+                doc.insert("agent".into(), json!({ "enabled": false, "allowed_servers": [] }));
             }
             // Only a *legacy* identity_url is rewritten; a custom one is the
             // user's own self-hosted service.

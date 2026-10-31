@@ -276,6 +276,7 @@ pub async fn get_summary(engine: &Engine, name: &str) -> EngineResult<InstanceSu
         aot_key: Some(key),
         aot_cache_exists: cache_exists,
         imported_from: inst.imported_from.clone(),
+        capture_tools: inst.extra.get("capture_tools") == Some(&Value::Bool(true)),
         created_at: inst.created_at.clone(),
         running: None,
     })
@@ -736,43 +737,6 @@ pub async fn import_options_from_instance(engine: &Engine, target: &str, source:
 // AOT status (read side)
 // ---------------------------------------------------------------------------
 
-/// aot.classpathStamp / stampMatches / readCacheStamp / isCacheStale.
-/// TODO(game-launch merge): switch to `crate::aot::is_cache_stale` once it is
-/// public there; this private copy keeps the read side working meanwhile.
-fn aot_cache_stale(engine: &Engine, key: &str, classpath: &[PathBuf]) -> bool {
-    let stored = std::fs::read_to_string(engine.paths().aot_meta(key))
-        .ok()
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-        .and_then(|m| m.get("classpath_stamp").and_then(Value::as_array).cloned());
-    let Some(stored) = stored.filter(|s| !s.is_empty()) else { return true };
-    if stored.len() != classpath.len() {
-        return true;
-    }
-    for (a, entry) in stored.iter().zip(classpath) {
-        let (size, mtime) = match std::fs::metadata(entry) {
-            Ok(st) => (st.len() as f64, crate::platform::mtime_ms(&st)),
-            Err(_) => (-1.0, -1.0),
-        };
-        let a_path = a.get("path").and_then(Value::as_str);
-        let a_size = a.get("size").and_then(Value::as_f64);
-        let a_mtime = a.get("mtime_ms").and_then(Value::as_f64);
-        let (Some(ap), Some(asz), Some(am)) = (a_path, a_size, a_mtime) else { return true };
-        if ap != entry.to_string_lossy() || asz != size || asz < 0.0 || am < 0.0 || mtime < 0.0 {
-            return true;
-        }
-        if (am - mtime).abs() > 2000.0 {
-            return true;
-        }
-    }
-    false
-}
-
-/// aot.aotRefusalLine: first `[warning][aot]` / `[error][aot]` line, trimmed, <= 300 chars.
-pub(crate) fn aot_refusal_line(text: &str) -> Option<String> {
-    let re = regex::Regex::new(r"\[(warning|error)\]\[aot\]").expect("regex");
-    text.split('\n').find(|l| re.is_match(l)).map(|l| l.trim().chars().take(300).collect())
-}
-
 /// AotStatus snapshot for an instance (read side).
 pub async fn aot_status(engine: &Engine, instance: &InstanceMeta) -> EngineResult<AotStatus> {
     let summary = get_summary(engine, &instance.name).await?;
@@ -812,7 +776,7 @@ pub async fn aot_status(engine: &Engine, instance: &InstanceMeta) -> EngineResul
         }
         .await;
         if let Ok(cp) = resolved {
-            stale = Some(aot_cache_stale(engine, &key, &cp));
+            stale = Some(crate::aot::is_cache_stale(engine, &key, &cp));
         }
     }
 
@@ -852,7 +816,7 @@ fn aot_proof_sweep(engine: &Engine, instance: &InstanceMeta) -> Option<AotProof>
     Some(AotProof {
         log_path: Some(log_path.to_string_lossy().into_owned()),
         using_aot_linked_classes: using,
-        refusal: if using { None } else { aot_refusal_line(&content) },
+        refusal: if using { None } else { crate::aot::aot_refusal_line(&content) },
     })
 }
 
@@ -1194,11 +1158,11 @@ mod tests {
         let st = std::fs::metadata(&jar).unwrap();
         let key = "k";
         std::fs::create_dir_all(e.paths().aot_cache_dir(key)).unwrap();
-        assert!(aot_cache_stale(&e, key, std::slice::from_ref(&jar)), "no stamp = stale");
+        assert!(crate::aot::is_cache_stale(&e, key, std::slice::from_ref(&jar)), "no stamp = stale");
         let stamp = json!({ "classpath_stamp": [{ "path": jar.to_string_lossy(), "size": 3, "mtime_ms": crate::platform::mtime_ms(&st) }] });
         std::fs::write(e.paths().aot_meta(key), stamp.to_string()).unwrap();
-        assert!(!aot_cache_stale(&e, key, std::slice::from_ref(&jar)));
+        assert!(!crate::aot::is_cache_stale(&e, key, std::slice::from_ref(&jar)));
         std::fs::write(&jar, b"abcd").unwrap();
-        assert!(aot_cache_stale(&e, key, std::slice::from_ref(&jar)));
+        assert!(crate::aot::is_cache_stale(&e, key, std::slice::from_ref(&jar)));
     }
 }
