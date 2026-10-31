@@ -509,6 +509,10 @@ pub struct InstanceSummary {
     pub aot_key: Option<String>,
     pub aot_cache_exists: bool,
     pub imported_from: Option<String>,
+    /// `inst.capture_tools === true` (upstream agent access; the flag lives
+    /// in instance.json's extra keys and is preserved there).
+    #[serde(default)]
+    pub capture_tools: bool,
     pub created_at: Option<String>,
     /// Set by the list/detail facade methods (activeInstances).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -532,8 +536,12 @@ pub struct ModEntry {
 pub struct ServerEntry {
     pub name: String,
     pub ip: String,
+    /// The flags default to false when a PUT body omits them, like the JS.
+    #[serde(default)]
     pub hidden: bool,
+    #[serde(default)]
     pub accept_textures: bool,
+    #[serde(default)]
     pub has_icon: bool,
 }
 

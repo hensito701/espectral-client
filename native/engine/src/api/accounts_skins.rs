@@ -571,13 +571,10 @@ impl Engine {
 
     /// POST /api/bridge/visible — `bridge_token` from the x-espectral-bridge
     /// header (403 BRIDGE_AUTH when unknown); answers from cache, queues the rest.
-    ///
-    /// INTEGRATION: the logic (launch token registry, presence cache, batched
-    /// queries) is identity-discord's `bridge.rs`; wire
-    /// `bridge::authenticate(token)` + `bridge::visible(owner, uuids)` here.
+    /// (bridge.rs: launch token registry, presence cache, batched queries;
+    /// the loopback listener calls the same function for the in-game mod).
     pub async fn bridge_visible(&self, bridge_token: &str, uuids: Vec<String>) -> EngineResult<BridgeVisibleReply> {
-        let _ = (bridge_token, uuids);
-        crate::not_ported!("Engine::bridge_visible (bridge.rs authenticate/visible — identity-discord)")
+        crate::bridge::visible_for_token(self, bridge_token, &uuids)
     }
 
     /// GET /api/backgrounds.

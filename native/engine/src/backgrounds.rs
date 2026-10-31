@@ -959,12 +959,11 @@ mod tests {
         migrate_legacy_background(&e, "x", &[]).await.unwrap();
     }
 
-    /// Needs identity-discord's client.rs (load/patch_client_config) and
-    /// content's instances::create_instance — enable at integration.
+    /// Cross-cluster: client.rs (load/patch_client_config) + instances::create_instance.
     #[tokio::test]
-    #[ignore = "needs client::patch_client_config (identity-discord) + instances::create_instance (content)"]
     async fn legacy_migration_selects_the_imported_pack() {
         let (d, e) = temp_engine();
+        e.update_content_settings(|s| s.background_on_create = false);
         crate::instances::create_instance(
             &e,
             serde_json::from_value(serde_json::json!({ "name": "bg-legacy", "version": "1.21.11" })).unwrap(),

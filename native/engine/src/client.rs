@@ -38,10 +38,6 @@ pub const TAGLINE_MAX: usize = 40;
 pub const SUITE_REGISTRY_JSON: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/engine/suite-registry.json"));
 
-/// Versions of mods.mjs `PINS_QOL_BY_VERSION` (the pinned QoL set). The list
-/// is owned by content (mods.rs); duplicated here only for `isSupported`.
-pub const QOL_PINNED_VERSIONS: [&str; 3] = ["1.21.11", "26.2", "26.3"];
-
 const MAX_MACROS: usize = 32;
 const MAX_MACRO_NAME: usize = 40;
 const MAX_KEYBIND: usize = 32;
@@ -278,24 +274,12 @@ fn write_atomic(path: &Path, obj: &Map<String, Value>) -> std::io::Result<()> {
 
 /// `supported` = fabric loader AND version in the pinned QoL set.
 pub fn is_supported(instance: &InstanceMeta) -> bool {
-    instance.loader == crate::types::Loader::Fabric && QOL_PINNED_VERSIONS.contains(&instance.version.as_str())
+    instance.loader == crate::types::Loader::Fabric && crate::mods::qol_pins_by_version(&instance.version).is_some()
 }
 
-/// instances.getInstance, with a local read while the content cluster's
-/// implementation has not landed (same 409/404 codes as the JS).
+/// instances.getInstance (409 INVALID_NAME / 404 NOT_FOUND like the JS).
 async fn load_instance(engine: &Engine, name: &str) -> EngineResult<InstanceMeta> {
-    match crate::instances::get_instance(engine, name).await {
-        Err(EngineError::NotImplemented(_)) => {
-            if !crate::util::is_valid_instance_name(name) {
-                return Err(EngineError::conflict("INVALID_NAME", "instance name must match ^[A-Za-z0-9 ._-]{1,40}$"));
-            }
-            std::fs::read_to_string(engine.paths().instance_json(name))
-                .ok()
-                .and_then(|s| serde_json::from_str::<InstanceMeta>(&s).ok())
-                .ok_or_else(|| EngineError::not_found("NOT_FOUND", format!("instance '{name}' does not exist")))
-        }
-        other => other,
-    }
+    crate::instances::get_instance(engine, name).await
 }
 
 fn registry_entries() -> Vec<ClientRegistryEntry> {

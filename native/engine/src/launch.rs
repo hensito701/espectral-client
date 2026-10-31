@@ -147,6 +147,18 @@ pub fn effective_memory_mb(requested_mb: i64, total_bytes: u64) -> i64 {
     requested_mb.min(cap)
 }
 
+/// launch.mjs `stackFlags` (upstream 67614f8): on Windows commit every Java
+/// thread's stack up front. A lost guard page on a worker thread crashed
+/// 26.3 silently (0xC0000005, no hs_err); pre-touching makes it harmless.
+/// About 1 MB RAM per thread. Diagnostic-gated on JDK 21-25.
+pub fn stack_flags(windows: bool) -> &'static [&'static str] {
+    if windows {
+        &["-XX:+UnlockDiagnosticVMOptions", "-XX:+AlwaysPreTouchStacks"]
+    } else {
+        &[]
+    }
+}
+
 /// Boot-time flags: `-XX:-UsePerfData`, `-Xverify:none` (JDK < 27 — a hard
 /// error from 27 on), and the opt-in C1-only `-XX:TieredStopAtLevel=1`
 /// (instance `fast_boot` wins, absent -> config `fast_boot === true`).
@@ -407,9 +419,10 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     jvm.push(format!("-Djava.library.path={natives}"));
     if java_major >= 21 {
         jvm.extend(boot_flags(engine, instance, Some(java_major)));
+        jvm.extend(stack_flags(cfg!(windows)).iter().map(|s| s.to_string()));
     }
     // Mod bridge: the in-game mod reports visible uuids over loopback.
-    jvm.push(format!("-Despectral.bridge.url=http://127.0.0.1:{}/api/bridge", crate::loopback::configured_port()));
+    jvm.push(format!("-Despectral.bridge.url={}", crate::loopback::bridge_url(engine)));
     if let Some(t) = resolved.bridge_token.as_deref().filter(|t| !t.is_empty()) {
         jvm.push(format!("-Despectral.bridge.token={t}"));
     }
@@ -730,13 +743,9 @@ fn tolerate<T>(what: &str, r: EngineResult<T>) -> EngineResult<Option<T>> {
     }
 }
 
-/// instances::get_instance, falling back to resolver::load_instance_meta while
-/// the content cluster's contract is still a stub.
+/// instances::get_instance (409 INVALID_NAME / 404 NOT_FOUND like the JS).
 pub(crate) async fn load_instance(engine: &Engine, name: &str) -> EngineResult<InstanceMeta> {
-    match crate::instances::get_instance(engine, name).await {
-        Err(EngineError::NotImplemented(_)) => crate::resolver::load_instance_meta(engine, name),
-        r => r,
-    }
+    crate::instances::get_instance(engine, name).await
 }
 
 /// Resolve everything a launch needs: JVM, version JSON (merged chain for
@@ -1368,6 +1377,12 @@ mod tests {
         assert!(boot_flags(&e, &inst("t"), Some(26)).contains(&"-Xverify:none".to_string()));
         assert_eq!(boot_flags(&e, &on, Some(27)), ["-XX:-UsePerfData", "-XX:TieredStopAtLevel=1"]);
         assert!(boot_flags(&e, &inst("t"), None).contains(&"-Xverify:none".to_string()));
+    }
+
+    #[test]
+    fn stack_flags_are_windows_only() {
+        assert_eq!(stack_flags(true), ["-XX:+UnlockDiagnosticVMOptions", "-XX:+AlwaysPreTouchStacks"]);
+        assert!(stack_flags(false).is_empty());
     }
 
     #[test]

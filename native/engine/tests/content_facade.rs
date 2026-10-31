@@ -57,6 +57,7 @@ async fn instance_lifecycle_json_shapes() {
             "aot_key",
             "aot_cache_exists",
             "imported_from",
+            "capture_tools",
             "created_at"
         ]
     );

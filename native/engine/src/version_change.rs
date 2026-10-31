@@ -15,13 +15,9 @@
 //! Cross-cluster calls: resolver (resolve_version, get_version_manifest,
 //! fabric_supported_for_version), neoforge::latest_neoforge_for,
 //! mods::{plan_mods_for_target, apply_mods_plan, ensure_branding_seeded},
-//! instances::{get_instance, list_instances}. `supportsBranding` is not in the
-//! mods contract yet, so a read-only copy reading the bundled
-//! `branding/branding.json` lives here ([`supports_branding`]).
+//! mods::supports_branding, instances::{get_instance, list_instances}.
 
-use std::path::{Path, PathBuf};
-
-use serde_json::Value;
+use std::path::Path;
 
 use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult};
@@ -108,40 +104,6 @@ fn has_worlds(engine: &Engine, inst: &InstanceMeta) -> bool {
         .unwrap_or(false)
 }
 
-/// Directories that may hold the bundled branding manifest (packaged
-/// resources next to the executable, then the dev checkout).
-fn branding_dir_candidates() -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    if let Ok(dir) = std::env::var("ESPECTRAL_RESOURCES_DIR") {
-        out.push(PathBuf::from(dir).join("branding"));
-    }
-    if let Some(exe_dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
-        out.push(exe_dir.join("branding"));
-        out.push(exe_dir.join("resources").join("branding"));
-    }
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    out.push(repo.join("resources").join("branding"));
-    out.push(repo.join("branding"));
-    out.push(repo.join("assets").join("branding"));
-    out
-}
-
-/// mods.mjs supportsBranding: a bundled Espectral jar exists for this
-/// version + loader (`branding.json` entry, `loaders` absent = fabric only).
-pub fn supports_branding(version: &str, loader: Loader) -> bool {
-    let Some(dir) = branding_dir_candidates().into_iter().find(|d| d.exists()) else { return false };
-    let Some(manifest) =
-        std::fs::read_to_string(dir.join("branding.json")).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok())
-    else {
-        return false;
-    };
-    let Some(entry) = manifest.get("mods").and_then(|m| m.get(version)) else { return false };
-    match entry.get("loaders").and_then(Value::as_array) {
-        Some(ls) => ls.iter().any(|l| l.as_str() == Some(loader.as_str())),
-        None => loader == Loader::Fabric,
-    }
-}
-
 /// Read-only preview of a version/loader change.
 pub async fn plan_version_change(
     engine: &Engine,
@@ -159,7 +121,7 @@ pub async fn plan_version_change(
         to: VersionLoaderRef { version: t.version.clone(), loader: t.loader, loader_version: Some(t.loader_version) },
         downgrade,
         backup_worlds: downgrade && has_worlds(engine, &inst),
-        espectral_menu: supports_branding(&t.version, t.loader),
+        espectral_menu: crate::mods::supports_branding(engine, &t.version, t.loader),
         mods,
     })
 }
@@ -362,9 +324,10 @@ mod tests {
     #[test]
     fn branding_support_from_bundled_manifest() {
         // The dev checkout ships assets/branding/branding.json.
-        assert!(supports_branding("1.21.11", Loader::Fabric));
-        assert!(!supports_branding("1.21.11", Loader::Neoforge));
-        assert!(supports_branding("1.21.1", Loader::Neoforge));
-        assert!(!supports_branding("0.0.1", Loader::Fabric));
+        let (_d, e) = crate::test_support::temp_engine();
+        assert!(crate::mods::supports_branding(&e, "1.21.11", Loader::Fabric));
+        assert!(!crate::mods::supports_branding(&e, "1.21.11", Loader::Neoforge));
+        assert!(crate::mods::supports_branding(&e, "1.21.1", Loader::Neoforge));
+        assert!(!crate::mods::supports_branding(&e, "0.0.1", Loader::Fabric));
     }
 }

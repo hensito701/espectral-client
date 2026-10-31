@@ -701,6 +701,7 @@ mod tests {
             aot_key: None,
             aot_cache_exists: false,
             imported_from: None,
+            capture_tools: false,
             created_at: None,
             running: None,
         }
