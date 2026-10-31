@@ -14,8 +14,8 @@ resolver = "2"
 members = ["engine", "app", "skin3d"]
 
 [workspace.package]
-# Mirrors package.json "version" (the JS engine reports it from /api/health).
-version = "1.6.2"
+# Mirrors package.json "version"; the in-app updater compares it with latest.json.
+version = "1.7.0"
 edition = "2021"
 license = "GPL-3.0-only"
 rust-version = "1.80"
@@ -59,6 +59,10 @@ md-5 = "0.10"
 hex = "0.4"
 base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["pkcs8", "alloc"] }
+# In-app updater: the same signature verifier and version comparison the
+# Tauri updater used, so latest.json and its .sig files stay drop-in.
+minisign-verify = "0.2"
+semver = "1"
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }
 
