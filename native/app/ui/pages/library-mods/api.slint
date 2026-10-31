@@ -1,11 +1,253 @@
 // OWNER: library-mods agent. The group's single bridge global — the only Slint global
-// of this group that Rust can see (app.slint re-exports it by name). Add every
-// property / callback / struct the group needs HERE.
-// Rust side: native/app/src/pages/library_mods.rs.
+// of this group that Rust can see (app.slint re-exports it by name).
+// Rust side: native/app/src/pages/library_mods.rs (+ library_mods/*.rs).
+//
+// Prefixes: `v-` VersionArmory, `m-` ModCatalog, `i-` ImportCenter,
+// `mp-` MrpackModal (shared modal, also usable from Home: set
+// `LibraryBridge.mrpack-open = true` and place `MrpackModal {}` last in the page).
+
+/// One row of the version matrix (engine VersionEntry + cross references).
+export struct VersionRow {
+    id: string,
+    kind: string,            // release | snapshot | old_beta | old_alpha
+    date: string,            // localized release date
+    java: string,            // "21" | "17" | "16" | "8"
+    installed-in: string,    // "" or "A, B"
+    latest-release: bool,
+    latest-snapshot: bool,
+}
+
+/// Installed mod (engine ModEntry, display-ready).
+export struct ModRow {
+    filename: string,
+    name: string,
+    slug: string,
+    version: string,
+    meta: string,            // "· 1.2 MB · abcdef12" tail of the meta row
+    enabled: bool,
+    requires: string,        // "" or "Requiere sodium"
+    required-by: string,     // "" or "Necesario para iris"
+}
+
+/// Performance preset pill.
+export struct PinnedPill {
+    slug: string,
+    requires: string,        // "" or "(sodium)"
+    installed: bool,
+}
+
+export struct ModRefRow {
+    project-id: string,
+    title: string,
+}
+
+/// Modrinth search hit.
+export struct ModrinthCard {
+    project-id: string,
+    title: string,
+    description: string,
+    downloads: string,       // localized "12,345"
+    icon-url: string,
+    icon: image,
+    has-icon: bool,
+    installed: bool,
+    conflict: string,        // "" or the conflicting mods (awaiting "install anyway")
+    optional: [ModRefRow],
+}
+
+/// Import source (engine ImportSource).
+export struct ImportSourceRow {
+    id: string,
+    kind: string,            // vanilla | fastclient | lunar
+    label: string,
+    path: string,
+    options-count: int,
+    servers-count: int,
+    lunar-ram: int,          // 0 = none
+}
+
+export struct SkippedRow {
+    file: string,
+    reason: string,
+}
+
+export struct ParsedServerRow {
+    name: string,
+    ip: string,
+    has-icon: bool,
+}
+
+/// Session-local import history entry.
+export struct RecentImportRow {
+    time: string,
+    is-mrpack: bool,
+    kind: string,
+    instance: string,
+    summary: string,
+}
+
+import { SelectOption } from "../../widgets.slint";
+
+/// DonationsPavilion rank card (texts are i18n KEYS, resolved with T.tr).
+export struct RankCard {
+    id: string,
+    name-key: string,
+    price-key: string,
+    tagline-key: string,
+    badge-kind: string,      // featured | custom | diamond | gold | emerald
+    badge-key: string,
+    featured: bool,
+    tone: color,             // border-top tier color
+    accent: color,           // perk bullets / CTA hover
+    perks: [string],
+    wardrobe: bool,          // "equip it in the Wardrobe" link (MVP ranks)
+}
+
+/// One grid row of rank cards (columns computed from the page width).
+export struct RankGridRow {
+    cards: [RankCard],
+}
 
 export global LibraryBridge {
-    /// Example: set by Rust on route enter. Replace freely.
-    in property <bool> loading;
-    /// Example callback. Replace freely.
-    callback refresh();
+    /// AppState.instances changed while a library page is shown (pages call it).
+    callback instances-changed();
+    // ------------------------------------------------------------------ versions
+    in property <bool> v-loading;
+    in property <string> v-error;
+    in property <bool> v-has-manifest;
+    in property <int> v-total;
+    in property <string> v-latest-release;
+    in property <string> v-latest-snapshot;
+    in-out property <string> v-query;
+    in-out property <int> v-filter;          // 0 all 1 release 2 snapshot 3 beta 4 alpha 5 installed
+    in property <[VersionRow]> v-rows;       // visible slice
+    in property <int> v-filtered;            // filtered count
+    in property <int> v-installed-versions;  // distinct versions used by instances
+    in property <bool> v-has-more;
+    callback v-set-query(string);
+    callback v-set-filter(int);
+    callback v-load-more();
+    callback v-retry();
+    callback v-copy(string);
+    callback v-create(string);
+
+    // ------------------------------------------------------------------ mods
+    in property <string> m-target;
+    in property <bool> m-has-target;
+    in property <string> m-sel-loader;
+    in property <string> m-sel-version;
+    in-out property <int> m-tab;             // 0 installed 1 presets 2 modrinth
+    in-out property <int> m-filter;          // 0 all 1 enabled 2 disabled
+    in-out property <string> m-filter-query;
+    in property <[ModRow]> m-rows;           // filtered
+    in property <int> m-count;
+    in property <int> m-enabled-count;
+    in property <int> m-disabled-count;
+    in property <bool> m-loading;
+    in property <string> m-error;
+    in property <[PinnedPill]> m-pinned;
+    in property <int> m-perf-missing;
+    in property <bool> m-preset-available;
+    in property <string> m-preset-note;      // shown when the preset is unsupported
+    in property <bool> m-installing-preset;
+    in property <bool> m-progress-active;
+    in property <string> m-progress-file;
+    in property <int> m-progress-done;
+    in property <int> m-progress-total;
+    in-out property <string> m-search-query;
+    in property <bool> m-searching;
+    in property <bool> m-loading-more;
+    in property <string> m-search-error;
+    in property <bool> m-has-results;
+    in property <[ModrinthCard]> m-results;
+    in property <bool> m-has-more;
+    in property <bool> m-any-optional;      // some card offers optional deps (taller grid rows)
+    in property <string> m-installing-id;
+    callback m-select-instance(string);
+    callback m-set-tab(int);
+    callback m-set-filter(int);
+    callback m-set-filter-query(string);
+    callback m-toggle(string);
+    callback m-install-preset();
+    callback m-open-folder();
+    callback m-search-edited(string);
+    callback m-search();
+    callback m-load-more();
+    callback m-install(string, string, bool); // project id, title, force
+    callback m-reload();
+
+    // ------------------------------------------------------------------ import (lane A)
+    in property <string> i-path;
+    in property <string> i-file-name;
+    in-out property <int> i-memory-mb;       // 0 = automatic
+    in-out property <string> i-memory-text;  // the number input ("" = automatic)
+    in property <int> i-phase;               // 0 idle 1 post 2 files 3 overrides 4 done 5 error
+    in property <int> i-done;
+    in property <int> i-total;
+    in property <string> i-error;
+    in property <string> i-result-instance;
+    in property <bool> i-already-exists;
+    in property <bool> i-busy;
+    in property <bool> i-browsing;
+    /// A file is being dragged over the window (winit HoveredFile).
+    in property <bool> dragging-file;
+    callback i-browse();
+    callback i-clear();
+    callback i-install();
+    callback i-reset();
+    callback i-set-memory-text(string);
+    callback i-open-instance(string);
+    callback i-open-wizard();
+
+    // ------------------------------------------------------------------ import (lane B)
+    in property <bool> i-sources-loading;
+    in property <string> i-sources-error;
+    in property <[ImportSourceRow]> i-sources;
+    in-out property <string> i-source-id;
+    in-out property <string> i-target;
+    in property <[SelectOption]> i-target-options;
+    in-out property <int> i-target-index;
+    in-out property <bool> i-overwrite-if-older;
+    in property <bool> i-profile-importing;
+    in property <string> i-profile-error;
+    in property <bool> i-has-result;
+    in property <[string]> i-res-copied;
+    in property <[SkippedRow]> i-res-skipped;
+    in property <[ParsedServerRow]> i-res-servers;
+    in property <int> i-res-options;
+    in property <[RecentImportRow]> i-recent;
+    callback i-load-sources();
+    callback i-import-profile();
+    callback i-reset-result();
+
+    // ------------------------------------------------------------------ MrpackModal
+    in-out property <bool> mrpack-open;
+    in-out property <string> mp-path;
+    in-out property <float> mp-memory: 2048;
+    in-out property <bool> mp-memory-touched;
+    in property <int> mp-phase;              // 0 idle 1 post 2 files 3 overrides 4 done 5 error
+    in property <int> mp-done;
+    in property <int> mp-total;
+    in property <string> mp-error;
+    in property <string> mp-instance;
+    in property <bool> mp-already-exists;
+    in property <bool> mp-busy;
+    in property <bool> mp-browsing;
+    callback mp-opened();
+    callback mp-browse();
+    callback mp-start();
+    callback mp-close();
+    callback mp-goto();
+
+    // ------------------------------------------------------------------ donations
+    in-out property <int> d-category;        // 0 all 1 permanent 2 services
+    in-out property <string> d-query;
+    in property <[RankGridRow]> d-rows;
+    in property <int> d-count-all;
+    in property <int> d-count-permanent;
+    in property <int> d-count-services;
+    in property <string> d-copied;           // channel id whose link was just copied
+    callback d-refresh();
+    callback d-set-cols(int);
+    callback d-copy(string, string);         // channel id, url
 }
