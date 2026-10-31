@@ -8,8 +8,10 @@ engine. Goal: visual + functional parity with the Svelte UI at a fraction of
 the RAM (target: well under 150 MB while open; idle = 0% CPU).
 
 The foundation (this document, the shell, the widgets, the bridge) is done.
-Five agents port the pages in parallel, each in its own worktree, touching
-**only their own files** (see [File ownership](#file-ownership)).
+Five agents ported the pages in parallel, each in its own worktree, touching
+**only their own files** (see [File ownership](#file-ownership)); all five
+groups are merged and integrated — see [12. Integration status](#12-integration-status)
+for the per-page status, the release size and the memory / CPU measurements.
 
 - Reference implementation: `src/ui/src` (never modify it, nor `src/`, `src-tauri/`, `tests/`).
 - Reference screenshots of the Svelte UI: `/tmp/claude-0/-home-user-espectral-client/7274c801-56fc-5f5d-bdc2-b83be817cf63/scratchpad/ref-screens/*.png` (index below).
@@ -45,9 +47,9 @@ AppWindow + globals  <── invoke_from_event_loop ──  Engine futures (ctx.
   `animation-tick()` on anything visible while idle, static backdrop.
 - Renderers: `winit` backend with **femtovg** (OpenGL, default) and the
   **software** renderer as fallback (`SLINT_BACKEND=winit-software`) and for
-  headless screenshots. Measured (debug build, Xvfb): software ≈ 48 MB RSS,
-  femtovg on Mesa llvmpipe ≈ 190 MB (most of it is llvmpipe; real GPU drivers
-  are lighter). Idle CPU 0.0% in both.
+  headless screenshots. Measured (release build, Xvfb, idle Home): software
+  ≈ 48 MB PSS, femtovg on Mesa llvmpipe ≈ 162 MB PSS (most of it is llvmpipe;
+  real GPU drivers are lighter). Idle CPU 0% in both (table in section 12).
 
 ### Source layout
 
@@ -270,7 +272,7 @@ licenses; `font-weight: 800` renders as 700 (as in the browser).
 | `GradientText { text; gradient: GradientKind.emerald-gold\|cyan-emerald\|gold-amber\|purple-pink\|accent; font-size… }` | GradientText.svelte | inherits Text |
 | `LoaderBadge { loader; version; size: LoaderBadgeSize.*; show-icon }` | LoaderBadge.svelte | |
 | `MonogramTile { name; hue; avatar; has-avatar; size; shape: MonogramShape.tile\|rounded\|circle }` | MonogramTile.svelte | |
-| `TextField { text <=>; placeholder; icon; password; mono; clearable; has-error; edited(t); accepted(t) }`, `TextArea` | `<input>` / `<textarea>` | focus ring |
+| `TextField { text <=>; placeholder; icon; password; mono; clearable; has-error; field-height; pad-y; fill; focus-color; edited(t); accepted(t) }`, `TextArea` | `<input>` / `<textarea>` | focus ring; sets only `height` (never `min-height`), so it works inside layouts. `HiTextField` / `SsTextField` are thin aliases |
 | `Field { label; hint; error; required; <TextField/Select/...> }` | Field.svelte | |
 | `ProgressBar { value; max; indeterminate; tone: ProgressTone.*; thickness: ProgressThickness.*; label; show-value }` | ProgressBar.svelte | no shimmer |
 | `Toggle { checked <=>; toggled(v) }`, `Checkbox { checked; text }` | switches | |
@@ -365,7 +367,12 @@ the whole shell against a fixture data dir (`native/target/shot-data`), pumps
 events for `--wait` ms (default 1500) so engine calls land, renders one frame
 and exits. Options: `--theme`, `--lang`, `--accent`, `--size WxH`, `--wait`,
 `--scroll <px>` (PageScaffold pages), `--open palette|wizard|account|pip|gate`,
-`--query`. The software renderer paints gradient text with its first stop (the
+`--query`, and scripted input run in order after half of `--wait`: `--click X,Y`
+(logical px), `--type <text>`, `--key Escape|Return|Tab|Space|Down|Up|Backspace`,
+`--nav <route>` (all repeatable). The headless pump draws a frame every 40 ms
+(like the real loop), so `if` subtrees, Timers and `--scroll` are alive before
+the PNG is taken; `--scroll` is clamped to the content (`--scroll 99999` = bottom).
+The software renderer paints gradient text with its first stop (the
 on-screen femtovg renderer paints the gradient). To see the real windowed app:
 `xvfb-run -a -s "-screen 0 1280x800x24" native/target/debug/espectral-client`
 (set `SLINT_BACKEND=winit-software` if GL fails).
@@ -438,10 +445,91 @@ cargo fmt --all
 native/app/scripts/screenshot.sh '<your routes>' ... # compare with the references
 ```
 
+**Memory:** the Slint-generated module of the app crate is ~60 MB of Rust;
+one rustc on it peaks at ~11.5-12.7 GB (debug build, test build *and* release
+build alike; ~7.7 GB for `check`/`clippy`). On a 16 GB machine never let two
+app-crate compilations overlap: `cargo clippy --all-targets` checks the bin and
+the test harness in parallel unless you pass `-j 1`, and never run two cargo
+commands at once. Release builds: `-j 2`, ~15 min.
+
 Disk is limited: `[profile.dev.package."*"]` already disables debug info for
-dependencies. Use your worktree's own `native/target`, and delete it when you
+dependencies (the app crate itself builds with `debug = "line-tables-only"`). Use your worktree's own `native/target`, and delete it when you
 are done and committed. Do not push.
 
 Engine changes made by the foundation: **none** (the UI uses only the public
 `Engine` facade, `engine.config()`, `engine.paths()`, `engine.http()`,
 `paths::resolve_data_dir()`).
+
+---
+
+## 12. Integration status
+
+All five page groups are merged into `rust-native` (2026-10-31). Cross-group
+wiring done at integration: Home "Importar modpack" opens the shared
+library-mods `MrpackModal` (Home's duplicate was removed); VersionArmory
+"Crear instancia" opens the wizard with `Shell.wizard-version` preselected
+(filter switched to "all" so snapshots stay visible); the Skin Atelier gallery
+cards use `SkinView`'s own `clicked` (drag + spin button work); `TextField`
+works inside layouts and replaces the `HiTextField` / `SsTextField` copies.
+
+Every reference screenshot was re-taken with the Slint app
+(`ref-screens/final/<name>.png`, side-by-side contact sheet
+`ref-screens/final/contact-sheet.png`: Svelte left, Slint right).
+
+| Page / component | Status | Notes |
+|---|---|---|
+| Shell (TopChrome, theme / language toggles, palette, toasts, login gate, hotkeys) | done | dark/light and ES/EN switch live; backdrop is static (no drifting orbs), no glass blur; gradient text needs femtovg (software = first stop) |
+| Home (`#/`) | done | greeting, quick actions, MOTD ticker, rail, telemetry capsule, server strip; wizard, dry-run, shared .mrpack modal |
+| Instance wizard | done | 3 steps; preselected version from VersionArmory |
+| InstanceHub (`#/instances/:name`) | done | config / servers / mods / danger tabs + live console |
+| PiP launch log | done | Space / palette / hub button |
+| Server Radar (`#/servers`) + ServerRadarCard | done | |
+| VersionArmory (`#/library/versions`) | done | manifest unreachable in the sandbox (error card matches the reference); rows checked with `ESPECTRAL_SHOT_LIB=versions-fake` |
+| ImportCenter (`#/library/import`) | done | dropzone border fainter than the reference (dashed CSS border approximated) |
+| MrpackModal | done | hosted by Home and ImportCenter; OS drag & drop |
+| ModCatalog (`#/mods`) | done | the filter placeholder stays hard-coded Spanish, as in the Svelte page |
+| Client Suite (`#/client`) | done | |
+| AccountVault + Skin Atelier (`#/account`) | done | 3D viewer, gallery preview / try / apply / rename / delete; MSA device-code flow not exercised (no network) |
+| Wardrobe (`#/armario`) | done | Discord-linked states not exercised visually (no Discord session in the sandbox) |
+| AccountPopover | done | |
+| Settings (`#/settings`) | partial | "Acceso para agentes" (MCP) section missing: the engine agent API (upstream c22767f) is not ported yet |
+| Donations (`#/donaciones`) | done | |
+| Updater (lib/updater) | missing | `Shell.update-*` placeholders only |
+
+Known cosmetic differences: the Home tile's ghost version watermark is a bit
+more visible than in the reference; the wizard dialog sits a little higher.
+Screenshot tool caveat: `--scroll` is applied after `--click`/`--type`
+actions (clicks hit the unscrolled page; use `--size 1280x1400` instead).
+
+### Release binary
+
+| | size | notes |
+|---|---|---|
+| before | 129.9 MB | `strip = "symbols"` was silently dropped: a `[profile.release.package.espectral-client]` override of the root package loses the profile-wide `strip` (42 MB `.strtab`/`.symtab` left in) |
+| strip fixed | 88.0 MB | `.text` 64.5 MB, of which ~37 MB is Slint-generated code (app crate + its `core` generic instances) |
+| after (`opt-level = "s"` for the app crate) | **61.1 MB** | `.text` 39.0 MB, `.rodata` 6.3 MB (fonts + images + emoji SVGs embedded: < 1 MB), `.eh_frame` + `.gcc_except_table` 9 MB |
+
+`panic = "abort"` is not an option: the engine relies on unwinding
+(`catch_unwind` in launch / aot / game_launch, tokio `JoinError` on task
+panics). The skin rasterizer is its own crate and stays at opt-level 3.
+Release build: 14m52s with `-j 2`, peak 12.9 GB used system-wide.
+
+### Measurements (release build, Xvfb 1280x800, fresh temp `ESPECTRAL_DATA_DIR`)
+
+PSS from `/proc/<pid>/smaps_rollup`; CPU = utime+stime ticks (1 tick = 10 ms)
+over 20 s. (a) idle on Home 20 s after start; (b) on Home after visiting every
+route (instance hub + 3 tabs, servers, versions, import, mods, client,
+account, settings, donations, wardrobe) via `ESPECTRAL_TOUR`; (c) Skin Atelier
+(`#/account`) with the 3D viewer spinning (a gallery skin previewed in the
+stage — the Wardrobe page `#/armario` has no viewer). Offline account "Steve",
+anonymous Discord session. Scripts: scratchpad `mem.sh` / `mem-inner.sh`.
+
+| Backend | (a) Home idle | (b) after all pages | (c) skin viewer spinning | idle CPU (a) / (b) | CPU (c) |
+|---|---|---|---|---|---|
+| `winit-software` | 47.8 MB PSS (52 MB RSS) | 60.5 MB (65 MB) | 50.9 MB (56 MB) | 0 / 1 ticks | 222 ticks ≈ 11% of a core |
+| femtovg (Mesa llvmpipe) | 162.2 MB (186 MB) | 219.6 MB (244 MB) | 188.6 MB (213 MB) | 0 / 0 ticks | 4460 ticks ≈ 2.2 cores (llvmpipe rasterizes on the CPU) |
+
+The femtovg numbers are dominated by llvmpipe (its JIT, threads and buffers);
+on a real GPU driver femtovg is expected to sit much closer to the software
+numbers. Idle is 0% CPU on both renderers; the viewer stops costing CPU when
+paused or scrolled off-screen.
