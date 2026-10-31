@@ -196,11 +196,12 @@ export component Wordmark inherits HorizontalLayout {
 }
 
 /// Sticker badge: small pixel label on a flat colour with a hard shadow,
-/// tilted about -4° (the green "CLIENT" tag). One per section at most.
+/// tilted about -4°. Defaults to the site's green tag: #10B981 with dark ink
+/// (white on that green is too faint). One per section at most.
 export component Sticker inherits Rectangle {
     in property <string> text;
-    in property <color> fill: #1fae6b;
-    in property <color> ink: #ffffff;
+    in property <color> fill: #10b981;
+    in property <color> ink: #07021a;
     in property <length> font-size: 8px;
     in property <angle> tilt: -4deg;
     /// 2px ink outline (the site's version tag has none).
