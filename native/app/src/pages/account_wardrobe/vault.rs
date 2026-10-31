@@ -101,6 +101,7 @@ pub fn init(init_ctx: &Ctx, ui: &AppWindow) {
     });
     b.on_save_to_gallery(|name| save_to_gallery(name.trim().to_string()));
     b.on_reset_skin(reset_skin);
+    b.on_open_novaskin(open_novaskin);
     b.on_refresh_skin(|| {
         if let Some(ui) = ctx().and_then(|c| c.ui()) {
             let name = active_name();
@@ -843,6 +844,56 @@ fn load_gallery() {
 
 fn gallery_entry(id: &str) -> Option<SkinLibraryEntry> {
     ST.with(|s| s.borrow().gallery.iter().find(|g| g.id == id).cloned())
+}
+
+const NOVASKIN: &str = "https://minecraft.novaskin.me/";
+
+/// NovaSkin's editor reads a skin from its URL hash: `#!skin=data:image/png;base64,…`
+/// (main bundle, `Ut()`), so the skin opens without being uploaded anywhere.
+fn novaskin_url(png: Option<&[u8]>) -> String {
+    use base64::Engine as _;
+    match png {
+        Some(bytes) => format!(
+            "{NOVASKIN}#!skin=data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        ),
+        None => NOVASKIN.to_string(),
+    }
+}
+
+/// "Editar en NovaSkin": the skin the atelier shows, in the same order as its
+/// `source` (staged file, gallery preview, the active account's skin); the
+/// bare editor when there is none or it cannot be read.
+fn open_novaskin() {
+    let Some(c) = ctx() else { return };
+    let Some(ui) = c.ui() else { return };
+    let b = bridge(&ui);
+    let staged = ST.with(|s| s.borrow().staged_path.clone()).filter(|_| b.get_staged());
+    let preview = b.get_preview_id().to_string();
+    let user = active_name();
+    let account_skin = b.get_skin_info() && b.get_skin_has_skin();
+    c.call_with(
+        move |e| async move {
+            if let Some(path) = staged {
+                return tokio::fs::read(&path)
+                    .await
+                    .map(Some)
+                    .map_err(|err| espectral_engine::EngineError::other(err.to_string()));
+            }
+            if !preview.is_empty() {
+                return e.library_skin_png(&preview).await.map(Some);
+            }
+            if !user.is_empty() && account_skin {
+                return e.account_skin_png(&user).await.map(Some);
+            }
+            Ok(None)
+        },
+        |_ui, png| util::open_url(&novaskin_url(png.as_deref())),
+        |_ui, e| {
+            tracing::warn!(error = %e, "novaskin: could not read the shown skin; opening the bare editor");
+            util::open_url(NOVASKIN);
+        },
+    );
 }
 
 fn preview_entry(id: String) {

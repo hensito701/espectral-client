@@ -24,7 +24,6 @@
 // crate, kept separate so edits here do not recompile the generated module.
 pub use espectral_client_ui::*;
 
-mod backdrop;
 mod bridge;
 mod dialogs;
 mod i18n;
@@ -127,7 +126,6 @@ fn main() {
         shot.as_ref().and_then(|s| s.lang.as_deref()).and_then(i18n::Lang::parse).unwrap_or_else(i18n::initial_lang),
     );
     theme::init(&ctx, &ui);
-    backdrop::init(&ui);
     store::init(&ctx, &ui);
     session::init(&ctx, &ui, shot.as_ref().map(|s| !s.open.iter().any(|o| o == "gate")));
     palette::init(&ctx, &ui);

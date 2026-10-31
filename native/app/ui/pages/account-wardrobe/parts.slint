@@ -27,20 +27,10 @@ export component PlainInput inherits Rectangle {
     horizontal-stretch: 1;
     border-radius: Theme.radius-md;
     background: field-style ? Theme.card-bg-soft : fill;
-    border-width: 1px;
-    border-color: has-error ? Theme.accent-red : input.has-focus ? focus-border : (field-style && touch.has-hover) ? Theme.hover-border : Theme.border;
+    border-width: 2px;
+    border-color: has-error ? Theme.accent-red : input.has-focus ? focus-border : (field-style && touch.has-hover) ? Theme.hover-border : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
     animate border-color { duration: Theme.dur-fast; }
-
-    if root.field-style && input.has-focus: Rectangle {
-        x: -3px;
-        y: -3px;
-        width: parent.width + 6px;
-        height: parent.height + 6px;
-        border-radius: parent.border-radius + 3px;
-        border-width: 2px;
-        border-color: Theme.accent.with-alpha(0.55);
-    }
 
     touch := TouchArea {
         mouse-cursor: MouseCursor.text;
@@ -122,20 +112,43 @@ export component CopyFlag {
     }
 }
 
-/// .avatar-edit__upload: small outlined "file input" button.
+/// .avatar-edit__upload: small outlined "file input" button (poster chip).
 export component UploadChip inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
     callback clicked();
-    height: lbl.preferred-height + 10px;
-    width: lbl.preferred-width + 22px;
+    height: lbl.preferred-height + 16px;
+    width: lbl.preferred-width + 28px;
     horizontal-stretch: 0;
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: ta.has-hover && enabled ? rgba(255, 255, 255, 0.1) : rgba(255, 255, 255, 0.05);
+    border-radius: Theme.radius-sm;
+    property <bool> hot: ta.has-hover && enabled;
     opacity: enabled ? 1 : 0.5;
-    lbl := Text { text: root.text; font-size: 12px; color: Theme.text; }
+    // hard 2px ink shadow
+    Rectangle {
+        x: 2px;
+        y: 2px;
+        width: root.width - 2px;
+        height: root.height - 2px;
+        border-radius: Theme.radius-sm;
+        background: Theme.brand-ink;
+    }
+    face := Rectangle {
+        width: root.width - 2px;
+        height: root.height - 2px;
+        border-radius: Theme.radius-sm;
+        background: root.hot ? Theme.gold : Theme.surface;
+        border-width: 2px;
+        border-color: root.hot ? Theme.brand-ink : Theme.border-solid;
+        animate background, border-color { duration: Theme.dur-fast; }
+    }
+    lbl := Text {
+        x: 12px;
+        y: (root.height - 2px - self.preferred-height) / 2;
+        text: root.text;
+        font-size: Theme.text-xs;
+        font-weight: 600;
+        color: root.hot ? Theme.on-gold : Theme.text;
+    }
     ta := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;

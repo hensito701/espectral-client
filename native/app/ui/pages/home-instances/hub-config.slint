@@ -51,10 +51,10 @@ component VersionCard inherits HubCard {
         }
     }
     if HomeBridge.vc-has-plan: Rectangle {
-        border-radius: 9.6px;
-        background: Theme.dark ? rgba(8, 12, 24, 0.45) : rgba(18, 24, 41, 0.04);
-        border-width: 1px;
-        border-color: Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+        border-radius: Theme.radius-md;
+        background: Theme.card-bg-soft;
+        border-width: 2px;
+        border-color: Theme.border-solid;
         HorizontalLayout {
             padding-left: Theme.space-3;
             padding-right: Theme.space-3;
@@ -67,8 +67,8 @@ component VersionCard inherits HubCard {
                     Text { text: HomeBridge.vc-plan-from; color: Theme.text; font-size: 13.6px; }
                     Text { text: HomeBridge.vc-plan-to; color: Theme.text; font-size: 13.6px; font-weight: 700; }
                 }
-                if HomeBridge.vc-warn-downgrade != "": Text { text: HomeBridge.vc-warn-downgrade; color: #f5b14c; font-size: 12.5px; wrap: word-wrap; }
-                if HomeBridge.vc-warn-menu != "": Text { text: HomeBridge.vc-warn-menu; color: #f5b14c; font-size: 12.5px; wrap: word-wrap; }
+                if HomeBridge.vc-warn-downgrade != "": Text { text: HomeBridge.vc-warn-downgrade; color: Theme.accent-alt; font-size: 12.5px; font-weight: 600; wrap: word-wrap; }
+                if HomeBridge.vc-warn-menu != "": Text { text: HomeBridge.vc-warn-menu; color: Theme.accent-alt; font-size: 12.5px; font-weight: 600; wrap: word-wrap; }
                 if HomeBridge.vc-summary != "": Note { hint: true; text: HomeBridge.vc-summary; }
                 if HomeBridge.vc-mods.length > 0: Rectangle {
                     height: min(224px, HomeBridge.vc-mods.length * 20px);
@@ -81,7 +81,7 @@ component VersionCard inherits HubCard {
                             Text { text: m.title; color: Theme.text; font-size: 12.5px; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
                             Text {
                                 text: m.what;
-                                color: m.kind == "update" || m.kind == "add" ? Theme.accent : m.kind == "disable" ? #f5b14c : Theme.muted;
+                                color: m.kind == "update" || m.kind == "add" ? Theme.accent : m.kind == "disable" ? Theme.accent-alt : Theme.muted;
                                 font-size: 12.5px;
                                 horizontal-alignment: right;
                                 vertical-alignment: center;
@@ -256,7 +256,9 @@ component JvmCard inherits HubCard {
             MicroLabel { text: T.tr("instance.jvmPath").to-uppercase(); }
             Rectangle {
                 border-radius: Theme.radius-sm;
-                background: Theme.dark ? rgba(0, 0, 0, 0.3) : rgba(18, 24, 41, 0.06);
+                background: Theme.log-bg;
+                border-width: 2px;
+                border-color: Theme.border-solid;
                 HorizontalLayout {
                     padding-left: 10.4px;
                     padding-right: 10.4px;
@@ -359,15 +361,15 @@ component BgTile inherits Rectangle {
     callback remove();
     height: 68px + 26px + (none ? 0px : 24px);
     border-radius: Theme.radius-md;
-    background: rgba(255, 255, 255, 0.03);
-    border-width: active ? 2px : 1px;
-    border-color: active ? Theme.accent : Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: active ? Theme.hover-border : Theme.border-solid;
     clip: true;
     Rectangle {
         y: 0;
         height: 68px;
-        background: rgba(0, 0, 0, 0.25);
-        if root.none: Text { text: "✦"; color: Theme.muted; font-size: 20px; horizontal-alignment: center; vertical-alignment: center; }
+        background: Theme.log-bg;
+        if root.none: Text { text: "✦"; color: Theme.muted; font-size: 24px; horizontal-alignment: center; vertical-alignment: center; }
         if root.has-thumb: Image { width: parent.width; height: parent.height; source: root.thumb; image-fit: cover; }
     }
     Text {
@@ -385,9 +387,9 @@ component BgTile inherits Rectangle {
         y: 5.6px;
         width: fl.preferred-width + 11px;
         height: fl.preferred-height + 3px;
-        border-radius: 5.6px;
-        background: rgba(0, 0, 0, 0.6);
-        fl := Text { text: root.frames; color: Theme.text; font-size: 10.4px; horizontal-alignment: center; vertical-alignment: center; }
+        border-radius: 4px;
+        background: Theme.brand-ink;
+        fl := Text { text: root.frames; color: #ffffff; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
     }
     TouchArea {
         y: 0;
@@ -398,9 +400,9 @@ component BgTile inherits Rectangle {
     if !root.none: Rectangle {
         y: parent.height - 24px;
         height: 24px;
-        background: dt.has-hover ? rgba(255, 80, 80, 0.18) : rgba(0, 0, 0, 0.18);
-        Rectangle { y: 0; height: 1px; background: Theme.border; }
-        Text { text: T.tr("perso.bgDelete"); color: dt.has-hover ? Theme.text : Theme.muted; font-size: 11.2px; horizontal-alignment: center; vertical-alignment: center; }
+        background: dt.has-hover ? Theme.accent-red : Theme.surface-solid;
+        Rectangle { y: 0; height: 2px; background: dt.has-hover ? Theme.brand-ink : Theme.border-solid; }
+        Text { text: T.tr("perso.bgDelete"); color: dt.has-hover ? #ffffff : Theme.muted; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
         dt := TouchArea {
             mouse-cursor: pointer;
             clicked => { root.remove(); }
@@ -423,12 +425,10 @@ component AppearanceCard inherits HubCard {
                     Rectangle {
                         width: 28px;
                         height: 28px;
-                        border-radius: 14px;
+                        border-radius: Theme.radius-sm;
                         background: Theme.hsla(HomeBridge.hue-value, 0.7, 0.5, 1);
-                        border-width: 1px;
-                        border-color: rgba(255, 255, 255, 0.25);
-                        drop-shadow-color: rgba(255, 255, 255, 0.2);
-                        drop-shadow-blur: 12px;
+                        border-width: 2px;
+                        border-color: Theme.border-solid;
                     }
                 }
                 Slider {
@@ -470,10 +470,10 @@ component AppearanceCard inherits HubCard {
                 Rectangle {
                     width: 48px;
                     height: 48px;
-                    border-radius: 10px;
-                    background: rgba(255, 255, 255, 0.04);
-                    border-width: 1px;
-                    border-color: Theme.border;
+                    border-radius: Theme.radius-sm;
+                    background: Theme.card-bg-soft;
+                    border-width: 2px;
+                    border-color: Theme.border-solid;
                     clip: true;
                     if HomeBridge.hub.has-icon: Image { width: parent.width; height: parent.height; source: HomeBridge.hub.icon; image-fit: cover; }
                     if !HomeBridge.hub.has-icon: Emoji { char: "🖼️"; size: 22px; }
@@ -678,7 +678,9 @@ component OptionsCard inherits HubCard {
             if root.show-preview: Rectangle {
                 height: min(180px, HomeBridge.options-rows.length * 22px + 16px);
                 border-radius: Theme.radius-sm;
-                background: Theme.dark ? rgba(0, 0, 0, 0.25) : rgba(18, 24, 41, 0.05);
+                background: Theme.log-bg;
+                border-width: 2px;
+                border-color: Theme.border-solid;
                 clip: true;
                 Flickable {
                     x: 8px;
@@ -705,18 +707,18 @@ component SuiteCard inherits HubCard {
     if !HomeBridge.suite-enabled: HorizontalLayout {
         alignment: start;
         Rectangle {
-            height: chip.preferred-height + 10px;
-            width: chip.preferred-width + 21px;
-            border-radius: Theme.radius-md;
-            background: Theme.accent-gold.with-alpha(0.1);
-            border-width: 1px;
-            border-color: Theme.accent-gold.with-alpha(0.4);
+            height: chip.preferred-height + 12px;
+            width: chip.preferred-width + 22px;
+            border-radius: Theme.radius-sm;
+            background: Theme.gold;
+            border-width: 2px;
+            border-color: Theme.brand-ink;
             chip := HorizontalLayout {
-                x: 10.4px;
+                x: 10px;
                 y: 5px;
-                spacing: 6.4px;
-                VerticalLayout { alignment: center; Rectangle { width: 6px; height: 6px; border-radius: 3px; background: Theme.accent-gold; } }
-                Text { text: T.tr("client.suiteDisabled"); color: Theme.accent-gold; font-size: Theme.text-xs; font-weight: 700; }
+                spacing: 6px;
+                VerticalLayout { alignment: center; Rectangle { width: 8px; height: 8px; background: Theme.brand-ink; } }
+                Text { text: T.tr("client.suiteDisabled"); color: Theme.on-gold; font-size: Theme.text-xs; font-weight: 700; }
             }
         }
     }
@@ -732,7 +734,9 @@ component SuiteCard inherits HubCard {
             width: grid.cw;
             height: grid.rh;
             border-radius: Theme.radius-md;
-            background: Theme.dark ? rgba(0, 0, 0, 0.2) : rgba(18, 24, 41, 0.05);
+            background: Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: Theme.border-solid;
             opacity: HomeBridge.suite-enabled ? 1 : 0.75;
             HorizontalLayout {
                 padding-left: Theme.space-3;

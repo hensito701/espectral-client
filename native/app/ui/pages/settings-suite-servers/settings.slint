@@ -7,10 +7,10 @@
 // toggle + safety rules, config snippets, token rotation, allowlist), data
 // directory + diagnostics, about.
 
-import { Theme, T, Router, AppState, Shell, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, Field, Slider, Segmented, Icon, Icons, Emoji, PageScaffold } from "../../widgets.slint";
+import { Theme, T, Router, AppState, Shell, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Sticker, Field, Slider, Segmented, Toggle, Icon, Icons, Emoji, PageScaffold } from "../../widgets.slint";
 import { ThemeToggle } from "../../shell/top-chrome.slint";
 import { SettingsBridge } from "api.slint";
-import { SwitchControl, PresetChip, CardHead, WarnBadge, SectionHeader, InfoBox, SsTextField } from "parts.slint";
+import { PresetChip, CardHead, SectionHeader, InfoBox, SsTextField } from "parts.slint";
 
 // ---- local icons (feather) ---------------------------------------------------
 global SetIcons {
@@ -27,11 +27,12 @@ component DirtyDock inherits Rectangle {
     in property <bool> memory-invalid;
     border-radius: Theme.radius-lg;
     background: Theme.surface-solid;
-    border-width: 1px;
-    border-color: Theme.border-focus;
-    drop-shadow-color: Theme.shadow-md-color;
-    drop-shadow-blur: Theme.shadow-md-blur;
-    drop-shadow-offset-y: Theme.shadow-md-y;
+    border-width: 2px;
+    border-color: Theme.hover-border;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
     HorizontalLayout {
         padding-left: 12px;
         padding-right: 12px;
@@ -73,19 +74,22 @@ component Hero inherits VerticalLayout {
             HorizontalLayout {
                 spacing: 12px;
                 alignment: start;
-                Badge { text: T.tr("dash.badge").to-uppercase(); variant: BadgeVariant.accent; dot: true; }
+                VerticalLayout {
+                    alignment: start;
+                    Sticker { text: T.tr("dash.badge").to-uppercase(); fill: Theme.gold; ink: Theme.on-gold; }
+                }
                 // health: the engine is in-process, so it is always "online"
                 HorizontalLayout {
-                    spacing: 6.4px;
+                    spacing: 8px;
                     VerticalLayout {
                         alignment: center;
                         Rectangle {
-                            width: 6px;
-                            height: 6px;
-                            border-radius: 3px;
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 2px;
                             background: Theme.accent-green;
-                            drop-shadow-color: Theme.accent-green;
-                            drop-shadow-blur: 8px;
+                            border-width: 2px;
+                            border-color: Theme.brand-ink;
                         }
                     }
                     Text {
@@ -98,13 +102,9 @@ component Hero inherits VerticalLayout {
                     }
                 }
             }
-            GradientText {
+            McTitle {
                 text: T.tr("dash.title");
-                gradient: GradientKind.emerald-gold;
-                font-size: Theme.text-3xl;
-                font-weight: 700;
-                letter-spacing: -1.08px;
-                line-height-factor: 0.86;
+                font-size: 32px;
             }
             HorizontalLayout {
                 alignment: start;
@@ -123,7 +123,7 @@ component Hero inherits VerticalLayout {
             DirtyDock { memory-invalid: root.memory-invalid; }
         }
     }
-    Rectangle { height: 1px; background: Theme.border; }
+    Rectangle { height: 2px; background: Theme.border-solid; }
 }
 
 // ---- appearance ------------------------------------------------------------------
@@ -138,34 +138,28 @@ component ThemeChoice inherits Rectangle {
     min-width: 0px;
     preferred-width: 1px;
     border-radius: Theme.radius-md;
-    background: active ? Theme.accent.with-alpha(0.1) : ta.has-hover ? Theme.surface-up-solid : Theme.surface-up;
-    border-width: 1px;
-    border-color: active ? Theme.accent : ta.has-hover ? Theme.border-focus : Theme.border;
+    background: active ? Theme.gold : ta.has-hover ? Theme.surface-up-solid : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: active ? Theme.brand-ink : ta.has-hover ? Theme.hover-border : Theme.border-solid;
+    drop-shadow-color: active ? Theme.brand-purple : transparent;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
     animate background, border-color { duration: Theme.dur-fast; }
     VerticalLayout {
         alignment: center;
         spacing: 8px;
         HorizontalLayout {
             alignment: center;
-            Icon { data: root.icon; size: 18px; color: root.active || ta.has-hover ? Theme.text : Theme.muted; }
+            Icon { data: root.icon; size: 18px; color: root.active ? Theme.on-gold : ta.has-hover ? Theme.text : Theme.muted; }
         }
         Text {
             text: root.label;
             font-size: 13.6px;
-            font-weight: 500;
-            color: root.active || ta.has-hover ? Theme.text : Theme.muted;
+            font-weight: 700;
+            color: root.active ? Theme.on-gold : ta.has-hover ? Theme.text : Theme.muted;
             horizontal-alignment: center;
         }
-    }
-    if root.active: Rectangle {
-        x: parent.width - 8px - 6px;
-        y: 8px;
-        width: 6px;
-        height: 6px;
-        border-radius: 3px;
-        background: Theme.accent;
-        drop-shadow-color: Theme.accent;
-        drop-shadow-blur: 6px;
     }
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -177,8 +171,8 @@ component ThemeChoice inherits Rectangle {
 component ThemePreview inherits Rectangle {
     border-radius: Theme.radius-md;
     background: Theme.surface-up-solid;
-    border-width: 1px;
-    border-color: Theme.border;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     clip: true;
     VerticalLayout {
         Rectangle {
@@ -206,7 +200,7 @@ component ThemePreview inherits Rectangle {
                     }
                 }
             }
-            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+            Rectangle { y: parent.height - 2px; height: 2px; background: Theme.header-rule; }
         }
         HorizontalLayout {
             padding-left: 20px;
@@ -220,15 +214,16 @@ component ThemePreview inherits Rectangle {
                     height: chip.preferred-height + 8px;
                     width: chip.preferred-width + 16px;
                     border-radius: self.height / 2;
-                    background: Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.border;
+                    background: Theme.gold;
+                    border-width: 2px;
+                    border-color: Theme.brand-ink;
                     chip := Text {
                         text: (Theme.dark ? "DARK" : "LIGHT") + " MODE";
-                        font-size: 11.2px;
-                        font-weight: 600;
+                        font-family: Theme.font-pixel;
+                        font-size: 8px;
+                        font-weight: 400;
                         line-height-factor: 1.25;
-                        color: Theme.text;
+                        color: Theme.on-gold;
                     }
                 }
             }
@@ -249,7 +244,7 @@ component ThemePreview inherits Rectangle {
 
 component SettingCard inherits GlassCard {
     min-width: 0px;
-    elevation: Elevation.sm;
+    elevation: Elevation.md;
     spacing: 0px;
     padding-size: 20px;
     preferred-width: 1px;
@@ -291,9 +286,13 @@ component LangTile inherits Rectangle {
     in property <string> active-text;
     property <bool> active: T.lang == root.lang;
     border-radius: Theme.radius-md;
-    background: active ? Theme.accent.with-alpha(0.08) : ta.has-hover ? Theme.surface-up-solid : Theme.surface-up;
-    border-width: 1px;
-    border-color: active ? Theme.accent : ta.has-hover ? Theme.border-focus : Theme.border;
+    background: active ? Theme.gold : ta.has-hover ? Theme.surface-up-solid : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: active ? Theme.brand-ink : ta.has-hover ? Theme.hover-border : Theme.border-solid;
+    drop-shadow-color: active ? Theme.brand-purple : transparent;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
     animate background, border-color { duration: Theme.dur-fast; }
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -314,12 +313,26 @@ component LangTile inherits Rectangle {
             horizontal-stretch: 1;
             spacing: 2.4px;
             alignment: center;
-            Text { text: root.name; font-size: 15.2px; font-weight: 600; color: Theme.text; line-height-factor: 1.25; }
-            Text { text: root.sub; font-size: 12px; color: Theme.muted; line-height-factor: 1.25; }
+            Text { text: root.name; font-size: 15.2px; font-weight: 700; color: root.active ? Theme.on-gold : Theme.text; line-height-factor: 1.25; }
+            Text { text: root.sub; font-size: 12px; color: root.active ? Theme.on-gold : Theme.muted; line-height-factor: 1.25; }
         }
         if root.active: VerticalLayout {
             alignment: center;
-            Badge { text: root.active-text; variant: BadgeVariant.accent; }
+            Rectangle {
+                height: lbl.preferred-height + 10px;
+                width: lbl.preferred-width + 18px;
+                border-radius: self.height / 2;
+                background: Theme.brand-ink;
+                lbl := Text {
+                    text: root.active-text;
+                    font-family: Theme.font-pixel;
+                    font-size: 8px;
+                    font-weight: 400;
+                    color: Theme.gold;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
         }
     }
 }
@@ -356,9 +369,13 @@ component AccentSwatch inherits Rectangle {
     min-width: row.preferred-width;
     horizontal-stretch: 0;
     border-radius: self.height / 2;
-    background: active ? Theme.accent.with-alpha(0.12) : ta.has-hover ? Theme.surface-up-solid : Theme.surface-up;
-    border-width: 1px;
-    border-color: active ? Theme.accent : ta.has-hover ? Theme.border-focus : Theme.border;
+    background: active ? Theme.gold : ta.has-hover ? Theme.surface-up-solid : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: active ? Theme.brand-ink : ta.has-hover ? Theme.hover-border : Theme.border-solid;
+    drop-shadow-color: active ? Theme.brand-purple : transparent;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 3px;
+    drop-shadow-offset-y: 3px;
     animate background, border-color { duration: Theme.dur-fast; }
     row := HorizontalLayout {
         padding-left: 14px;
@@ -371,19 +388,17 @@ component AccentSwatch inherits Rectangle {
             Rectangle {
                 width: 14px;
                 height: 14px;
-                border-radius: 7px;
+                border-radius: 3px;
                 background: root.swatch;
-                border-width: root.active ? 1px : 0px;
-                border-color: Theme.bg;
-                drop-shadow-color: root.active ? Theme.accent : rgba(0, 0, 0, 0.35);
-                drop-shadow-blur: root.active ? 2px : 8px;
+                border-width: 2px;
+                border-color: Theme.brand-ink;
             }
         }
         Text {
             text: root.label;
             font-size: 12.8px;
-            font-weight: 500;
-            color: Theme.text;
+            font-weight: 700;
+            color: root.active ? Theme.on-gold : Theme.text;
             vertical-alignment: center;
         }
     }
@@ -412,7 +427,7 @@ component AccentCard inherits SettingCard {
         // .motion-row (margin-top + border-top)
         VerticalLayout {
             padding-top: 16px;
-            Rectangle { height: 1px; background: Theme.border; }
+            Rectangle { height: 2px; background: Theme.border-solid; }
             HorizontalLayout {
                 padding-top: 16px;
                 spacing: 16px;
@@ -420,7 +435,7 @@ component AccentCard inherits SettingCard {
                     horizontal-stretch: 1;
                     spacing: 2.4px;
                     alignment: center;
-                    Text { text: T.tr("dash.motion.title"); font-size: 15.2px; font-weight: 600; color: Theme.text; line-height-factor: 1.25; }
+                    Text { text: T.tr("dash.motion.title"); font-size: 15.2px; font-weight: 700; color: Theme.text; line-height-factor: 1.25; }
                     Text {
                         text: T.tr("dash.motion.desc");
                         font-size: 12.5px;
@@ -508,20 +523,20 @@ component RamBadge inherits Rectangle {
     height: row.preferred-height;
     width: row.preferred-width;
     border-radius: Theme.radius-md;
-    background: Theme.accent.with-alpha(0.12);
-    border-width: 1px;
-    border-color: Theme.accent.with-alpha(0.3);
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     row := HorizontalLayout {
         padding-left: 12px;
         padding-right: 12px;
         padding-top: 5.6px;
         padding-bottom: 5.6px;
         spacing: 4px;
-        Text { text: root.value; font-size: 20px; font-weight: 700; color: Theme.accent; vertical-alignment: bottom; }
+        Text { text: root.value; font-family: Theme.font-pixel; font-size: 16px; font-weight: 700; color: Theme.title-color; vertical-alignment: bottom; }
         VerticalLayout {
             alignment: end;
             padding-bottom: 1px;
-            Text { text: "GB"; font-size: 12px; font-weight: 600; color: Theme.accent; }
+            Text { text: "GB"; font-family: Theme.font-pixel; font-size: 8px; font-weight: 700; color: Theme.muted-strong; }
         }
     }
 }
@@ -671,9 +686,9 @@ component JdkCard inherits SettingCard {
                 padding-top: 8px;
                 Rectangle {
                     border-radius: Theme.radius-md;
-                    background: (SettingsBridge.probe-ok ? Theme.accent-green : #ef4444).with-alpha(0.1);
-                    border-width: 1px;
-                    border-color: (SettingsBridge.probe-ok ? Theme.accent-green : #ef4444).with-alpha(0.3);
+                    background: (SettingsBridge.probe-ok ? Theme.accent-green : Theme.accent-red).with-alpha(0.12);
+                    border-width: 2px;
+                    border-color: SettingsBridge.probe-ok ? Theme.accent-green : Theme.accent-red;
                     HorizontalLayout {
                         padding-left: 16px;
                         padding-right: 16px;
@@ -702,9 +717,9 @@ component JdkCard inherits SettingCard {
                 padding-top: 12px;
                 Rectangle {
                     border-radius: Theme.radius-md;
-                    background: Theme.surface-up;
-                    border-width: 1px;
-                    border-color: Theme.border;
+                    background: Theme.card-bg-soft;
+                    border-width: 2px;
+                    border-color: Theme.border-solid;
                     HorizontalLayout {
                         padding: 16px;
                         VerticalLayout {
@@ -728,8 +743,8 @@ component JdkCard inherits SettingCard {
                                     Rectangle {
                                         border-radius: Theme.radius-sm;
                                         background: Theme.log-bg;
-                                        border-width: 1px;
-                                        border-color: Theme.border;
+                                        border-width: 2px;
+                                        border-color: Theme.border-solid;
                                         min-width: 0;
                                         horizontal-stretch: 1;
                                         max-width: path-text.preferred-width + 20px;
@@ -769,7 +784,7 @@ component ToggleCard inherits GlassCard {
     in property <bool> busy;
     callback toggled(bool);
     min-width: 0px;
-    elevation: Elevation.sm;
+    elevation: Elevation.md;
     spacing: 0px;
     padding-size: 20px;
     preferred-width: 1px;
@@ -784,14 +799,14 @@ component ToggleCard inherits GlassCard {
             HorizontalLayout {
                 spacing: 8px;
                 alignment: start;
-                Badge { text: root.badge; variant: root.badge-variant; }
+                Badge { text: root.badge; variant: root.badge-variant; pixel: true; }
                 if root.speedup != "": Text {
                     horizontal-stretch: 1;
                     min-width: 0px;
                     wrap: word-wrap;
                     text: root.speedup;
                     font-size: 11.2px;
-                    font-weight: 600;
+                    font-weight: 700;
                     line-height-factor: 1.25;
                     color: Theme.accent-purple;
                     vertical-alignment: center;
@@ -799,10 +814,11 @@ component ToggleCard inherits GlassCard {
             }
             Text {
                 text: root.heading;
-                font-size: 15.2px;
-                font-weight: 600;
-                line-height-factor: 0.94;
-                color: Theme.text;
+                font-family: Theme.font-title;
+                font-size: 16px;
+                font-weight: 700;
+                line-height-factor: 1.1;
+                color: Theme.title-color;
                 wrap: word-wrap;
             }
             Text {
@@ -816,7 +832,7 @@ component ToggleCard inherits GlassCard {
         VerticalLayout {
             alignment: start;
             padding-top: 4px;
-            SwitchControl {
+            Toggle {
                 checked <=> root.checked;
                 enabled: !root.busy;
                 toggled(v) => { root.toggled(v); }
@@ -884,9 +900,9 @@ component SubfolderChip inherits Rectangle {
     horizontal-stretch: 1;
     preferred-width: 1px;
     border-radius: Theme.radius-md;
-    background: ta.has-hover ? Theme.surface-up-solid : Theme.surface-up;
-    border-width: 1px;
-    border-color: ta.has-hover ? Theme.border-focus : Theme.border;
+    background: ta.has-hover ? Theme.surface-up-solid : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: ta.has-hover ? Theme.hover-border : Theme.border-solid;
     animate background, border-color { duration: Theme.dur-fast; }
     HorizontalLayout {
         padding-left: 16px;
@@ -924,9 +940,9 @@ component DataDirCard inherits SettingCard {
         }
         Rectangle {
             border-radius: Theme.radius-md;
-            background: Theme.surface-up;
-            border-width: 1px;
-            border-color: Theme.border;
+            background: Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: Theme.border-solid;
             HorizontalLayout {
                 padding: 16px;
                 VerticalLayout {
@@ -988,9 +1004,9 @@ component HealthRow inherits Rectangle {
     in property <string> key;
     in property <string> value;
     border-radius: Theme.radius-md;
-    background: Theme.surface-up;
-    border-width: 1px;
-    border-color: Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     HorizontalLayout {
         padding-left: 16px;
         padding-right: 16px;
@@ -1063,16 +1079,9 @@ component VipBanner inherits Rectangle {
     min-height: inner.min-height;
     preferred-height: inner.preferred-height;
     border-radius: Theme.radius-lg;
-    background: Theme.surface-up;
-    drop-shadow-color: Theme.accent.with-alpha(0.08);
-    drop-shadow-blur: 24px;
-    drop-shadow-offset-y: 8px;
-    Rectangle {
-        border-radius: parent.border-radius;
-        background: @radial-gradient(circle, Theme.accent.with-alpha(0.12) 0%, rgba(6, 182, 212, 0.04) 100%);
-        border-width: 1px;
-        border-color: Theme.accent.with-alpha(0.3);
-    }
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.hover-border;
     inner := HorizontalLayout {
         padding-left: 28px;
         padding-right: 28px;
@@ -1086,14 +1095,16 @@ component VipBanner inherits Rectangle {
                 Rectangle {
                     width: 48px;
                     height: 48px;
-                    border-radius: 24px;
-                    background: Theme.accent.with-alpha(0.15);
-                    Icon { data: Icons.star; size: 24px; color: Theme.accent; }
+                    border-radius: Theme.radius-md;
+                    background: Theme.gold;
+                    border-width: 2px;
+                    border-color: Theme.brand-ink;
+                    Icon { data: Icons.star; size: 24px; color: Theme.on-gold; }
                 }
             }
             VerticalLayout {
                 spacing: 5.6px;
-                Text { text: T.tr("dash.about.supportBanner"); font-size: 16px; font-weight: 700; color: Theme.text; line-height-factor: 1.25; horizontal-alignment: center; wrap: word-wrap; }
+                Text { text: T.tr("dash.about.supportBanner"); font-family: Theme.font-title; font-size: 16px; font-weight: 700; color: Theme.title-color; line-height-factor: 1.25; horizontal-alignment: center; wrap: word-wrap; }
                 Text { text: T.tr("dash.about.rankPerks"); font-size: 12.8px; color: Theme.muted; line-height-factor: 1.09; horizontal-alignment: center; wrap: word-wrap; }
             }
             HorizontalLayout {
@@ -1119,14 +1130,12 @@ component AboutLeft inherits VerticalLayout {
         alignment: start;
         Badge { text: "ESPECTRAL ECOSYSTEM"; variant: BadgeVariant.accent; }
     }
-    GradientText {
-        text: T.tr("dash.about.title");
-        gradient: GradientKind.emerald-gold;
-        font-size: Theme.text-2xl;
-        font-weight: 700;
-        letter-spacing: -0.7px;
-        line-height-factor: 0.94;
-        wrap: word-wrap;
+    HorizontalLayout {
+        alignment: start;
+        McTitle {
+            text: T.tr("dash.about.title");
+            font-size: 24px;
+        }
     }
     Text { text: T.tr("dash.about.tagline"); font-size: 14.4px; color: Theme.muted; line-height-factor: 1.09; wrap: word-wrap; }
     VerticalLayout {
@@ -1167,13 +1176,14 @@ component AboutLeft inherits VerticalLayout {
 
 component AboutCard inherits Rectangle {
     in property <bool> narrow;
-    border-radius: Theme.radius-xl;
+    border-radius: Theme.radius-lg;
     background: Theme.surface-solid;
-    border-width: 1px;
-    border-color: Theme.border;
-    drop-shadow-color: Theme.shadow-sm-color;
-    drop-shadow-blur: Theme.shadow-sm-blur;
-    drop-shadow-offset-y: Theme.shadow-sm-y;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 6px;
+    drop-shadow-offset-y: 6px;
     // grid-template-columns: 1.2fr 1fr, positioned by hand (a layout would
     // measure the wrapped texts at their preferred width)
     property <length> inner: root.width - 64px;
@@ -1209,13 +1219,12 @@ component AgentHeader inherits HorizontalLayout {
         horizontal-stretch: 1;
         spacing: 4px;
         alignment: start;
-        Text {
-            text: T.tr("dash.agent.title");
-            color: Theme.text;
-            font-size: 18.4px;
-            font-weight: 600;
-            letter-spacing: -0.18px;
-            line-height-factor: 0.94;
+        HorizontalLayout {
+            alignment: start;
+            McTitle {
+                text: T.tr("dash.agent.title");
+                font-size: 24px;
+            }
         }
         Text {
             text: T.tr("dash.agent.subtitle");
@@ -1241,9 +1250,9 @@ component HostChip inherits Rectangle {
     preferred-width: row.preferred-width;
     horizontal-stretch: 0;
     border-radius: Theme.radius-sm;
-    background: Theme.surface-up;
-    border-width: 1px;
-    border-color: blocked ? rgba(239, 68, 68, 0.35) : Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: blocked ? Theme.accent-red : Theme.border-solid;
     row := HorizontalLayout {
         padding-left: 7.2px;
         padding-right: 7.2px;
@@ -1316,8 +1325,8 @@ component AgentConfigBlock inherits VerticalLayout {
     Rectangle {
         border-radius: Theme.radius-md;
         background: Theme.log-bg;
-        border-width: 1px;
-        border-color: Theme.border;
+        border-width: 2px;
+        border-color: Theme.border-solid;
         height: min(240px, code-text.preferred-height + 24px);
         clip: true;
         flick := Flickable {
@@ -1347,9 +1356,9 @@ component AgentConfigBlock inherits VerticalLayout {
 component AgentAllowRow inherits Rectangle {
     in property <string> host;
     border-radius: Theme.radius-md;
-    background: Theme.surface-up;
-    border-width: 1px;
-    border-color: Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     HorizontalLayout {
         padding-left: 12px;
         padding-right: 12px;
@@ -1370,7 +1379,7 @@ component AgentAllowRow inherits Rectangle {
             width: 24px;
             height: 24px;
             border-radius: Theme.radius-sm;
-            background: rm-touch.has-hover ? rgba(239, 68, 68, 0.12) : transparent;
+            background: rm-touch.has-hover ? Theme.accent-red.with-alpha(0.12) : transparent;
             Text {
                 x: 0;
                 y: 0;
@@ -1404,7 +1413,7 @@ component AgentToggleCard inherits SettingCard {
             desc: T.tr("dash.agent.toggleDesc");
             VerticalLayout {
                 alignment: start;
-                SwitchControl {
+                Toggle {
                     checked <=> root.checked;
                     enabled: SettingsBridge.agent-loaded && !SettingsBridge.agent-saving;
                     toggled(v) => { SettingsBridge.agent-set-enabled(v); }
@@ -1421,7 +1430,7 @@ component AgentToggleCard inherits SettingCard {
         // `.agent-token-block`: border-top + 1rem padding, 0.6rem gaps
         VerticalLayout {
             spacing: 0px;
-            Rectangle { height: 1px; background: Theme.border; }
+            Rectangle { height: 2px; background: Theme.border-solid; }
             VerticalLayout {
                 padding-top: 16px;
                 spacing: 9.6px;
@@ -1444,9 +1453,9 @@ component AgentToggleCard inherits SettingCard {
                 }
                 if SettingsBridge.agent-token-path != "": Rectangle {
                     border-radius: Theme.radius-md;
-                    background: Theme.surface-up;
-                    border-width: 1px;
-                    border-color: Theme.border;
+                    background: Theme.card-bg-soft;
+                    border-width: 2px;
+                    border-color: Theme.border-solid;
                     HorizontalLayout {
                         padding-left: 16px;
                         padding-right: 16px;
@@ -1466,8 +1475,8 @@ component AgentToggleCard inherits SettingCard {
                             height: path-text.preferred-height + 11.2px;
                             border-radius: Theme.radius-sm;
                             background: Theme.log-bg;
-                            border-width: 1px;
-                            border-color: Theme.border;
+                            border-width: 2px;
+                            border-color: Theme.border-solid;
                             clip: true;
                             path-text := Text {
                                 x: 9.6px;
@@ -1710,9 +1719,9 @@ export component SettingsPage inherits Rectangle {
 
         if SettingsBridge.cfg-error != "": Rectangle {
             border-radius: Theme.radius-md;
-            background: rgba(239, 68, 68, 0.12);
-            border-width: 1px;
-            border-color: rgba(239, 68, 68, 0.4);
+            background: Theme.accent-red.with-alpha(0.12);
+            border-width: 2px;
+            border-color: Theme.accent-red;
             HorizontalLayout {
                 padding-left: 20px;
                 padding-right: 20px;

@@ -1,6 +1,7 @@
-// Theme — port of src/ui/src/styles/tokens.css (+ the bits of base.css that
-// are tokens). FOUNDATION-OWNED: page agents read it, never edit it; ask for
-// a new token in your report instead of adding one here.
+// Theme — the "poster" look of espectral.uhce.top (house style:
+// notes/espectral-web-style.md in the ops workspace): flat deep purple +
+// gold, cream paper + purple ink in light mode, hard offset shadows, the
+// Minecraft pixel font for titles. No glass, blur, glow or gradient fills.
 //
 //   CSS                                  Slint
 //   var(--accent)                        Theme.accent
@@ -26,35 +27,58 @@ export global Theme {
     out property <bool> dark: mode == "system" ? Palette.color-scheme != ColorScheme.light : mode != "light";
 
     // ---- surfaces ------------------------------------------------------------
-    out property <color> bg: dark ? #060a14 : #f4f6fb;
-    out property <color> surface: dark ? rgba(16, 22, 42, 0.65) : rgba(255, 255, 255, 0.78);
-    out property <color> surface-solid: dark ? #0d1222 : #ffffff;
-    out property <color> surface-up: dark ? rgba(25, 32, 64, 0.55) : rgba(238, 242, 250, 0.9);
-    out property <color> surface-up-solid: dark ? #161e36 : #e6ebf5;
-    out property <color> card-bg: dark ? rgba(13, 18, 34, 0.75) : rgba(255, 255, 255, 0.85);
-    out property <color> card-bg-soft: dark ? rgba(20, 28, 52, 0.5) : rgba(240, 244, 252, 0.7);
-    out property <color> chrome-bg: dark ? rgba(6, 10, 20, 0.88) : rgba(244, 246, 251, 0.92);
-    out property <color> topbar-bg: dark ? rgba(8, 13, 26, 0.82) : rgba(244, 246, 251, 0.88);
-    out property <color> rail-bg: dark ? rgba(10, 15, 30, 0.6) : rgba(235, 240, 250, 0.75);
-    out property <color> log-bg: dark ? #080c18 : #e9eef7;
-    /// Modal / palette scrim (CSS also blurs; we cannot — it is a bit denser instead).
-    out property <color> backdrop: dark ? rgba(3, 6, 14, 0.82) : rgba(15, 23, 42, 0.6);
+    // Flat, opaque blocks. The translucent names are kept for the callers but
+    // resolve to solid poster colours.
+    out property <color> bg: dark ? #120a33 : #fff4dc;
+    out property <color> surface: dark ? #1f1252 : #ffffff;
+    out property <color> surface-solid: dark ? #1f1252 : #ffffff;
+    out property <color> surface-up: dark ? #2a1a66 : #fff9ec;
+    out property <color> surface-up-solid: dark ? #2a1a66 : #fff9ec;
+    out property <color> card-bg: dark ? #1f1252 : #ffffff;
+    out property <color> card-bg-soft: dark ? #180e44 : #fff9ec;
+    out property <color> chrome-bg: dark ? #0c0626 : #fff4dc;
+    /// Header bar: always the purple brand bar, in both themes.
+    out property <color> topbar-bg: #0c0626;
+    out property <color> rail-bg: dark ? #180e44 : #fff9ec;
+    out property <color> log-bg: dark ? #0c0626 : #f6e9c8;
+    /// Modal / palette scrim.
+    out property <color> backdrop: dark ? rgba(7, 2, 26, 0.8) : rgba(31, 17, 89, 0.55);
+
+    // ---- brand (fixed pieces of the poster look) -------------------------------
+    /// Hard-shadow ink under cards and blocks.
+    out property <color> brand-ink: dark ? #07021a : #1f1159;
+    /// Title shadow / hover shadow purple (both themes).
+    out property <color> brand-purple: #6b3fa0;
+    /// Pixel-font title colour: gold on purple, orange on cream.
+    out property <color> title-color: dark ? #ffd700 : #f08c00;
+    /// Primary buttons and the footer band: gold in both themes.
+    out property <color> gold: #ffd700;
+    out property <color> gold-hover: #ffaa00;
+    /// Text on gold (purple ink, both themes).
+    out property <color> on-gold: #1f1159;
+    /// The header's 4px bottom rule.
+    out property <color> header-rule: #ffaa00;
 
     // ---- text ----------------------------------------------------------------
-    out property <color> text: dark ? #e8ecf4 : #121829;
-    out property <color> text-inverse: dark ? #060a14 : #ffffff;
-    out property <color> muted: dark ? #9fb0cc : #33415c;
-    out property <color> muted-strong: dark ? #c3d2ec : #1f2937;
+    out property <color> text: dark ? #f6f1ff : #1f1159;
+    out property <color> text-inverse: dark ? #120a33 : #fff4dc;
+    out property <color> muted: dark ? #b7a6e8 : #5b4a8f;
+    out property <color> muted-strong: dark ? #d9ccff : #2e1f70;
 
     // ---- accent palette (follows accent-id + scheme) -------------------------
-    out property <color> accent: dark ? pick(accent-id, #d9a93b, #e5484d, #bb86fc, #10b981, #38bdf8) : pick(accent-id, #b45309, #c9243a, #8b5cf6, #059669, #0284c7);
-    out property <color> accent-ink: dark ? pick(accent-id, #c47b1e, #b01e3c, #7c3aed, #059669, #0284c7) : pick(accent-id, #92400e, #9f1239, #6d28d9, #047857, #075985);
-    out property <color> accent-bright: dark ? pick(accent-id, #ffd873, #ff8a92, #d9b3ff, #6ee7b7, #7dd3fc) : pick(accent-id, #d97706, #e5484d, #a78bfa, #10b981, #0ea5e9);
-    /// Gradient partner (wordmark light stop).
-    out property <color> accent-2: dark ? pick(accent-id, #ffe3a1, #ffb3b8, #f0ddff, #a7f3d0, #c9edff) : pick(accent-id, #d97706, #e5484d, #a78bfa, #34d399, #38bdf8);
+    out property <color> accent: dark ? pick(accent-id, #ffd700, #e5484d, #bb86fc, #10b981, #38bdf8) : pick(accent-id, #f08c00, #c9243a, #8b5cf6, #059669, #0284c7);
+    out property <color> accent-ink: dark ? pick(accent-id, #ffaa00, #b01e3c, #7c3aed, #059669, #0284c7) : pick(accent-id, #c26b00, #9f1239, #6d28d9, #047857, #075985);
+    out property <color> accent-bright: dark ? pick(accent-id, #ffff55, #ff8a92, #d9b3ff, #6ee7b7, #7dd3fc) : pick(accent-id, #ffaa00, #e5484d, #a78bfa, #10b981, #0ea5e9);
+    /// Second stop of the brand wordmark (per-letter in game; solid here).
+    out property <color> accent-2: dark ? pick(accent-id, #ffff55, #ffb3b8, #f0ddff, #a7f3d0, #c9edff) : pick(accent-id, #ffaa00, #e5484d, #a78bfa, #34d399, #38bdf8);
+    /// Primary button fill: brand gold in both themes for "oro" (the default),
+    /// otherwise the chosen accent.
+    out property <color> btn-fill: accent-id == "oro" ? gold : accent;
+    out property <color> btn-fill-hover: accent-id == "oro" ? gold-hover : accent-ink;
+    out property <color> btn-ink: accent-id == "oro" ? on-gold : #ffffff;
 
     // ---- fixed semantic hues -------------------------------------------------
-    out property <color> accent-gold: dark ? #ffd700 : #b45309;
+    out property <color> accent-gold: dark ? #ffd700 : #f08c00;
     out property <color> accent-alt: dark ? #f59e0b : #d97706;
     out property <color> accent-cyan: dark ? #06b6d4 : #0891b2;
     out property <color> accent-purple: dark ? #a855f7 : #7e22ce;
@@ -63,11 +87,11 @@ export global Theme {
     out property <color> msa-blue: #00a4ef;
     out property <color> discord: #5865f2;
 
-    // loader gradients (--loader-*)
-    out property <brush> loader-vanilla: @linear-gradient(135deg, #10b981 0%, #059669 100%);
-    out property <brush> loader-fabric: @linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
-    out property <brush> loader-neoforge: @linear-gradient(135deg, #f97316 0%, #ef4444 100%);
-    out property <brush> loader-quilt: @linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+    // loader colours (--loader-*): flat blocks
+    out property <brush> loader-vanilla: #10b981;
+    out property <brush> loader-fabric: #0ea5e9;
+    out property <brush> loader-neoforge: #f97316;
+    out property <brush> loader-quilt: #a855f7;
 
     // game modes (--mode-*)
     out property <color> mode-uhc: #10b981;
@@ -77,36 +101,40 @@ export global Theme {
     out property <color> mode-torneo: #f97316;
 
     // ---- borders -------------------------------------------------------------
-    out property <color> border: dark ? rgba(40, 58, 96, 0.45) : rgba(190, 204, 226, 0.65);
-    out property <color> border-solid: dark ? #1f2b48 : #cfd8e8;
-    out property <color> border-focus: accent.with-alpha(dark ? 0.6 : 0.8);
-    out property <color> glass-border: dark ? rgba(255, 255, 255, 0.13) : rgba(18, 24, 41, 0.14);
-    out property <color> hover-border: accent.with-alpha(0.4);
-    /// Specular top highlight of glass cards (GlassCard ::before).
-    out property <color> glass-highlight: dark ? rgba(255, 255, 255, 0.25) : rgba(255, 255, 255, 0.9);
+    out property <color> border: dark ? #3a2488 : #1f1159;
+    out property <color> border-solid: dark ? #3a2488 : #1f1159;
+    /// Gold on hover / focus, as on the site.
+    out property <color> border-focus: dark ? #ffd700 : #f08c00;
+    out property <color> glass-border: dark ? #3a2488 : #1f1159;
+    out property <color> hover-border: dark ? #ffd700 : #f08c00;
+    /// (Glass top highlight: none in the poster look.)
+    out property <color> glass-highlight: transparent;
 
-    // ---- shadows (one drop-shadow per element in Slint) ----------------------
-    out property <color> shadow-sm-color: dark ? rgba(0, 0, 0, 0.25) : rgba(18, 24, 41, 0.09);
-    out property <length> shadow-sm-blur: 10px;
+    // ---- shadows: hard offsets, no blur ---------------------------------------
+    out property <color> shadow-sm-color: brand-ink;
+    out property <length> shadow-sm-blur: 0px;
+    out property <length> shadow-sm-x: 2px;
     out property <length> shadow-sm-y: 2px;
-    out property <color> shadow-md-color: dark ? rgba(0, 0, 0, 0.35) : rgba(18, 24, 41, 0.12);
-    out property <length> shadow-md-blur: 28px;
-    out property <length> shadow-md-y: 8px;
-    out property <color> shadow-lg-color: dark ? rgba(0, 0, 0, 0.5) : rgba(18, 24, 41, 0.18);
-    out property <length> shadow-lg-blur: 48px;
-    out property <length> shadow-lg-y: 16px;
-    out property <color> shadow-card-color: dark ? rgba(0, 0, 0, 0.3) : rgba(18, 24, 41, 0.08);
-    out property <length> shadow-card-blur: 20px;
+    out property <color> shadow-md-color: brand-ink;
+    out property <length> shadow-md-blur: 0px;
+    out property <length> shadow-md-x: 4px;
+    out property <length> shadow-md-y: 4px;
+    out property <color> shadow-lg-color: brand-ink;
+    out property <length> shadow-lg-blur: 0px;
+    out property <length> shadow-lg-x: 6px;
+    out property <length> shadow-lg-y: 6px;
+    out property <color> shadow-card-color: brand-ink;
+    out property <length> shadow-card-blur: 0px;
     out property <length> shadow-card-y: 4px;
-    /// --glass-glow / --glow-play
-    out property <color> glow-color: accent.with-alpha(dark ? 0.15 : 0.12);
-    out property <color> glow-play-color: accent.with-alpha(dark ? 0.4 : 0.25);
+    /// (Glows are off-style: kept as hard purple shadows.)
+    out property <color> glow-color: brand-purple;
+    out property <color> glow-play-color: brand-purple;
 
     // ---- radii ---------------------------------------------------------------
     out property <length> radius-xs: 4px;
-    out property <length> radius-sm: 6px;
-    out property <length> radius-md: 10px;
-    out property <length> radius-lg: 14px;
+    out property <length> radius-sm: 8px;
+    out property <length> radius-md: 12px;
+    out property <length> radius-lg: 16px;
     out property <length> radius-xl: 20px;
     out property <length> radius-tile: 16px;
     out property <length> radius-pill: 9999px;
@@ -125,9 +153,12 @@ export global Theme {
 
     // ---- typography ----------------------------------------------------------
     out property <string> font-body: "Space Grotesk";
-    out property <string> font-display: "Space Grotesk";
-    /// .font-pixel / --font-mono-retro (Press Start 2P). Use letter-spacing: -0.04em.
-    out property <string> font-pixel: "Press Start 2P";
+    /// Titles, card titles, stat numbers: the Minecraft pixel font (bold).
+    /// Sizes in multiples of 8px keep glyph edges sharp.
+    out property <string> font-display: "Minecraft Espectral";
+    out property <string> font-title: "Minecraft Espectral";
+    /// Short pixel labels (badges, key chips).
+    out property <string> font-pixel: "Minecraft Espectral";
     out property <string> font-mono: "JetBrains Mono";
     out property <length> text-xs: 12px;
     out property <length> text-sm: 14px;
@@ -156,9 +187,9 @@ export global Theme {
     out property <length> content-max: 1312px;
 
     // ---- scrollbars ------------------------------------------------------------
-    out property <color> scrollbar-track: dark ? rgba(6, 10, 20, 0.4) : rgba(220, 226, 238, 0.4);
-    out property <color> scrollbar-thumb: dark ? rgba(159, 176, 204, 0.3) : rgba(51, 65, 92, 0.35);
-    out property <color> scrollbar-thumb-hover: dark ? rgba(159, 176, 204, 0.55) : rgba(51, 65, 92, 0.6);
+    out property <color> scrollbar-track: dark ? #0c0626 : #f6e9c8;
+    out property <color> scrollbar-thumb: dark ? #3a2488 : #b7a6e8;
+    out property <color> scrollbar-thumb-hover: dark ? #ffd700 : #f08c00;
 
     // ---- helpers ---------------------------------------------------------------
     /// CSS hsla(h, s%, l%, a) — s and l in 0..1.

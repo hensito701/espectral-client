@@ -2,7 +2,7 @@
 // config / servers / mods / danger). Router.instance-name holds the decoded
 // :name of #/instances/:name; Router.query may carry "tab=...".
 
-import { Theme, T, Router, Shell, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, LoaderBadge, LoaderBadgeSize, ProgressBar, ProgressTone, PageScaffold, Spinner } from "../../widgets.slint";
+import { Theme, T, Router, Shell, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, LoaderBadge, LoaderBadgeSize, ProgressBar, ProgressTone, PageScaffold, McTitle } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 import { TelemetryCapsule } from "capsule.slint";
 import { DryRunModal } from "modals.slint";
@@ -18,16 +18,15 @@ component HubTab inherits Rectangle {
     in property <bool> danger;
     callback clicked();
     property <bool> hovered: t.has-hover;
+    property <color> pill: active ? Theme.gold : hovered ? Theme.surface-up : transparent;
     height: 36px;
     min-width: row.preferred-width;
-    border-radius: Theme.radius-md;
-    background: active ? Theme.surface-up-solid : hovered ? rgba(255, 255, 255, 0.04) : transparent;
-    border-width: active ? 1px : 0px;
-    border-color: active && danger ? rgba(239, 68, 68, 0.4) : Theme.glass-border;
-    drop-shadow-color: active ? rgba(0, 0, 0, 0.25) : transparent;
-    drop-shadow-blur: 8px;
-    drop-shadow-offset-y: 2px;
-    property <color> fg: active && danger ? #fca5a5 : active || hovered ? Theme.text : Theme.muted;
+    border-radius: Theme.radius-pill;
+    background: self.pill;
+    border-width: 2px;
+    border-color: active ? Theme.brand-ink : hovered ? Theme.hover-border : Theme.border-solid;
+    animate background, border-color { duration: Theme.dur-fast; }
+    property <color> fg: active ? Theme.on-gold : danger ? Theme.accent-red : hovered ? Theme.text : Theme.muted;
     row := HorizontalLayout {
         padding-left: 14.4px;
         padding-right: 14.4px;
@@ -37,11 +36,11 @@ component HubTab inherits Rectangle {
         if root.count != "": VerticalLayout {
             alignment: center;
             Rectangle {
-                height: cl.preferred-height + 3px;
-                width: cl.preferred-width + 13px;
-                border-radius: self.height / 2;
-                background: rgba(255, 255, 255, 0.08);
-                cl := Text { text: root.count; color: root.fg; font-size: 11.2px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                height: cl.preferred-height + 4px;
+                width: cl.preferred-width + 12px;
+                border-radius: Theme.radius-xs;
+                background: root.active ? Theme.brand-ink : Theme.card-bg-soft;
+                cl := Text { text: root.count; color: root.active ? Theme.gold : Theme.muted-strong; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
             }
         }
     }
@@ -75,18 +74,18 @@ component HubHeader inherits VerticalLayout {
         }
         Rectangle { horizontal-stretch: 1; }
         if HomeBridge.hub-loaded: Rectangle {
-            height: 28px;
+            height: 30px;
             width: frow.preferred-width;
-            border-radius: Theme.radius-md;
-            background: ft.has-hover ? Theme.surface-up : Theme.surface;
-            border-width: 1px;
-            border-color: ft.has-hover ? rgba(255, 255, 255, 0.16) : Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+            border-radius: Theme.radius-sm;
+            background: ft.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: ft.has-hover ? Theme.hover-border : Theme.border-solid;
             frow := HorizontalLayout {
                 padding-left: 12px;
                 padding-right: 12px;
                 spacing: 6.4px;
-                VerticalLayout { alignment: center; Icon { data: Icons.folder; size: 15px; color: ft.has-hover ? Theme.text : Theme.muted-strong; } }
-                Text { text: T.tr("instance.openFolder"); color: ft.has-hover ? Theme.text : Theme.muted-strong; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
+                VerticalLayout { alignment: center; Icon { data: Icons.folder; size: 15px; color: ft.has-hover ? Theme.hover-border : Theme.muted-strong; } }
+                Text { text: T.tr("instance.openFolder"); color: ft.has-hover ? Theme.text : Theme.muted-strong; font-size: Theme.text-xs; font-weight: 600; vertical-alignment: center; }
             }
             ft := TouchArea {
                 mouse-cursor: pointer;
@@ -100,13 +99,10 @@ component HubHeader inherits VerticalLayout {
         if !HomeBridge.rename-open: HorizontalLayout {
             spacing: 9.6px;
             alignment: start;
-            Text {
+            McTitle {
                 text: HomeBridge.hub.name != "" ? HomeBridge.hub.name : Router.instance-name;
-                color: Theme.text;
-                font-size: Theme.text-hero(root.vw);
-                font-weight: 700;
-                letter-spacing: -0.94px;
-                overflow: elide;
+                font-size: root.vw < 1100px ? 32px : 40px;
+                horizontal-stretch: 0;
             }
             if HomeBridge.hub-loaded: VerticalLayout {
                 alignment: center;
@@ -114,9 +110,9 @@ component HubHeader inherits VerticalLayout {
                     width: 32px;
                     height: 32px;
                     border-radius: Theme.radius-md;
-                    background: rt.has-hover ? Theme.surface-up : transparent;
-                    border-width: 1px;
-                    border-color: rt.has-hover ? rgba(255, 255, 255, 0.16) : transparent;
+                    background: rt.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+                    border-width: 2px;
+                    border-color: rt.has-hover ? Theme.hover-border : Theme.border-solid;
                     Icon { data: Icons.edit; size: 15px; color: rt.has-hover ? Theme.text : Theme.muted; }
                     rt := TouchArea {
                         mouse-cursor: pointer;
@@ -221,10 +217,10 @@ component ServersTab inherits HubCard {
                         width: 36px;
                         height: 36px;
                         border-radius: Theme.radius-md;
-                        background: rgba(239, 68, 68, xt.has-hover ? 0.3 : 0.15);
-                        border-width: 1px;
-                        border-color: rgba(239, 68, 68, 0.3);
-                        Icon { data: Icons.x; size: 14px; color: #fca5a5; weight: 2.5; }
+                        background: xt.has-hover ? Theme.accent-red : Theme.accent-red.with-alpha(0.14);
+                        border-width: 2px;
+                        border-color: xt.has-hover ? Theme.brand-ink : Theme.accent-red;
+                        Icon { data: Icons.x; size: 14px; color: xt.has-hover ? #ffffff : Theme.accent-red; weight: 2.5; }
                         xt := TouchArea {
                             mouse-cursor: pointer;
                             clicked => { HomeBridge.remove-server-row(i); }
@@ -277,9 +273,9 @@ component ServersTab inherits HubCard {
                 width: grid.cw;
                 height: grid.rh;
                 border-radius: Theme.radius-md;
-                background: Theme.dark ? rgba(0, 0, 0, 0.25) : rgba(18, 24, 41, 0.05);
-                border-width: 1px;
-                border-color: Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+                background: Theme.card-bg-soft;
+                border-width: 2px;
+                border-color: Theme.border-solid;
                 VerticalLayout {
                     padding: Theme.space-3;
                     spacing: 6.4px;
@@ -292,7 +288,9 @@ component ServersTab inherits HubCard {
                             height: ipl.preferred-height + 5px;
                             width: ipl.preferred-width + 13px;
                             border-radius: Theme.radius-xs;
-                            background: rgba(255, 255, 255, 0.06);
+                            background: Theme.surface-solid;
+                            border-width: 2px;
+                            border-color: Theme.border-solid;
                             ipl := Text { text: s.ip; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: Theme.text-xs; horizontal-alignment: center; vertical-alignment: center; }
                         }
                     }
@@ -379,15 +377,15 @@ component DangerTab inherits HubCard {
     title: T.tr("instance.dangerTitle");
     subtitle: T.tr("instance.dangerSubtitle");
     large-shadow: true;
-    stroke: rgba(239, 68, 68, 0.35);
-    fill: @radial-gradient(circle, rgba(239, 68, 68, 0.035) 0%, Theme.card-bg 70%);
+    stroke: Theme.accent-red;
+    fill: Theme.card-bg;
     VerticalLayout {
         spacing: Theme.space-5;
         Rectangle {
             border-radius: Theme.radius-md;
-            background: rgba(239, 68, 68, 0.1);
-            border-width: 1px;
-            border-color: rgba(239, 68, 68, 0.25);
+            background: Theme.accent-red.with-alpha(0.12);
+            border-width: 2px;
+            border-color: Theme.accent-red;
             HorizontalLayout {
                 padding-left: Theme.space-4;
                 padding-right: Theme.space-4;
@@ -402,7 +400,7 @@ component DangerTab inherits HubCard {
                     padding-bottom: 13.6px;
                     spacing: 4px;
                     horizontal-stretch: 1;
-                    Text { text: T.tr("instance.deleteInstanceTitle"); color: #fca5a5; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; }
+                    Text { text: T.tr("instance.deleteInstanceTitle"); color: Theme.accent-red; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; }
                     Text { text: T.tr("instance.deleteWarning"); color: Theme.muted-strong; font-size: Theme.text-xs; wrap: word-wrap; }
                 }
             }
@@ -432,10 +430,9 @@ component ConsoleCard inherits HubCard {
                 Rectangle {
                     width: 8px;
                     height: 8px;
-                    border-radius: 4px;
                     background: HomeBridge.hub-log-running ? Theme.accent-green : Theme.muted;
-                    drop-shadow-color: HomeBridge.hub-log-running ? Theme.accent-green : transparent;
-                    drop-shadow-blur: 8px;
+                    border-width: 2px;
+                    border-color: Theme.brand-ink;
                 }
             }
             Text { text: T.tr("instance.logTitle"); color: Theme.text; font-size: Theme.text-sm; font-weight: 700; vertical-alignment: center; }
@@ -474,8 +471,8 @@ component ConsoleCard inherits HubCard {
         height: 220px;
         border-radius: Theme.radius-md;
         background: Theme.log-bg;
-        border-width: 1px;
-        border-color: rgba(255, 255, 255, 0.04);
+        border-width: 2px;
+        border-color: Theme.border-solid;
         clip: true;
         if HomeBridge.hub-log-lines.length == 0: Text {
             text: T.tr("instance.emptyLog");
@@ -551,16 +548,18 @@ export component InstanceHubPage inherits Rectangle {
             spacing: 20px;
             HorizontalLayout {
                 alignment: start;
-                Rectangle {
+                tabbin := Rectangle {
                     width: tabs.preferred-width + 2 * 5.6px;
                     height: 36px + 2 * 5.6px;
-                    border-radius: Theme.radius-lg;
-                    background: Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+                    border-radius: Theme.radius-pill;
+                    background: Theme.card-bg-soft;
+                    border-width: 2px;
+                    border-color: Theme.border-solid;
                     tabs := HorizontalLayout {
                         x: 5.6px;
                         y: 5.6px;
+                        width: tabbin.width - 2 * 5.6px;
+                        height: tabbin.height - 2 * 5.6px;
                         spacing: 6.4px;
                         HubTab {
                             icon: Icons.settings;

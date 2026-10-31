@@ -4,10 +4,10 @@
 // advanced client id, Lunar shield card.
 // Keep the exported component name and the empty interface used by app.slint.
 
-import { Theme, T, Router, AppState, Util, AccountRow, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind,
+import { Theme, T, Router, AppState, Util, AccountRow, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle,
     Icon, Icons, Emoji, Spinner, MonogramTile, MonogramShape, Field, PageScaffold, GlassCard, Elevation } from "../../widgets.slint";
 import { AccountBridge } from "api.slint";
-import { CopyFlag, LoadingRow, UploadChip, PlainInput } from "parts.slint";
+import { CopyFlag, LoadingRow, UploadChip, PlainInput, MsLogo } from "parts.slint";
 import { SkinAtelier } from "skin-atelier.slint";
 
 // ---------------------------------------------------------------------------
@@ -16,9 +16,12 @@ import { SkinAtelier } from "skin-atelier.slint";
 
 component VaultHero inherits HorizontalLayout {
     spacing: Theme.space-4;
+    /// Page width, passed down from AccountPage (never measured on this layout).
+    in property <length> page-width: 1280px;
     VerticalLayout {
         spacing: Theme.space-2;
         horizontal-stretch: 1;
+        min-width: 0px;
         HorizontalLayout {
             spacing: Theme.space-3;
             alignment: start;
@@ -31,15 +34,12 @@ component VaultHero inherits HorizontalLayout {
                 vertical-alignment: center;
             }
         }
-        GradientText {
-            // CSS line-height 1.1
-            height: 40px;
-            vertical-alignment: center;
+        // pixel title: tiered so the single-line glyph run always fits the
+        // content column; min-width clamped so it can never widen the page
+        McTitle {
             text: T.tr("vault.title");
-            gradient: GradientKind.emerald-gold;
-            font-size: Theme.text-3xl;
-            font-weight: 700;
-            letter-spacing: -1.08px;
+            font-size: root.page-width < 1200px ? 24px : root.page-width < 1440px ? 32px : 40px;
+            min-width: 0px;
         }
         HorizontalLayout {
             Text {
@@ -61,6 +61,8 @@ component VaultHero inherits HorizontalLayout {
             icon: Icons.refresh;
             loading: AccountBridge.refreshing;
             text: AccountBridge.refreshing ? T.tr("vault.refreshing") : T.tr("vault.refresh");
+            // the label ellipsises instead of pushing the button off the page
+            font-size-override: root.page-width < 1200px ? Theme.text-xs : 0px;
             clicked => { AccountBridge.refresh(); }
         }
     }
@@ -91,7 +93,7 @@ component MetaItem inherits VerticalLayout {
         font-size: Theme.text-xs;
         font-weight: 600;
         letter-spacing: 0.6px;
-        color: #5c6b84;
+        color: Theme.muted;
     }
     Text {
         text: root.value;
@@ -105,6 +107,7 @@ component PedestalMeta inherits HorizontalLayout {
     in property <AccountRow> acc;
     spacing: Theme.space-6;
     alignment: start;
+    min-width: 0px;
     padding-top: Theme.space-3 - Theme.space-2;
     MetaItem {
         label: T.tr("account.lastUsed");
@@ -116,16 +119,16 @@ component PedestalMeta inherits HorizontalLayout {
     }
     VerticalLayout {
         spacing: 2px;
-        min-width: 180px;
-        Text { text: "UUID"; font-size: Theme.text-xs; font-weight: 600; letter-spacing: 0.6px; color: #5c6b84; }
+        min-width: 160px;
+        Text { text: "UUID"; font-size: Theme.text-xs; font-weight: 600; letter-spacing: 0.6px; color: Theme.muted; }
         HorizontalLayout {
             spacing: Theme.space-2;
             alignment: start;
             Rectangle {
-                background: Theme.dark ? rgba(0, 0, 0, 0.3) : Theme.card-bg-soft;
+                background: Theme.card-bg-soft;
                 border-radius: Theme.radius-xs;
-                border-width: 1px;
-                border-color: rgba(255, 255, 255, 0.06);
+                border-width: 2px;
+                border-color: Theme.border-solid;
                 width: uuid-text.preferred-width + 12px;
                 height: uuid-text.preferred-height + 4px;
                 uuid-text := Text {
@@ -139,10 +142,10 @@ component PedestalMeta inherits HorizontalLayout {
                 width: 21px;
                 height: 21px;
                 border-radius: Theme.radius-xs;
-                background: copy-ta.has-hover ? rgba(255, 255, 255, 0.08) : transparent;
+                background: copy-ta.has-hover ? Theme.gold : transparent;
                 copied := CopyFlag { }
                 if copied.copied: Text { text: "✓"; color: Theme.accent-green; font-family: Theme.font-mono; font-size: Theme.text-sm; }
-                if !copied.copied: Icon { data: Icons.copy; size: 13px; color: copy-ta.has-hover ? Theme.text : Theme.muted; }
+                if !copied.copied: Icon { data: Icons.copy; size: 13px; color: copy-ta.has-hover ? Theme.on-gold : Theme.muted; }
                 copy-ta := TouchArea {
                     mouse-cursor: pointer;
                     clicked => {
@@ -158,27 +161,20 @@ component PedestalMeta inherits HorizontalLayout {
 component Pedestal inherits Rectangle {
     property <bool> has: AccountBridge.has-active;
     property <AccountRow> acc: AccountBridge.active;
-    property <int> hue: has && acc.avatar-color >= 0 ? acc.avatar-color : has ? acc.monogram-hue : -1;
-    border-radius: Theme.radius-xl;
-    background: Theme.dark ? @linear-gradient(135deg, rgba(16, 24, 40, 0.75) 0%, rgba(8, 14, 26, 0.85) 100%) : @linear-gradient(135deg, Theme.card-bg 0%, Theme.card-bg-soft 100%);
-    border-width: 1px;
-    border-color: Theme.glass-border;
-    drop-shadow-color: Theme.dark ? rgba(0, 0, 0, 0.4) : Theme.shadow-md-color;
-    drop-shadow-blur: 36px;
-    drop-shadow-offset-y: 16px;
+    border-radius: Theme.radius-lg;
+    background: Theme.card-bg;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    // hard 4px ink block shadow (poster card)
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
     min-height: layout.preferred-height;
     clip: true;
 
-    // pedestal-glow: --ambient-1 (account hue) radial at top -50%, left 20%
-    Rectangle {
-        x: parent.width * 0.2;
-        y: -150px;
-        width: 600px;
-        height: 300px;
-        background: @radial-gradient(circle, (root.hue >= 0 ? Theme.hsla(root.hue, 0.7, 0.5, 0.14) : Theme.accent.with-alpha(0.12)) 0%, transparent 70%);
-    }
-    // inset 0 1px 0 rgba(255,255,255,.08)
-    Rectangle { x: 0; y: 0; width: parent.width; height: 1px; background: rgba(255, 255, 255, 0.08); }
+    // flat gold rule along the top edge of the block (the old inset highlight)
+    Rectangle { x: 2px; y: 2px; width: parent.width - 4px; height: 2px; background: Theme.gold; }
 
     layout := HorizontalLayout {
         padding-left: Theme.space-8;
@@ -186,23 +182,29 @@ component Pedestal inherits Rectangle {
         padding-top: Theme.space-6;
         padding-bottom: Theme.space-6;
         spacing: Theme.space-8;
-        // stage: ring + avatar + floor
+        min-width: 0px;
+        // stage: flat soft panel, dashed ring, avatar, flat floor rule
         Rectangle {
-            width: 140px;
-            PedestalRing { }
+            width: 148px;
+            height: 148px;
+            background: Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: Theme.border-solid;
+            border-radius: Theme.radius-md;
+            PedestalRing { x: 4px; y: 3px; }
             Rectangle {
-                y: (parent.height + 104px) / 2;
-                width: 120px;
-                height: 16px;
-                border-radius: 8px;
-                background: @radial-gradient(circle, Theme.accent.with-alpha(0.18) 0%, transparent 70%);
+                x: 26px;
+                y: 122px;
+                width: 96px;
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.brand-purple;
             }
             Rectangle {
+                x: (parent.width - 104px) / 2;
+                y: (parent.height - 104px) / 2;
                 width: 104px;
                 height: 104px;
-                drop-shadow-color: rgba(0, 0, 0, 0.6);
-                drop-shadow-blur: 24px;
-                drop-shadow-offset-y: 12px;
                 border-radius: Theme.radius-md;
                 MonogramTile {
                     name: root.has ? root.acc.username : "?";
@@ -218,22 +220,20 @@ component Pedestal inherits Rectangle {
             alignment: center;
             spacing: Theme.space-2;
             horizontal-stretch: 1;
+            min-width: 0px;
             HorizontalLayout {
                 spacing: Theme.space-2;
                 alignment: start;
+                min-width: 0px;
                 Badge { text: T.tr("vault.heroActiveBadge"); variant: BadgeVariant.ok; dot: true; large: true; }
                 if root.has && root.acc.token-kind == "msa": Badge { text: T.tr("vault.cardKindMsa"); variant: BadgeVariant.accent; large: true; }
                 if !(root.has && root.acc.token-kind == "msa"): Badge { text: T.tr("vault.cardKindOffline"); variant: BadgeVariant.neutral; large: true; }
             }
-            Text {
-                height: 34px; // line-height 1.2
-                vertical-alignment: center;
+            McTitle {
                 text: root.has ? root.acc.username : T.tr("vault.heroNoActive");
-                font-size: Theme.text-2xl;
-                font-weight: 700;
-                letter-spacing: -0.56px;
-                color: Theme.text;
-                overflow: elide;
+                font-size: 24px;
+                min-width: 0px;
+                wrap: false;
             }
             HorizontalLayout {
                 spacing: Theme.space-1;
@@ -267,7 +267,12 @@ component SectionHead inherits HorizontalLayout {
     VerticalLayout {
         spacing: 2px;
         horizontal-stretch: 1;
-        Text { text: root.title; font-size: Theme.text-lg; font-weight: 600; letter-spacing: -0.36px; color: Theme.text; }
+        McTitle {
+            text: root.title;
+            font-size: 24px;
+            min-width: 0px;
+            horizontal-stretch: 0;
+        }
         Text { text: root.sub; font-size: Theme.text-xs; color: Theme.muted; }
     }
     VerticalLayout {
@@ -277,10 +282,11 @@ component SectionHead inherits HorizontalLayout {
 }
 
 component RosterBox inherits Rectangle {
-    background: Theme.dark ? rgba(16, 24, 40, 0.4) : Theme.card-bg-soft;
-    border-width: 1px;
-    border-color: Theme.glass-border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     border-radius: Theme.radius-lg;
+    min-width: 0px;
 }
 
 component RosterEmpty inherits RosterBox {
@@ -288,23 +294,26 @@ component RosterEmpty inherits RosterBox {
     col := HorizontalLayout {
         padding: Theme.space-8;
         alignment: center;
+        min-width: 0px;
         VerticalLayout {
             spacing: Theme.space-2;
             max-width: 360px;
+            min-width: 0px;
             HorizontalLayout {
                 alignment: center;
                 padding-bottom: 4px;
                 Rectangle {
                     width: 32px;
                     height: 32px;
-                    opacity: 0.5;
+                    opacity: 0.6;
                     Emoji { char: "👤"; size: 32px; }
                 }
             }
             Text {
                 text: T.tr("vault.rosterEmpty");
-                color: Theme.text;
-                font-size: Theme.text-base;
+                color: Theme.title-color;
+                font-family: Theme.font-title;
+                font-size: 16px;
                 font-weight: 700;
                 horizontal-alignment: center;
             }
@@ -324,18 +333,16 @@ component Swatch inherits Rectangle {
     in property <bool> active;
     in property <bool> enabled: true;
     callback clicked();
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     Rectangle {
-        property <length> s: ta.has-hover && root.enabled ? 24.6px : 22px;
+        property <length> s: ta.has-hover && root.enabled ? 24px : 20px;
         width: self.s;
         height: self.s;
         border-radius: self.s / 2;
         background: Theme.hsla(root.hue, 0.7, 0.5, 1);
         border-width: 2px;
-        border-color: root.active ? (Theme.dark ? #ffffff : Theme.text) : transparent;
-        drop-shadow-color: root.active ? rgba(255, 255, 255, 0.4) : transparent;
-        drop-shadow-blur: 8px;
+        border-color: root.active ? Theme.gold : Theme.brand-ink;
         animate s { duration: Theme.dur-fast; }
     }
     opacity: enabled ? 1 : 0.5;
@@ -350,7 +357,7 @@ component AvatarEdit inherits VerticalLayout {
     in property <AccountRow> acc;
     property <bool> busy: AccountBridge.avatar-busy == acc.username;
     spacing: Theme.space-2;
-    Rectangle { height: 1px; background: Theme.border; }
+    Rectangle { height: 2px; background: Theme.border-solid; }
     Text { text: T.tr("vault.avatarTitle"); font-size: Theme.text-xs; color: Theme.muted; }
     HorizontalLayout {
         spacing: 6px;
@@ -372,7 +379,7 @@ component AvatarEdit inherits VerticalLayout {
         }
         if root.acc.has-avatar: Rectangle {
             width: rm.preferred-width + 13px;
-            rm := Text { text: T.tr("vault.avatarRemove"); font-size: 12px; color: #f87171; }
+            rm := Text { text: T.tr("vault.avatarRemove"); font-size: Theme.text-xs; color: Theme.accent-red; }
             TouchArea {
                 enabled: !root.busy;
                 mouse-cursor: pointer;
@@ -384,8 +391,11 @@ component AvatarEdit inherits VerticalLayout {
 
 component LogoutConfirm inherits Rectangle {
     in property <string> username;
-    background: Theme.dark ? rgba(12, 18, 30, 0.95) : rgba(255, 255, 255, 0.96);
+    background: Theme.card-bg;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     border-radius: Theme.radius-lg;
+    clip: true;
     TouchArea { }
     HorizontalLayout {
         padding-left: Theme.space-4;
@@ -433,12 +443,16 @@ component AccountCard inherits Rectangle {
     in property <AccountRow> acc;
     in property <bool> active;
     property <bool> hovered: ta.has-hover;
+    property <bool> hot: active || hovered;
     property <length> lift: hovered ? -2px : 0px;
     animate lift { duration: Theme.dur-fast; easing: ease-out; }
     min-height: body.preferred-height;
-    drop-shadow-color: active ? Theme.accent.with-alpha(0.12) : hovered ? rgba(0, 0, 0, 0.35) : transparent;
-    drop-shadow-blur: active ? 20px : 24px;
-    drop-shadow-offset-y: active ? 0px : 8px;
+    min-width: 0px;
+    // hard 4px shadow: ink normally, purple when selected / hovered
+    drop-shadow-color: root.hot ? Theme.brand-purple : Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
     border-radius: Theme.radius-lg;
 
     ta := TouchArea {
@@ -449,11 +463,10 @@ component AccountCard inherits Rectangle {
         y: root.lift;
         height: root.height;
         border-radius: Theme.radius-lg;
-        background: root.active ? @linear-gradient(135deg, Theme.accent.with-alpha(0.08) 0%, (Theme.dark ? rgba(16, 24, 40, 0.7) : Theme.card-bg) 100%)
-            : root.hovered ? (Theme.dark ? rgba(22, 34, 56, 0.7) : Theme.surface-up) : (Theme.dark ? rgba(16, 24, 40, 0.55) : Theme.card-bg);
-        border-width: 1px;
-        border-color: root.active ? Theme.accent : root.hovered ? rgba(255, 255, 255, 0.16) : Theme.glass-border;
-        animate border-color { duration: Theme.dur-fast; }
+        background: root.hot ? Theme.surface-up : Theme.card-bg;
+        border-width: 2px;
+        border-color: root.hot ? Theme.hover-border : Theme.border-solid;
+        animate border-color, background { duration: Theme.dur-fast; }
 
         body := VerticalLayout {
             padding: Theme.space-4;
@@ -478,11 +491,9 @@ component AccountCard inherits Rectangle {
                         width: 14px;
                         height: 14px;
                         border-radius: 7px;
-                        background: Theme.accent;
+                        background: Theme.gold;
                         border-width: 2px;
-                        border-color: #0b1320;
-                        drop-shadow-color: Theme.accent;
-                        drop-shadow-blur: 8px;
+                        border-color: Theme.brand-ink;
                     }
                 }
                 VerticalLayout {
@@ -495,7 +506,7 @@ component AccountCard inherits Rectangle {
                         Text {
                             text: root.acc.username;
                             font-size: Theme.text-base;
-                            font-weight: 600;
+                            font-weight: 700;
                             color: Theme.text;
                             overflow: elide;
                             vertical-alignment: center;
@@ -511,7 +522,7 @@ component AccountCard inherits Rectangle {
                             text: AccountBridge.truncate(root.acc.uuid, 8) + "…";
                             font-family: Theme.font-mono;
                             font-size: Theme.text-xs;
-                            color: #5c6b84;
+                            color: Theme.muted;
                             vertical-alignment: center;
                         }
                     }
@@ -521,7 +532,7 @@ component AccountCard inherits Rectangle {
             VerticalLayout {
                 spacing: Theme.space-2;
                 padding-top: 2px;
-                Rectangle { height: 1px; background: Theme.border; }
+                Rectangle { height: 2px; background: Theme.border-solid; }
                 HorizontalLayout {
                     spacing: Theme.space-3;
                     min-height: 28px;
@@ -565,6 +576,7 @@ component AccountCard inherits Rectangle {
 component Roster inherits VerticalLayout {
     spacing: Theme.space-4;
     alignment: start;
+    min-width: 0px;
     SectionHead {
         title: T.tr("vault.rosterTitle");
         sub: T.tr("vault.rosterSubtitle");
@@ -577,9 +589,11 @@ component Roster inherits VerticalLayout {
     if !AccountBridge.loading && AccountBridge.accounts.length == 0: RosterEmpty { }
     if AccountBridge.accounts.length > 0: VerticalLayout {
         spacing: Theme.space-3;
+        min-width: 0px;
         for acc[i] in AccountBridge.accounts: AccountCard {
             acc: acc;
             active: i == 0 && AccountBridge.has-active;
+            min-width: 0px;
         }
     }
 }
@@ -593,12 +607,11 @@ component ForgeTab inherits Rectangle {
     in property <string> text;
     in property <bool> active;
     callback clicked();
-    height: 40px;
+    height: 38px;
     border-radius: Theme.radius-sm;
-    background: active ? (Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.surface-solid) : transparent;
-    drop-shadow-color: active ? rgba(0, 0, 0, 0.2) : transparent;
-    drop-shadow-blur: 8px;
-    drop-shadow-offset-y: 2px;
+    background: root.active ? Theme.gold : ta.has-hover ? Theme.surface-up : transparent;
+    border-width: root.active ? 2px : 0px;
+    border-color: Theme.brand-ink;
     animate background { duration: Theme.dur-fast; }
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -614,9 +627,11 @@ component ForgeTab inherits Rectangle {
         Text {
             text: root.text;
             font-size: Theme.text-sm;
-            font-weight: 600;
-            color: root.active || ta.has-hover ? Theme.text : Theme.muted;
+            font-weight: 700;
+            color: root.active ? Theme.on-gold : ta.has-hover ? Theme.title-color : Theme.muted;
             vertical-alignment: center;
+            overflow: elide;
+            min-width: 0px;
         }
     }
 }
@@ -686,8 +701,17 @@ component FlowStepHead inherits HorizontalLayout {
         width: 20px;
         height: 20px;
         border-radius: 10px;
-        background: Theme.accent;
-        Text { text: root.mark; color: #060a14; font-size: Theme.text-xs; font-weight: 700; }
+        background: Theme.gold;
+        border-width: 2px;
+        border-color: Theme.brand-ink;
+        Text {
+            text: root.mark;
+            font-family: Theme.font-pixel;
+            font-size: 8px;
+            color: Theme.on-gold;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
     }
     Text {
         text: root.label;
@@ -704,10 +728,10 @@ component UriPill inherits Rectangle {
     in property <string> label;
     in property <string> url;
     in property <bool> copy-button;
-    background: Theme.dark ? rgba(0, 0, 0, 0.4) : Theme.card-bg-soft;
+    background: Theme.card-bg-soft;
     border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.06);
+    border-width: 2px;
+    border-color: Theme.border-solid;
     min-height: row.preferred-height;
     copied := CopyFlag { }
     row := HorizontalLayout {
@@ -748,8 +772,8 @@ component UriPill inherits Rectangle {
 }
 
 component CodeBanner inherits Rectangle {
-    background: @linear-gradient(135deg, Theme.accent.with-alpha(0.15) 0%, rgba(6, 182, 212, 0.1) 100%);
-    border-width: 1px;
+    background: Theme.surface-up;
+    border-width: 2px;
     border-color: Theme.accent;
     border-radius: Theme.radius-md;
     min-height: row.preferred-height;
@@ -763,9 +787,10 @@ component CodeBanner inherits Rectangle {
         Text {
             text: AccountBridge.ms-user-code;
             font-family: Theme.font-pixel;
-            font-size: Theme.text-xl;
-            letter-spacing: 3.3px;
-            color: Theme.dark ? #ffffff : Theme.text;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            color: Theme.title-color;
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
@@ -787,9 +812,9 @@ component CodeBanner inherits Rectangle {
 
 component DeviceFlowCard inherits Rectangle {
     property <bool> complete: AccountBridge.ms-verification-uri-complete != "";
-    background: Theme.dark ? rgba(0, 0, 0, 0.25) : Theme.card-bg-soft;
-    border-width: 1px;
-    border-color: Theme.glass-border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     border-radius: Theme.radius-md;
     min-height: col.preferred-height;
     col := VerticalLayout {
@@ -821,14 +846,14 @@ component DeviceFlowCard inherits Rectangle {
             padding-bottom: Theme.space-2;
             VerticalLayout {
                 alignment: center;
-                // static pulse dot (the CSS pulse animation would keep the UI busy)
+                // static status dot (flat, no glow)
                 Rectangle {
                     width: 12px;
                     height: 12px;
                     border-radius: 6px;
                     background: Theme.accent;
-                    drop-shadow-color: Theme.accent.with-alpha(0.7);
-                    drop-shadow-blur: 8px;
+                    border-width: 2px;
+                    border-color: Theme.brand-ink;
                 }
             }
             Text {
@@ -855,9 +880,9 @@ component DeviceFlowCard inherits Rectangle {
 component MsAlert inherits Rectangle {
     in property <bool> pending;
     border-radius: Theme.radius-md;
-    background: pending ? Theme.accent-alt.with-alpha(0.12) : rgba(239, 68, 68, 0.12);
-    border-width: 1px;
-    border-color: pending ? Theme.accent-alt.with-alpha(0.35) : rgba(239, 68, 68, 0.35);
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: pending ? Theme.accent-alt : Theme.accent-red;
     min-height: col.preferred-height;
     col := HorizontalLayout {
         padding-left: Theme.space-4;
@@ -870,15 +895,75 @@ component MsAlert inherits Rectangle {
                 spacing: Theme.space-2;
                 alignment: start;
                 VerticalLayout { alignment: center; Emoji { char: "⏳"; size: 14px; } }
-                Text { text: T.tr("vault.msaPending"); color: #fbbf24; font-size: Theme.text-sm; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
+                Text { text: T.tr("vault.msaPending"); color: Theme.accent-alt; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; horizontal-stretch: 1; }
             }
-            if root.pending: Text { text: T.tr("vault.msaPendingHint"); color: #fbbf24; font-size: Theme.text-xs; wrap: word-wrap; }
+            if root.pending: Text { text: T.tr("vault.msaPendingHint"); color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
             if !root.pending: HorizontalLayout {
                 spacing: Theme.space-2;
                 VerticalLayout { alignment: start; Emoji { char: "⚠️"; size: 14px; } }
-                Text { text: AccountBridge.ms-error; color: #f87171; font-size: Theme.text-xs; wrap: word-wrap; horizontal-stretch: 1; }
+                Text { text: AccountBridge.ms-error; color: Theme.accent-red; font-size: Theme.text-xs; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
             }
         }
+    }
+}
+
+/// Partner-style flat pill for the Microsoft sign-in (#00A4EF fill, ink
+/// border, hard ink shadow) — the third-party brand button of the style guide.
+component MsPartnerBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> loading: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    property <bool> interactive: enabled && !loading;
+    property <bool> hot: ta.has-hover && interactive;
+    property <length> depth: 4px;
+    height: 48px + depth;
+    horizontal-stretch: 1;
+    opacity: enabled ? 1 : 0.45;
+
+    Rectangle {
+        y: root.depth;
+        width: 100%;
+        height: 48px;
+        border-radius: Theme.radius-pill;
+        background: Theme.brand-ink;
+    }
+    Rectangle {
+        width: 100%;
+        height: 48px;
+        border-radius: Theme.radius-pill;
+        border-width: 2px;
+        border-color: Theme.brand-ink;
+        background: root.hot ? #1fb4f5 : Theme.msa-blue;
+        animate background { duration: Theme.dur-fast; }
+    }
+    HorizontalLayout {
+        height: 48px;
+        alignment: center;
+        spacing: Theme.space-2;
+        if root.loading: VerticalLayout {
+            alignment: center;
+            Spinner { size: 16px; tint: #ffffff; }
+        }
+        if !root.loading: VerticalLayout {
+            alignment: center;
+            MsLogo { size: 16px; }
+        }
+        Text {
+            text: root.text;
+            color: #ffffff;
+            font-size: Theme.text-base;
+            font-weight: 700;
+            vertical-alignment: center;
+            overflow: elide;
+            min-width: 0px;
+            horizontal-stretch: 1;
+        }
+    }
+    ta := TouchArea {
+        enabled: root.interactive;
+        mouse-cursor: root.interactive ? pointer : default;
+        clicked => { root.clicked(); }
     }
 }
 
@@ -891,11 +976,7 @@ component MsaPane inherits VerticalLayout {
         wrap: word-wrap;
     }
     if AccountBridge.ms-flow: DeviceFlowCard { }
-    if !AccountBridge.ms-flow: Btn {
-        variant: BtnVariant.primary;
-        size: BtnSize.lg;
-        block: true;
-        emoji: "🌐";
+    if !AccountBridge.ms-flow: MsPartnerBtn {
         loading: AccountBridge.ms-polling;
         text: AccountBridge.ms-polling ? T.tr("vault.msStarting") : T.tr("vault.msStartBtn");
         clicked => { AccountBridge.start-ms(); }
@@ -910,20 +991,27 @@ component Forge inherits GlassCard {
     subtitle: T.tr("vault.addSubtitle");
     elevation: Elevation.md;
     spacing: Theme.space-4;
+    // never widen the workbench column from its intrinsic content
+    min-width: 0px;
     Rectangle {
-        background: Theme.dark ? rgba(0, 0, 0, 0.3) : Theme.card-bg-soft;
+        background: Theme.card-bg-soft;
+        border-width: 2px;
+        border-color: Theme.border-solid;
         border-radius: Theme.radius-md;
         height: 48px;
         HorizontalLayout {
+            width: parent.width;
             padding: 4px;
             spacing: 4px;
             ForgeTab {
+                horizontal-stretch: 1;
                 emoji: "⚡";
                 text: T.tr("vault.tabOffline");
                 active: root.tab == 0;
                 clicked => { root.tab = 0; }
             }
             ForgeTab {
+                horizontal-stretch: 1;
                 emoji: "🌐";
                 text: T.tr("vault.tabMicrosoft");
                 active: root.tab == 1;
@@ -940,16 +1028,18 @@ component AdvancedClientId inherits Rectangle {
     property <string> value;
     property <int> serial: AccountBridge.client-id-serial;
     changed serial => { root.value = AccountBridge.client-id; }
-    background: Theme.dark ? rgba(16, 24, 40, 0.4) : Theme.card-bg-soft;
-    border-width: 1px;
-    border-color: Theme.glass-border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     border-radius: Theme.radius-lg;
     min-height: col.preferred-height;
+    min-width: 0px;
     clip: true;
     col := VerticalLayout {
         Rectangle {
             height: toggle-row.preferred-height;
-            background: toggle-ta.has-hover ? rgba(255, 255, 255, 0.03) : transparent;
+            min-width: 0px;
+            background: toggle-ta.has-hover ? Theme.surface-up : transparent;
             toggle-ta := TouchArea {
                 mouse-cursor: pointer;
                 clicked => {
@@ -967,15 +1057,15 @@ component AdvancedClientId inherits Rectangle {
                 Text {
                     text: T.tr("vault.clientIdToggle");
                     font-size: Theme.text-sm;
-                    font-weight: 500;
-                    color: toggle-ta.has-hover ? Theme.text : Theme.muted;
+                    font-weight: 600;
+                    color: toggle-ta.has-hover ? Theme.title-color : Theme.text;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
                 }
                 Text {
                     text: "▼";
-                    font-size: 10.4px;
-                    color: toggle-ta.has-hover ? Theme.text : Theme.muted;
+                    font-size: Theme.text-xs;
+                    color: toggle-ta.has-hover ? Theme.title-color : Theme.muted;
                     vertical-alignment: center;
                     transform-rotation: root.open ? 180deg : 0deg;
                     animate transform-rotation { duration: Theme.dur-fast; }
@@ -983,13 +1073,16 @@ component AdvancedClientId inherits Rectangle {
             }
         }
         if root.open: Rectangle {
-            background: Theme.dark ? rgba(0, 0, 0, 0.2) : Theme.card-bg-soft;
+            background: Theme.card-bg;
             min-height: pane.preferred-height;
-            Rectangle { y: 0; height: 1px; background: Theme.border; }
+            min-width: 0px;
+            Rectangle { y: 0; height: 2px; background: Theme.border-solid; }
             pane := HorizontalLayout {
                 padding: Theme.space-4;
+                min-width: 0px;
                 VerticalLayout {
                     spacing: Theme.space-3;
+                    min-width: 0px;
                     Field {
                         label: T.tr("vault.clientIdLabel");
                         hint: T.tr("vault.clientIdHint");
@@ -1030,24 +1123,35 @@ component AdvancedClientId inherits Rectangle {
 }
 
 component LunarCard inherits Rectangle {
-    background: @linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, (Theme.dark ? rgba(16, 24, 40, 0.5) : Theme.card-bg-soft) 100%);
-    border-width: 1px;
-    border-color: rgba(168, 85, 247, 0.25);
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.accent-purple;
     border-radius: Theme.radius-lg;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
     min-height: col.preferred-height;
+    min-width: 0px;
     col := HorizontalLayout {
         padding: Theme.space-4;
+        min-width: 0px;
         VerticalLayout {
             spacing: Theme.space-3;
+            min-width: 0px;
             HorizontalLayout {
                 spacing: Theme.space-2;
-                VerticalLayout { alignment: center; Emoji { char: "🌙"; size: 17.6px; } }
+                min-width: 0px;
+                VerticalLayout { alignment: center; Emoji { char: "🌙"; size: 18px; } }
                 Text {
                     text: T.tr("vault.lunarShieldTitle");
-                    font-size: Theme.text-sm;
-                    font-weight: 600;
-                    color: Theme.text;
+                    font-family: Theme.font-title;
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: Theme.title-color;
                     vertical-alignment: center;
+                    overflow: elide;
+                    min-width: 0px;
                     horizontal-stretch: 1;
                 }
                 VerticalLayout {
@@ -1080,6 +1184,7 @@ component ForgeColumn inherits VerticalLayout {
     in-out property <bool> advanced-open;
     spacing: Theme.space-4;
     alignment: start;
+    min-width: 0px;
     Forge { tab <=> root.tab; }
     AdvancedClientId { open <=> root.advanced-open; }
     LunarCard { }
@@ -1094,6 +1199,11 @@ export component AccountPage inherits Rectangle {
     property <bool> advanced-open: false;
     // CSS @media (max-width: 1024px): workbench stacks
     property <bool> narrow: root.width <= 1024px;
+    // content box inside PageScaffold (1400 max incl. 2x32 padding)
+    property <length> content-width: min(1400px, root.width) - 2 * Theme.space-8;
+    property <length> workbench: max(0px, root.content-width - Theme.space-6);
+    property <length> roster-width: root.workbench * 1.4 / 2.4;
+    property <length> forge-width: root.workbench - root.roster-width;
 
     scaffold := PageScaffold {
         max-content-width: 1400px;
@@ -1102,37 +1212,41 @@ export component AccountPage inherits Rectangle {
         content-padding-bottom: Theme.space-12;
         spacing: Theme.space-6;
 
-        VaultHero { }
-        Pedestal { }
+        VaultHero { min-width: 0px; page-width: root.width; }
+        Pedestal { min-width: 0px; }
         atelier := VerticalLayout {
             padding-top: Theme.space-4;
+            min-width: 0px;
             SkinAtelier {
+                min-width: 0px;
                 scroll-request(top, bottom) => { root.ensure-visible(top, bottom); }
             }
         }
         if !root.narrow: HorizontalLayout {
             spacing: Theme.space-6;
+            min-width: 0px;
+            // fixed split (1.4 / 1) computed from the page width, so no child's
+            // intrinsic min-width can stretch the content column
             Roster {
-                width: (root.content-width - Theme.space-6) * 1.4 / 2.4;
+                width: root.roster-width;
             }
             ForgeColumn {
-                horizontal-stretch: 1;
+                width: root.forge-width;
                 tab <=> root.forge-tab;
                 advanced-open <=> root.advanced-open;
             }
         }
         if root.narrow: VerticalLayout {
             spacing: Theme.space-6;
-            Roster { }
+            min-width: 0px;
+            Roster { min-width: 0px; }
             ForgeColumn {
+                min-width: 0px;
                 tab <=> root.forge-tab;
                 advanced-open <=> root.advanced-open;
             }
         }
     }
-
-    // content width inside PageScaffold (max 1400 incl. 2x32 padding)
-    property <length> content-width: min(1400px, root.width) - 2 * Theme.space-8;
 
     /// Bring an absolute y-range (window coordinates) into the viewport.
     function ensure-visible(top: length, bottom: length) {
