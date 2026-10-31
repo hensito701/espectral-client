@@ -26,8 +26,20 @@ if [[ $# -lt 2 ]]; then
   sed -n '2,22p' "${BASH_SOURCE[0]}"
   exit 2
 fi
-cargo build -q -p espectral-client --manifest-path "$native_dir/Cargo.toml"
+# Live-preview build (own target dir, never shipped): it loads ui/*.slint when
+# it starts, so after the first build a .slint edit costs ~10 s of cargo (the
+# small live UI crate) instead of recompiling the ~60 MB generated module.
+# Rust changes (new properties/callbacks) rebuild as usual. Set
+# ESPECTRAL_SHOT_COMPILED=1 to shoot the normal compiled build instead.
+if [[ -n "${ESPECTRAL_SHOT_COMPILED:-}" ]]; then
+  cargo build -q -p espectral-client --manifest-path "$native_dir/Cargo.toml"
+  bin="$native_dir/target/debug/espectral-client"
+else
+  SLINT_LIVE_PREVIEW=1 cargo build -q -p espectral-client --features live-preview \
+    --manifest-path "$native_dir/Cargo.toml" --target-dir "$native_dir/target/live"
+  bin="$native_dir/target/live/debug/espectral-client"
+fi
 data="${ESPECTRAL_SHOT_DATA:-$native_dir/target/shot-data}"
 mkdir -p "$data"
 ESPECTRAL_DATA_DIR="$data" ESPECTRAL_LOG="${ESPECTRAL_LOG:-warn}" \
-  "$native_dir/target/debug/espectral-client" --screenshot "$@"
+  "$bin" --screenshot "$@"

@@ -1,7 +1,7 @@
-//! Build script: compiles the Slint UI, embeds the i18n tables and, on Windows,
-//! compiles the executable's icon + VERSIONINFO resource.
+//! Build script: embeds the i18n tables, lints the .slint sources for missing
+//! keys and, on Windows, compiles the executable's icon + VERSIONINFO resource.
+//! The Slint UI itself is compiled by the espectral-client-ui crate (native/ui).
 //!
-//! * `ui/app.slint` -> Rust (slint::include_modules!()).
 //! * Every `i18n/*.json` file is embedded (OUT_DIR/i18n_files.rs) — page
 //!   agents add a file, nothing else to register.
 //! * Every literal `T.tr*("key"` in `ui/**/*.slint` is checked against the
@@ -19,9 +19,8 @@ fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
 
-    // ---- Slint ----
-    let config = slint_build::CompilerConfiguration::new().with_style("fluent".into());
-    slint_build::compile_with_config(manifest.join("ui/app.slint"), config).expect("slint build failed");
+    // ---- .slint sources (compiled by native/ui; read here for the key lint) ----
+    println!("cargo:rerun-if-changed={}", manifest.join("ui").display());
 
     // ---- i18n ----
     let i18n_dir = manifest.join("i18n");
