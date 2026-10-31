@@ -1,0 +1,384 @@
+// TopChrome — port of components/TopChrome.svelte. FOUNDATION-OWNED.
+// The account popover itself is owned by account-wardrobe
+// (pages/account-wardrobe/account-popover.slint) and placed by app.slint.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { Router, Page, AppState, Shell } from "../state.slint";
+import { Icon, Icons } from "../widgets/icon.slint";
+import { Emoji } from "../widgets/emoji.slint";
+import { Kbd, GradientText, GradientKind } from "../widgets/badge.slint";
+import { MonogramTile, MonogramShape } from "../widgets/monogram.slint";
+
+component Shortcut inherits Rectangle {
+    in property <string> emoji;
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    property <bool> hovered: ta.has-hover;
+    height: 30px;
+    min-width: row.preferred-width;
+    preferred-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: active ? Theme.accent.with-alpha(0.35) : transparent;
+    background: active ? Theme.accent.with-alpha(0.12) : hovered ? (Theme.dark ? rgba(255, 255, 255, 0.06) : rgba(18, 24, 41, 0.05)) : transparent;
+    animate background { duration: Theme.dur-fast; }
+    row := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 6px;
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Emoji { char: root.emoji; size: 14px; fallback-color: label-text.color; }
+        }
+        label-text := Text {
+            text: root.label;
+            font-size: Theme.text-xs;
+            font-weight: 600;
+            letter-spacing: 0.24px;
+            color: root.active ? Theme.accent : root.hovered ? Theme.text : Theme.muted-strong;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component ChromeSquare inherits Rectangle {
+    callback clicked();
+    in property <string> tooltip;
+    out property <bool> hovered: ta.has-hover;
+    width: 34px;
+    height: 34px;
+    border-radius: Theme.radius-md;
+    background: hovered ? Theme.surface-up : Theme.surface;
+    border-width: 1px;
+    border-color: hovered ? Theme.hover-border : Theme.border;
+    animate background, border-color { duration: Theme.dur-fast; }
+    @children
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// ThemeToggle.svelte (moon in dark, sun in light).
+export component ThemeToggle inherits ChromeSquare {
+    tooltip: Theme.dark ? T.tr("themeToggle.toLight") : T.tr("themeToggle.toDark");
+    clicked => { Shell.toggle-theme(); }
+    Icon {
+        data: Theme.dark ? Icons.moon : Icons.sun;
+        size: 16px;
+        color: root.hovered ? Theme.accent : Theme.muted-strong;
+    }
+}
+
+/// LanguageToggle.svelte (pill variant: shows the TARGET language).
+export component LanguageToggle inherits ChromeSquare {
+    tooltip: T.lang == "es" ? T.tr("lang.toEn") : T.tr("lang.toEs");
+    clicked => { Shell.toggle-language(); }
+    Text {
+        text: T.lang == "es" ? "EN" : "ES";
+        font-size: Theme.text-xs;
+        font-weight: 700;
+        letter-spacing: 0.48px;
+        color: root.hovered ? Theme.accent : Theme.muted-strong;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component TopChrome inherits Rectangle {
+    height: Theme.topbar-height;
+    // No backdrop blur: the bar is a bit more opaque than --topbar-bg instead.
+    background: Theme.dark ? rgba(8, 13, 26, 0.94) : rgba(244, 246, 251, 0.96);
+
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+
+    HorizontalLayout {
+        padding-left: Theme.space-6;
+        padding-right: Theme.space-6;
+        spacing: 0px;
+
+        // ---- brand ----
+        brand := Rectangle {
+            horizontal-stretch: 0;
+            min-width: brand-row.preferred-width;
+            property <bool> hovered: brand-ta.has-hover;
+            brand-row := HorizontalLayout {
+                y: brand.hovered ? -1px : 0px;
+                padding-left: 6px;
+                padding-right: 6px;
+                spacing: Theme.space-3;
+                alignment: center;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 16px;
+                        background: rgba(8, 13, 26, 0.6);
+                        border-width: 1px;
+                        border-color: Theme.glass-border;
+                        drop-shadow-color: Theme.accent.with-alpha(0.25);
+                        drop-shadow-blur: 16px;
+                        clip: true;
+                        Image {
+                            width: 100%;
+                            height: 100%;
+                            source: @image-url("../assets/logo_circle.png");
+                            image-fit: cover;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    GradientText {
+                        text: "ESPECTRAL";
+                        gradient: GradientKind.emerald-gold;
+                        font-size: Theme.text-base;
+                        font-weight: 700;
+                        letter-spacing: 1.28px;
+                    }
+                    Text {
+                        text: "CLIENT";
+                        font-family: Theme.font-pixel;
+                        font-size: 9px;
+                        letter-spacing: 1.08px;
+                        color: Theme.muted-strong;
+                    }
+                }
+            }
+            brand-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Router.navigate("#/"); }
+            }
+        }
+
+        // ---- center shortcuts (hidden below 900px) ----
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Theme.space-2;
+            padding-left: Theme.space-3;
+            padding-right: Theme.space-3;
+            if root.width >= 900px: VerticalLayout {
+                alignment: center;
+                Shortcut {
+                    emoji: "🎨";
+                    label: T.tr("vault.skin.title");
+                    active: Router.page == Page.account;
+                    clicked => { Router.navigate("#/account?section=skin"); }
+                }
+            }
+            if root.width >= 900px: VerticalLayout {
+                alignment: center;
+                Shortcut {
+                    emoji: "🧩";
+                    label: T.tr("mods.title");
+                    active: Router.page == Page.mods;
+                    clicked => { Router.navigate("#/mods"); }
+                }
+            }
+            if root.width >= 900px: VerticalLayout {
+                alignment: center;
+                Shortcut {
+                    emoji: "⚛";
+                    label: T.tr("nav.wardrobe");
+                    active: Router.page == Page.wardrobe;
+                    clicked => { Router.navigate("#/armario"); }
+                }
+            }
+        }
+
+        // ---- actions ----
+        HorizontalLayout {
+            horizontal-stretch: 0;
+            spacing: Theme.space-3;
+            alignment: end;
+
+            // Update CTA (renders only when a signed update exists)
+            if Shell.update-status != "idle": VerticalLayout {
+                alignment: center;
+                upd := Rectangle {
+                    property <bool> busy: Shell.update-status != "available";
+                    height: 30px;
+                    min-width: upd-row.preferred-width;
+                    border-radius: Theme.radius-md;
+                    background: Theme.accent.with-alpha(upd-ta.has-hover && !upd.busy ? 0.22 : 0.14);
+                    border-width: 1px;
+                    border-color: upd-ta.has-hover && !upd.busy ? Theme.accent : Theme.accent.with-alpha(0.45);
+                    clip: true;
+                    if upd.busy: Rectangle {
+                        x: 0;
+                        width: parent.width * Shell.update-progress;
+                        background: Theme.accent.with-alpha(0.3);
+                    }
+                    upd-row := HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: Theme.space-2;
+                        if !upd.busy: VerticalLayout {
+                            alignment: center;
+                            Icon { data: Icons.download; size: 14px; color: Theme.dark ? Theme.accent : Theme.accent-ink; }
+                        }
+                        Text {
+                            text: !upd.busy ? T.tr1("update.badge", "version", Shell.update-version)
+                                : Shell.update-status == "downloading" ? (Shell.update-progress > 0 ? T.tr1("update.progress", "pct", round(Shell.update-progress * 100)) : T.tr("update.working"))
+                                : T.tr("update.installing");
+                            font-size: Theme.text-xs;
+                            font-weight: 600;
+                            color: Theme.dark ? Theme.accent : Theme.accent-ink;
+                            vertical-alignment: center;
+                        }
+                        if !upd.busy: VerticalLayout {
+                            alignment: center;
+                            Rectangle { width: 7px; height: 7px; border-radius: 3.5px; background: Theme.accent; }
+                        }
+                    }
+                    upd-ta := TouchArea {
+                        enabled: !upd.busy;
+                        mouse-cursor: pointer;
+                        clicked => { Shell.install-update(); }
+                    }
+                }
+            }
+
+            // Command palette trigger
+            VerticalLayout {
+                alignment: center;
+                cmd := Rectangle {
+                    property <bool> hovered: cmd-ta.has-hover;
+                    height: 30px;
+                    min-width: cmd-row.preferred-width;
+                    border-radius: Theme.radius-md;
+                    background: self.hovered ? Theme.surface-solid : Theme.surface-up;
+                    border-width: 1px;
+                    border-color: self.hovered ? Theme.accent : Theme.border;
+                    animate background, border-color { duration: Theme.dur-fast; }
+                    cmd-row := HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: Theme.space-2;
+                        VerticalLayout {
+                            alignment: center;
+                            Icon { data: Icons.search; size: 14px; color: cmd.hovered ? Theme.text : Theme.muted-strong; }
+                        }
+                        Text {
+                            text: T.tr("command.action");
+                            font-size: Theme.text-xs;
+                            font-weight: 600;
+                            letter-spacing: 0.24px;
+                            color: cmd.hovered ? Theme.text : Theme.muted-strong;
+                            vertical-alignment: center;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Kbd { text: "/"; accent: true; font-size: 10px; }
+                        }
+                    }
+                    cmd-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { Shell.palette-open = true; }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                LanguageToggle { }
+            }
+            VerticalLayout {
+                alignment: center;
+                ThemeToggle { }
+            }
+
+            // Account chip
+            VerticalLayout {
+                alignment: center;
+                chip := Rectangle {
+                    property <bool> hovered: chip-ta.has-hover;
+                    property <bool> active: Shell.account-popover-open;
+                    height: 38px;
+                    min-width: chip-row.preferred-width;
+                    border-radius: 19px;
+                    background: self.hovered || self.active ? Theme.surface-solid : Theme.surface-up;
+                    border-width: 1px;
+                    border-color: self.hovered || self.active ? Theme.accent : Theme.border;
+                    animate background, border-color { duration: Theme.dur-fast; }
+                    chip-row := HorizontalLayout {
+                        padding-left: 4px;
+                        padding-right: 10px;
+                        spacing: Theme.space-2;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 28px;
+                                height: 28px;
+                                border-radius: 14px;
+                                background: @linear-gradient(135deg, Theme.surface-up-solid 0%, Theme.surface-solid 100%);
+                                border-width: 1px;
+                                border-color: Theme.glass-border;
+                                if AppState.has-active-account: MonogramTile {
+                                    name: AppState.active-account.username;
+                                    hue: AppState.active-account.monogram-hue;
+                                    avatar: AppState.active-account.avatar;
+                                    has-avatar: AppState.active-account.has-avatar;
+                                    size: 26px;
+                                    shape: MonogramShape.circle;
+                                }
+                                if !AppState.has-active-account: Text {
+                                    text: "+";
+                                    font-family: Theme.font-pixel;
+                                    font-size: 11px;
+                                    color: Theme.accent;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                Rectangle {
+                                    x: parent.width - 7px;
+                                    y: parent.height - 7px;
+                                    width: 8px;
+                                    height: 8px;
+                                    border-radius: 4px;
+                                    border-width: 1.5px;
+                                    border-color: Theme.surface-solid;
+                                    background: !AppState.has-active-account ? Theme.muted-strong : AppState.active-account.token-kind == "msa" ? Theme.msa-blue : Theme.mode-uhc;
+                                }
+                            }
+                        }
+                        Text {
+                            text: AppState.has-active-account ? AppState.active-account.username : T.tr("nav.noAccount");
+                            font-size: Theme.text-xs;
+                            font-weight: 700;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            max-width: 150px;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Icon {
+                                data: Icons.chevron-down;
+                                size: 12px;
+                                color: Theme.muted-strong;
+                                transform-rotation: chip.active ? 180deg : 0deg;
+                                animate transform-rotation { duration: Theme.dur-fast; }
+                            }
+                        }
+                    }
+                    chip-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { Shell.account-popover-open = !Shell.account-popover-open; }
+                    }
+                }
+            }
+        }
+    }
+}

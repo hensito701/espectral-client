@@ -1,0 +1,14 @@
+// OWNER: home-instances agent. Port of pages/InstanceHub.svelte (tabs:
+// config / servers / mods / danger). Router.instance-name holds the decoded
+// :name of #/instances/:name; Router.query may carry "tab=...".
+
+import { PlaceholderPage, Router } from "../../widgets.slint";
+import { HomeBridge } from "api.slint";
+
+export component InstanceHubPage inherits Rectangle {
+    PlaceholderPage {
+        title: Router.instance-name;
+        subtitle: "Instance hub";
+        source: "src/ui/src/pages/InstanceHub.svelte";
+    }
+}

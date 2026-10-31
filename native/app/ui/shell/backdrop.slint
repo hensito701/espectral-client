@@ -1,0 +1,65 @@
+// AmbientBackdrop — static port of components/AmbientBackdrop.svelte.
+// The three blurred, drifting orbs + vignette are pre-composed in Rust
+// (src/backdrop.rs) into one low-resolution image (re-rendered only when the
+// theme, accent, ambient hue or window size changes) and stretched here with
+// smooth filtering. The faint 32px grid is drawn with static rectangles whose
+// gradients approximate the CSS radial mask. Nothing animates: 0% CPU idle.
+
+import { Theme } from "../theme.slint";
+
+export component AmbientBackdrop inherits Rectangle {
+    in property <image> orbs;
+    background: Theme.bg;
+
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.orbs;
+        image-fit: fill;
+        image-rendering: smooth;
+    }
+
+    // grid: mask = radial-gradient(circle at 50% 50%, black 30%, transparent 80%)
+    // of the farthest-corner radius. Work in floats (px units) to keep sqrt simple.
+    property <float> cx: self.width / 1px / 2;
+    property <float> cy: self.height / 1px / 2;
+    property <float> r: sqrt(self.cx * self.cx + self.cy * self.cy);
+    property <float> r-in: self.r * 0.3;
+    property <float> r-out: self.r * 0.8;
+    property <color> line: Theme.dark ? #ffffff : #000000;
+    property <float> line-a: Theme.dark ? 0.018 : 0.025;
+
+    // Each line = fade-in segment + solid middle + fade-out segment (two-stop
+    // gradients only: the software renderer mishandles computed stop offsets).
+    for i in ceil(root.width / 32px): Rectangle {
+        property <float> d: abs(i * 32 - root.cx);
+        // visible half-length along the line, and the fully-opaque half-length
+        property <float> outer: root.r-out > self.d ? sqrt(root.r-out * root.r-out - self.d * self.d) : 0;
+        property <float> inner: root.r-in > self.d ? sqrt(root.r-in * root.r-in - self.d * self.d) : 0;
+        property <float> peak: self.d < root.r-in ? 1 : clamp((root.r-out - self.d) / (root.r-out - root.r-in), 0, 1);
+        property <color> c: root.line.with-alpha(root.line-a * self.peak);
+        x: i * 32px;
+        y: (root.cy - self.outer) * 1px;
+        width: 1px;
+        height: 2 * self.outer * 1px;
+        visible: self.outer > 0;
+        Rectangle { x: 0; y: 0; width: 1px; height: (parent.outer - parent.inner) * 1px; background: @linear-gradient(180deg, transparent 0%, parent.c 100%); }
+        Rectangle { x: 0; y: (parent.outer - parent.inner) * 1px; width: 1px; height: 2 * parent.inner * 1px; background: parent.c; }
+        Rectangle { x: 0; y: (parent.outer + parent.inner) * 1px; width: 1px; height: (parent.outer - parent.inner) * 1px; background: @linear-gradient(180deg, parent.c 0%, transparent 100%); }
+    }
+    for j in ceil(root.height / 32px): Rectangle {
+        property <float> d: abs(j * 32 - root.cy);
+        property <float> outer: root.r-out > self.d ? sqrt(root.r-out * root.r-out - self.d * self.d) : 0;
+        property <float> inner: root.r-in > self.d ? sqrt(root.r-in * root.r-in - self.d * self.d) : 0;
+        property <float> peak: self.d < root.r-in ? 1 : clamp((root.r-out - self.d) / (root.r-out - root.r-in), 0, 1);
+        property <color> c: root.line.with-alpha(root.line-a * self.peak);
+        x: (root.cx - self.outer) * 1px;
+        y: j * 32px;
+        width: 2 * self.outer * 1px;
+        height: 1px;
+        visible: self.outer > 0;
+        Rectangle { x: 0; y: 0; height: 1px; width: (parent.outer - parent.inner) * 1px; background: @linear-gradient(90deg, transparent 0%, parent.c 100%); }
+        Rectangle { y: 0; x: (parent.outer - parent.inner) * 1px; height: 1px; width: 2 * parent.inner * 1px; background: parent.c; }
+        Rectangle { y: 0; x: (parent.outer + parent.inner) * 1px; height: 1px; width: (parent.outer - parent.inner) * 1px; background: @linear-gradient(90deg, parent.c 0%, transparent 100%); }
+    }
+}
