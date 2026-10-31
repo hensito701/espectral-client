@@ -1,0 +1,282 @@
+// LoginGate — port of components/LoginGate.svelte (Discord OAuth gate).
+// FOUNDATION-OWNED. Session logic: src/session.rs (Session global).
+// HotkeyLegend — port of components/HotkeyLegend.svelte (not placed by the
+// Svelte app either; available for pages).
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { Session, Shell } from "../state.slint";
+import { Icon, Icons } from "../widgets/icon.slint";
+import { Badge, BadgeVariant } from "../widgets/badge.slint";
+import { Btn, BtnVariant, Spinner } from "../widgets/btn.slint";
+
+component GateSuccess inherits VerticalLayout {
+    alignment: center;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    HorizontalLayout {
+        alignment: center;
+        padding-bottom: 16px;
+        Rectangle {
+            width: 68px;
+            height: 68px;
+            Rectangle {
+                border-radius: 34px;
+                background: #0f172a;
+                border-width: 2px;
+                border-color: Theme.discord;
+                drop-shadow-color: rgba(88, 101, 242, 0.4);
+                drop-shadow-blur: 24px;
+                clip: true;
+                if Session.has-user-avatar: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: Session.user-avatar;
+                    image-fit: cover;
+                }
+                if !Session.has-user-avatar: Icon { data: Icons.discord; filled: true; size: 32px; color: Theme.discord; }
+            }
+            Rectangle {
+                x: parent.width - 20px;
+                y: parent.height - 20px;
+                width: 22px;
+                height: 22px;
+                border-radius: 11px;
+                background: Theme.accent-green;
+                border-width: 2px;
+                border-color: #060a14;
+                Icon { data: Icons.check; size: 14px; weight: 3; color: #ffffff; }
+            }
+        }
+    }
+    HorizontalLayout {
+        alignment: center;
+        padding-bottom: 10px;
+        Badge { text: T.tr("gate.badge"); variant: BadgeVariant.purple; }
+    }
+    Text {
+        text: T.tr1("gate.success", "name", Session.user-name);
+        font-size: 26px;
+        font-weight: 700;
+        color: #ffffff;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    Rectangle { height: 8px; }
+    Text {
+        text: T.tr("gate.subtitle");
+        font-size: 13.5px;
+        line-height-factor: 1.21;
+        color: #94a3b8;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+}
+
+component GatePrompt inherits VerticalLayout {
+    // header
+    HorizontalLayout {
+        alignment: center;
+        padding-bottom: 16px;
+        Rectangle {
+            width: 72px;
+            height: 72px;
+            border-radius: 20px;
+            background: Theme.discord;
+            drop-shadow-color: rgba(88, 101, 242, 0.55);
+            drop-shadow-blur: 28px;
+            drop-shadow-offset-y: 4px;
+            Icon { data: Icons.discord; filled: true; size: 44px; color: #ffffff; }
+        }
+    }
+    HorizontalLayout {
+        alignment: center;
+        padding-bottom: 10px;
+        Badge { text: T.tr("gate.badge"); variant: BadgeVariant.purple; }
+    }
+    Text {
+        text: T.tr("gate.welcome");
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.26px;
+        color: #ffffff;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    Rectangle { height: 8px; }
+    Text {
+        text: T.tr("gate.subtitle");
+        font-size: 13.5px;
+        line-height-factor: 1.21;
+        color: #94a3b8;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    Rectangle { height: 24px; }
+
+    if Session.auth-error != "": VerticalLayout {
+        padding-bottom: 20px;
+        Rectangle {
+            border-radius: Theme.radius-md;
+            background: rgba(239, 68, 68, 0.12);
+            border-width: 1px;
+            border-color: rgba(239, 68, 68, 0.35);
+            HorizontalLayout {
+                padding-top: 10px;
+                padding-bottom: 10px;
+                padding-left: 14px;
+                padding-right: 14px;
+                spacing: 8px;
+                VerticalLayout {
+                    alignment: center;
+                    Icon { data: Icons.alert-circle; size: 16px; color: #fca5a5; }
+                }
+                Text {
+                    text: Session.auth-error;
+                    font-size: 13px;
+                    color: #fca5a5;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+            }
+        }
+    }
+
+    // actions
+    VerticalLayout {
+        spacing: 12px;
+        padding-bottom: 20px;
+        discord-btn := Rectangle {
+            property <bool> busy: Session.authenticating;
+            property <bool> hovered: d-ta.has-hover && !self.busy;
+            height: 44px;
+            border-radius: Theme.radius-md;
+            background: self.hovered ? #4752c4 : Theme.discord;
+            opacity: self.busy ? 0.6 : 1;
+            drop-shadow-color: rgba(88, 101, 242, self.hovered ? 0.55 : 0.4);
+            drop-shadow-blur: self.hovered ? 24px : 18px;
+            drop-shadow-offset-y: self.hovered ? 6px : 4px;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 10px;
+                if discord-btn.busy: VerticalLayout {
+                    alignment: center;
+                    Spinner { size: 16px; tint: #ffffff; }
+                }
+                if !discord-btn.busy: VerticalLayout {
+                    alignment: center;
+                    Icon { data: Icons.discord; filled: true; size: 20px; color: #ffffff; }
+                }
+                Text {
+                    text: discord-btn.busy ? T.tr("gate.connecting") : T.tr("gate.discord");
+                    font-size: 14.5px;
+                    font-weight: 600;
+                    color: #ffffff;
+                    vertical-alignment: center;
+                }
+            }
+            d-ta := TouchArea {
+                enabled: !discord-btn.busy;
+                mouse-cursor: pointer;
+                clicked => { Session.login-discord(); }
+            }
+        }
+        Btn {
+            variant: BtnVariant.secondary;
+            block: true;
+            text: T.tr("gate.anon");
+            enabled: !Session.authenticating;
+            clicked => { Session.continue-anonymous(); }
+        }
+    }
+    Text {
+        text: T.tr("gate.footnote");
+        font-size: 13px;
+        font-weight: 500;
+        line-height-factor: 1.21;
+        color: #dbe4f3;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+}
+
+export component LoginGate inherits Rectangle {
+    // .login-gate__backdrop: rgba(6,10,20,.82) + blur(20px) -> denser fill instead of blur
+    background: rgba(6, 10, 20, 0.9);
+
+    TouchArea { }
+
+    // centered with layouts so wrapped text gets its height-for-width
+    VerticalLayout {
+        alignment: center;
+        padding: 24px;
+        HorizontalLayout {
+            alignment: center;
+            card := Rectangle {
+                width: min(440px, root.width - 48px);
+                border-radius: Theme.radius-lg;
+                background: rgba(13, 19, 36, 0.92);
+                border-width: 1px;
+                border-color: rgba(88, 101, 242, 0.35);
+                drop-shadow-color: rgba(0, 0, 0, 0.7);
+                drop-shadow-blur: 60px;
+                drop-shadow-offset-y: 24px;
+
+                Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: @linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.13) 25%, rgba(255, 255, 255, 0.25) 50%, rgba(255, 255, 255, 0.13) 75%, transparent 100%);
+                }
+
+                HorizontalLayout {
+                    padding-left: 32px;
+                    padding-right: 32px;
+                    padding-top: 36px;
+                    padding-bottom: 36px;
+                    if !Session.just-authed: GatePrompt { }
+                    if Session.just-authed: GateSuccess { }
+                }
+            }
+        }
+    }
+}
+
+export component HotkeyLegend inherits HorizontalLayout {
+    spacing: Theme.space-3;
+    alignment: start;
+    for sc in [
+        { key: "CTRL+K", label: T.tr("hotkey.command") },
+        { key: "/", label: T.tr("hotkey.search") },
+        { key: "ESPACIO", label: T.tr("hotkey.logs") },
+        { key: "ESC", label: T.tr("hotkey.back") },
+    ]: HorizontalLayout {
+        spacing: Theme.space-1;
+        opacity: 0.75;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: k.preferred-height + 4px;
+                width: k.preferred-width + 10px;
+                border-radius: Theme.radius-xs;
+                background: Theme.accent.with-alpha(0.1);
+                border-width: 1px;
+                border-color: Theme.accent.with-alpha(0.25);
+                k := Text {
+                    text: sc.key;
+                    font-family: Theme.font-pixel;
+                    font-size: 9px;
+                    color: Theme.accent;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        Text {
+            text: sc.label;
+            font-family: Theme.font-pixel;
+            font-size: 8px;
+            color: Theme.muted;
+            vertical-alignment: center;
+        }
+    }
+}
