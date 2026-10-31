@@ -1619,8 +1619,11 @@ mod tests {
         assert!(r.notes[0].contains("no performance mod bundle"));
         let mods = write_instance(&e, "brand", "26.3", "fabric");
         let r = install_preset(&e, "brand", ModPreset::Branding).await.unwrap();
-        assert_eq!(r.installed, vec!["espectral-menu-26.3-1.6.2.jar"]);
-        assert!(mods.join("espectral-menu-26.3-1.6.2.jar").exists());
+        // the jar name follows the bundled assets/branding/branding.json (bumped every release)
+        let jar = branding_pin_for_version(&e, "26.3", Loader::Fabric).unwrap().filename;
+        assert!(jar.starts_with("espectral-menu-26.3-"), "{jar}");
+        assert_eq!(r.installed, vec![jar.clone()]);
+        assert!(mods.join(&jar).exists());
     }
 
     #[test]
