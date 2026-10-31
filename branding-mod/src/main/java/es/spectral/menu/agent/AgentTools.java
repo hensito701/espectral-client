@@ -30,9 +30,8 @@ public final class AgentTools {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("espectral-client");
 
-    /** Contract error code for tools this build does not implement yet. */
-    private static final String NOT_YET =
-            "not implemented in this build (relay P2: observe + act only)";
+    /** Contract error text for tools this build does not implement yet. */
+    private static final String NOT_YET = "not implemented in this build yet";
 
     private AgentTools() {}
 
@@ -46,6 +45,11 @@ public final class AgentTools {
             JsonObject args, long timeoutMs) {
         if ("screenshot".equals(tool)) {
             return screenshotAsync(minecraft, new AgentArgs(args), timeoutMs);
+        }
+        if ("shaders".equals(tool)) {
+            // Applying a pack reloads Iris on the render thread; the reply waits
+            // for frames rendered with it, so it must not block that thread.
+            return AgentShaders.apply(minecraft, new AgentArgs(args));
         }
         CompletableFuture<JsonObject> future = new CompletableFuture<>();
         Runnable task = () -> {
@@ -95,15 +99,14 @@ public final class AgentTools {
             case "disconnect":
                 return disconnect(minecraft);
             case "hud":
-            case "shaders":
+                requireTier(minecraft, AgentTier.CAPTURE, name);
+                return hud(minecraft, args);
             case "record_start":
             case "record_stop":
             case "replays":
             case "clip_render":
             case "clip_status":
-                throw new AgentException("UNSUPPORTED",
-                        "'" + name + "' is " + NOT_YET + "; use screenshot, screen_tree, "
-                                + "click, key, type, chat, command or disconnect");
+                throw new AgentException("UNSUPPORTED", "'" + name + "' is " + NOT_YET);
             default:
                 throw new AgentException("UNSUPPORTED", "unknown tool '" + name + "'");
         }
@@ -154,29 +157,33 @@ public final class AgentTools {
     private static CompletableFuture<JsonObject> screenshotAsync(Minecraft minecraft,
             AgentArgs args, long timeoutMs) {
         CompletableFuture<JsonObject> result = new CompletableFuture<>();
+        int width;
+        int height;
+        boolean hud;
+        boolean preview;
         try {
-            screenshotArgs(args);
+            width = args.optInt("width", 0);
+            height = args.optInt("height", 0);
+            hud = args.bool("hud", true);
+            preview = args.bool("preview", true);
+            screenshotSize(width, height, args);
         } catch (AgentException e) {
             result.completeExceptionally(e);
             return result;
         }
         // Tier: the sampled state is the render thread's own view, so reading it
-        // here cannot race with the client's data structures.
+        // here cannot race with the client's data structures. A plain grab is
+        // observe-tier; a custom size or a HUD-less frame is capture-tier.
+        AgentTier tier = width > 0 || !hud ? AgentTier.CAPTURE : AgentTier.OBSERVE;
         AgentState state = AgentStatePublisher.current();
         AgentPolicy.Context context = state != null ? state.context()
                 : AgentPolicy.Context.MENU;
-        if (!AgentTier.OBSERVE.allows(context)) {
+        if (!tier.allows(context)) {
             result.completeExceptionally(new AgentException("TIER_REFUSED",
                     "'screenshot' is refused in context '" + context.wireName() + "'"));
             return result;
         }
-        boolean preview = false;
-        try {
-            preview = args.bool("preview", true);
-        } catch (AgentException ignored) {
-            // validated above; preview defaults to true
-        }
-        CompletableFuture<AgentCapture.Grabbed> grab = AgentCapture.request(preview);
+        CompletableFuture<AgentCapture.Grabbed> grab = AgentCapture.request(preview, width, height, hud);
         grab.whenComplete((shot, error) -> {
             if (error != null) {
                 result.completeExceptionally(error);
@@ -187,19 +194,30 @@ public final class AgentTools {
         return result;
     }
 
-    /** Argument validation for {@code screenshot} (no side effects). */
-    private static void screenshotArgs(AgentArgs args) throws AgentException {
-        if (args.contains("width") || args.contains("height")) {
-            throw new AgentException("UNSUPPORTED",
-                    "custom-size capture (width/height) is not implemented yet; "
-                            + "capture at the window size instead");
+    /** Contract limits for {@code width/height} (both or neither). */
+    private static void screenshotSize(int width, int height, AgentArgs args) throws AgentException {
+        if (args.contains("width") != args.contains("height")) {
+            throw new AgentException("BAD_ARGS", "give both width and height, or neither");
         }
-        if (!args.bool("hud", true)) {
-            throw new AgentException("UNSUPPORTED",
-                    "hud:false (HUD-less capture) is not implemented yet; only the full frame "
-                            + "can be captured in this build");
+        if (!args.contains("width")) return;
+        if (width < AgentCapture.MIN_SIDE || width > AgentCapture.MAX_SIDE
+                || height < AgentCapture.MIN_SIDE || height > AgentCapture.MAX_SIDE) {
+            throw new AgentException("BAD_ARGS", "width and height must be "
+                    + AgentCapture.MIN_SIDE + "…" + AgentCapture.MAX_SIDE + " px");
         }
-        args.bool("preview", true);
+        if ((long) width * height > AgentCapture.MAX_PIXELS) {
+            throw new AgentException("BAD_ARGS", width + "x" + height + " exceeds "
+                    + AgentCapture.MAX_PIXELS + " pixels");
+        }
+    }
+
+    /** {@code hud {hidden}}: the F1 state for the rest of the session. */
+    private static JsonObject hud(Minecraft minecraft, AgentArgs args) throws AgentException {
+        if (!args.has("hidden")) throw new AgentException("BAD_ARGS", "hidden (boolean) is required");
+        es.spectral.menu.Compat.setHudHidden(minecraft, args.bool("hidden", false));
+        JsonObject json = new JsonObject();
+        json.addProperty("hidden", es.spectral.menu.Compat.hudHidden(minecraft));
+        return json;
     }
 
     // ------------------------------------------------------------------

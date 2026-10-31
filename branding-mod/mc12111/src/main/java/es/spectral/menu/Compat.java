@@ -416,6 +416,23 @@ public final class Compat {
         return minecraft != null ? minecraft.getMainRenderTarget() : null;
     }
 
+    /**
+     * False: 1.21.11 only resizes the main target on window events, so agent
+     * custom-size captures are unsupported on this lane.
+     */
+    public static boolean supportsSizedCapture() {
+        return false;
+    }
+
+    /** F1 state: true when the HUD is hidden. */
+    public static boolean hudHidden(Minecraft minecraft) {
+        return minecraft.options.hideGui;
+    }
+
+    public static void setHudHidden(Minecraft minecraft, boolean hidden) {
+        minecraft.options.hideGui = hidden;
+    }
+
     /** submitModel without a crumbling overlay (the overload set differs per version). */
     public static <S> void submitModel(net.minecraft.client.renderer.SubmitNodeCollector collector,
             net.minecraft.client.model.Model<? super S> model, S state, com.mojang.blaze3d.vertex.PoseStack pose,

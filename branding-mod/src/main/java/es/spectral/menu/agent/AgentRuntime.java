@@ -10,6 +10,8 @@ public final class AgentRuntime {
 
     /** Read once: a JVM property cannot change while the game runs. */
     private static final boolean ENABLED = "1".equals(System.getProperty("espectral.agent"));
+    /** Hidden-window agent launch (window never shown; rendering continues). */
+    private static final boolean HIDDEN = ENABLED && "1".equals(System.getProperty("espectral.agent.hidden"));
 
     /** Capture root, relative to the game directory (contract-mandated name). */
     public static final String CAPTURES_DIR = "espectral-captures";
@@ -20,6 +22,10 @@ public final class AgentRuntime {
         return ENABLED;
     }
 
+
+    public static boolean hidden() {
+        return HIDDEN;
+    }
     /** Bridge base URL ({@code …/api/bridge}) or null. */
     public static String bridgeUrl() {
         String url = System.getProperty("espectral.bridge.url");

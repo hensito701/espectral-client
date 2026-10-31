@@ -36,8 +36,20 @@ public final class AgentCapture {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("espectral-client");
 
-    /** Preview width ceiling from the contract (the engine inlines it as base64). */
-    public static final int PREVIEW_MAX_WIDTH = 1280;
+    /** Preview longest-side ceiling (the engine inlines previews as base64). */
+    public static final int PREVIEW_MAX_SIDE = 1280;
+
+    /** Custom-size limits from the contract: each side, and total pixels. */
+    public static final int MIN_SIDE = 64;
+    public static final int MAX_SIDE = 7680;
+    public static final long MAX_PIXELS = 33_200_000L;
+
+    /**
+     * Frames rendered at a custom size before the grab. Iris rebuilds its
+     * targets on the first one; temporal passes (TAA in Complementary) need a
+     * few more before the frame is clean.
+     */
+    private static final int SIZED_SETTLE_FRAMES = 6;
 
     private static final DateTimeFormatter STAMP =
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS");
@@ -53,22 +65,46 @@ public final class AgentCapture {
     private static final class Request {
         final CompletableFuture<Grabbed> future = new CompletableFuture<>();
         final boolean preview;
+        /** Requested size, or 0×0 for the window size. */
+        final int width;
+        final int height;
+        final boolean hud;
         /** Frames still to skip (lets a resize/shader change settle). */
         int delayFrames = 1;
+        /** What the capture changed (size/HUD), restored right after the grab. */
+        Saved saved;
 
-        Request(boolean preview) {
+        Request(boolean preview, int width, int height, boolean hud) {
             this.preview = preview;
+            this.width = width;
+            this.height = height;
+            this.hud = hud;
+        }
+
+        boolean sized() {
+            return width > 0 && height > 0;
         }
     }
+
+    /**
+     * What a capture changed on the render path, restored right after the grab.
+     * Sizes go through {@code Window.setWidth/setHeight} — the same route
+     * vanilla's panorama capture uses — so the camera projection, the main
+     * target and Iris's targets all follow on the next frames without
+     * {@code resizeGui()} re-initialising the open screen.
+     */
+    private record Saved(int width, int height, int guiScale, boolean hideGui, boolean resized) {}
 
     private AgentCapture() {}
 
     /**
-     * Requests a frame. Called on the render thread; the future completes once
-     * the PNG(s) are on disk.
+     * Requests a frame. The future completes once the PNG(s) are on disk.
+     * {@code width/height} 0 = window size; {@code hud=false} hides the HUD
+     * (like F1) for the grab only.
      */
-    public static CompletableFuture<Grabbed> request(boolean wantPreview) {
-        Request request = new Request(wantPreview);
+    public static CompletableFuture<Grabbed> request(boolean wantPreview, int width, int height,
+            boolean hud) {
+        Request request = new Request(wantPreview, width, height, hud);
         synchronized (LOCK) {
             if (pending != null) {
                 request.future.completeExceptionally(
@@ -86,6 +122,27 @@ public final class AgentCapture {
         synchronized (LOCK) {
             request = pending;
             if (request == null || inFlight) return;
+        }
+        if (request.saved == null && (request.sized() || !request.hud)) {
+            try {
+                request.saved = apply(minecraft, request);
+            } catch (AgentException e) {
+                synchronized (LOCK) {
+                    pending = null;
+                }
+                request.future.completeExceptionally(e);
+                return;
+            } catch (Throwable t) {
+                synchronized (LOCK) {
+                    pending = null;
+                }
+                fail(request, "FAILED", "could not prepare the capture: " + t);
+                return;
+            }
+            request.delayFrames = request.sized() ? SIZED_SETTLE_FRAMES : 1;
+            return;
+        }
+        synchronized (LOCK) {
             if (request.delayFrames > 0) {
                 request.delayFrames--;
                 return;
@@ -104,7 +161,17 @@ public final class AgentCapture {
             LOGGER.debug("agent: no render target: {}", t.toString());
         }
         if (target == null) {
+            restore(minecraft, request.saved);
             fail(request, "FAILED", "the main render target is not available");
+            return;
+        }
+        if (request.sized() && (target.width != request.width || target.height != request.height)) {
+            // The window was resized mid-capture (the resize event overwrote
+            // the override): never hand back a frame of the wrong size.
+            restore(minecraft, request.saved);
+            fail(request, "FAILED", "the frame came out " + target.width + "x" + target.height
+                    + " instead of " + request.width + "x" + request.height
+                    + " (window resized during the capture?); retry");
             return;
         }
         final Request done = request;
@@ -113,6 +180,58 @@ public final class AgentCapture {
         } catch (Throwable t) {
             LOGGER.debug("agent: screenshot failed: {}", t.toString());
             fail(done, "FAILED", "screenshot readback failed: " + t);
+        } finally {
+            // The readback is already encoded against this frame's texture;
+            // the next frame renders at the window size again.
+            restore(minecraft, request.saved);
+        }
+    }
+
+    /** Switches the render path to the requested size / HUD state. Render thread. */
+    private static Saved apply(Minecraft minecraft, Request request) throws AgentException {
+        if (minecraft == null) throw new AgentException("FAILED", "no client");
+        var window = minecraft.getWindow();
+        int guiScale = window.getGuiScale();
+        boolean hideGui = es.spectral.menu.Compat.hudHidden(minecraft);
+        if (request.sized()) {
+            if (!es.spectral.menu.Compat.supportsSizedCapture()) {
+                throw new AgentException("UNSUPPORTED",
+                        "custom-size capture needs Minecraft 26.2 or newer; capture at the window size");
+            }
+            if (es.spectral.menu.Compat.getScreen(minecraft) != null) {
+                throw new AgentException("BAD_ARGS",
+                        "custom-size capture renders the world view; close the open screen first "
+                                + "(key escape) or capture at the window size");
+            }
+        }
+        Saved saved = new Saved(window.getWidth(), window.getHeight(), guiScale, hideGui,
+                request.sized());
+        if (request.sized()) {
+            window.setWidth(request.width);
+            window.setHeight(request.height);
+            // The HUD lays itself out from the gui-scaled size each frame, so a
+            // scale computed for the capture size keeps it proportionate.
+            window.setGuiScale(window.calculateScale(minecraft.options.guiScale().get(),
+                    minecraft.isEnforceUnicode()));
+        }
+        if (!request.hud) {
+            es.spectral.menu.Compat.setHudHidden(minecraft, true);
+        }
+        return saved;
+    }
+
+    private static void restore(Minecraft minecraft, Saved saved) {
+        if (minecraft == null || saved == null) return;
+        try {
+            var window = minecraft.getWindow();
+            if (saved.resized()) {
+                window.setWidth(saved.width());
+                window.setHeight(saved.height());
+                window.setGuiScale(saved.guiScale());
+            }
+            es.spectral.menu.Compat.setHudHidden(minecraft, saved.hideGui());
+        } catch (Throwable t) {
+            LOGGER.warn("agent: could not restore the window after a capture: {}", t.toString());
         }
     }
 
@@ -153,7 +272,7 @@ public final class AgentCapture {
             String previewPath = null;
             if (request.preview) {
                 Path previewFile = dir.resolve("shot-" + stamp + "-preview.png");
-                NativeImage scaled = downscale(image, PREVIEW_MAX_WIDTH);
+                NativeImage scaled = downscale(image, PREVIEW_MAX_SIDE);
                 try {
                     scaled.writeToFile(previewFile);
                 } finally {
@@ -186,17 +305,24 @@ public final class AgentCapture {
         request.future.completeExceptionally(new AgentException(code, message));
     }
 
-    /** Resize through stb (same pixel format required); returns a fresh image. */
-    private static NativeImage downscale(NativeImage source, int maxWidth) {
+    /**
+     * Resize through stb (same pixel format required); returns a fresh image
+     * whose longest side is at most {@code maxSide} — a 1080×1920 portrait
+     * preview is 720×1280, so previews stay small enough to inline.
+     */
+    private static NativeImage downscale(NativeImage source, int maxSide) {
         int width = source.getWidth();
         int height = source.getHeight();
-        if (width <= maxWidth || width <= 0 || height <= 0) {
+        int longest = Math.max(width, height);
+        if (longest <= maxSide || width <= 0 || height <= 0) {
             NativeImage copy = new NativeImage(width, height, false);
             copy.copyFrom(source);
             return copy;
         }
-        int targetHeight = Math.max(1, (int) Math.round(height * (maxWidth / (double) width)));
-        NativeImage scaled = new NativeImage(maxWidth, targetHeight, false);
+        double scale = maxSide / (double) longest;
+        int targetWidth = Math.max(1, (int) Math.round(width * scale));
+        int targetHeight = Math.max(1, (int) Math.round(height * scale));
+        NativeImage scaled = new NativeImage(targetWidth, targetHeight, false);
         source.resizeSubRectTo(0, 0, width, height, scaled);
         return scaled;
     }
