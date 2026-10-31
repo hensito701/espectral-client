@@ -411,6 +411,11 @@ public final class Compat {
         net.minecraft.util.Util.getPlatform().openPath(path);
     }
 
+    /** Main render target (agent screenshot source). */
+    public static com.mojang.blaze3d.pipeline.RenderTarget mainRenderTarget(Minecraft minecraft) {
+        return minecraft != null ? minecraft.getMainRenderTarget() : null;
+    }
+
     /** submitModel without a crumbling overlay (the overload set differs per version). */
     public static <S> void submitModel(net.minecraft.client.renderer.SubmitNodeCollector collector,
             net.minecraft.client.model.Model<? super S> model, S state, com.mojang.blaze3d.vertex.PoseStack pose,

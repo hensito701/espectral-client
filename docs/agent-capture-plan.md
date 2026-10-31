@@ -363,7 +363,7 @@ hidden window, audio tap) are measured through the relay itself in P2/P3.
 |---|---|---|
 | P0 spike | Manual: 26.3 instance + Iris 1.11.7 + Replay Mod 2.6.28 + a shader pack; record 20 s singleplayer, render 1080×1920@60. Try Mine MCP jar for tool ergonomics. Check hidden-window behaviour under Wayland/XWayland. | Notes appended here: render time per output second on the Barcelo iGPU, live fps with shaders, Replay Mod render class names, hidden-window result. |
 | P1 engine | `agent`/`join`/`window` launch, bridge `state` phases, agent token, stdio shim with `launch/stop/state/logs`. | Fresh MCP client: `launch {instance, join:{world}, wait_for:"in_world"}` returns `in_world`; `npm test` green with new behaviour tests (quickPlay arg mapping, token auth, state transitions). |
-| P2 relay + observe/act | poll/result protocol, `screenshot`, `screen_tree`, `click/key/type`, `chat`, tiers, F8. | Agent alone: opens Suite from title menu on **26.3**, toggles a feature, screenshot proves it; `chat` refused on a non-allowlisted server with a clear error. |
+| P2 relay + observe/act | poll/result protocol, `screenshot`, `screen_tree`, `click/key/type`, `chat`, tiers, F8. | **Done (2026-10-31, 26.3, in-game).** Agent alone: `screen_tree` on the title menu → clicks into the Suite → toggles *No Fog* → screenshot proves it (and back). `key`/`type` drive vanilla input; `chat`/`command` land in-game. Act tools answer `TIER_REFUSED` on `main.uhce.top` (context `espectral`, latched through the kick), `PAUSED` needs a human F8 (agent `key f8` is refused outright). |
 | P3 capture | portrait/hi-res screenshot with shaders, `shaders`, live `record`, Replay Mod `clip render`, ffmpeg provisioning on Windows. | Agent alone produces a 15 s 1080×1920 60 fps MP4 with shaders; `ffprobe` confirms size/fps/duration; sampled frames non-black and visibly shaded. |
 | P4 users | Settings UI, MCP config copy, capture toggle, i18n, docs/CHANGELOG. | Real UI driven in a browser + screenshot; `npm run check` 0 errors; copied config works from a clean MCP client. |
 
@@ -394,3 +394,26 @@ Gradle for all three mod variants, cargo check if Rust is touched).
   build with `./gradlew :mc263:build` (etc.) in `branding-mod/` and copy jars
   into the instance yourself, or teach the script the Linux install dir.
 - Start with P0 and write the findings into this file before building P1+.
+
+## P2 implementation notes (mod relay, 2026-10-31)
+
+- `es.spectral.menu.agent` (shared `src/main/java`): `AgentRelay` (daemon
+  poller + separate 0.5 s state thread; backoff 1→30 s; shutdown hook releases
+  held keys), `AgentState`/`AgentStates`/`AgentStatePublisher`, `AgentPolicy`
+  (context classifier + blocked-host DNS resolver + startup self-check log
+  line), `AgentTools` (tool table + tiers), `AgentScreens` (`screen_tree`),
+  `AgentInput` (lease bookkeeping), `AgentCapture` (`screenshot`),
+  `AgentPause` (F8), `AgentHud` (paused chip), `AgentTick`.
+- Per lane: `AgentInputCompat` (public handlers on 26.3; `@Invoker` mixins for
+  `MouseHandler.onButton/onMove` and `KeyboardHandler.keyPress/charTyped` on
+  26.2/1.21.11), `Compat.mainRenderTarget`, `AgentHudMixin`
+  (`extractRenderState` on 26.x, `render` on 1.21.11).
+- Capture hook is `Minecraft.runTick` TAIL — the one frame boundary all three
+  lanes share and where the main render target still holds the finished frame.
+- Custom-drawn Espectral menus implement `AgentScreenExtras` (the title menu
+  turns its `Btn` list into `menu.N` / `icon.N` regions); Suite screens already
+  use vanilla widgets, so their ids are `w.N`.
+- Context is latched from `--quickPlayMultiplayer` and from every live
+  classification: a client kicked off a public server reports
+  `phase: disconnected`, `context: espectral`, `server: main.uhce.top`, so act
+  tools stay refused on the disconnect screen.

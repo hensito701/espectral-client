@@ -20,7 +20,7 @@ import es.spectral.menu.TitleMenu;
  * {@code extractBackground} empty because {@link TitleMenu#render} draws our
  * own backdrop.
  */
-public class EspectralTitleScreen extends Screen {
+public class EspectralTitleScreen extends Screen implements es.spectral.menu.agent.AgentScreenExtras {
 
     private final TitleMenu menu = new TitleMenu(Minecraft.getInstance(), this);
 
@@ -66,5 +66,11 @@ public class EspectralTitleScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    /** Agent view of the hand-painted menu buttons (see TitleMenu). */
+    @Override
+    public java.util.List<es.spectral.menu.agent.AgentWidget> agentWidgets() {
+        return menu.agentWidgets();
     }
 }

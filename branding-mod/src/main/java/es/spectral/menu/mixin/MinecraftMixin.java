@@ -44,6 +44,16 @@ public abstract class MinecraftMixin {
             ClientConfig.getInstance().maybeReload();
         }
     }
+
+    /**
+     * Agent relay housekeeping (expiring key leases, the F8 pause sample,
+     * starting the relay thread). One volatile read when agent mode is off.
+     */
+    @Inject(method = "tick()V", at = @At("TAIL"))
+    private void espectral$agentTick(CallbackInfo ci) {
+        es.spectral.menu.agent.AgentTick.onClientTick((Minecraft) (Object) this);
+    }
+
     /**
      * Leaving a server or world. Drops baked 3D Skin Layers voxel models
      * (they rebuild lazily on the next join) and logs the marker the
