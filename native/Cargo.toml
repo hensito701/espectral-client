@@ -1,7 +1,9 @@
 # Espectral Client — native (Rust) workspace.
 #
 # engine/  espectral-engine: the launcher engine as a library (port of src/engine/*.mjs)
-# app/     espectral-client: the native binary (Slint UI, see app/UI-PORTING.md)
+# app/     espectral-client: the native binary (see app/UI-PORTING.md)
+# ui/      espectral-client-ui: app/ui/*.slint compiled to Rust (its own crate so
+#          app code edits never recompile the ~60 MB generated module)
 # skin3d/  espectral-skin3d: software 3D Minecraft skin renderer used by the UI
 #
 # Every third-party dependency is pinned HERE, once. Member crates reference
@@ -11,7 +13,7 @@
 
 [workspace]
 resolver = "2"
-members = ["engine", "app", "skin3d"]
+members = ["engine", "app", "ui", "skin3d"]
 
 [workspace.package]
 # Mirrors package.json "version"; the in-app updater compares it with latest.json.
@@ -106,6 +108,7 @@ png = "0.18"
 # Slint's own image loading; webp/gif cover the remaining cdn.modrinth.com formats.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 espectral-skin3d = { path = "skin3d" }
+espectral-client-ui = { path = "ui" }
 
 # Disk budget: no debug info for third-party crates (Slint + winit + femtovg
 # are large), and a light optimization so the UI is usable in dev builds.
@@ -118,8 +121,15 @@ opt-level = 1
 [profile.dev.package.espectral-skin3d]
 opt-level = 3
 
-# The app crate's Slint-generated module (~60 MB of Rust) makes rustc peak at
-# ~12.7 GB with full debug info; line tables keep backtraces usable.
+# The UI crate is the Slint-generated module (~60 MB of Rust): rustc peaks at
+# ~12.7 GB on it with full debug info; line tables keep backtraces usable.
+# Incremental caches of it run to several GB per session and add memory, and
+# it only rebuilds on a .slint change anyway: keep incremental for the small
+# crates only.
+[profile.dev.package.espectral-client-ui]
+debug = "line-tables-only"
+incremental = false
+
 [profile.dev.package.espectral-client]
 debug = "line-tables-only"
 
@@ -128,16 +138,13 @@ lto = "thin"
 codegen-units = 4
 strip = "symbols"
 
-# The app crate is mostly Slint-generated Rust (one very large module, ~2/3
-# of the binary's machine code). With 4 codegen units rustc's peak memory
-# exceeds 14 GB at opt-level 3; 16 units keep the build under that. opt-level
-# "s" roughly halves the generated code (property bindings / layout glue are
-# not hot; the skin rasterizer is its own crate and stays at opt-level 3).
-# `strip` must be repeated here: a per-package override of the root package
-# otherwise drops the profile-wide `strip` (the binary kept its 42 MB symtab).
+# The UI crate is one very large generated module (~2/3 of the binary's
+# machine code). With 4 codegen units rustc's peak memory exceeds 14 GB at
+# opt-level 3; 16 units keep the build under that. opt-level "s" roughly
+# halves the generated code (property bindings / layout glue are not hot; the
+# skin rasterizer is its own crate and stays at opt-level 3).
 # panic = "abort" is NOT an option: the engine relies on unwinding
 # (catch_unwind in launch / aot / game_launch, tokio JoinError on panics).
-[profile.release.package.espectral-client]
+[profile.release.package.espectral-client-ui]
 codegen-units = 16
 opt-level = "s"
-strip = "symbols"

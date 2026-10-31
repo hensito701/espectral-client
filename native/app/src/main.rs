@@ -20,7 +20,9 @@
 
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-slint::include_modules!();
+// The UI (AppWindow, globals, structs) comes from the espectral-client-ui
+// crate, kept separate so edits here do not recompile the generated module.
+pub use espectral_client_ui::*;
 
 mod backdrop;
 mod bridge;

@@ -452,20 +452,38 @@ cargo fmt --all
 native/app/scripts/screenshot.sh '<your routes>' ... # compare with the references
 ```
 
-**Memory:** the Slint-generated module of the app crate is ~60 MB of Rust;
-one rustc on it peaks at ~11.5-12.7 GB (debug build, test build *and* release
-build alike; ~7.7 GB for `check`/`clippy`). On a 16 GB machine never let two
-app-crate compilations overlap: `cargo clippy --all-targets` checks the bin and
-the test harness in parallel unless you pass `-j 1`, and never run two cargo
-commands at once. Release builds: `-j 2`, ~15 min. **Disk:** each incremental
-session of the app crate is several GB (`target/debug/incremental` reached
-~20 GB after build + test + clippy and filled the disk); use
-`CARGO_INCREMENTAL=0` for one-off `test` / `clippy` runs or delete
-`target/*/incremental` afterwards.
+**Crates:** the `.slint` sources live here (`native/app/ui`) but are compiled
+by their own crate, `native/ui` (`espectral-client-ui`, ~60 MB of generated
+Rust); the app crate re-exports it (`pub use espectral_client_ui::*`). An edit
+to the app's Rust code no longer recompiles the UI: measured 10 s and 1.8 GB
+for a rebuild after touching `src/util.rs` (was ~5 min and ~12 GB). The test
+harness and the bin share the one compiled UI crate.
+
+**Live preview (UI work):** `scripts/screenshot.sh` builds a dev binary with
+`SLINT_LIVE_PREVIEW=1 --features live-preview` into `native/target/live`. It
+loads `ui/*.slint` when it starts (Slint interpreter), so a `.slint` edit costs
+~10 s of cargo plus ~6 s per screenshot, with no recompile of the generated
+module; the first live build peaks at ~3 GB. Its screenshots are
+pixel-identical to the compiled build's. Adding or renaming a property or
+callback that Rust uses still needs a normal rebuild, and release builds
+refuse the feature (`native/ui/build.rs`). `ESPECTRAL_SHOT_COMPILED=1` shoots
+the compiled build instead.
+
+**Memory:** one rustc on the UI crate peaks at ~11.5-13.9 GB (debug, test and
+release alike; ~7.7 GB for `check`/`clippy`). On a 16 GB machine never run two
+cargo commands at once, and keep `-j 2` for builds that compile the UI crate
+(its codegen threads draw from the same job slots). Release builds: `-j 2`,
+~15-20 min. With Minecraft open on Windows the 13.9 GB peak exhausts the
+host's commit limit and Windows stops the WSL VM: build release with the game
+closed. **Incremental:** off for the UI crate
+(`[profile.dev.package.espectral-client-ui] incremental = false`; its caches
+ran to tens of GB and it only rebuilds on a `.slint` change), on for the small
+crates.
 
 Disk is limited: `[profile.dev.package."*"]` already disables debug info for
-dependencies (the app crate itself builds with `debug = "line-tables-only"`). Use your worktree's own `native/target`, and delete it when you
-are done and committed. Do not push.
+dependencies (the UI and app crates build with `debug = "line-tables-only"`).
+Use your worktree's own `native/target`, and delete it when you are done and
+committed. Do not push.
 
 Engine changes made by the foundation: **none** (the UI uses only the public
 `Engine` facade, `engine.config()`, `engine.paths()`, `engine.http()`,
