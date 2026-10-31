@@ -1,0 +1,179 @@
+// Theme — port of src/ui/src/styles/tokens.css (+ the bits of base.css that
+// are tokens). FOUNDATION-OWNED: page agents read it, never edit it; ask for
+// a new token in your report instead of adding one here.
+//
+//   CSS                                  Slint
+//   var(--accent)                        Theme.accent
+//   rgba(var(--accent-rgb), 0.12)        Theme.accent.with-alpha(0.12)
+//   var(--space-4) / var(--radius-md)    Theme.space-4 / Theme.radius-md
+//   var(--text-sm)                       Theme.text-sm
+//   var(--font-mono-retro) (.font-pixel) Theme.font-pixel
+//   box-shadow: var(--shadow-md)         drop-shadow-blur: Theme.shadow-md-blur; drop-shadow-offset-y: Theme.shadow-md-y; drop-shadow-color: Theme.shadow-md-color;
+//
+// `dark` and `accent-id` are driven from Rust (src/theme.rs) from the engine
+// config (`theme`, `accent`) and the OS color scheme. Never set them from a
+// page: call Shell.set-theme-mode(...) / Shell.set-accent(...).
+
+import { Palette } from "std-widgets.slint";
+
+export global Theme {
+    // ---- inputs ------------------------------------------------------------
+    /// "dark" | "light" | "system" (engine config `theme`). Set by Rust.
+    in-out property <string> mode: "dark";
+    /// "oro" | "carmesi" | "amatista" | "esmeralda" | "glaciar" (engine config `accent`). Set by Rust.
+    in-out property <string> accent-id: "oro";
+    /// Resolved scheme: true = dark palette.
+    out property <bool> dark: mode == "system" ? Palette.color-scheme != ColorScheme.light : mode != "light";
+
+    // ---- surfaces ------------------------------------------------------------
+    out property <color> bg: dark ? #060a14 : #f4f6fb;
+    out property <color> surface: dark ? rgba(16, 22, 42, 0.65) : rgba(255, 255, 255, 0.78);
+    out property <color> surface-solid: dark ? #0d1222 : #ffffff;
+    out property <color> surface-up: dark ? rgba(25, 32, 64, 0.55) : rgba(238, 242, 250, 0.9);
+    out property <color> surface-up-solid: dark ? #161e36 : #e6ebf5;
+    out property <color> card-bg: dark ? rgba(13, 18, 34, 0.75) : rgba(255, 255, 255, 0.85);
+    out property <color> card-bg-soft: dark ? rgba(20, 28, 52, 0.5) : rgba(240, 244, 252, 0.7);
+    out property <color> chrome-bg: dark ? rgba(6, 10, 20, 0.88) : rgba(244, 246, 251, 0.92);
+    out property <color> topbar-bg: dark ? rgba(8, 13, 26, 0.82) : rgba(244, 246, 251, 0.88);
+    out property <color> rail-bg: dark ? rgba(10, 15, 30, 0.6) : rgba(235, 240, 250, 0.75);
+    out property <color> log-bg: dark ? #080c18 : #e9eef7;
+    /// Modal / palette scrim (CSS also blurs; we cannot — it is a bit denser instead).
+    out property <color> backdrop: dark ? rgba(3, 6, 14, 0.82) : rgba(15, 23, 42, 0.6);
+
+    // ---- text ----------------------------------------------------------------
+    out property <color> text: dark ? #e8ecf4 : #121829;
+    out property <color> text-inverse: dark ? #060a14 : #ffffff;
+    out property <color> muted: dark ? #9fb0cc : #33415c;
+    out property <color> muted-strong: dark ? #c3d2ec : #1f2937;
+
+    // ---- accent palette (follows accent-id + scheme) -------------------------
+    out property <color> accent: dark ? pick(accent-id, #d9a93b, #e5484d, #bb86fc, #10b981, #38bdf8) : pick(accent-id, #b45309, #c9243a, #8b5cf6, #059669, #0284c7);
+    out property <color> accent-ink: dark ? pick(accent-id, #c47b1e, #b01e3c, #7c3aed, #059669, #0284c7) : pick(accent-id, #92400e, #9f1239, #6d28d9, #047857, #075985);
+    out property <color> accent-bright: dark ? pick(accent-id, #ffd873, #ff8a92, #d9b3ff, #6ee7b7, #7dd3fc) : pick(accent-id, #d97706, #e5484d, #a78bfa, #10b981, #0ea5e9);
+    /// Gradient partner (wordmark light stop).
+    out property <color> accent-2: dark ? pick(accent-id, #ffe3a1, #ffb3b8, #f0ddff, #a7f3d0, #c9edff) : pick(accent-id, #d97706, #e5484d, #a78bfa, #34d399, #38bdf8);
+
+    // ---- fixed semantic hues -------------------------------------------------
+    out property <color> accent-gold: dark ? #ffd700 : #b45309;
+    out property <color> accent-alt: dark ? #f59e0b : #d97706;
+    out property <color> accent-cyan: dark ? #06b6d4 : #0891b2;
+    out property <color> accent-purple: dark ? #a855f7 : #7e22ce;
+    out property <color> accent-red: dark ? #ef4444 : #dc2626;
+    out property <color> accent-green: dark ? #22c55e : #16a34a;
+    out property <color> msa-blue: #00a4ef;
+    out property <color> discord: #5865f2;
+
+    // loader gradients (--loader-*)
+    out property <brush> loader-vanilla: @linear-gradient(135deg, #10b981 0%, #059669 100%);
+    out property <brush> loader-fabric: @linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+    out property <brush> loader-neoforge: @linear-gradient(135deg, #f97316 0%, #ef4444 100%);
+    out property <brush> loader-quilt: @linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+
+    // game modes (--mode-*)
+    out property <color> mode-uhc: #10b981;
+    out property <color> mode-hg: #ef4444;
+    out property <color> mode-towers: #06b6d4;
+    out property <color> mode-smp: #a855f7;
+    out property <color> mode-torneo: #f97316;
+
+    // ---- borders -------------------------------------------------------------
+    out property <color> border: dark ? rgba(40, 58, 96, 0.45) : rgba(190, 204, 226, 0.65);
+    out property <color> border-solid: dark ? #1f2b48 : #cfd8e8;
+    out property <color> border-focus: accent.with-alpha(dark ? 0.6 : 0.8);
+    out property <color> glass-border: dark ? rgba(255, 255, 255, 0.13) : rgba(18, 24, 41, 0.14);
+    out property <color> hover-border: accent.with-alpha(0.4);
+    /// Specular top highlight of glass cards (GlassCard ::before).
+    out property <color> glass-highlight: dark ? rgba(255, 255, 255, 0.25) : rgba(255, 255, 255, 0.9);
+
+    // ---- shadows (one drop-shadow per element in Slint) ----------------------
+    out property <color> shadow-sm-color: dark ? rgba(0, 0, 0, 0.25) : rgba(18, 24, 41, 0.09);
+    out property <length> shadow-sm-blur: 10px;
+    out property <length> shadow-sm-y: 2px;
+    out property <color> shadow-md-color: dark ? rgba(0, 0, 0, 0.35) : rgba(18, 24, 41, 0.12);
+    out property <length> shadow-md-blur: 28px;
+    out property <length> shadow-md-y: 8px;
+    out property <color> shadow-lg-color: dark ? rgba(0, 0, 0, 0.5) : rgba(18, 24, 41, 0.18);
+    out property <length> shadow-lg-blur: 48px;
+    out property <length> shadow-lg-y: 16px;
+    out property <color> shadow-card-color: dark ? rgba(0, 0, 0, 0.3) : rgba(18, 24, 41, 0.08);
+    out property <length> shadow-card-blur: 20px;
+    out property <length> shadow-card-y: 4px;
+    /// --glass-glow / --glow-play
+    out property <color> glow-color: accent.with-alpha(dark ? 0.15 : 0.12);
+    out property <color> glow-play-color: accent.with-alpha(dark ? 0.4 : 0.25);
+
+    // ---- radii ---------------------------------------------------------------
+    out property <length> radius-xs: 4px;
+    out property <length> radius-sm: 6px;
+    out property <length> radius-md: 10px;
+    out property <length> radius-lg: 14px;
+    out property <length> radius-xl: 20px;
+    out property <length> radius-tile: 16px;
+    out property <length> radius-pill: 9999px;
+
+    // ---- spacing -------------------------------------------------------------
+    out property <length> space-1: 4px;
+    out property <length> space-2: 8px;
+    out property <length> space-3: 12px;
+    out property <length> space-4: 16px;
+    out property <length> space-5: 20px;
+    out property <length> space-6: 24px;
+    out property <length> space-8: 32px;
+    out property <length> space-10: 40px;
+    out property <length> space-12: 48px;
+    out property <length> space-16: 64px;
+
+    // ---- typography ----------------------------------------------------------
+    out property <string> font-body: "Space Grotesk";
+    out property <string> font-display: "Space Grotesk";
+    /// .font-pixel / --font-mono-retro (Press Start 2P). Use letter-spacing: -0.04em.
+    out property <string> font-pixel: "Press Start 2P";
+    out property <string> font-mono: "monospace";
+    out property <length> text-xs: 12px;
+    out property <length> text-sm: 14px;
+    out property <length> text-md: 15px;
+    out property <length> text-base: 16px;
+    out property <length> text-lg: 18px;
+    out property <length> text-xl: 22px;
+    out property <length> text-2xl: 28px;
+    out property <length> text-3xl: 36px;
+    /// --text-hero: clamp(2rem, 1.5rem + 1.8vw, 3rem) for a viewport width.
+    public pure function text-hero(viewport-width: length) -> length {
+        return clamp(24px + viewport-width * 0.018, 32px, 48px);
+    }
+
+    // ---- motion (CSS durations capped at 200 ms) ------------------------------
+    out property <duration> dur-fast: 120ms;
+    out property <duration> dur-med: 180ms;
+    out property <duration> dur-slow: 200ms;
+
+    // ---- shell layout --------------------------------------------------------
+    out property <length> topbar-height: 64px;
+    out property <length> statusbar-height: 28px;
+    out property <length> pip-collapsed-height: 36px;
+    out property <length> pip-expanded-height: 260px;
+    out property <length> max-width: 1152px;
+    out property <length> content-max: 1312px;
+
+    // ---- scrollbars ------------------------------------------------------------
+    out property <color> scrollbar-track: dark ? rgba(6, 10, 20, 0.4) : rgba(220, 226, 238, 0.4);
+    out property <color> scrollbar-thumb: dark ? rgba(159, 176, 204, 0.3) : rgba(51, 65, 92, 0.35);
+    out property <color> scrollbar-thumb-hover: dark ? rgba(159, 176, 204, 0.55) : rgba(51, 65, 92, 0.6);
+
+    // ---- helpers ---------------------------------------------------------------
+    /// CSS hsla(h, s%, l%, a) — s and l in 0..1.
+    public pure function hsla(h: float, s: float, l: float, a: float) -> color {
+        let v = l + s * min(l, 1 - l);
+        let sv = v == 0 ? 0 : 2 * (1 - l / v);
+        return hsv(mod(mod(h, 360) + 360, 360), sv, v, a);
+    }
+
+    /// Badge / chip palette by semantic tone name ("ok" | "warn" | "err" | "info" | "accent" | "gold" | "purple" | "neutral").
+    public pure function tone(name: string) -> color {
+        return name == "ok" ? accent-green : name == "warn" ? accent-alt : (name == "err" || name == "error" || name == "danger") ? accent-red : name == "info" ? accent-cyan : name == "accent" ? accent : name == "gold" ? accent-gold : name == "purple" ? accent-purple : muted;
+    }
+
+    pure function pick(id: string, oro: color, carmesi: color, amatista: color, esmeralda: color, glaciar: color) -> color {
+        return id == "carmesi" ? carmesi : id == "amatista" ? amatista : id == "esmeralda" ? esmeralda : id == "glaciar" ? glaciar : oro;
+    }
+}

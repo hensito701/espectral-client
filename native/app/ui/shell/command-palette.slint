@@ -1,0 +1,334 @@
+// CommandPalette — port of components/CommandPalette.svelte. FOUNDATION-OWNED.
+// The item list (recent / running / instances / navigation / actions, fuzzy
+// scoring, recents persistence) is computed in Rust: src/palette.rs.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { Shell, PaletteState, PaletteItem } from "../state.slint";
+import { Kbd } from "../widgets/badge.slint";
+import { Emoji } from "../widgets/emoji.slint";
+
+component PaletteRow inherits Rectangle {
+    in property <PaletteItem> item;
+    in property <bool> active;
+    callback hovered();
+    callback activate();
+
+    property <color> icon-fg: item.icon-kind == "play" ? Theme.accent : item.icon-kind == "stop" ? Theme.accent-red : item.icon-kind == "wizard" ? Theme.accent-gold : Theme.muted-strong;
+    property <color> icon-tint: item.icon-kind == "play" ? Theme.accent : item.icon-kind == "stop" ? Theme.accent-red : item.icon-kind == "wizard" ? Theme.accent-gold : transparent;
+    property <color> badge-fg: item.badge-type == "launch" ? Theme.accent : item.badge-type == "nav" ? Theme.accent-cyan : item.badge-type == "action" ? Theme.accent-gold : item.badge-type == "running" ? Theme.accent-red : Theme.muted;
+
+    height: 50px;
+    border-radius: Theme.radius-md;
+    background: active || ta.has-hover ? Theme.surface-up : transparent;
+    border-width: 1px;
+    border-color: active || ta.has-hover ? Theme.border-focus : transparent;
+    drop-shadow-color: active ? Theme.accent.with-alpha(0.12) : transparent;
+    drop-shadow-blur: 16px;
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        moved => { root.hovered(); }
+        clicked => { root.activate(); }
+    }
+    changed active => { }
+
+    HorizontalLayout {
+        x: root.active ? 2px : 0px;
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-3;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: Theme.radius-sm;
+                background: root.icon-tint == transparent ? Theme.surface-solid : root.icon-tint.with-alpha(0.1);
+                border-width: 1px;
+                border-color: root.icon-tint == transparent ? Theme.border : root.icon-tint.with-alpha(0.3);
+                Emoji {
+                    char: root.item.icon-kind == "instance" ? "⛏" : root.item.icon-kind == "play" ? "▶" : root.item.icon-kind == "stop" ? "⏹" : root.item.icon-kind == "nav" ? "◈" : root.item.icon-kind == "wizard" ? "✦" : root.item.icon-kind == "folder" ? "📁" : root.item.icon-kind == "theme" ? "◐" : root.item.icon-kind == "lang" ? "🌐" : root.item.icon-kind == "logs" ? "📋" : "⚙";
+                    size: 15px;
+                    fallback-color: root.icon-fg;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Text {
+                text: root.item.title;
+                font-size: Theme.text-sm;
+                font-weight: 600;
+                color: Theme.text;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.description;
+                font-size: Theme.text-xs;
+                color: Theme.muted;
+                overflow: elide;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: badge-text.preferred-height + 6px;
+                min-width: badge-text.preferred-width + 12px;
+                border-radius: Theme.radius-xs;
+                background: root.item.badge-type == "default" ? Theme.surface-solid : root.badge-fg.with-alpha(root.item.badge-type == "running" ? 0.15 : 0.1);
+                border-width: 1px;
+                border-color: root.item.badge-type == "default" ? Theme.border : root.badge-fg.with-alpha(root.item.badge-type == "running" ? 0.4 : 0.3);
+                badge-text := Text {
+                    text: root.item.badge;
+                    font-family: Theme.font-pixel;
+                    font-size: 9px;
+                    letter-spacing: 0.45px;
+                    color: root.badge-fg;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+export component CommandPalette inherits Rectangle {
+    visible: Shell.palette-open;
+    background: Theme.backdrop;
+
+    changed visible => {
+        if self.visible {
+            PaletteState.query = "";
+            PaletteState.opened();
+            list.content-y = 0;
+            input.focus();
+        }
+    }
+
+    TouchArea {
+        clicked => { Shell.palette-open = false; }
+    }
+
+    modal := Rectangle {
+        width: min(640px, root.width - 2 * Theme.space-4);
+        x: (root.width - self.width) / 2;
+        y: clamp(root.height * 0.12, 40px, 120px);
+        height: col.preferred-height;
+        border-radius: Theme.radius-xl;
+        background: Theme.card-bg.with-alpha(1);
+        border-width: 1px;
+        border-color: Theme.border-focus;
+        drop-shadow-color: Theme.accent.with-alpha(0.2);
+        drop-shadow-blur: 40px;
+        drop-shadow-offset-y: 12px;
+        clip: true;
+
+        TouchArea { }
+
+        col := VerticalLayout {
+            // input bar
+            Rectangle {
+                background: Theme.surface-solid;
+                HorizontalLayout {
+                    padding-top: Theme.space-4;
+                    padding-bottom: Theme.space-4;
+                    padding-left: Theme.space-5;
+                    padding-right: Theme.space-5;
+                    spacing: Theme.space-3;
+                    Text {
+                        text: ">";
+                        font-family: Theme.font-mono;
+                        font-size: Theme.text-xl;
+                        font-weight: 700;
+                        color: Theme.accent;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        input := TextInput {
+                            text <=> PaletteState.query;
+                            y: (parent.height - self.height) / 2;
+                            height: self.preferred-height;
+                            font-size: Theme.text-base;
+                            font-weight: 500;
+                            color: Theme.text;
+                            single-line: true;
+                            selection-background-color: Theme.accent.with-alpha(0.3);
+                            edited => {
+                                PaletteState.query-edited(self.text);
+                            }
+                            key-pressed(e) => {
+                                if e.text == Key.DownArrow {
+                                    if PaletteState.items.length > 0 {
+                                        PaletteState.highlighted = mod(PaletteState.highlighted + 1, PaletteState.items.length);
+                                        root.scroll-into-view();
+                                    }
+                                    return accept;
+                                }
+                                if e.text == Key.UpArrow {
+                                    if PaletteState.items.length > 0 {
+                                        PaletteState.highlighted = mod(PaletteState.highlighted - 1 + PaletteState.items.length, PaletteState.items.length);
+                                        root.scroll-into-view();
+                                    }
+                                    return accept;
+                                }
+                                if e.text == Key.Return {
+                                    if PaletteState.items.length > 0 { PaletteState.execute(PaletteState.highlighted); }
+                                    return accept;
+                                }
+                                if e.text == Key.Escape {
+                                    Shell.palette-open = false;
+                                    return accept;
+                                }
+                                return reject;
+                            }
+                        }
+                        if input.text == "": Text {
+                            width: parent.width;
+                            height: parent.height;
+                            text: T.tr("command.placeholder");
+                            font-size: Theme.text-base;
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            height: esc-t.preferred-height + 6px;
+                            width: esc-t.preferred-width + 12px;
+                            border-radius: Theme.radius-xs;
+                            background: Theme.surface-up;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            esc-t := Text {
+                                text: "ESC";
+                                font-family: Theme.font-pixel;
+                                font-size: 10px;
+                                color: Theme.muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+                Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+            }
+
+            // body
+            if PaletteState.items.length == 0: VerticalLayout {
+                padding-top: Theme.space-8;
+                padding-bottom: Theme.space-8;
+                padding-left: Theme.space-4;
+                padding-right: Theme.space-4;
+                spacing: Theme.space-1;
+                alignment: center;
+                Text { text: "⌨"; font-size: 32px; color: Theme.muted; opacity: 0.6; horizontal-alignment: center; }
+                Text {
+                    text: T.tr1("command.noResults", "query", PaletteState.empty-query);
+                    font-size: Theme.text-sm;
+                    font-weight: 600;
+                    color: Theme.text;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: T.tr("command.noResultsHint");
+                    font-size: Theme.text-xs;
+                    color: Theme.muted;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+            list := Flickable {
+                visible: PaletteState.items.length > 0;
+                height: PaletteState.items.length > 0 ? min(380px, list-col.preferred-height) : 0px;
+                content-height: list-col.preferred-height;
+                interactive: false;
+                list-col := VerticalLayout {
+                    width: parent.width;
+                    padding-left: Theme.space-3;
+                    padding-right: Theme.space-3;
+                    padding-top: Theme.space-2;
+                    padding-bottom: Theme.space-3;
+                    spacing: 2px;
+                    for item[i] in PaletteState.items: VerticalLayout {
+                        if item.section != "": Text {
+                            height: 30px;
+                            text: item.section;
+                            font-size: Theme.text-xs;
+                            font-weight: 600;
+                            letter-spacing: 0.72px;
+                            color: Theme.muted;
+                            vertical-alignment: bottom;
+                            // CSS: padding 8px 12px 4px
+                            x: Theme.space-3;
+                        }
+                        if item.section != "": Rectangle { height: 4px; }
+                        PaletteRow {
+                            item: item;
+                            active: i == PaletteState.highlighted;
+                            hovered => { PaletteState.highlighted = i; }
+                            activate => { PaletteState.execute(i); }
+                        }
+                    }
+                }
+            }
+
+            // footer
+            Rectangle {
+                background: Theme.chrome-bg;
+                Rectangle { y: 0; height: 1px; background: Theme.border; }
+                HorizontalLayout {
+                    padding-top: Theme.space-3;
+                    padding-bottom: Theme.space-3;
+                    padding-left: Theme.space-5;
+                    padding-right: Theme.space-5;
+                    spacing: Theme.space-4;
+                    HorizontalLayout {
+                        spacing: Theme.space-1;
+                        VerticalLayout { alignment: center; Kbd { text: "↑↓"; } }
+                        Text { text: T.tr("command.kbd.navigate"); font-size: 11px; color: Theme.muted; vertical-alignment: center; }
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-1;
+                        VerticalLayout { alignment: center; Kbd { text: "↵"; } }
+                        Text { text: T.tr("command.kbd.select"); font-size: 11px; color: Theme.muted; vertical-alignment: center; }
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-1;
+                        VerticalLayout { alignment: center; Kbd { text: "ESC"; } }
+                        Text { text: T.tr("command.kbd.close"); font-size: 11px; color: Theme.muted; vertical-alignment: center; }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        text: "ESPECTRAL HORIZON";
+                        font-family: Theme.font-pixel;
+                        font-size: 9px;
+                        letter-spacing: 0.45px;
+                        color: Theme.muted;
+                        opacity: 0.5;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+
+    // keep the highlighted row visible (PaletteItem.top/height are computed in Rust
+    // with the same metrics as the layout above: header 34px, row 50px, spacing 2px)
+    function scroll-into-view() {
+        if PaletteState.highlighted < 0 || PaletteState.highlighted >= PaletteState.items.length { return; }
+        let it = PaletteState.items[PaletteState.highlighted];
+        let top = it.top * 1px + Theme.space-2;
+        let bottom = top + it.height * 1px;
+        if top + list.content-y < 0px {
+            list.content-y = -top + (it.section != "" ? 0px : 0px);
+        } else if bottom + list.content-y > list.height {
+            list.content-y = list.height - bottom - Theme.space-3;
+        }
+    }
+
+}

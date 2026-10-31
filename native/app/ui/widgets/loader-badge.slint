@@ -1,0 +1,88 @@
+// LoaderBadge — port of components/LoaderBadge.svelte (used by home-instances,
+// library-mods and settings-suite-servers: shared, FOUNDATION-OWNED).
+//
+//     LoaderBadge { loader: inst.loader; version: inst.version; }
+//     LoaderBadge { loader: "fabric"; size: LoaderBadgeSize.sm; }
+
+import { Theme } from "../theme.slint";
+
+export enum LoaderBadgeSize { sm, md, lg }
+
+export component LoaderBadge inherits Rectangle {
+    in property <string> loader: "vanilla";
+    in property <string> version;
+    in property <LoaderBadgeSize> size: LoaderBadgeSize.md;
+    in property <bool> show-icon: true;
+
+    property <string> l: loader.to-lowercase();
+    property <string> display-name: l == "vanilla" ? "Vanilla" : l == "fabric" ? "Fabric" : l == "neoforge" ? "NeoForge" : l == "forge" ? "Forge" : l == "quilt" ? "Quilt" : loader == "" ? "Custom" : loader;
+    property <length> fs: size == LoaderBadgeSize.sm ? 10.9px : size == LoaderBadgeSize.lg ? Theme.text-sm : Theme.text-xs;
+    property <length> pad: size == LoaderBadgeSize.sm ? 2px : size == LoaderBadgeSize.lg ? 4px : 3px;
+    property <length> icon-size: size == LoaderBadgeSize.sm ? 10px : size == LoaderBadgeSize.lg ? 14px : 12px;
+    property <string> icon-path: l == "vanilla" ? "M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.8l6.9 3.45L12 11.7 5.1 8.25 12 4.8zM4 9.8l7 3.5v6.9l-7-3.5V9.8zm9 10.4v-6.9l7-3.5v6.9l-7 3.5z"
+        : l == "fabric" ? "M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93V13h4.93A8 8 0 0 1 13 19.93zM6.07 13H11v6.93A8 8 0 0 1 6.07 13zm4.93-2H6.07A8 8 0 0 1 11 4.07zm2-6.93A8 8 0 0 1 17.93 11H13z"
+        : l == "neoforge" || l == "forge" ? "M19.48 12.35c-1.57-.56-2.67-1.42-3.08-2.61a5.6 5.6 0 0 1-.22-1.84c.14-.94.55-1.9 1.1-2.73-1.63.47-3.07 1.4-4.04 2.76A6.9 6.9 0 0 0 12 12c-1.39 0-2.67-.54-3.64-1.43a6.83 6.83 0 0 0-4.04-2.76c.55.83.96 1.79 1.1 2.73.08.62.01 1.25-.22 1.84-.41 1.19-1.51 2.05-3.08 2.61C1.19 12.69 0 13.9 0 15.35 0 19.02 2.98 22 6.65 22h10.7c3.67 0 6.65-2.98 6.65-6.65 0-1.45-1.19-2.66-2.12-3z"
+        : l == "quilt" ? "M4 4h7v7H4V4zm9 0h7v7h-7V4zm-9 9h7v7H4v-7zm9 0h7v7h-7v-7z"
+        : "M20 12 A 8 8 0 1 1 4 12 A 8 8 0 1 1 20 12 Z";
+    property <brush> chip-bg: l == "vanilla" ? Theme.loader-vanilla : l == "fabric" ? Theme.loader-fabric : l == "neoforge" ? Theme.loader-neoforge : l == "forge" ? @linear-gradient(135deg, #f59e0b 0%, #d97706 100%) : l == "quilt" ? Theme.loader-quilt : Theme.loader-vanilla;
+
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    preferred-width: row.preferred-width;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: Theme.radius-pill;
+    background: Theme.card-bg-soft;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-color: Theme.shadow-sm-color;
+    drop-shadow-blur: 10px;
+    drop-shadow-offset-y: 2px;
+
+    row := HorizontalLayout {
+        padding: root.pad;
+        spacing: 0px;
+        Rectangle {
+            border-radius: Theme.radius-pill;
+            background: root.chip-bg;
+            min-width: chip-row.preferred-width;
+            chip-row := HorizontalLayout {
+                padding-left: root.size == LoaderBadgeSize.sm ? 6px : root.size == LoaderBadgeSize.lg ? 10px : 8px;
+                padding-right: self.padding-left;
+                padding-top: root.size == LoaderBadgeSize.sm ? 2px : root.size == LoaderBadgeSize.lg ? 4px : 3px;
+                padding-bottom: self.padding-top;
+                spacing: Theme.space-1;
+                if root.show-icon: VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: root.icon-size;
+                        height: root.icon-size;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: root.icon-path;
+                        fill: #ffffff;
+                    }
+                }
+                Text {
+                    text: root.display-name;
+                    font-size: root.fs;
+                    font-weight: 700;
+                    letter-spacing: 0.24px;
+                    color: #ffffff;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        if root.version != "": Text {
+            text: root.version;
+            font-family: Theme.font-mono;
+            font-size: root.size == LoaderBadgeSize.sm ? 10.4px : root.size == LoaderBadgeSize.lg ? 13.1px : 11.5px;
+            font-weight: 500;
+            color: Theme.muted-strong;
+            vertical-alignment: center;
+            // padding 0 8px 0 6px
+            min-width: self.preferred-width + (root.size == LoaderBadgeSize.sm ? 10px : root.size == LoaderBadgeSize.lg ? 18px : 14px);
+            horizontal-alignment: center;
+        }
+    }
+}
