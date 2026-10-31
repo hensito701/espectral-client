@@ -30,9 +30,6 @@ public final class AgentTools {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("espectral-client");
 
-    /** Contract error text for tools this build does not implement yet. */
-    private static final String NOT_YET = "not implemented in this build yet";
-
     private AgentTools() {}
 
     /**
@@ -43,6 +40,22 @@ public final class AgentTools {
      */
     public static CompletableFuture<JsonObject> dispatch(Minecraft minecraft, String tool,
             JsonObject args, long timeoutMs) {
+        // clip_status / replays never touch the render thread: a clip render
+        // owns it for minutes, and these are how the agent follows it.
+        if ("clip_status".equals(tool)) {
+            return AgentReplay.status(new AgentArgs(args));
+        }
+        if ("replays".equals(tool)) {
+            try {
+                return CompletableFuture.completedFuture(AgentReplay.list(minecraft));
+            } catch (AgentException e) {
+                return CompletableFuture.failedFuture(e);
+            }
+        }
+        if (AgentReplay.busy()) {
+            return CompletableFuture.failedFuture(new AgentException("BUSY",
+                    "a clip is rendering; follow it with clip_status, other tools wait until it is done"));
+        }
         if ("screenshot".equals(tool)) {
             return screenshotAsync(minecraft, new AgentArgs(args), timeoutMs);
         }
@@ -110,10 +123,9 @@ public final class AgentTools {
             case "record_start":
                 requireTier(minecraft, AgentTier.CAPTURE, name);
                 return AgentRecorder.start(minecraft, args);
-            case "replays":
             case "clip_render":
-            case "clip_status":
-                throw new AgentException("UNSUPPORTED", "'" + name + "' is " + NOT_YET);
+                requireTier(minecraft, AgentTier.CAMERA, name);
+                return AgentReplay.start(minecraft, args);
             default:
                 throw new AgentException("UNSUPPORTED", "unknown tool '" + name + "'");
         }

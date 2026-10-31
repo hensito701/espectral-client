@@ -47,8 +47,8 @@ public final class AgentAudio {
     private static volatile long device;
     private static volatile boolean running;
     private static Thread pump;
-    private static volatile OutputStream sink;
-    private static volatile long sinkFrames;
+    /** Live copies of the mix: a live recording and/or a replay audio sidecar. */
+    private static final java.util.List<Sink> SINKS = new java.util.concurrent.CopyOnWriteArrayList<>();
     private static volatile String failure;
 
     private AgentAudio() {}
@@ -144,16 +144,30 @@ public final class AgentAudio {
         return failure != null ? failure : "the game's sound engine is not on the loopback device";
     }
 
-    /** Starts copying the mix into {@code out} (raw s16le 48 kHz stereo). */
-    public static void attach(OutputStream out) {
-        sinkFrames = 0L;
-        sink = out;
+    /** One copy of the mix into a raw s16le 48 kHz stereo stream. */
+    public static final class Sink {
+        final OutputStream out;
+        volatile long frames;
+        /** Wall clock (epoch ms) of the first frame written. */
+        public final long startedAtMs = System.currentTimeMillis();
+
+        Sink(OutputStream out) {
+            this.out = out;
+        }
+    }
+
+    /** Starts copying the mix into {@code out} from the next 10 ms block. */
+    public static Sink attach(OutputStream out) {
+        Sink sink = new Sink(out);
+        SINKS.add(sink);
+        return sink;
     }
 
     /** Stops copying; returns the frames written since {@link #attach}. */
-    public static long detach() {
-        sink = null;
-        return sinkFrames;
+    public static long detach(Sink sink) {
+        if (sink == null) return 0L;
+        SINKS.remove(sink);
+        return sink.frames;
     }
 
     private static void pumpLoop(long handle) {
@@ -167,13 +181,12 @@ public final class AgentAudio {
                 native_.clear();
                 SOFTLoopback.alcRenderSamplesSOFT(handle, native_, BLOCK_FRAMES);
                 native_.get(block);
-                OutputStream out = sink;
-                if (out != null) {
+                for (Sink sink : SINKS) {
                     try {
-                        out.write(block);
-                        sinkFrames += BLOCK_FRAMES;
+                        sink.out.write(block);
+                        sink.frames += BLOCK_FRAMES;
                     } catch (IOException e) {
-                        sink = null;
+                        SINKS.remove(sink);
                         LOGGER.warn("agent: recording audio write failed: {}", e.toString());
                     }
                 }
