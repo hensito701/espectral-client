@@ -182,6 +182,9 @@ public final class Capture {
                 return;
             }
             Request done = request;
+            // One request = one grab: later frames must not grab again while
+            // the writer thread is still encoding.
+            clear(done);
             if (done.hudApplied) {
                 // Restore the HUD in the same frame the grab happened: the
                 // pixels are already read back, so the player sees no flicker.
