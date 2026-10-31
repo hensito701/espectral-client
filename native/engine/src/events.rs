@@ -22,6 +22,7 @@
 //! | `train-done`      | aot.mjs trainInstance, routes/launch.mjs autoTrain      | [`EngineEvent::TrainDone`] |
 //! | `import-progress` | mrpack.mjs (files / overrides)                          | [`EngineEvent::ImportProgress`] |
 //! | `import-done`     | mrpack.mjs importMrpack                                 | [`EngineEvent::ImportDone`] |
+//! | `agent-state`     | routes/agent.mjs mod relay (`POST /api/bridge/agent/state`) | [`EngineEvent::AgentState`] |
 //!
 //! Payload structs serialize to exactly the JS JSON payload (optional fields
 //! are skipped when `None` unless the JS always sent them, e.g. `launch-exit`
@@ -221,6 +222,23 @@ pub struct ImportDoneEvent {
     pub already_exists: Option<bool>,
 }
 
+/// `agent-state` — the mod's latest state report for an agent launch
+/// (relayed from `POST /api/bridge/agent/state`; JS emits it outside
+/// `EVENT_NAMES`, so it is not part of that list).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentStateEvent {
+    pub key: String,
+    pub instance: String,
+    pub phase: Option<String>,
+    pub screen: Option<String>,
+    pub server: Option<String>,
+    pub world: Option<String>,
+    pub context: Option<String>,
+    pub paused: bool,
+    pub recording: bool,
+    pub updated_at: i64,
+}
+
 /// Every event the engine emits. Serialized as `{ "event": "<sse-name>", "data": {…} }`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "data", rename_all = "kebab-case")]
@@ -234,6 +252,7 @@ pub enum EngineEvent {
     TrainDone(TrainDoneEvent),
     ImportProgress(ImportProgressEvent),
     ImportDone(ImportDoneEvent),
+    AgentState(AgentStateEvent),
 }
 
 impl EngineEvent {
@@ -249,6 +268,7 @@ impl EngineEvent {
             EngineEvent::TrainDone(_) => "train-done",
             EngineEvent::ImportProgress(_) => "import-progress",
             EngineEvent::ImportDone(_) => "import-done",
+            EngineEvent::AgentState(_) => "agent-state",
         }
     }
 
@@ -263,6 +283,7 @@ impl EngineEvent {
             EngineEvent::TrainDone(p) => serde_json::to_value(p),
             EngineEvent::ImportProgress(p) => serde_json::to_value(p),
             EngineEvent::ImportDone(p) => serde_json::to_value(p),
+            EngineEvent::AgentState(p) => serde_json::to_value(p),
         };
         r.unwrap_or(Value::Null)
     }
@@ -278,6 +299,7 @@ impl EngineEvent {
             EngineEvent::TrainDone(p) => Some(&p.instance),
             EngineEvent::ImportProgress(p) => Some(&p.instance),
             EngineEvent::ImportDone(p) => Some(&p.instance),
+            EngineEvent::AgentState(p) => Some(&p.instance),
         }
     }
 }

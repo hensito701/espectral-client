@@ -76,6 +76,11 @@ pub struct ContentSettings {
     pub modrinth_retry_backoff: Duration,
     /// servers.mjs FETCH_TIMEOUT_MS.
     pub server_status_timeout: Duration,
+    /// `REPLAY_MOD_PINS_BY_VERSION` override: version -> pin. None = the
+    /// built-in table (tests point it at a mock origin).
+    pub capture_pins: Option<Vec<(String, crate::mods::ReplayModPin)>>,
+    /// `CAPTURE_SHADER_PACKS` override. None = the built-in packs.
+    pub capture_shader_packs: Option<Vec<crate::mods::ShaderPack>>,
 }
 
 impl Default for ContentSettings {
@@ -90,6 +95,8 @@ impl Default for ContentSettings {
             background_on_create: true,
             modrinth_retry_backoff: Duration::from_millis(1000),
             server_status_timeout: Duration::from_millis(10_000),
+            capture_pins: None,
+            capture_shader_packs: None,
         }
     }
 }
@@ -304,6 +311,15 @@ impl Engine {
             return Err(EngineError::conflict(
                 "ALREADY_RUNNING",
                 format!("instance '{name}' is running; stop it before renaming"),
+            ));
+        }
+        // Toggling capture tools rewrites the mods dir (Replay Mod in/out). A
+        // live JVM scans that directory at boot and crashes on a jar that
+        // disappears mid-session, so the same guard as a rename applies.
+        if patch.capture_tools.is_some() && self.active_instances().contains(name) {
+            return Err(EngineError::conflict(
+                "ALREADY_RUNNING",
+                format!("instance '{name}' is running; stop it before changing capture tools"),
             ));
         }
         crate::instances::patch_instance(self, name, &patch).await

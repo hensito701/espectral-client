@@ -7,8 +7,9 @@
 //! ```
 //!
 //! `--write` performs a few writes through the Rust facade (offline account,
-//! active account, instance patch, servers.dat, theme) so the JS engine can be
-//! pointed at the same dir afterwards to confirm it reads them back.
+//! active account, instance patch, servers.dat, theme, agent allowlist) so
+//! the JS engine can be pointed at the same dir afterwards to confirm it reads
+//! them back. The agent token itself is never printed (only whether it is valid).
 //! No onboarding and no background tasks run, so nothing touches the network.
 
 use espectral_engine::{Engine, EngineOptions};
@@ -31,6 +32,11 @@ async fn main() {
     .expect("engine");
 
     if write {
+        let patch = espectral_engine::agent::AgentAccessPatch {
+            enabled: None,
+            allowed_servers: Some(vec!["rust.example:25566".into(), "127.0.0.1:25565".into()]),
+        };
+        engine.set_agent_access(patch).await.expect("set_agent_access");
         engine.create_account("RustUser").await.expect("create_account");
         engine.set_active_account("RustUser").await.expect("set_active_account");
         let patch: espectral_engine::types::InstancePatch =
@@ -58,6 +64,8 @@ async fn main() {
         "theme": engine.get_theme().await.expect("get_theme"),
         "accent": engine.get_accent().await.expect("get_accent"),
         "config": engine.get_config().await.expect("get_config"),
+        "agent_access": engine.agent_access().await.expect("agent_access"),
+        "agent_token_valid": espectral_engine::agent::read_token(engine.paths().data_dir()).is_some(),
     });
     println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
 }

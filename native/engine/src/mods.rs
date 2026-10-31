@@ -845,6 +845,488 @@ async fn install_preset_inner(
 }
 
 // ---------------------------------------------------------------------------
+// Capture tools: Replay Mod + performance pins + default shader pack
+// ---------------------------------------------------------------------------
+//
+// Replay Mod is GPL-3: it is downloaded from Modrinth at install time and
+// NEVER bundled into the MIT espectral-menu jar or the app payload.
+
+/// Modrinth project id of Replay Mod.
+pub const REPLAY_MOD_PROJECT: &str = "Nv2fQJo5";
+/// Preset name the capture-tools progress events carry.
+pub const CAPTURE_PRESET: &str = "capture";
+
+/// One pinned Replay Mod build (sha1-verified, 2.6.28 builds).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplayModPin {
+    pub version_id: String,
+    pub sha1: String,
+    pub filename: String,
+    pub version_number: String,
+}
+
+type ReplayPinRow = (&'static str, &'static str, &'static str, &'static str);
+
+/// version -> (version_id, sha1, filename, version_number).
+const REPLAY_PIN_ROWS: [(&str, ReplayPinRow); 3] = [
+    ("1.21.11", ("KJkQjrpd", "745cc0e46c36f11d377fd4a38ec268791462398a", "replaymod-1.21.11-2.6.28.jar", "2.6.28")),
+    ("26.2", ("eHbYuA7P", "4c0a9b4fa4852af576c20083c4f07e4fea1a32f0", "replaymod-26.2-2.6.28.jar", "2.6.28")),
+    ("26.3", ("7c5mnPyr", "6e6cc19cb5b5a88c2c37dfe567c3d36685ba591b", "replaymod-26.3-2.6.28.jar", "2.6.28")),
+];
+
+/// Versions that have a Replay Mod pin (`Object.keys(REPLAY_MOD_PINS_BY_VERSION)`).
+pub const REPLAY_MOD_PINNED_VERSIONS: [&str; 3] = ["1.21.11", "26.2", "26.3"];
+
+/// Replay Mod pin for a version, or None when the bundle has no build for it.
+pub fn replay_mod_pin(version: &str) -> Option<ReplayModPin> {
+    let (_, (version_id, sha1, filename, version_number)) = REPLAY_PIN_ROWS.iter().find(|(v, _)| *v == version)?;
+    Some(ReplayModPin {
+        version_id: (*version_id).to_string(),
+        sha1: (*sha1).to_string(),
+        filename: (*filename).to_string(),
+        version_number: (*version_number).to_string(),
+    })
+}
+
+/// Replay Mod pin honouring the engine's `capture_pins` override (tests point
+/// the pinned build at a mock origin).
+fn replay_pin_for(engine: &Engine, version: &str) -> Option<ReplayModPin> {
+    match engine.content_settings().capture_pins {
+        Some(pins) => pins.into_iter().find(|(v, _)| v == version).map(|(_, p)| p),
+        None => replay_mod_pin(version),
+    }
+}
+
+/// True when capture tools can be enabled (Fabric + a Replay Mod pin).
+pub fn supports_capture_tools(engine: &Engine, instance: &InstanceMeta) -> bool {
+    instance.loader == Loader::Fabric && replay_pin_for(engine, &instance.version).is_some()
+}
+
+/// A shader pack shipped into `<gameDir>/shaderpacks/` (licences vary per
+/// pack — never bundled).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShaderPack {
+    pub slug: String,
+    pub project_id: String,
+    pub version_id: String,
+    pub version_number: String,
+    pub filename: String,
+    pub sha1: String,
+    pub size: u64,
+    pub url: String,
+}
+
+/// Complementary Reimagined r5.9.3: supports Iris 1.11.x and stays playable
+/// on the low-end iGPU test box. `CAPTURE_SHADER_PACKS` is prettiest-first.
+pub fn default_shader_pack() -> ShaderPack {
+    ShaderPack {
+        slug: "complementary-reimagined".into(),
+        project_id: "HVnmMxH1".into(),
+        version_id: "Bqen1mJX".into(),
+        version_number: "r5.9.3".into(),
+        filename: "ComplementaryReimagined_r5.9.3.zip".into(),
+        sha1: "838139b54cddb56b2e83cd260d8efd960ac536d6".into(),
+        size: 553_397,
+        url: "https://cdn.modrinth.com/data/HVnmMxH1/versions/Bqen1mJX/ComplementaryReimagined_r5.9.3.zip".into(),
+    }
+}
+
+/// MakeUp Ultra Fast 9.6: the fast pack used by live play and `record_*`
+/// (cinematic `clip_render` output is frame-locked, so it keeps the pretty one).
+pub fn fast_shader_pack() -> ShaderPack {
+    ShaderPack {
+        slug: "makeup-ultra-fast".into(),
+        project_id: "izsIPI7a".into(),
+        version_id: "t4YRxQug".into(),
+        version_number: "9.6".into(),
+        filename: "MakeUp-UltraFast-9.6.zip".into(),
+        sha1: "e2a930f1ffb7ca6a56cf466c13c9e36193425a38".into(),
+        size: 406_830,
+        url: "https://cdn.modrinth.com/data/izsIPI7a/versions/t4YRxQug/MakeUp-UltraFast-9.6.zip".into(),
+    }
+}
+
+/// Every pack capture tools installs, prettiest first (`CAPTURE_SHADER_PACKS`).
+pub fn capture_shader_packs() -> Vec<ShaderPack> {
+    vec![default_shader_pack(), fast_shader_pack()]
+}
+
+/// `CAPTURE_SHADER_PACKS.length`.
+pub const CAPTURE_SHADER_PACKS_LEN: usize = 2;
+
+/// Result of [`install_capture_tools`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CaptureToolsResult {
+    pub replay_mod: String,
+    pub performance: Vec<String>,
+    pub shaderpacks: Vec<String>,
+    pub iris_pack: String,
+    pub notes: Vec<String>,
+}
+
+/// `{applied, pack}` from [`select_default_shader_pack`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShaderSelection {
+    pub applied: bool,
+    pub pack: String,
+}
+
+/// Test/future-pin seam (JS `installCaptureTools(instance, opts)`).
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub struct CaptureToolsOptions {
+    /// Packs to download; default [`capture_shader_packs`].
+    pub packs: Option<Vec<ShaderPack>>,
+    /// Replay build to install; default [`replay_mod_pin`] of the instance version.
+    pub replay_pin: Option<ReplayModPin>,
+}
+
+/// A pinned artifact is a plain basename — never a path that could leave the target dir.
+fn assert_safe_pinned_file_name<'a>(name: &'a str, label: &str) -> EngineResult<&'a str> {
+    let bad = name.is_empty()
+        || name.contains("..")
+        || name.contains('/')
+        || name.contains('\\')
+        || Path::new(name).is_absolute();
+    if bad {
+        return Err(code_err(400, "invalid_filename", format!("{label} pins an unsafe filename: {name}")));
+    }
+    Ok(name)
+}
+
+/// Resolve the pinned Replay Mod build, cross-checked against the pin. The pin
+/// — not the Modrinth response — is the trust anchor: verifying a download
+/// against a sha1 the server itself supplied would accept any substituted jar,
+/// so a renamed artifact or a changed hash is refused outright.
+async fn pinned_replay_file(engine: &Engine, pin: &ReplayModPin) -> EngineResult<Value> {
+    let meta = version_meta(engine, &pin.version_id).await?;
+    if let Some(pid) = s(&meta, "project_id") {
+        if pid != REPLAY_MOD_PROJECT {
+            return Err(EngineError::other(format!(
+                "Modrinth version {} belongs to project {pid}, not Replay Mod ({REPLAY_MOD_PROJECT})",
+                pin.version_id
+            )));
+        }
+    }
+    let file = primary_file(&meta)
+        .ok_or_else(|| EngineError::other(format!("Replay Mod build {} has no downloadable file", pin.version_id)))?;
+    let fname = file_name(file);
+    if fname != pin.filename {
+        return Err(EngineError::other(format!(
+            "Replay Mod build {} is served as {fname} but the pin says {}; \
+             re-verify the build and update the pin",
+            pin.version_id, pin.filename
+        )));
+    }
+    if let Some(served) = file_sha1(file) {
+        if served != pin.sha1 {
+            return Err(EngineError::other(format!(
+                "Replay Mod build {} sha1 is {served} but the pin says {}; \
+                 re-verify the build and update the pin",
+                pin.version_id, pin.sha1
+            )));
+        }
+    }
+    Ok(file.clone())
+}
+
+/// Iris' own config file (written by the game; keys are Java properties).
+pub fn iris_properties_path(game_dir: &Path) -> PathBuf {
+    game_dir.join("config").join("iris.properties")
+}
+
+/// File lines, or empty when it does not exist yet (corrupt is read as-is).
+fn read_properties_lines(file: &Path) -> Vec<String> {
+    std::fs::read_to_string(file)
+        .map(|s| s.split('\n').map(|l| l.strip_suffix('\r').unwrap_or(l).to_string()).collect())
+        .unwrap_or_default()
+}
+
+/// `{key, value}` for a data line; None for blanks/comments/other.
+fn parse_property_line(line: &str) -> Option<(&str, &str)> {
+    if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
+        return None;
+    }
+    let i = line.find('=')?;
+    if i == 0 {
+        return None;
+    }
+    Some((line[..i].trim(), &line[i + 1..]))
+}
+
+/// `key=value` value from the lines, last occurrence winning (Java semantics).
+fn property_value<'a>(lines: &'a [String], key: &str) -> Option<&'a str> {
+    lines.iter().rev().find_map(|l| parse_property_line(l).filter(|(k, _)| *k == key).map(|(_, v)| v))
+}
+
+/// Set `key=value`, replacing the last existing occurrence in place (so the
+/// player's ordering and comments survive) and appending when absent. Any
+/// other occurrence is dropped: Java properties read last-wins, so a stale
+/// earlier duplicate would otherwise win over the value we just wrote.
+fn set_property(lines: &mut Vec<String>, key: &str, value: &str) {
+    let mut last = None;
+    for (i, line) in lines.iter().enumerate() {
+        if parse_property_line(line).is_some_and(|(k, _)| k == key) {
+            last = Some(i);
+        }
+    }
+    match last {
+        None => lines.push(format!("{key}={value}")),
+        Some(idx) => {
+            lines[idx] = format!("{key}={value}");
+            for i in (0..lines.len()).rev() {
+                if i != idx && parse_property_line(&lines[i]).is_some_and(|(k, _)| k == key) {
+                    lines.remove(i);
+                }
+            }
+        }
+    }
+}
+
+/// Pick the default shader pack for Iris, but only when the player has not
+/// chosen one: a non-empty `pack` value other than `off` means the user (or a
+/// previous capture-tools install) already decided, and overwriting it would
+/// silently change their graphics.
+///
+/// The game rewrites iris.properties on exit, so this is a seed, not state.
+pub fn select_default_shader_pack(game_dir: &Path, pack: &ShaderPack) -> EngineResult<ShaderSelection> {
+    let file = iris_properties_path(game_dir);
+    let mut lines = read_properties_lines(&file);
+    let current = property_value(&lines, "shaderPack").unwrap_or_default().trim().to_string();
+    if !current.is_empty() && !current.eq_ignore_ascii_case("off") {
+        return Ok(ShaderSelection { applied: false, pack: current });
+    }
+    set_property(&mut lines, "shaderPack", &pack.filename);
+    set_property(&mut lines, "enableShaders", "true");
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    // Write beside the file and rename over it: Iris (or the game) rewrites
+    // this config on exit, and an in-place write interrupted mid-way would
+    // leave the player's other graphics settings truncated.
+    let tmp = {
+        let mut s = file.as_os_str().to_owned();
+        s.push(format!(".{}.tmp", std::process::id()));
+        PathBuf::from(s)
+    };
+    std::fs::write(&tmp, format!("{}\n", lines.join("\n")))?;
+    std::fs::rename(&tmp, &file)?;
+    Ok(ShaderSelection { applied: true, pack: pack.filename.clone() })
+}
+
+/// Enable capture tools on an instance: install the pinned Replay Mod build
+/// (sha1-verified), make sure the performance pins (Iris/Sodium and friends)
+/// are present so shaders can actually run, and download the shipped shader
+/// packs into `<gameDir>/shaderpacks/`.
+///
+/// Nothing is bundled: every artifact comes from Modrinth at install time.
+/// A partial failure rolls the Replay Mod jar back and throws.
+pub async fn install_capture_tools(engine: &Engine, instance: &InstanceMeta) -> EngineResult<CaptureToolsResult> {
+    install_capture_tools_with(engine, instance, &CaptureToolsOptions { packs: None, replay_pin: None }).await
+}
+
+/// [`install_capture_tools`] with explicit pins (tests, future per-instance pins).
+#[doc(hidden)]
+pub async fn install_capture_tools_with(
+    engine: &Engine,
+    instance: &InstanceMeta,
+    opts: &CaptureToolsOptions,
+) -> EngineResult<CaptureToolsResult> {
+    let packs = opts
+        .packs
+        .clone()
+        .or_else(|| engine.content_settings().capture_shader_packs)
+        .unwrap_or_else(capture_shader_packs);
+    let pin = opts.replay_pin.clone().or_else(|| replay_pin_for(engine, &instance.version));
+    let Some(pin) = pin.filter(|_| instance.loader == Loader::Fabric) else {
+        return Err(code_err(
+            400,
+            "CAPTURE_TOOLS_UNSUPPORTED",
+            format!(
+                "capture tools need a Fabric instance on a version with a Replay Mod pin ({})",
+                REPLAY_MOD_PINNED_VERSIONS.join(", ")
+            ),
+        ));
+    };
+    let game_dir = crate::instances::effective_game_dir(engine, instance);
+    let mods_dir = game_dir.join("mods");
+    let shader_dir = game_dir.join("shaderpacks");
+    std::fs::create_dir_all(&mods_dir)?;
+
+    mod_progress(
+        engine,
+        ProgressEvent {
+            preset: Some(CAPTURE_PRESET.into()),
+            ..ProgressEvent::for_instance(&instance.name)
+                .phase("start")
+                .total(3)
+                .index(0)
+                .message("installing capture tools (Replay Mod + shaders)")
+        },
+    );
+
+    let mut installed_replay: Option<PathBuf> = None; // set once THIS call installed the jar
+    let outcome = async {
+        // 1. Replay Mod pin — exact build, sha1 verified against the PIN (not
+        //    against the hash the same server handed us alongside the URL).
+        let file = pinned_replay_file(engine, &pin).await?;
+        let fname = assert_safe_pinned_file_name(&file_name(&file), "Replay Mod pin")?.to_string();
+        let replay_dest = mods_dir.join(&fname);
+        let already_pinned = replay_dest.exists()
+            && crate::download::sha1_file(&replay_dest).await.ok().as_deref() == Some(pin.sha1.as_str());
+        // A leftover `.disabled` twin would show as a second row in the mod
+        // list and could be re-enabled over the verified jar.
+        let disabled_twin = {
+            let mut s = replay_dest.as_os_str().to_owned();
+            s.push(".disabled");
+            PathBuf::from(s)
+        };
+        let _ = std::fs::remove_file(disabled_twin);
+        // A single artifact: download_file directly, so a sha1/size failure
+        // reaches the PATCH response as "sha1 mismatch for <url>".
+        let dl = crate::download::DownloadOptions {
+            sha1: Some(pin.sha1.clone()),
+            size: file.get("size").and_then(Value::as_u64),
+            ..Default::default()
+        };
+        engine.http().download_file(&s(&file, "url").unwrap_or_default(), &replay_dest, &dl).await?;
+        // download_file unlinks a mismatching .part and throws, so a bad hash
+        // never reaches `dest`; assert it once more so a pre-existing jar with
+        // the right name and the wrong bytes cannot be mistaken for the pin.
+        if crate::download::sha1_file(&replay_dest).await.ok().as_deref() != Some(pin.sha1.as_str()) {
+            let _ = std::fs::remove_file(&replay_dest);
+            return Err(EngineError::other(format!(
+                "Replay Mod {} failed sha1 verification after download",
+                pin.version_number
+            )));
+        }
+        if !already_pinned {
+            installed_replay = Some(replay_dest);
+        }
+        let mut notes = vec![format!("replaymod {} installed", pin.version_number)];
+
+        // 2. Performance pins (Iris + Sodium + friends). install_preset skips
+        //    jars that already verify, so a second enable is a cheap no-op.
+        let preset = install_preset(engine, &instance.name, ModPreset::Performance).await?;
+        if !preset.installed.is_empty() {
+            notes.push(format!("performance pins installed: {}", preset.installed.len()));
+        }
+        notes.extend(preset.notes.iter().cloned());
+
+        // 3. Both shipped packs — plain zips in shaderpacks/, sha1-verified.
+        std::fs::create_dir_all(&shader_dir)?;
+        for pack in &packs {
+            assert_safe_pinned_file_name(&pack.filename, "shader pack")?;
+        }
+        let items = packs
+            .iter()
+            .map(|pack| {
+                DownloadItem::new(pack.url.clone(), shader_dir.join(&pack.filename))
+                    .sha1(Some(pack.sha1.clone()))
+                    .size(Some(pack.size))
+                    .event(
+                        ProgressChannel::Mod,
+                        ProgressEvent {
+                            preset: Some(CAPTURE_PRESET.into()),
+                            ..ProgressEvent::for_instance(&instance.name).filename(&pack.filename)
+                        },
+                    )
+            })
+            .collect();
+        engine.http().download_all(items, DownloadAllOptions { concurrency: Some(2), on_item: None }).await?;
+
+        // 4. Iris selection: only when the player has no pack chosen yet.
+        //    Prettiest-first, so [0] is the cinematic one.
+        let preferred = packs.first().cloned().unwrap_or_else(default_shader_pack);
+        let selection = select_default_shader_pack(&game_dir, &preferred)?;
+        if selection.applied {
+            notes.push(format!("iris shader pack set to {}", preferred.filename));
+        }
+
+        mod_progress(
+            engine,
+            ProgressEvent {
+                preset: Some(CAPTURE_PRESET.into()),
+                ..ProgressEvent::for_instance(&instance.name)
+                    .phase("done")
+                    .total(3)
+                    .index(3)
+                    .message("capture tools ready")
+            },
+        );
+        Ok(CaptureToolsResult {
+            replay_mod: fname,
+            performance: preset.installed,
+            shaderpacks: packs.iter().map(|p| p.filename.clone()).collect(),
+            iris_pack: selection.pack,
+            notes,
+        })
+    }
+    .await;
+
+    match outcome {
+        Ok(r) => Ok(r),
+        Err(err) => {
+            // A jar this call installed but could not finish provisioning for
+            // must not outlive the failure: the PATCH leaves `capture_tools`
+            // false, so a leftover Replay Mod would record with the flag
+            // reported off.
+            if let Some(path) = installed_replay {
+                let _ = std::fs::remove_file(path);
+            }
+            let msg = err.to_string();
+            mod_progress(
+                engine,
+                ProgressEvent {
+                    preset: Some(CAPTURE_PRESET.into()),
+                    error: Some(msg.clone()),
+                    ..ProgressEvent::for_instance(&instance.name).phase("error").message(msg)
+                },
+            );
+            Err(err)
+        }
+    }
+}
+
+/// `replaymod*.jar[.disabled]`, case-insensitive.
+static REPLAY_JAR_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"(?i)^replaymod([-.].*)?\.jar(\.disabled)?$").expect("valid regex"));
+
+/// Disable capture tools: remove the Replay Mod jar only. Shader packs and the
+/// Iris/Sodium performance pins stay — disabling captures should not strip the
+/// user's graphics setup.
+///
+/// Matches the mod's own filename prefix rather than the single pinned
+/// filename: an instance upgraded from an older Replay Mod build still holds
+/// `replaymod-<ver>-<older>.jar`, and leaving it behind would keep recording
+/// active after the user switched capture tools off.
+pub async fn remove_capture_tools(engine: &Engine, instance: &InstanceMeta) -> EngineResult<Vec<String>> {
+    let mods_dir = crate::instances::effective_mods_dir(engine, instance);
+    let entries = match std::fs::read_dir(&mods_dir) {
+        Ok(rd) => rd,
+        // No mods dir yet is the normal "nothing installed" case. Any other
+        // failure must surface: reporting success while the jar stays in place
+        // would leave Replay Mod recording after the user turned captures off.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(e.into()),
+    };
+    let mut removed = vec![];
+    for entry in entries {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !REPLAY_JAR_RE.is_match(&name) {
+            continue;
+        }
+        match std::fs::remove_file(entry.path()) {
+            Ok(()) => removed.push(name),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(removed)
+}
+
+// ---------------------------------------------------------------------------
 // Installed-mod detection (pure)
 // ---------------------------------------------------------------------------
 

@@ -48,3 +48,10 @@ windows-sys = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+# Integration tests build their own ZIP archives (capture/ffmpeg provisioning)
+# and hash the fixtures; same pinned versions as the engine's own deps.
+zip = { workspace = true }
+sha1 = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }

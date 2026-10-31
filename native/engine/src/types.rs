@@ -64,6 +64,12 @@ pub mod de {
         })
     }
 
+    /// Any JSON -> bool (`=== true`; anything else is false), absent -> false.
+    pub fn lenient_bool<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+        let v = Option::<Value>::deserialize(d)?;
+        Ok(v.as_ref().and_then(Value::as_bool).unwrap_or(false))
+    }
+
     /// Any JSON -> String (non-strings -> "").
     pub fn string<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
         Ok(opt_string(d)?.unwrap_or_default())
@@ -114,6 +120,10 @@ impl std::fmt::Display for Loader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 fn de_loader_lenient<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Loader, D::Error> {
@@ -486,6 +496,10 @@ pub struct InstanceMeta {
     pub updated_at: Option<String>,
     #[serde(default, deserialize_with = "de::opt_bool", skip_serializing_if = "Option::is_none")]
     pub merge_optionslc: Option<bool>,
+    /// Agent-access capture tools (Replay Mod + shaders). Absent = off; the
+    /// raw `instance.json` keeps the key either way.
+    #[serde(default, deserialize_with = "de::lenient_bool", skip_serializing_if = "is_false")]
+    pub capture_tools: bool,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -636,6 +650,11 @@ pub struct InstancePatch {
     /// Alias of `name` (wins when both are set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_name: Option<String>,
+    /// Capture tools (Replay Mod in/out). Flipping the flag owns the jar; see
+    /// `instances::patch_instance`. `Some(None)` = explicit null, which the JS
+    /// read as "false" (an undefined field is the only no-op).
+    #[serde(default, deserialize_with = "de::double_option", skip_serializing_if = "Option::is_none")]
+    pub capture_tools: Option<Option<bool>>,
 }
 
 impl InstancePatch {
@@ -921,7 +940,26 @@ pub struct ResolvedLaunch {
     pub aot_cache_stale: bool,
     /// JDK >= 25.
     pub aot_available: bool,
+    /// Agent launch (`agent: true` was requested): buildArgv then adds
+    /// `-Despectral.agent=1` and the option-derived program args. Always
+    /// false on a plain launch, which keeps its argv byte-identical.
+    #[serde(default, skip_serializing_if = "not")]
+    pub agent: bool,
+    /// Validated quick-play option (agent API or UI launch).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join: Option<crate::agent::JoinOption>,
+    /// Validated window option.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<crate::agent::WindowOption>,
+    /// ffmpeg resolved for an agent launch (None = captures report NO_FFMPEG).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ffmpeg_path: Option<PathBuf>,
     pub warnings: Vec<String>,
+}
+
+/// `skip_serializing_if` helper for the always-false launch flags.
+fn not(b: &bool) -> bool {
+    !*b
 }
 
 /// POST /api/instances/:name/launch { dry_run: true }.
@@ -955,6 +993,9 @@ pub struct LaunchHandle {
     pub version: String,
     pub account: Option<String>,
     pub running: bool,
+    /// Agent launch (`agent: true` was requested) — the UI badges these.
+    #[serde(default)]
+    pub agent: bool,
     pub started_at: i64,
     pub menu_at: Option<i64>,
     pub ended_at: Option<i64>,
@@ -1017,6 +1058,10 @@ pub struct GameSession {
     pub menu_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bridge_token: Option<String>,
+    /// Agent launch: survives a launcher restart so an adopted AGENT game comes
+    /// back as an agent launch (relay servable, no Discord presence).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<bool>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }

@@ -276,7 +276,7 @@ pub async fn get_summary(engine: &Engine, name: &str) -> EngineResult<InstanceSu
         aot_key: Some(key),
         aot_cache_exists: cache_exists,
         imported_from: inst.imported_from.clone(),
-        capture_tools: inst.extra.get("capture_tools") == Some(&Value::Bool(true)),
+        capture_tools: inst.capture_tools,
         created_at: inst.created_at.clone(),
         running: None,
     })
@@ -577,6 +577,22 @@ pub async fn patch_instance(engine: &Engine, name: &str, patch: &InstancePatch) 
     if let Some(enabled) = &patch.enabled_mods {
         let inst = meta_from_raw(&raw);
         apply_enabled_mods(engine, &inst, enabled)?;
+    }
+    if let Some(want) = patch.capture_tools {
+        // Flipping the flag OWNS the Replay Mod jar: on installs it, off
+        // removes it (shader packs + Iris stay). The install runs before the
+        // flag is persisted so a failed download never leaves
+        // `capture_tools: true` on an instance that has no Replay Mod.
+        let want = want == Some(true);
+        let inst = meta_from_raw(&raw);
+        if want != inst.capture_tools {
+            if want {
+                crate::mods::install_capture_tools(engine, &inst).await?;
+            } else {
+                crate::mods::remove_capture_tools(engine, &inst).await?;
+            }
+        }
+        raw.insert("capture_tools".into(), Value::Bool(want));
     }
     raw.insert("updated_at".into(), Value::String(crate::platform::now_iso()));
     write_raw(engine, &current, &raw)?;
