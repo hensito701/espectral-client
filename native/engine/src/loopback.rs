@@ -7,22 +7,31 @@
 //!   (the same logic `Engine::bridge_visible` exposes);
 //! - `GET /api/discord/callback` — Discord's OAuth redirect (registered as
 //!   `http://127.0.0.1:4199/api/discord/callback`) -> `Engine::discord_callback`,
-//!   answering the completion / error HTML from routes/discord.mjs.
+//!   answering the completion / error HTML from routes/discord.mjs;
+//! - `GET|POST /api/agent/*` and `POST /api/bridge/agent/*` — agent access
+//!   (routes/agent.mjs, upstream c22767f): the Bearer-token agent API and the
+//!   mod long-poll relay, backed by [`crate::agent`].
 //!
-//! **Owner: identity-discord.** Status: PORTED.
+//! **Owner: game-launch (agent access).** Status: PORTED.
 //!
 //! Binds 127.0.0.1 only, port `ESPECTRAL_PORT` or 4199. Keeps the JS guards:
 //! the Host header must be `127.0.0.1|localhost[:port]` (DNS-rebinding), and
-//! every non-GET needs `x-espectral-client: 1` (CSRF). Errors use the JS
-//! envelope `{ error: { code, message } }`. Stops on `Engine::cancel_token()`.
+//! every non-GET needs `x-espectral-client: 1` (CSRF) — including the agent
+//! API and the mod relay, which is why the MCP shim sends it. Errors use the
+//! JS envelope `{ error: { code, message } }`. Stops on `Engine::cancel_token()`.
 //!
-//! Not served here (owned elsewhere / not ported): the agent relay
-//! `/api/bridge/agent/*` (routes/agent.mjs) and the session cookie on the
-//! callback (the native UI claims the session via `discord_claim`).
+//! Agent routes answer 403 `AGENT_DISABLED` while `agent.enabled` is off
+//! (before any auth so a disabled engine never confirms a token), then 401
+//! `AGENT_AUTH` for a bad Bearer token. The relay authenticates with the
+//! per-launch bridge token in `x-espectral-bridge` instead.
+//!
+//! Not served here: the session cookie on the Discord callback (the native UI
+//! claims the session via `discord_claim`).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::{Query, State};
@@ -32,6 +41,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use serde_json::{json, Value};
 
+use crate::agent;
 use crate::api::identity_discord::DiscordUser;
 use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult};
@@ -215,6 +225,468 @@ async fn discord_callback(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Agent access (routes/agent.mjs)
+// ---------------------------------------------------------------------------
+
+/// Host + CSRF guards shared by every route (JS `makeRequestHandler`):
+/// `non_get` mirrors `typeof method !== 'GET'` — the agent API and the relay
+/// carry `x-espectral-client: 1` too.
+fn guard(headers: &HeaderMap, non_get: bool) -> Option<Response> {
+    if !host_ok(headers) {
+        return Some(json_error(403, "FORBIDDEN", "unexpected Host header"));
+    }
+    if non_get && headers.get(CLIENT_HEADER).and_then(|v| v.to_str().ok()) != Some("1") {
+        return Some(json_error(403, "FORBIDDEN", "missing x-espectral-client header"));
+    }
+    None
+}
+
+/// JS `readJsonBody`: empty/blank -> null, malformed -> 400 BAD_JSON.
+fn parse_body(body: &Bytes) -> Result<Value, Box<Response>> {
+    let text = String::from_utf8_lossy(body);
+    if text.trim().is_empty() {
+        return Ok(Value::Null);
+    }
+    serde_json::from_str(&text).map_err(|_| Box::new(json_error(400, "BAD_JSON", "request body is not valid JSON")))
+}
+
+fn bad_request(message: &str) -> Response {
+    json_error(400, "BAD_REQUEST", message)
+}
+
+fn string_field(body: &Value, key: &str) -> String {
+    body.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+}
+
+fn agent_auth(engine: &Engine, headers: &HeaderMap) -> EngineResult<()> {
+    let header = headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok());
+    agent::authenticate(engine.config(), engine.paths().data_dir(), header)
+}
+
+/// 403 AGENT_DISABLED while agent access is off (JS `requireEnabled`).
+fn require_enabled(engine: &Engine) -> EngineResult<()> {
+    if !agent::agent_config(engine.config()).enabled {
+        return Err(agent::disabled_error());
+    }
+    Ok(())
+}
+
+/// The `/api/launches` row for a key, or the registry entry when the buffer
+/// was already pruned (an adopted agent game outlives its log ring). 404
+/// NO_LAUNCH when neither knows the key.
+async fn require_launch(engine: &Engine, key: &str) -> EngineResult<crate::types::LaunchHandle> {
+    if key.is_empty() {
+        return Err(EngineError::bad_request("BAD_REQUEST", "key is required"));
+    }
+    let rows = engine.list_launches().await?.launches;
+    if let Some(row) = rows.into_iter().find(|r| r.key == key) {
+        return Ok(row);
+    }
+    if let Some(entry) = agent::get_launch(engine.agent_state(), key) {
+        return Ok(crate::types::LaunchHandle {
+            key: key.to_string(),
+            instance: entry.instance().to_string(),
+            version: String::new(),
+            account: None,
+            running: entry.is_running(),
+            agent: true,
+            started_at: 0,
+            menu_at: None,
+            ended_at: None,
+        });
+    }
+    Err(EngineError::not_found("NO_LAUNCH", format!("unknown launch key: {key}")))
+}
+
+/// Wait for the mod's state to satisfy `want` ('title' → phase title/in_world,
+/// 'in_world' → phase in_world). Polls the registry: the mod reports over HTTP,
+/// so there is no in-process event to subscribe to.
+async fn wait_for_state(engine: &Engine, key: &str, want: &str, timeout: Duration) -> EngineResult<agent::AgentReport> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    let wanted: &[&str] = if want == "in_world" { &["in_world"] } else { &["title", "in_world"] };
+    loop {
+        let Some(entry) = agent::get_launch(engine.agent_state(), key) else {
+            return Err(EngineError::api(502, "GAME_GONE", "the game exited before reaching the requested state"));
+        };
+        let state = agent::state_of(&entry);
+        if let Some(s) = state.as_ref().filter(|s| s.phase.as_deref().is_some_and(|p| wanted.contains(&p))) {
+            return Ok(s.clone());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            let last = state.as_ref().and_then(|s| s.phase.clone()).unwrap_or_else(|| "none".into());
+            return Err(EngineError::api(
+                504,
+                "AGENT_TIMEOUT",
+                format!("game did not reach '{want}' within {} s (last phase: {last})", timeout.as_secs()),
+            ));
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+/// `Number(v)` clamped, falling back to `default` when non-finite/≤0
+/// (JS `Number(b.timeout_s ?? 180)` + the `isFinite` check).
+fn timeout_s(body: &Value, default: f64) -> f64 {
+    let n = match body.get("timeout_s") {
+        None | Some(Value::Null) => default,
+        v => agent::js_number(v),
+    };
+    if !n.is_finite() || n <= 0.0 {
+        default
+    } else {
+        n
+    }
+}
+
+async fn agent_instances(State(engine): State<Engine>, headers: HeaderMap) -> Response {
+    if let Some(r) = guard(&headers, false) {
+        return r;
+    }
+    if let Err(e) = agent_auth(&engine, &headers) {
+        return engine_error(&e);
+    }
+    let list = match crate::instances::list_instances(&engine).await {
+        Ok(l) => l,
+        Err(e) => return engine_error(&e),
+    };
+    let instances: Vec<Value> = list
+        .into_iter()
+        .map(|inst| {
+            json!({
+                "name": inst.name,
+                "version": inst.version,
+                "loader": inst.loader.as_str(),
+                "capture_tools": inst.capture_tools,
+                "running": engine.active_instances().contains(&inst.name),
+            })
+        })
+        .collect();
+    axum::Json(json!({ "instances": instances })).into_response()
+}
+
+async fn agent_launches(State(engine): State<Engine>, headers: HeaderMap) -> Response {
+    if let Some(r) = guard(&headers, false) {
+        return r;
+    }
+    if let Err(e) = agent_auth(&engine, &headers) {
+        return engine_error(&e);
+    }
+    let rows = match engine.list_launches().await {
+        Ok(r) => r.launches,
+        Err(e) => return engine_error(&e),
+    };
+    let out: Vec<Value> = rows
+        .into_iter()
+        .map(|row| {
+            let state = agent::get_launch(engine.agent_state(), &row.key).and_then(|e| agent::state_of(&e));
+            json!({
+                "key": row.key,
+                "instance": row.instance,
+                "running": row.running,
+                "agent": row.agent,
+                "state": state,
+            })
+        })
+        .collect();
+    axum::Json(json!({ "launches": out })).into_response()
+}
+
+async fn agent_launch(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
+    if let Some(r) = guard(&headers, true) {
+        return r;
+    }
+    if let Err(e) = agent_auth(&engine, &headers) {
+        return engine_error(&e);
+    }
+    let parsed = match parse_body(&body) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let name = string_field(&parsed, "instance");
+    if name.is_empty() {
+        return bad_request("instance is required");
+    }
+    // Validate before the launch facade creates a buffer (the facade
+    // re-validates with the same codes; this keeps the 400 ordering obvious).
+    if let Err(e) = agent::normalize_launch_options(&parsed, true) {
+        return engine_error(&e);
+    }
+    let wait_for = match parsed.get("wait_for") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) if s == "title" || s == "in_world" => Some(s.clone()),
+        _ => return bad_request("wait_for must be 'title' or 'in_world'"),
+    };
+    let timeout = timeout_s(&parsed, 180.0).clamp(5.0, 600.0);
+
+    // `account` is validated by startLaunch in the JS too: a non-string (or an
+    // empty one) is a 400, not a silently ignored override.
+    let account = match parsed.get("account") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+        Some(_) => return engine_error(&EngineError::bad_request("BAD_ACCOUNT", "account must be a non-empty string")),
+    };
+    let req = crate::api::game_launch::LaunchRequest {
+        agent: true,
+        account,
+        join: parsed.get("join").cloned().filter(|v| !v.is_null()),
+        window: parsed.get("window").cloned().filter(|v| !v.is_null()),
+        ..Default::default()
+    };
+    let reply = match engine.launch_instance(&name, req).await {
+        Ok(crate::api::game_launch::LaunchOutcome::Started(r)) => r,
+        Ok(crate::api::game_launch::LaunchOutcome::DryRun(_)) => {
+            return engine_error(&EngineError::other("unexpected dry-run reply"))
+        }
+        Err(e) => return engine_error(&e),
+    };
+    if let Some(want) = wait_for {
+        return match wait_for_state(&engine, &reply.key, &want, Duration::from_secs_f64(timeout)).await {
+            Ok(state) => axum::Json(json!({ "key": reply.key, "state": state })).into_response(),
+            Err(e) => engine_error(&e),
+        };
+    }
+    let state = agent::get_launch(engine.agent_state(), &reply.key).and_then(|e| agent::state_of(&e));
+    axum::Json(json!({ "key": reply.key, "state": state })).into_response()
+}
+
+async fn agent_stop(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
+    if let Some(r) = guard(&headers, true) {
+        return r;
+    }
+    if let Err(e) = agent_auth(&engine, &headers) {
+        return engine_error(&e);
+    }
+    let parsed = match parse_body(&body) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let key = string_field(&parsed, "key");
+    if key.is_empty() {
+        return bad_request("key is required");
+    }
+    let row = match require_launch(&engine, &key).await {
+        Ok(r) => r,
+        Err(e) => return engine_error(&e),
+    };
+    // A key addresses ONE launch: once it has exited, the same instance may
+    // already have been relaunched under a new key — stopping by the old key
+    // must not kill the new game.
+    if !row.running {
+        return axum::Json(json!({ "ok": true, "already_stopped": true })).into_response();
+    }
+    match engine.stop_instance(&row.instance).await {
+        Ok(_) => axum::Json(json!({ "ok": true })).into_response(),
+        Err(e) => engine_error(&e),
+    }
+}
+
+async fn agent_state_route(
+    State(engine): State<Engine>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    if let Some(r) = guard(&headers, false) {
+        return r;
+    }
+    if let Err(e) = agent_auth(&engine, &headers) {
+        return engine_error(&e);
+    }
+    let key = query.get("key").cloned().unwrap_or_default();
+    let row = match require_launch(&engine, &key).await {
+        Ok(r) => r,
+        Err(e) => return engine_error(&e),
+    };
+    let state = agent::get_launch(engine.agent_state(), &key).and_then(|e| agent::state_of(&e));
+    axum::Json(json!({ "key": key, "instance": row.instance, "running": row.running, "state": state })).into_response()
+}
+
+async fn agent_logs(
+    State(engine): State<Engine>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    if let Some(r) = guard(&headers, false) {
+        return r;
+    }
+    if let Err(e) = agent_auth(&engine, &headers) {
+        return engine_error(&e);
+    }
+    let key = query.get("key").cloned().unwrap_or_default();
+    let row = match require_launch(&engine, &key).await {
+        Ok(r) => r,
+        Err(e) => return engine_error(&e),
+    };
+    // `Number(cursor)` then `Number.isInteger(cursor) && cursor >= 0`.
+    let cursor = match query.get("cursor").filter(|c| !c.trim().is_empty()) {
+        Some(raw) => match raw.trim().parse::<f64>() {
+            Ok(n) if n.is_finite() && n.fract() == 0.0 && n >= 0.0 => n as u64,
+            _ => 0,
+        },
+        None => 0,
+    };
+    let Some(view) = engine.launch_log(&key, cursor).await.ok() else {
+        // A pruned buffer: answer the empty view, not an error (JS bufferView).
+        return axum::Json(json!({ "lines": [], "cursor": cursor, "running": row.running })).into_response();
+    };
+    // The registry row is the authority on whether the game is still up: an
+    // adopted agent game outlives its log ring, and the agent must not read
+    // "exited" while /api/agent/state says it is running.
+    let running = view.running || row.running;
+    axum::Json(json!({ "lines": view.lines, "cursor": view.cursor, "running": running })).into_response()
+}
+
+async fn agent_call(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
+    if let Some(r) = guard(&headers, true) {
+        return r;
+    }
+    if let Err(e) = agent_auth(&engine, &headers) {
+        return engine_error(&e);
+    }
+    let parsed = match parse_body(&body) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let key = string_field(&parsed, "key");
+    if key.is_empty() {
+        return bad_request("key is required");
+    }
+    let st = engine.agent_state();
+    let Some(entry) = agent::get_launch(st, &key) else {
+        return engine_error(&EngineError::not_found("NO_LAUNCH", format!("unknown launch key: {key}")));
+    };
+    if !entry.is_agent() {
+        return engine_error(&EngineError::api(
+            409,
+            "NOT_AGENT_LAUNCH",
+            "this launch was not started with agent: true",
+        ));
+    }
+    if !entry.is_running() {
+        return engine_error(&EngineError::api(502, "GAME_GONE", "the game is no longer running"));
+    }
+    // Floor as well as ceiling: a sub-second timeout_s would abort a call
+    // before the mod could answer (callTool clamps to >=1 s; keep both in sync).
+    let secs = timeout_s(&parsed, agent::CALL_TIMEOUT_S as f64).clamp(1.0, agent::MAX_CALL_TIMEOUT_S as f64);
+    let tool = string_field(&parsed, "tool");
+    let args = parsed.get("args");
+    let pending = match agent::call_tool(st, &key, &tool, args, (secs * 1000.0).round() as u64) {
+        Ok(p) => p,
+        Err(e) => return engine_error(&e),
+    };
+    match pending.wait().await {
+        Ok(data) => {
+            let data = agent::rewrite_file_results(&data, entry.game_dir().as_deref());
+            axum::Json(json!({ "ok": true, "data": data })).into_response()
+        }
+        Err(e) => engine_error(&e),
+    }
+}
+
+/// The relay's bridge-owner check (403 BRIDGE_AUTH before the enabled gate).
+fn bridge_owner(engine: &Engine, headers: &HeaderMap) -> Result<crate::bridge::BridgeLaunch, Box<Response>> {
+    let token = headers.get(crate::bridge::BRIDGE_HEADER).and_then(|v| v.to_str().ok()).unwrap_or("");
+    crate::bridge::authenticate(engine, token)
+        .ok_or_else(|| Box::new(json_error(403, "BRIDGE_AUTH", "missing or invalid x-espectral-bridge token")))
+}
+
+async fn bridge_agent_poll(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
+    if let Some(r) = guard(&headers, true) {
+        return r;
+    }
+    let owner = match bridge_owner(&engine, &headers) {
+        Ok(o) => o,
+        Err(r) => return *r,
+    };
+    if let Err(e) = require_enabled(&engine) {
+        return engine_error(&e);
+    }
+    let parsed = match parse_body(&body) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let key = parsed.get("key").and_then(Value::as_str).filter(|k| !k.is_empty());
+    let entry = match agent::launch_for_bridge(engine.agent_state(), Some(&owner), key) {
+        Ok(e) => e,
+        Err(e) => return engine_error(&e),
+    };
+    // A parked poll is released when the client hangs up: axum drops the
+    // handler future, which drops `await_commands`' guard and puts any
+    // handed-over batch back in the queue (never swallowed).
+    let commands = agent::await_commands(&entry, Duration::from_millis(agent::POLL_TIMEOUT_MS)).await;
+    axum::Json(json!({ "commands": commands, "policy": agent::policy(engine.config()) })).into_response()
+}
+
+async fn bridge_agent_result(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
+    if let Some(r) = guard(&headers, true) {
+        return r;
+    }
+    let owner = match bridge_owner(&engine, &headers) {
+        Ok(o) => o,
+        Err(r) => return *r,
+    };
+    if let Err(e) = require_enabled(&engine) {
+        return engine_error(&e);
+    }
+    let parsed = match parse_body(&body) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let key = parsed.get("key").and_then(Value::as_str).filter(|k| !k.is_empty());
+    let entry = match agent::launch_for_bridge(engine.agent_state(), Some(&owner), key) {
+        Ok(e) => e,
+        Err(e) => return engine_error(&e),
+    };
+    let id = string_field(&parsed, "id");
+    if id.is_empty() {
+        return bad_request("id is required");
+    }
+    let accepted = agent::complete_command(
+        &entry,
+        &id,
+        parsed.get("ok") == Some(&Value::Bool(true)),
+        parsed.get("data"),
+        parsed.get("error"),
+    );
+    axum::Json(json!({ "ok": true, "accepted": accepted })).into_response()
+}
+
+async fn bridge_agent_state(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
+    if let Some(r) = guard(&headers, true) {
+        return r;
+    }
+    let owner = match bridge_owner(&engine, &headers) {
+        Ok(o) => o,
+        Err(r) => return *r,
+    };
+    if let Err(e) = require_enabled(&engine) {
+        return engine_error(&e);
+    }
+    let parsed = match parse_body(&body) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let key = parsed.get("key").and_then(Value::as_str).filter(|k| !k.is_empty());
+    let entry = match agent::launch_for_bridge(engine.agent_state(), Some(&owner), key) {
+        Ok(e) => e,
+        Err(e) => return engine_error(&e),
+    };
+    let state = agent::set_state(&entry, &parsed);
+    engine.emit(crate::events::EngineEvent::AgentState(crate::events::AgentStateEvent {
+        key: entry.key().to_string(),
+        instance: entry.instance().to_string(),
+        phase: state.phase.clone(),
+        screen: state.screen.clone(),
+        server: state.server.clone(),
+        world: state.world.clone(),
+        context: state.context.clone(),
+        paused: state.paused,
+        recording: state.recording,
+        updated_at: state.updated_at.unwrap_or_default(),
+    }));
+    axum::Json(json!({ "ok": true })).into_response()
+}
+
 async fn not_found(headers: HeaderMap) -> Response {
     if !host_ok(&headers) {
         return json_error(403, "FORBIDDEN", "unexpected Host header");
@@ -227,6 +699,18 @@ pub fn router(engine: Engine) -> Router {
     Router::new()
         .route("/api/bridge/visible", post(bridge_visible))
         .route("/api/discord/callback", get(discord_callback))
+        // routes/agent.mjs — agent API (Bearer token) + the mod relay
+        // (per-launch bridge token).
+        .route("/api/agent/instances", get(agent_instances))
+        .route("/api/agent/launches", get(agent_launches))
+        .route("/api/agent/launch", post(agent_launch))
+        .route("/api/agent/stop", post(agent_stop))
+        .route("/api/agent/state", get(agent_state_route))
+        .route("/api/agent/logs", get(agent_logs))
+        .route("/api/agent/call", post(agent_call))
+        .route("/api/bridge/agent/poll", post(bridge_agent_poll))
+        .route("/api/bridge/agent/result", post(bridge_agent_result))
+        .route("/api/bridge/agent/state", post(bridge_agent_state))
         .fallback(not_found)
         .with_state(engine)
 }

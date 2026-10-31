@@ -86,6 +86,13 @@ pub struct ResolveLaunchOptions {
     pub force_verify: bool,
     pub on_progress: Option<LineFn>,
     pub on_phase: Option<LineFn>,
+    /// Agent launch: adds `-Despectral.agent=1` (+ ffmpeg/hidden) and the
+    /// option-derived program args. False on every plain launch.
+    pub agent: bool,
+    /// Validated quick-play option (`--quickPlay*`).
+    pub join: Option<crate::agent::JoinOption>,
+    /// Validated window option (`--width/--height`, agent-only `hidden`).
+    pub window: Option<crate::agent::WindowOption>,
 }
 
 /// Account given to resolveLaunch: a stored account (token resolved inside)
@@ -361,6 +368,11 @@ pub async fn resolve_account(engine: &Engine, target: Option<&Account>) -> (Laun
 /// `resolved.warnings` (like the JS, which mutated `resolved.warnings`).
 pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut ResolvedLaunch) -> Vec<String> {
     let java_major = java_major_of(&resolved.java);
+    // Agent launch options (validated at the route). `false`/`None` on every
+    // plain launch, so the argv below is byte-identical to before.
+    let agent = resolved.agent;
+    let join = resolved.join.clone();
+    let window = resolved.window.clone();
     let raw = &resolved.account;
     let access_token = if raw.access_token.is_empty() || raw.access_token == "undefined" {
         "0".to_string()
@@ -404,8 +416,12 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     put("classpath_separator", path_delimiter().into());
     put("launcher_name", LAUNCHER_NAME.into());
     put("launcher_version", LAUNCHER_VERSION.into());
-    put("resolution_width", "854".into());
-    put("resolution_height", "480".into());
+    put("resolution_width", window.as_ref().map_or_else(|| "854".to_string(), |w| w.width.to_string()));
+    put("resolution_height", window.as_ref().map_or_else(|| "480".to_string(), |w| w.height.to_string()));
+    // Quick-play placeholders: only meaningful when the matching feature is
+    // enabled below; a missing key substitutes to ''.
+    put("quickPlaySingleplayer", join.as_ref().and_then(|j| j.world.clone()).unwrap_or_default());
+    put("quickPlayMultiplayer", join.as_ref().and_then(|j| j.server.clone()).unwrap_or_default());
     put("clientid", "0".into());
     put("auth_xuid", "0".into());
     put("version_type", "release".into());
@@ -425,6 +441,20 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     jvm.push(format!("-Despectral.bridge.url={}", crate::loopback::bridge_url(engine)));
     if let Some(t) = resolved.bridge_token.as_deref().filter(|t| !t.is_empty()) {
         jvm.push(format!("-Despectral.bridge.token={t}"));
+    }
+    // Agent mode. Inert unless the route tagged the launch `agent: true`; the
+    // mod starts its relay thread only when it sees -Despectral.agent=1.
+    if agent {
+        jvm.push("-Despectral.agent=1".into());
+        // ffmpeg for live recording / clip rendering (resolveLaunch already
+        // resolved the absolute path — captures report NO_FFMPEG mod-side when
+        // there is none, instead of guessing a binary name).
+        if let Some(ff) = resolved.ffmpeg_path.as_ref().filter(|p| !p.as_os_str().is_empty()) {
+            jvm.push(format!("-Despectral.ffmpeg={}", lossy(ff)));
+        }
+        if window.as_ref().is_some_and(|w| w.hidden) {
+            jvm.push("-Despectral.agent.hidden=1".into());
+        }
     }
     if let Some(loader) = &resolved.loader {
         if !loader.jvm_args.is_empty() {
@@ -487,30 +517,49 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         .filter(|m| !m.is_empty())
         .or_else(|| Some(resolved.version.main_class.clone()).filter(|m| !m.is_empty()))
         .unwrap_or_else(|| "net.minecraft.client.main.Main".into());
+    // Features the vanilla/NeoForge game template gates its program args on.
+    // Fabric has no game template (it reuses the version's, empty in the loader
+    // profile), so its flags are appended explicitly below; NeoForge merges the
+    // vanilla game args and expands them here.
+    let mut features = Map::new();
+    features.insert("has_custom_resolution".into(), Value::Bool(window.is_some()));
+    features.insert("is_quick_play_singleplayer".into(), Value::Bool(join.as_ref().is_some_and(|j| j.world.is_some())));
+    features.insert("is_quick_play_multiplayer".into(), Value::Bool(join.as_ref().is_some_and(|j| j.server.is_some())));
+    let fragment = crate::agent::game_arg_fragment(&crate::agent::LaunchOptions {
+        agent,
+        join: join.clone(),
+        window: window.clone(),
+    });
     let prog: Vec<String> = match &resolved.loader {
         Some(l) if !l.game_args.is_empty() => {
-            expand_game_args(&l.game_args, &Map::new()).iter().map(|a| substitute_placeholders(a, &subst)).collect()
+            expand_game_args(&l.game_args, &features).iter().map(|a| substitute_placeholders(a, &subst)).collect()
         }
-        _ => vec![
-            "--username".into(),
-            username,
-            "--version".into(),
-            resolved.version.id.clone(),
-            "--gameDir".into(),
-            lossy(&resolved.game_dir),
-            "--assetsDir".into(),
-            lossy(&resolved.assets_dir),
-            "--assetIndex".into(),
-            resolved.version.asset_index_id.clone().unwrap_or_else(|| "null".into()),
-            "--uuid".into(),
-            uuid,
-            "--accessToken".into(),
-            access_token,
-            "--userType".into(),
-            user_type.into(),
-            "--versionType".into(),
-            "release".into(),
-        ],
+        _ => {
+            let mut prog = vec![
+                "--username".into(),
+                username,
+                "--version".into(),
+                resolved.version.id.clone(),
+                "--gameDir".into(),
+                lossy(&resolved.game_dir),
+                "--assetsDir".into(),
+                lossy(&resolved.assets_dir),
+                "--assetIndex".into(),
+                resolved.version.asset_index_id.clone().unwrap_or_else(|| "null".into()),
+                "--uuid".into(),
+                uuid,
+                "--accessToken".into(),
+                access_token,
+                "--userType".into(),
+                user_type.into(),
+                "--versionType".into(),
+                "release".into(),
+            ];
+            // Fabric/vanilla fixed list: append the agent launch flags directly
+            // (there is no feature-gated template to expand here).
+            prog.extend(fragment);
+            prog
+        }
     };
     let mut argv = Vec::with_capacity(jvm.len() + prog.len() + 2);
     argv.push(resolved.java.path.clone());
@@ -965,6 +1014,24 @@ pub async fn resolve_launch(
     };
 
     let aot_available = java.major.unwrap_or(0) >= 25;
+
+    // ffmpeg for agent captures. Dry runs only look at what is already on disk
+    // (a preview must not download 110 MB); a real agent launch provisions the
+    // pinned Windows build when the machine has none.
+    let mut ffmpeg_path = None;
+    if opts.agent {
+        let resolved_ff = if opts.dry_run {
+            Ok(crate::ffmpeg::resolve_ffmpeg_sync(engine))
+        } else {
+            crate::ffmpeg::ensure_ffmpeg(engine).await
+        };
+        match resolved_ff {
+            Ok(Some(p)) => ffmpeg_path = Some(p),
+            Ok(None) => warnings.push("no ffmpeg found — recording/clip rendering will fail with NO_FFMPEG".into()),
+            Err(e) => warnings.push(format!("ffmpeg resolution failed: {e}")),
+        }
+    }
+
     Ok(ResolvedLaunch {
         version: ResolvedVersionRef {
             id: neoforge_id.unwrap_or_else(|| instance.version.clone()),
@@ -988,6 +1055,10 @@ pub async fn resolve_launch(
         aot_cache_exists,
         aot_cache_stale,
         aot_available,
+        agent: opts.agent,
+        join: opts.join.clone(),
+        window: opts.window.clone(),
+        ffmpeg_path,
         warnings,
     })
 }
@@ -1206,6 +1277,10 @@ mod tests {
             aot_cache_exists: false,
             aot_cache_stale: false,
             aot_available: true,
+            agent: false,
+            join: None,
+            window: None,
+            ffmpeg_path: None,
             warnings: vec![],
         }
     }

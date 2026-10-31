@@ -1022,6 +1022,10 @@ mod tests {
             aot_cache_exists: false,
             aot_cache_stale: false,
             aot_available: true,
+            agent: false,
+            join: None,
+            window: None,
+            ffmpeg_path: None,
             warnings: vec![],
         };
         e.set_launch_test_hooks(crate::api::game_launch::LaunchTestHooks {

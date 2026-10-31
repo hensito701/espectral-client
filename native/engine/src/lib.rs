@@ -78,6 +78,8 @@ pub mod presence;
 
 // ---- agent access ----------------------------------------------------------
 pub mod agent;
+pub mod ffmpeg;
+pub mod mcp;
 
 pub use engine::{ActiveInstances, Engine, EngineOptions, VERSION};
 pub use error::{EngineError, EngineResult, ErrorEnvelope};

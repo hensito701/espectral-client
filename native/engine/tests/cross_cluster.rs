@@ -94,7 +94,10 @@ async fn dry_run_launch_crosses_content_accounts_resolve_and_launch() {
     e.create_account("Alex").await.unwrap();
     e.set_active_account("Alex").await.unwrap();
 
-    let out = e.launch_instance("Cross Test", LaunchRequest { dry_run: true, account: None }).await.unwrap();
+    let out = e
+        .launch_instance("Cross Test", LaunchRequest { dry_run: true, account: None, ..Default::default() })
+        .await
+        .unwrap();
     let LaunchOutcome::DryRun(dr) = out else { panic!("expected a dry run, got {out:?}") };
     assert_eq!(dr.java_path, java.to_string_lossy());
     assert_eq!(dr.argv[0], java.to_string_lossy());
@@ -113,10 +116,17 @@ async fn dry_run_launch_crosses_content_accounts_resolve_and_launch() {
     assert!(!dr.assets_ok);
 
     // Unknown instance and unknown account keep the JS codes.
-    let env = e.launch_instance("Nope", LaunchRequest { dry_run: true, account: None }).await.unwrap_err().envelope();
+    let env = e
+        .launch_instance("Nope", LaunchRequest { dry_run: true, account: None, ..Default::default() })
+        .await
+        .unwrap_err()
+        .envelope();
     assert_eq!((env.status, env.code.as_str()), (404, "NOT_FOUND"));
     let env = e
-        .launch_instance("Cross Test", LaunchRequest { dry_run: true, account: Some("Ghost".into()) })
+        .launch_instance(
+            "Cross Test",
+            LaunchRequest { dry_run: true, account: Some("Ghost".into()), ..Default::default() },
+        )
         .await
         .unwrap_err()
         .envelope();

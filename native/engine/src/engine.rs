@@ -96,6 +96,8 @@ pub(crate) struct Inner {
     pub(crate) content: api::content::ContentState,
     pub(crate) accounts_skins: api::accounts_skins::AccountsSkinsState,
     pub(crate) identity_discord: api::identity_discord::IdentityDiscordState,
+    /// Agent launch registry + mod command queue (crate::agent).
+    pub(crate) agent: crate::agent::AgentState,
 }
 
 /// The engine. `Clone` is an `Arc` bump; share it freely across tasks.
@@ -133,6 +135,7 @@ impl Engine {
                 content: Default::default(),
                 accounts_skins: Default::default(),
                 identity_discord: Default::default(),
+                agent: Default::default(),
             }),
         })
     }
@@ -220,6 +223,11 @@ impl Engine {
     /// Instances with a launch preparing/running.
     pub fn active_instances(&self) -> &ActiveInstances {
         &self.inner.active_instances
+    }
+
+    /// Agent launch registry + mod command queue (crate::agent, agent access).
+    pub fn agent_state(&self) -> &crate::agent::AgentState {
+        &self.inner.agent
     }
 
     /// Cancelled by [`Engine::shutdown`]; background loops should select on it.

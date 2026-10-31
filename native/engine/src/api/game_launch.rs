@@ -99,6 +99,9 @@ struct LaunchBuffer {
     spawned_at: Option<i64>,
     phases: Map<String, Value>,
     needs_auto_train: bool,
+    /// Agent launch (`agent: true`): tagged so `/api/launches` rows carry it,
+    /// Discord presence is skipped and the agent registry tracks this key.
+    agent: bool,
 }
 
 impl LaunchBuffer {
@@ -199,6 +202,7 @@ impl GameLaunchState {
                 spawned_at: None,
                 phases: Map::new(),
                 needs_auto_train: false,
+                agent: false,
             },
         );
     }
@@ -280,6 +284,10 @@ pub(crate) async fn on_engine_shutdown(_engine: &Engine) {}
 // ---------------------------------------------------------------------------
 
 /// POST /api/instances/:name/launch body.
+///
+/// `agent`/`join`/`window` are the validated launch options (agent access);
+/// `join`/`window` stay raw JSON here so one [`crate::agent::normalize_launch_options`]
+/// validates both the UI route and the agent route (same error codes).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct LaunchRequest {
     #[serde(default)]
@@ -288,6 +296,17 @@ pub struct LaunchRequest {
     /// 404 NOT_FOUND when unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
+    /// Agent launch (`true` only when the caller is the agent API; the UI
+    /// sends false/absent and its argv stays byte-identical).
+    #[serde(default)]
+    pub agent: bool,
+    /// `{world}` or `{server}` quick-play target (400 BAD_JOIN on invalid).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join: Option<Value>,
+    /// `{width, height, hidden?}` (400 BAD_WINDOW on invalid; `hidden` is
+    /// agent-only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<Value>,
 }
 
 /// Launch reply: a started launch or a dry-run preview.
@@ -645,6 +664,7 @@ async fn force_kill_process(pid: u32, process: Option<ProcessHandle>) {
 }
 
 /// The resolve + spawn half of a launch (runs in the background).
+#[allow(clippy::too_many_arguments)]
 async fn run_launch(
     engine: Engine,
     key: String,
@@ -652,10 +672,12 @@ async fn run_launch(
     account_override: Option<crate::types::Account>,
     presence_start: i64,
     progress: launch::LineFn,
+    options: crate::agent::LaunchOptions,
 ) {
     let st = engine.game_launch_state();
     let name = instance.name.clone();
     let account_name = account_override.as_ref().map(|a| a.username.clone());
+    let agent = options.agent;
     let hooks = st.hooks();
 
     let account = match &account_override {
@@ -668,7 +690,14 @@ async fn run_launch(
         }
         None => None,
     };
-    let opts = ResolveLaunchOptions { on_progress: Some(progress.clone()), account, ..Default::default() };
+    let opts = ResolveLaunchOptions {
+        on_progress: Some(progress.clone()),
+        account,
+        agent,
+        join: options.join.clone(),
+        window: options.window.clone(),
+        ..Default::default()
+    };
     let resolved = match &hooks.resolve_launch {
         Some(h) => h(instance.clone(), opts).await,
         None => launch::resolve_launch(&engine, &instance, opts).await,
@@ -679,6 +708,9 @@ async fn run_launch(
             let msg = format!("[espectral] launch error: {e}");
             engine.active_instances().remove(&name);
             lock(&st.pending_stops).remove(&name);
+            if agent {
+                crate::agent::release_launch(engine.agent_state(), &key);
+            }
             tracing::warn!("{msg}");
             system_line(&engine, &key, &msg);
             let (spawn_ms, boot_ms, phases) = st
@@ -702,6 +734,9 @@ async fn run_launch(
     // C6: cancelled during prepare — a stop arrived while resolve was in flight.
     if lock(&st.pending_stops).remove(&name) {
         engine.active_instances().remove(&name);
+        if agent {
+            crate::agent::release_launch(engine.agent_state(), &key);
+        }
         let phases = st
             .with_buffer(&key, |b| {
                 b.finish();
@@ -715,8 +750,14 @@ async fn run_launch(
         return;
     }
 
-    lock(&st.live_launches).insert(key.clone());
-    push_presence(&engine, Some(&instance), presence_start, None);
+    // Agent launches never touch Discord rich presence: a bot-driven game is
+    // not what the player is playing. They are also NOT counted in the presence
+    // refcount — otherwise a player game exiting would leave the presence line
+    // stuck for as long as the bot game runs.
+    if !agent {
+        lock(&st.live_launches).insert(key.clone());
+        push_presence(&engine, Some(&instance), presence_start, None);
+    }
 
     let weak = Arc::downgrade(&engine.inner);
     let exit_seen = Arc::new(Mutex::new(false));
@@ -729,6 +770,7 @@ async fn run_launch(
         let exit_seen = exit_seen.clone();
         let token = bridge_token.clone();
         let aot_key = resolved.aot_key.clone();
+        let agent_exit = agent;
         Arc::new(move |x: GameExit| {
             let Some(engine) = upgrade(&weak) else { return };
             let st = engine.game_launch_state();
@@ -766,6 +808,11 @@ async fn run_launch(
             let phases = buf.as_ref().map(|b| b.phases.clone()).unwrap_or_default();
             lock(&st.live_launches).remove(&key);
             engine.active_instances().remove(&name);
+            // Any in-flight agent call is failed with GAME_GONE and parked
+            // polls are released now — a waiter must never outlive the game.
+            if agent_exit {
+                crate::agent::release_launch(engine.agent_state(), &key);
+            }
             let _ = crate::presence::launch_exited(&engine, &name, Some(&token));
             if st.live_is_empty() {
                 push_clear(&engine);
@@ -821,10 +868,11 @@ async fn run_launch(
         let on_log: Arc<dyn Fn(&str) + Send + Sync> = {
             let (e, key, instance, live_presence) =
                 (engine.clone(), key.clone(), instance.clone(), live_presence.clone());
+            let agent_log = agent;
             Arc::new(move |chunk: &str| {
                 let lines = e.game_launch_state().append_output(&key, chunk);
                 for (seq, line) in lines {
-                    let ev = presence_event_from_log(&line);
+                    let ev = if agent_log { None } else { presence_event_from_log(&line) };
                     e.emit(EngineEvent::LaunchLog(LaunchLogEvent { key: key.clone(), seq, line }));
                     if let Some(ev) = ev {
                         let p = presence_for_event(&ev);
@@ -839,8 +887,14 @@ async fn run_launch(
             let uuid = Some(resolved.account.uuid.clone()).filter(|u| !u.is_empty());
             let game_dir = resolved.game_dir.clone();
             let token = bridge_token.clone();
+            let spawned_agent = agent;
             Arc::new(move |at| {
                 e.game_launch_state().with_buffer(&key, |b| b.spawned_at = Some(at));
+                // The agent entry was registered when the key was minted; the
+                // resolved gameDir (per-account profile dirs) is only known now.
+                if spawned_agent {
+                    crate::agent::register_launch(e.agent_state(), &key, &name, Some(game_dir.clone()));
+                }
                 let _ = crate::presence::launch_started(
                     &e,
                     crate::presence::LaunchPresence {
@@ -867,6 +921,7 @@ async fn run_launch(
                 (engine.clone(), key.clone(), name.clone(), instance.clone(), live_presence.clone());
             let needs_cache = !resolved.aot_cache_exists || resolved.aot_cache_stale;
             let aot_available = resolved.aot_available;
+            let marker_agent = agent;
             Arc::new(move |at| {
                 let st = e.game_launch_state();
                 let has_buf = st.with_buffer(&key, |b| b.menu_at = Some(at)).is_some();
@@ -874,10 +929,19 @@ async fn run_launch(
                     .map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
                     .unwrap_or_default();
                 system_line(&e, &key, &format!("[espectral] Sound engine started ({iso})"));
-                push_presence(&e, Some(&instance), presence_start, lock(&live_presence).clone());
+                // Presence refreshes at the main menu with the same elapsed
+                // clock — except for agent launches, which must never appear in
+                // Discord presence (this is the only push left on this path).
+                if !marker_agent {
+                    push_presence(&e, Some(&instance), presence_start, lock(&live_presence).clone());
+                }
                 crate::game_sessions::record_session(&e, &name, json!({ "menu_at": at }));
-                // The game is up: the UI may close the launcher now.
-                e.emit(EngineEvent::LaunchReady(LaunchReadyEvent { key: key.clone(), instance: name.clone() }));
+                // The game is up: the UI may close the launcher now — never for
+                // an agent launch (the launcher IS the relay: closing it would
+                // cut the agent off from the game it just started).
+                if !marker_agent {
+                    e.emit(EngineEvent::LaunchReady(LaunchReadyEvent { key: key.clone(), instance: name.clone() }));
+                }
                 // AOT auto-train on a missing/refused cache — deferred until this
                 // game EXITS (the trainer is a second game in the same gameDir).
                 let auto_on = instance.aot_auto_train.unwrap_or_else(|| e.config().aot_auto_train());
@@ -928,6 +992,7 @@ async fn run_launch(
                         "game_dir": resolved.game_dir.to_string_lossy(),
                         "started_at": started_at,
                         "bridge_token": bridge_token,
+                        "agent": agent,
                     }),
                 );
             }
@@ -946,6 +1011,9 @@ async fn run_launch(
                 .unwrap_or_default();
             lock(&st.live_launches).remove(&key);
             engine.active_instances().remove(&name);
+            if agent {
+                crate::agent::release_launch(engine.agent_state(), &key);
+            }
             let _ = crate::presence::launch_exited(&engine, &name, Some(&bridge_token));
             if st.live_is_empty() {
                 push_clear(&engine);
@@ -979,15 +1047,26 @@ impl Engine {
                     .ok_or_else(|| EngineError::not_found("NOT_FOUND", format!("unknown account: {u}")))?,
             ),
         };
+        // One validation for the UI route and the agent route (agent.mjs
+        // normalizeLaunchOptions): a bad join/window is a 400 here, before a
+        // buffer exists.
+        let body = json!({ "agent": req.agent, "join": req.join, "window": req.window });
+        let options = crate::agent::normalize_launch_options(&body, false)?;
         if req.dry_run {
             let opts = ResolveLaunchOptions {
                 dry_run: true,
                 account: account_override.map(|a| LaunchAccountInput::Stored(Box::new(a))),
+                agent: options.agent,
+                join: options.join,
+                window: options.window,
                 ..Default::default()
             };
             let resolved = launch::resolve_launch(self, &instance, opts).await?;
+            // The preview carries the resolved options (the JS `resolved`
+            // object does): `warnings` already includes the ffmpeg one.
             return Ok(LaunchOutcome::DryRun(launch::dry_run_result(self, &instance, &resolved)?));
         }
+        let agent = options.agent;
         if !self.active_instances().insert(name) {
             return Err(EngineError::conflict(
                 "ALREADY_RUNNING",
@@ -998,6 +1077,21 @@ impl Engine {
         let key = make_key();
         let account_name = account_override.as_ref().map(|a| a.username.clone());
         st.create_buffer(&key, name, &instance.version, account_name.clone());
+        // Agent launches are tagged on the buffer (→ /api/launches rows) so the
+        // UI and the agent routes can tell a bot game from a player game.
+        st.with_buffer(&key, |b| b.agent = agent);
+        // Register with the agent registry BEFORE the key is returned: the
+        // mod's first poll races the spawn, and an agent call to a key the
+        // caller already holds must never answer "unknown launch". The
+        // gameDir is refreshed on spawn (per-account profile dirs).
+        if agent {
+            crate::agent::register_launch(
+                self.agent_state(),
+                &key,
+                name,
+                instance.game_dir.as_deref().filter(|d| !d.is_empty()).map(std::path::PathBuf::from),
+            );
+        }
 
         // Stream the prepare phase as launch-log lines (the buffer exists even
         // if resolve later fails).
@@ -1013,7 +1107,7 @@ impl Engine {
         let e = self.clone();
         let (k, inst) = (key.clone(), instance.clone());
         self.spawn_background("launch", async move {
-            run_launch(e, k, inst, account_override, presence_start, progress).await;
+            run_launch(e, k, inst, account_override, presence_start, progress, options).await;
             Ok(())
         });
         Ok(LaunchOutcome::Started(LaunchReply {
@@ -1096,6 +1190,7 @@ impl Engine {
                 version: b.version.clone(),
                 account: b.account.clone(),
                 running: b.running,
+                agent: b.agent,
                 started_at: b.started_at,
                 menu_at: b.menu_at,
                 ended_at: b.ended_at,
@@ -1157,6 +1252,10 @@ impl Engine {
             let key = s.key.clone().filter(|k| !k.is_empty()).unwrap_or_else(make_key);
             let version = s.version.clone().unwrap_or_else(|| instance.version.clone());
             st.create_buffer(&key, &name, &version, s.account.clone());
+            // An adopted AGENT game comes back as an agent launch: the relay and
+            // /api/agent/* keep working after a launcher restart.
+            let adopted_agent = s.agent == Some(true);
+            st.with_buffer(&key, |b| b.agent = adopted_agent);
             let started_at = s.started_at.unwrap_or_else(crate::platform::now_ms);
             st.with_buffer(&key, |b| {
                 b.started_at = started_at;
@@ -1168,7 +1267,9 @@ impl Engine {
                 &format!("[espectral] {name} sigue abierto desde antes de reabrir el launcher (pid {})", s.pid),
             );
             self.active_instances().insert(&name);
-            lock(&st.live_launches).insert(key.clone());
+            if !adopted_agent {
+                lock(&st.live_launches).insert(key.clone());
+            }
             let token = s.bridge_token.clone().unwrap_or_default();
             let _ = crate::presence::launch_started(
                 self,
@@ -1179,7 +1280,18 @@ impl Engine {
                     token: token.clone(),
                 },
             );
-            push_presence(self, Some(&instance), started_at, None);
+            if adopted_agent {
+                // The game is still the one an agent started: re-register it so
+                // the agent routes and the mod relay keep working.
+                crate::agent::register_launch(
+                    self.agent_state(),
+                    &key,
+                    &name,
+                    s.game_dir.as_deref().filter(|d| !d.is_empty()).map(std::path::PathBuf::from),
+                );
+            } else {
+                push_presence(self, Some(&instance), started_at, None);
+            }
             let done = Arc::new(AtomicBool::new(false));
             let weak = Arc::downgrade(&self.inner);
             let (n, k) = (name.clone(), key.clone());
@@ -1199,6 +1311,9 @@ impl Engine {
                 });
                 lock(&st.live_launches).remove(&k);
                 e.active_instances().remove(&n);
+                if adopted_agent {
+                    crate::agent::release_launch(e.agent_state(), &k);
+                }
                 let _ = crate::presence::launch_exited(&e, &n, Some(&token));
                 if st.live_is_empty() {
                     push_clear(&e);
@@ -1318,6 +1433,10 @@ mod tests {
             aot_cache_exists: false,
             aot_cache_stale: false,
             aot_available: true,
+            agent: false,
+            join: None,
+            window: None,
+            ffmpeg_path: None,
             warnings: vec![],
         }
     }
@@ -1423,11 +1542,13 @@ mod tests {
     async fn account_override_validation_and_unknown_key() {
         let (_d, e) = temp_engine();
         write_instance(&e, "acc", json!({}));
-        let err =
-            e.launch_instance("acc", LaunchRequest { dry_run: false, account: Some(String::new()) }).await.unwrap_err();
+        let err = e
+            .launch_instance("acc", LaunchRequest { account: Some(String::new()), ..Default::default() })
+            .await
+            .unwrap_err();
         assert_eq!((err.status(), err.envelope().code.as_str()), (400, "BAD_ACCOUNT"));
         let err = e
-            .launch_instance("acc", LaunchRequest { dry_run: false, account: Some("ghost".into()) })
+            .launch_instance("acc", LaunchRequest { account: Some("ghost".into()), ..Default::default() })
             .await
             .unwrap_err();
         assert_eq!((err.status(), err.envelope().code.as_str()), (404, "NOT_FOUND"));
