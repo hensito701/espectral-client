@@ -1,0 +1,201 @@
+// OWNER: library-mods agent. Small building blocks shared by the library pages
+// (VersionArmory, ImportCenter, ModCatalog, MrpackModal).
+
+import { Theme, Shell, ScrollArea } from "../../widgets.slint";
+
+/// PageScaffold twin that also reports when the viewport nears the bottom
+/// (infinite scroll: VersionArmory sentinel, Modrinth explore paging).
+export component LibScroll inherits Rectangle {
+    in property <length> max-content-width: Theme.content-max;
+    in property <length> content-padding: Theme.space-6;
+    in property <length> content-padding-top: content-padding;
+    in property <length> content-padding-bottom: Theme.space-12;
+    in property <length> spacing: Theme.space-6;
+    /// Distance from the bottom that counts as "near" (CSS rootMargin 400px).
+    in property <length> near-margin: 400px;
+    in-out property <length> content-y <=> scroll.content-y;
+    out property <length> content-height: scroll.content-height;
+    out property <length> visible-height: scroll.visible-height;
+    out property <bool> near-bottom: -scroll.content-y + scroll.visible-height >= scroll.content-height - root.near-margin;
+    callback reached-bottom();
+    changed near-bottom => {
+        if self.near-bottom { root.reached-bottom(); }
+    }
+    public function scroll-to-top() { scroll.scroll-to-top(); }
+    property <float> debug-scroll: Shell.debug-scroll;
+    changed debug-scroll => { scroll.content-y = -self.debug-scroll * 1px; }
+    // the screenshot tool sets Shell.debug-scroll once: follow the content growing under it
+    changed content-height => {
+        if self.debug-scroll > 0 { scroll.content-y = -min(self.debug-scroll * 1px, max(0px, self.content-height - self.visible-height)); }
+    }
+
+    scroll := ScrollArea {
+        width: root.width;
+        height: root.height;
+        HorizontalLayout {
+            alignment: center;
+            HorizontalLayout {
+                width: min(root.max-content-width, root.width);
+                padding-left: root.content-padding;
+                padding-right: root.content-padding;
+                VerticalLayout {
+                    padding-top: root.content-padding-top;
+                    padding-bottom: root.content-padding-bottom;
+                    spacing: root.spacing;
+                    alignment: start;
+                    @children
+                }
+            }
+        }
+    }
+}
+
+/// base.css .glass-panel: --surface fill, glass border, radius-lg, card shadow.
+export component GlassPanel inherits Rectangle {
+    in property <brush> fill: Theme.surface;
+    in property <color> stroke: Theme.glass-border;
+    in property <length> radius: Theme.radius-lg;
+    border-radius: radius;
+    background: fill;
+    border-width: 1px;
+    border-color: stroke;
+    drop-shadow-color: Theme.shadow-card-color;
+    drop-shadow-blur: Theme.shadow-card-blur;
+    drop-shadow-offset-y: Theme.shadow-card-y;
+}
+
+/// Small glowing status dot.
+export component GlowDot inherits Rectangle {
+    in property <color> tint: Theme.accent;
+    in property <length> size: 6px;
+    in property <bool> glow: true;
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: tint;
+    drop-shadow-color: glow ? tint : transparent;
+    drop-shadow-blur: glow ? 8px : 0px;
+}
+
+/// Text in a VerticalLayout centred vertically (keeps HorizontalLayout rows tidy).
+export component VText inherits VerticalLayout {
+    in property <string> text;
+    in property <brush> color: Theme.text;
+    in property <length> font-size: Theme.text-sm;
+    in property <int> font-weight: 400;
+    in property <string> font-family: Theme.font-body;
+    in property <length> letter-spacing: 0px;
+    in property <TextOverflow> overflow: clip;
+    alignment: center;
+    Text {
+        text: root.text;
+        color: root.color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        font-family: root.font-family;
+        letter-spacing: root.letter-spacing;
+        overflow: root.overflow;
+    }
+}
+
+/// Clickable pill / chip (filter chips, memory presets, instance chips base).
+export component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <bool> enabled: true;
+    in property <length> pad-x: 14px;
+    in property <length> pad-y: 6px;
+    in property <length> font-size: Theme.text-xs;
+    in property <length> radius: Theme.radius-pill;
+    /// Colors (defaults: VersionArmory .filter-chip).
+    in property <brush> idle-bg: Theme.surface;
+    in property <brush> hover-bg: Theme.surface-up;
+    in property <brush> active-bg: Theme.accent.with-alpha(0.18);
+    in property <color> idle-border: Theme.border;
+    in property <color> hover-border: Theme.border-focus;
+    in property <color> active-border: Theme.accent;
+    in property <color> idle-fg: Theme.muted-strong;
+    in property <color> hover-fg: Theme.text;
+    in property <color> active-fg: Theme.accent;
+    in property <bool> active-glow: true;
+    in property <int> font-weight: 500;
+    in property <int> active-weight: 600;
+    /// Leading dot (ModCatalog filter chips).
+    in property <color> dot-color: transparent;
+    in property <bool> dot-glow: false;
+    out property <bool> hovered: touch.has-hover && enabled;
+    callback clicked();
+
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    preferred-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: radius;
+    background: active ? active-bg : hovered ? hover-bg : idle-bg;
+    border-width: 1px;
+    border-color: active ? active-border : hovered ? hover-border : idle-border;
+    opacity: enabled ? 1 : 0.5;
+    drop-shadow-color: active && active-glow ? Theme.accent.with-alpha(0.25) : transparent;
+    drop-shadow-blur: 12px;
+    animate background, border-color { duration: Theme.dur-fast; }
+
+    row := HorizontalLayout {
+        padding-left: root.pad-x;
+        padding-right: root.pad-x;
+        padding-top: root.pad-y;
+        padding-bottom: root.pad-y;
+        spacing: 6px;
+        alignment: center;
+        if root.dot-color != transparent: VerticalLayout {
+            alignment: center;
+            GlowDot { tint: root.dot-color; glow: root.dot-glow; }
+        }
+        Text {
+            text: root.text;
+            color: root.active ? root.active-fg : root.hovered ? root.hover-fg : root.idle-fg;
+            font-size: root.font-size;
+            font-weight: root.active ? root.active-weight : root.font-weight;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Feedback block (loading / empty / error) in a glass panel, centred column.
+export component StatePanel inherits GlassPanel {
+    in property <length> pad-y: Theme.space-8;
+    min-height: col.preferred-height;
+    col := VerticalLayout {
+        padding-top: root.pad-y;
+        padding-bottom: root.pad-y;
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-2;
+        alignment: center;
+        @children
+    }
+}
+
+/// A Text that centers itself horizontally inside a VerticalLayout and wraps.
+export component CenterText inherits HorizontalLayout {
+    in property <string> text;
+    in property <brush> color: Theme.muted;
+    in property <length> font-size: Theme.text-sm;
+    in property <int> font-weight: 400;
+    in property <length> max-text-width: 2000px;
+    alignment: center;
+    Text {
+        text: root.text;
+        color: root.color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+        max-width: root.max-text-width;
+    }
+}
