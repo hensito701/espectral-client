@@ -7,7 +7,7 @@
 //! 3. the UI is built, every module wired, the window shown only once the
 //!    engine is ready;
 //! 4. on window close the event loop ends and the engine shuts down (games
-//!    keep running).
+//!    keep running); after an in-app update the new binary is started last.
 //!
 //! `--screenshot <route> <out.png> [opts]` renders one route headless and
 //! exits (see screenshot.rs, scripts/screenshot.sh).
@@ -37,6 +37,7 @@ mod skin;
 mod store;
 mod theme;
 mod toast;
+mod updater;
 mod util;
 
 use std::time::Duration;
@@ -151,6 +152,7 @@ fn main() {
             });
         });
     }
+    updater::init(&ctx, &ui);
 
     router::navigate(&ui, "#/");
     ui.show().expect("failed to show the window");
@@ -168,6 +170,7 @@ fn main() {
         let _ = tokio::time::timeout(Duration::from_secs(5), engine.shutdown()).await;
     });
     drop(guard);
+    updater::relaunch_if_requested();
 }
 
 /// Measurement hook (`ESPECTRAL_TOUR="#/servers,#/mods,..."`, `ESPECTRAL_TOUR_MS`):

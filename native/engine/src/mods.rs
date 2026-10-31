@@ -9,8 +9,9 @@
 //! download is SHA-1 verified by `HttpClient::download_all`. The Modrinth base
 //! URL comes from `ContentSettings::modrinth_api` (tests: a mock server).
 //!
-//! Bundled branding jars: `<exe dir>/branding`, `<exe dir>/resources/branding`,
-//! `<exe dir>/../branding` (installed layouts), then the repo's
+//! Bundled branding jars: `<exe dir>/branding` (Windows installer),
+//! `<exe dir>/resources/branding`, `<exe dir>/../branding`,
+//! `<exe dir>/../lib/Espectral Client/branding` (Linux .deb), then the repo's
 //! `assets/branding` (dev) — or `ContentSettings::branding_dir`.
 //!
 //! Error codes from routes/mods.mjs are lowercase and VERBATIM (see
@@ -259,6 +260,8 @@ pub fn branding_dir(engine: &Engine) -> PathBuf {
         candidates.push(exe_dir.join("resources").join("branding"));
         if let Some(up) = exe_dir.parent() {
             candidates.push(up.join("branding"));
+            // Linux .deb: /usr/bin/espectral-client + /usr/lib/Espectral Client/branding
+            candidates.push(up.join("lib").join("Espectral Client").join("branding"));
         }
     }
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");

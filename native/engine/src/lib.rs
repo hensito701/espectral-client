@@ -37,6 +37,7 @@ pub mod stats;
 #[doc(hidden)]
 pub mod test_support;
 pub mod types;
+pub mod updater;
 pub mod util;
 pub mod ziputil;
 

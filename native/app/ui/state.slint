@@ -191,7 +191,7 @@ export global Shell {
     callback dismiss-toast(id: int);
     callback toast-clicked(id: int);
 
-    // signed-update CTA (placeholder: the updater is not ported yet)
+    // signed-update CTA (src/updater.rs; renders only when a verified update exists)
     /// "idle" | "available" | "downloading" | "installing" | "ready"
     in property <string> update-status: "idle";
     in property <string> update-version;
