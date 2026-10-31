@@ -1,0 +1,181 @@
+// Modal scaffold (InstanceWizardModal / MrpackModal / DryRunModal / confirm
+// dialogs all share: scrim + centered card + header + body + footer).
+//
+// Place it as the LAST child of the page (so it paints on top) and bind `open`:
+//
+//     Modal {
+//         open <=> root.wizard-open;
+//         title: T.tr("wizard.title"); subtitle: T.tr("wizard.subtitle");
+//         dialog-width: 680px;
+//         close => { root.wizard-open = false; }
+//         // body (any layout) …
+//         ModalFooter { Btn { ... } Btn { ... } }
+//     }
+//
+// Escape closes (when the modal has focus), clicking the scrim closes unless
+// `dismissable: false`. While open, Shell.modal-depth is incremented so the
+// global hotkeys (Space, /, Esc=back) are suspended.
+
+import { Theme } from "../theme.slint";
+import { Shell } from "../state.slint";
+import { IconBtn, Btn, BtnVariant } from "btn.slint";
+import { Icons } from "icon.slint";
+
+export component ModalFooter inherits Rectangle {
+    in property <LayoutAlignment> alignment: end;
+    // top divider
+    Rectangle { y: 0; height: 1px; background: Theme.border; }
+    HorizontalLayout {
+        padding-top: Theme.space-4;
+        padding-bottom: Theme.space-4;
+        padding-left: Theme.space-6;
+        padding-right: Theme.space-6;
+        spacing: Theme.space-3;
+        alignment: root.alignment;
+        @children
+    }
+}
+
+export component Modal inherits Rectangle {
+    in-out property <bool> open: false;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <length> dialog-width: 680px;
+    /// 0 = size to content (capped at window height - 64px).
+    in property <length> dialog-height: 0px;
+    in property <bool> dismissable: true;
+    in property <bool> show-close: true;
+    /// Extra content right of the title (e.g. the wizard stepper) is not
+    /// possible with a single @children slot: put it in the body instead.
+    callback close();
+
+    visible: open;
+    // Fills its parent when placed outside a layout (direct child of the page's
+    // root Rectangle, after the page content).
+    background: Theme.backdrop;
+
+    changed open => {
+        if open {
+            Shell.modal-depth += 1;
+            fs.focus();
+        } else {
+            Shell.modal-depth = max(0, Shell.modal-depth - 1);
+        }
+    }
+
+    // scrim click
+    TouchArea {
+        clicked => {
+            if root.dismissable { root.close(); }
+        }
+    }
+
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape && root.dismissable {
+                root.close();
+                return accept;
+            }
+            return reject;
+        }
+
+        // centered with layouts so wrapped text gets its height-for-width
+        VerticalLayout {
+          alignment: center;
+          padding-top: 32px;
+          padding-bottom: 32px;
+          HorizontalLayout {
+           alignment: center;
+           card := Rectangle {
+            width: min(root.dialog-width, root.width - 2 * Theme.space-6);
+            max-height: root.height - 64px;
+            preferred-height: root.dialog-height > 0px ? root.dialog-height : body.preferred-height;
+            border-radius: Theme.radius-xl;
+            background: Theme.surface-solid;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-color: Theme.shadow-lg-color;
+            drop-shadow-blur: Theme.shadow-lg-blur;
+            drop-shadow-offset-y: Theme.shadow-lg-y;
+            clip: true;
+
+            // swallow clicks on the card
+            TouchArea { }
+
+            body := VerticalLayout {
+                if root.title != "" || root.show-close: Rectangle {
+                    HorizontalLayout {
+                        padding-left: Theme.space-6;
+                        padding-right: Theme.space-5;
+                        padding-top: Theme.space-5;
+                        padding-bottom: Theme.space-5;
+                        spacing: Theme.space-4;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: Theme.space-1;
+                            alignment: center;
+                            Text {
+                                text: root.title;
+                                color: Theme.text;
+                                font-size: Theme.text-xl;
+                                font-weight: 700;
+                                letter-spacing: -0.44px;
+                                wrap: word-wrap;
+                            }
+                            if root.subtitle != "": Text {
+                                text: root.subtitle;
+                                color: Theme.muted;
+                                font-size: Theme.text-sm;
+                                wrap: word-wrap;
+                            }
+                        }
+                        if root.show-close: VerticalLayout {
+                            alignment: center;
+                            IconBtn {
+                                icon: Icons.x;
+                                flat: true;
+                                size: 30px;
+                                clicked => { root.close(); }
+                            }
+                        }
+                    }
+                    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+                }
+                @children
+            }
+        }
+          }
+        }
+    }
+}
+
+/// Small yes/no confirmation dialog built on Modal.
+export component ConfirmDialog inherits Modal {
+    in property <string> message;
+    in property <string> confirm-text: "OK";
+    in property <string> cancel-text: "Cancel";
+    in property <bool> danger: false;
+    callback confirmed();
+    dialog-width: 440px;
+    VerticalLayout {
+        padding: Theme.space-6;
+        Text {
+            text: root.message;
+            color: Theme.muted-strong;
+            font-size: Theme.text-sm;
+            wrap: word-wrap;
+        }
+    }
+    ModalFooter {
+        Btn {
+            variant: BtnVariant.secondary;
+            text: root.cancel-text;
+            clicked => { root.close(); }
+        }
+        Btn {
+            variant: root.danger ? BtnVariant.danger : BtnVariant.primary;
+            text: root.confirm-text;
+            clicked => { root.confirmed(); }
+        }
+    }
+}

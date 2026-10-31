@@ -1,0 +1,13 @@
+// OWNER: settings-suite-servers agent. Port of src/ui/src/pages/SettingsDashboard.svelte.
+// Keep the exported component name and the empty interface used by app.slint.
+
+import { PlaceholderPage, T } from "../../widgets.slint";
+import { SettingsBridge } from "api.slint";
+
+export component SettingsPage inherits Rectangle {
+    PlaceholderPage {
+        title: T.tr("dash.title");
+        subtitle: T.tr("dash.subtitle");
+        source: "src/ui/src/pages/SettingsDashboard.svelte";
+    }
+}

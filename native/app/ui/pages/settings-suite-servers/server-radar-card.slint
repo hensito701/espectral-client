@@ -1,0 +1,29 @@
+// OWNER: settings-suite-servers agent. Port of components/ServerRadarCard.svelte
+// (+ PingWaveform). SHARED: home-instances' Home page imports this component
+// for its server strip, so keep the interface below stable (add properties,
+// never rename/remove). Data: AppState.servers (src/store.rs refresh_servers).
+
+import { Theme, ServerRow, GlassCard, Badge, BadgeVariant } from "../../widgets.slint";
+
+export component ServerRadarCard inherits Rectangle {
+    in property <ServerRow> server;
+    in property <bool> compact: false;
+    in property <bool> interactive: false;
+    in property <bool> featured: false;
+    in property <bool> show-ip: true;
+    callback clicked();
+
+    GlassCard {
+        clickable: root.interactive;
+        featured: root.featured;
+        title: root.server.hostname != "" ? root.server.hostname : root.server.host;
+        subtitle: root.server.online ? root.server.players-online + " / " + root.server.players-max : root.server.error;
+        clicked => { root.clicked(); }
+        Badge {
+            text: root.server.online ? "ONLINE" : "OFFLINE";
+            variant: root.server.online ? BadgeVariant.ok : BadgeVariant.err;
+            dot: true;
+            pixel: true;
+        }
+    }
+}

@@ -1,0 +1,187 @@
+// Btn — port of components/Btn.svelte.
+//
+//     Btn { text: T.tr("actions.save"); clicked => { ... } }
+//     Btn { variant: BtnVariant.secondary; size: BtnSize.sm; icon: Icons.refresh; text: "..."; }
+//     Btn { emoji: "📦"; text: T.tr("home.importModpack"); variant: BtnVariant.secondary; }
+//     Btn { variant: BtnVariant.primary; loading: true; }        // spinner, not clickable
+//
+// The CSS hover lift (translateY(-2px)) is reproduced; the spring easing is not.
+
+import { Theme } from "../theme.slint";
+import { Icon } from "icon.slint";
+import { Emoji } from "emoji.slint";
+
+export enum BtnVariant { primary, secondary, ghost, danger }
+export enum BtnSize { sm, md, lg }
+
+export component Spinner inherits Rectangle {
+    in property <length> size: 14px;
+    in property <brush> tint: Theme.text;
+    width: size;
+    height: size;
+    // track
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 21 12 A 9 9 0 1 1 3 12 A 9 9 0 1 1 21 12";
+        stroke: root.tint;
+        stroke-width: root.size * 3 / 24;
+        opacity: 0.25;
+    }
+    head := Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 12 3 A 9 9 0 0 1 21 12";
+        stroke: root.tint;
+        stroke-width: root.size * 3 / 24;
+        stroke-line-cap: round;
+        // Only animates while a spinner is visible (animation-tick keeps redrawing).
+        transform-rotation: mod(animation-tick(), 750ms) / 750ms * 360deg;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+    }
+}
+
+export component Btn inherits Rectangle {
+    in property <string> text;
+    in property <BtnVariant> variant: BtnVariant.primary;
+    in property <BtnSize> size: BtnSize.md;
+    in property <bool> enabled: true;
+    in property <bool> loading: false;
+    /// Stretch to the parent width (CSS .btn--block). Otherwise the width hugs the content.
+    in property <bool> block: false;
+    /// Leading icon path (Icons.*). Ignored when empty.
+    in property <string> icon;
+    /// Leading color emoji (e.g. "📦"). Ignored when empty.
+    in property <string> emoji;
+    /// Font size override (0 = size default).
+    in property <length> font-size-override: 0px;
+    in property <string> tooltip;
+    out property <bool> hovered: touch.has-hover && interactive;
+    out property <bool> pressed: touch.pressed && interactive;
+    callback clicked();
+
+    property <bool> interactive: enabled && !loading;
+    property <length> h: size == BtnSize.sm ? 28px : size == BtnSize.lg ? 48px : 38px;
+    property <length> pad: size == BtnSize.sm ? Theme.space-3 : size == BtnSize.lg ? Theme.space-6 : Theme.space-4;
+    property <length> fs: font-size-override > 0 ? font-size-override : size == BtnSize.sm ? Theme.text-xs : size == BtnSize.lg ? Theme.text-base : Theme.text-sm;
+    property <color> fg: variant == BtnVariant.primary ? Theme.text-inverse : variant == BtnVariant.danger ? #ffffff : variant == BtnVariant.ghost && !hovered ? Theme.muted-strong : Theme.text;
+
+    height: h;
+    min-width: block ? 0px : row.preferred-width;
+    preferred-width: row.preferred-width;
+    horizontal-stretch: block ? 1 : 0;
+    border-radius: size == BtnSize.sm ? Theme.radius-sm : size == BtnSize.lg ? Theme.radius-lg : Theme.radius-md;
+    opacity: enabled ? 1 : 0.45;
+
+    // lift on hover (translateY(-2px)), press scale 0.97
+    property <length> lift: !interactive ? 0px : pressed ? 0px : hovered ? (variant == BtnVariant.ghost ? -1px : -2px) : 0px;
+    animate lift { duration: Theme.dur-fast; easing: ease-out; }
+
+    background: transparent;
+    drop-shadow-color: !interactive ? transparent : variant == BtnVariant.primary ? Theme.accent.with-alpha(hovered ? 0.42 : 0.28) : variant == BtnVariant.danger ? Theme.accent-red.with-alpha(hovered ? 0.45 : 0.3) : variant == BtnVariant.secondary ? (hovered ? Theme.shadow-md-color : Theme.shadow-sm-color) : transparent;
+    drop-shadow-blur: variant == BtnVariant.secondary ? (hovered ? 20px : 10px) : (hovered ? 24px : 16px);
+    drop-shadow-offset-y: hovered ? 6px : 4px;
+
+    face := Rectangle {
+        y: root.lift;
+        width: 100%;
+        height: 100%;
+        border-radius: root.border-radius;
+        border-width: 1px;
+        clip: true;
+        background: root.variant == BtnVariant.primary ? @linear-gradient(135deg, Theme.accent 0%, Theme.accent-ink 100%)
+            : root.variant == BtnVariant.danger ? @linear-gradient(135deg, Theme.accent-red 0%, #b91c1c 100%)
+            : root.variant == BtnVariant.secondary ? (root.hovered ? Theme.surface-up : Theme.surface)
+            : (root.hovered ? Theme.surface : transparent);
+        border-color: root.variant == BtnVariant.primary ? rgba(255, 255, 255, 0.2)
+            : root.variant == BtnVariant.danger ? rgba(239, 68, 68, 0.4)
+            : root.variant == BtnVariant.secondary ? (root.hovered ? Theme.hover-border : Theme.border)
+            : (root.hovered ? Theme.glass-border : transparent);
+        animate background, border-color { duration: Theme.dur-fast; }
+
+        // inset 0 1px 0 rgba(255,255,255,.35) highlight of the filled variants
+        if root.variant == BtnVariant.primary || root.variant == BtnVariant.danger: Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: 1px;
+            background: rgba(255, 255, 255, root.hovered ? 0.5 : 0.35);
+        }
+        // brightness(1.08) on hover
+        if (root.variant == BtnVariant.primary || root.variant == BtnVariant.danger) && root.hovered: Rectangle {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        row := HorizontalLayout {
+            padding-left: root.pad;
+            padding-right: root.pad;
+            spacing: Theme.space-2;
+            alignment: center;
+            if root.loading: VerticalLayout {
+                alignment: center;
+                Spinner { size: root.fs; tint: root.fg; }
+            }
+            if !root.loading && root.icon != "": VerticalLayout {
+                alignment: center;
+                Icon { data: root.icon; size: root.fs + 2px; color: root.fg; }
+            }
+            if !root.loading && root.emoji != "": VerticalLayout {
+                alignment: center;
+                Emoji { char: root.emoji; size: root.fs; }
+            }
+            if root.text != "": Text {
+                text: root.text;
+                color: root.fg;
+                font-size: root.fs;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.interactive;
+        mouse-cursor: root.interactive ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Square icon-only button (TopChrome toggles, modal close, toolbar icons).
+export component IconBtn inherits Rectangle {
+    in property <string> icon;
+    in property <length> size: 34px;
+    in property <length> icon-size: 16px;
+    in property <bool> enabled: true;
+    in property <bool> active: false;
+    in property <bool> flat: false;
+    in property <string> tooltip;
+    out property <bool> hovered: touch.has-hover && enabled;
+    callback clicked();
+
+    width: size;
+    height: size;
+    border-radius: Theme.radius-md;
+    background: flat ? (hovered ? Theme.card-bg-soft : transparent) : hovered ? Theme.surface-up : Theme.surface;
+    border-width: flat ? 0px : 1px;
+    border-color: hovered || active ? Theme.hover-border : Theme.border;
+    opacity: enabled ? 1 : 0.45;
+    animate background, border-color { duration: Theme.dur-fast; }
+
+    Icon {
+        data: root.icon;
+        size: root.icon-size;
+        color: root.hovered || root.active ? Theme.accent : Theme.muted-strong;
+        animate color { duration: Theme.dur-fast; }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
