@@ -160,17 +160,24 @@ pub fn is_neoforge_installed(engine: &Engine, v: &str) -> bool {
     neoforge_json_path(engine, v).exists()
 }
 
-/// A java 21+ executable for the installer (launcher runtime, exact-21
-/// provisioning, else PATH `java`).
-async fn installer_java(engine: &Engine) -> EngineResult<PathBuf> {
+/// A java executable for the official installer. NeoForge and modern Forge
+/// generators need JDK 21; legacy Forge (1.8.9/1.12.2) installers are Java-8
+/// programs whose own library set is compiled for 8. Order: launcher runtime
+/// for `tier`, exact/tier provisioning, else PATH `java`.
+async fn installer_java(engine: &Engine, tier: u32) -> EngineResult<PathBuf> {
     if let Some(p) = engine.game_resolve_state().hooks().installer_java {
         return Ok(p);
     }
-    let rt = crate::runtimes::runtime_java_path(engine, 21);
+    let rt = crate::runtimes::runtime_java_path(engine, tier);
     if rt.exists() {
         return Ok(rt);
     }
-    if let Ok(info) = crate::runtimes::java_for_major_exact(engine, 21).await {
+    let info = if tier == 21 {
+        crate::runtimes::java_for_major_exact(engine, 21).await
+    } else {
+        crate::runtimes::java_for_version(engine, tier).await
+    };
+    if let Ok(info) = info {
         if !info.path.is_empty() && Path::new(&info.path).exists() {
             return Ok(PathBuf::from(info.path));
         }
@@ -190,7 +197,7 @@ async fn installer_java(engine: &Engine) -> EngineResult<PathBuf> {
     Err(EngineError::api(
         502,
         "NEOFORGE_JDK_REQUIRED",
-        "NeoForge necesita un JDK 21 para generar sus artefactos de lanzamiento",
+        format!("The loader installer needs a JDK {tier} to generate the launch artifacts"),
     ))
 }
 
@@ -206,7 +213,10 @@ async fn run_installer_for(engine: &Engine, v: &str, profile: &Value) -> EngineR
 }
 
 /// `java -jar <installer> --installClient <data>` for the processor-based
-/// installers NeoForge and modern Forge (1.13+) share.
+/// installers NeoForge and Forge (1.12.2) share. The installer JVM tier
+/// follows the Minecraft version: 8 for legacy Forge, 21 for NeoForge and
+/// modern Forge (26.x's installer also accepts 21 — its own patches run on the
+/// JDK the game will use, and JDK 21 is what the launcher provisions).
 pub(crate) async fn run_official_installer(engine: &Engine, installer: &Path, mc: &str) -> EngineResult<()> {
     let mc = mc.to_string();
     // The installer wants versions/<mc>/<mc>.json (the launcher caches it flat
@@ -230,10 +240,11 @@ pub(crate) async fn run_official_installer(engine: &Engine, installer: &Path, mc
         tokio::fs::write(&profiles, serde_json::to_string(&stub)?).await?;
     }
 
-    let java = installer_java(engine).await?;
+    let tier = crate::forge::installer_java_tier(&mc, version_java_tier(engine, &mc).await);
+    let java = installer_java(engine, tier).await?;
     let mut cmd = crate::jvm::hidden_command(&java);
     cmd.arg("-jar")
-        .arg(&installer)
+        .arg(installer)
         .arg("--installClient")
         .arg(engine.paths().data_dir())
         .stdin(std::process::Stdio::null())
@@ -271,10 +282,20 @@ pub(crate) async fn run_official_installer(engine: &Engine, installer: &Path, mc
         return Err(EngineError::api(
             502,
             "NEOFORGE_INSTALL_FAILED",
-            format!("El instalador de NeoForge falló (exit {code}): {tail}"),
+            format!("the installer failed (exit {code}): {tail}"),
         ));
     }
     Ok(())
+}
+
+/// Java tier the Minecraft release itself asks for (`javaVersion.majorVersion`),
+/// read from the flat cached version JSON without any network. Defaults to 8
+/// when the file is absent (the installer still runs; its tier floor applies).
+async fn version_java_tier(engine: &Engine, mc: &str) -> u32 {
+    let flat = engine.paths().versions_dir().join(format!("{mc}.json"));
+    let read = tokio::fs::read_to_string(&flat).await.ok();
+    let doc: Option<Value> = read.and_then(|s| serde_json::from_str(&s).ok());
+    doc.and_then(|d| d.pointer("/javaVersion/majorVersion").and_then(Value::as_u64)).map(|m| m as u32).unwrap_or(8)
 }
 
 async fn pump<R: tokio::io::AsyncBufRead + Unpin>(

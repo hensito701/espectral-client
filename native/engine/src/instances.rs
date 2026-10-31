@@ -36,6 +36,43 @@ use crate::util::{is_trash_dir_name, is_valid_instance_name};
 /// Game subdirs created at instance creation (JS GAME_SUBDIRS).
 const GAME_SUBDIRS: [&str; 6] = ["mods", "natives", "logs", "saves", "config", "cache"];
 
+/// 409 `FORGE_UNAVAILABLE`: Forge is not offered for this Minecraft version.
+fn forge_unavailable(version: &str) -> EngineError {
+    EngineError::conflict(
+        "FORGE_UNAVAILABLE",
+        format!("Forge is not available for Minecraft {version} (supported: {})", crate::forge::SUPPORTED_MC_SUMMARY),
+    )
+}
+
+/// `1.X[.Y]` release id -> (X, Y); None for 26.x-style ids and snapshots.
+fn classic_release(mc: &str) -> Option<(u32, u32)> {
+    let rest = mc.trim().strip_prefix("1.")?;
+    let mut parts = rest.split('.');
+    let minor = parts.next()?.parse().ok()?;
+    let patch = match parts.next() {
+        Some(p) => p.parse().ok()?,
+        None => 0,
+    };
+    parts.next().is_none().then_some((minor, patch))
+}
+
+/// Whether the create/version-change UIs offer `loader` for Minecraft `mc`
+/// (static rule, no network): Fabric from 1.14, NeoForge from 1.20.2,
+/// Forge on [`crate::forge::forge_supported`], vanilla always. Snapshots and
+/// 26.x ids count as modern (NeoForge needs a release id).
+pub fn loader_offered(loader: Loader, mc: &str) -> bool {
+    let classic = classic_release(mc);
+    match loader {
+        Loader::Vanilla => true,
+        Loader::Forge => crate::forge::forge_supported(mc),
+        Loader::Fabric => classic.map_or(true, |(minor, _)| minor >= 14),
+        Loader::Neoforge => match classic {
+            Some((minor, patch)) => minor > 20 || (minor == 20 && patch >= 2),
+            None => crate::neoforge::neoforge_prefix_for(mc).is_some(),
+        },
+    }
+}
+
 fn invalid_name() -> EngineError {
     EngineError::conflict("INVALID_NAME", "instance name must match ^[A-Za-z0-9 ._-]{1,40}$")
 }
@@ -357,6 +394,43 @@ pub async fn get_instance_detail(engine: &Engine, name: &str) -> EngineResult<In
 // Create / delete / patch
 // ---------------------------------------------------------------------------
 
+/// Loader build recorded on the instance: the requested one, else the
+/// loader's default for this Minecraft version (NeoForge: newest stable,
+/// Forge: promotions recommended/latest). Probe failures (offline, mocked
+/// resolver) stay optimistic — seeding and the launch resolve it again — but a
+/// definitive "no build exists" answer is a 409 before anything is written.
+async fn auto_loader_version(
+    engine: &Engine,
+    loader: Loader,
+    version: &str,
+    requested: Option<String>,
+) -> EngineResult<Option<String>> {
+    if let Some(v) = requested.clone().filter(|s| !s.trim().is_empty()) {
+        return Ok(Some(v));
+    }
+    match loader {
+        Loader::Forge => match crate::forge::resolve_forge_version(engine, version, None).await {
+            Ok(b) => Ok(Some(b)),
+            Err(e) if e.raw_code() == Some("FORGE_UNAVAILABLE") => Err(e),
+            Err(e) => {
+                tracing::debug!("[instances] forge default build probe failed ({e}); resolving at launch");
+                Ok(None)
+            }
+        },
+        Loader::Neoforge => match crate::neoforge::latest_neoforge_for(engine, version).await {
+            Ok(Some(v)) => Ok(Some(v)),
+            Ok(None) => {
+                Err(EngineError::conflict("NEOFORGE_UNAVAILABLE", format!("no NeoForge build for Minecraft {version}")))
+            }
+            Err(e) => {
+                tracing::debug!("[instances] neoforge default build probe failed ({e}); resolving at launch");
+                Ok(None)
+            }
+        },
+        _ => Ok(None),
+    }
+}
+
 /// Create an instance (validation, hue, game dirs, optional two-hop import,
 /// background seeding, Fabric performance preset).
 pub async fn create_instance(engine: &Engine, req: CreateInstanceRequest) -> EngineResult<InstanceSummary> {
@@ -368,8 +442,11 @@ pub async fn create_instance(engine: &Engine, req: CreateInstanceRequest) -> Eng
     if req.version.is_empty() {
         return Err(EngineError::bad_request("VERSION_REQUIRED", "version is required"));
     }
-    if loader == Loader::Neoforge && req.loader_version.as_deref().map(str::is_empty).unwrap_or(true) {
-        return Err(EngineError::bad_request("LOADER_VERSION_REQUIRED", "loader_version es obligatorio para NeoForge"));
+    // Loader builds are auto-picked when the caller sends none (the wizard
+    // never does): NeoForge -> newest stable for this Minecraft version,
+    // Forge -> the promotions default build.
+    if loader == Loader::Forge && !crate::forge::forge_supported(&req.version) {
+        return Err(forge_unavailable(&req.version));
     }
     if loader == Loader::Fabric {
         // Best-effort probe: a failure (network, or resolver not available)
@@ -406,11 +483,12 @@ pub async fn create_instance(engine: &Engine, req: CreateInstanceRequest) -> Eng
         Some(v) => v,
     };
     let import_from = req.import_from.clone().filter(|s| !s.is_empty());
+    let loader_version = auto_loader_version(engine, loader, &req.version, req.loader_version.clone()).await?;
     let mut raw = match json!({
         "name": name,
         "version": req.version,
         "loader": loader.as_str(),
-        "loader_version": req.loader_version,
+        "loader_version": loader_version,
         "modpack": req.modpack,
         "modpack_version": req.modpack_version,
         "memory_mb": req.memory_mb.filter(|mb| *mb >= 512),
@@ -756,7 +834,7 @@ pub async fn import_options_from_instance(engine: &Engine, target: &str, source:
 /// AotStatus snapshot for an instance (read side).
 pub async fn aot_status(engine: &Engine, instance: &InstanceMeta) -> EngineResult<AotStatus> {
     let summary = get_summary(engine, &instance.name).await?;
-    let ready = Some(instance.loader != Loader::Neoforge);
+    let ready = Some(crate::aot::loader_supports_aot(instance.loader));
     let Some(key) = summary.aot_key else {
         return Ok(AotStatus {
             key: None,
@@ -780,7 +858,7 @@ pub async fn aot_status(engine: &Engine, instance: &InstanceMeta) -> EngineResul
         .and_then(|m| m.get("trained_at").and_then(Value::as_str).map(str::to_string));
 
     let mut stale = None;
-    if cache_exists && instance.loader != Loader::Neoforge {
+    if cache_exists && crate::aot::loader_supports_aot(instance.loader) {
         let resolved = async {
             let vj = crate::resolver::get_version_json(engine, &instance.version).await?;
             let fabric = if instance.loader == Loader::Fabric {
@@ -858,6 +936,22 @@ mod tests {
     }
 
     #[test]
+    fn loader_offered_follows_each_loaders_range() {
+        use Loader::*;
+        let offered = |l: Loader, v: &str| loader_offered(l, v);
+        // 1.8.9: only vanilla + Forge (no Fabric/NeoForge build exists).
+        assert!(offered(Vanilla, "1.8.9") && offered(Forge, "1.8.9"));
+        assert!(!offered(Fabric, "1.8.9") && !offered(Neoforge, "1.8.9"));
+        assert!(!offered(Fabric, "1.13.2") && offered(Fabric, "1.14") && offered(Fabric, "1.21.11"));
+        assert!(!offered(Neoforge, "1.20.1") && offered(Neoforge, "1.20.2") && offered(Neoforge, "1.21.1"));
+        assert!(offered(Neoforge, "26.3") && offered(Fabric, "26.3") && offered(Forge, "26.3"));
+        assert!(!offered(Forge, "1.20.1") && !offered(Forge, "1.16.5"));
+        // Snapshots: Fabric yes, NeoForge needs a release id.
+        assert!(offered(Fabric, "26.4-snapshot-6") && !offered(Neoforge, "26.4-snapshot-6"));
+        assert!(offered(Fabric, "24w14a") && !offered(Neoforge, "24w14a"));
+    }
+
+    #[test]
     fn hue_helpers() {
         assert_eq!(hue_distance(10, 350), 20);
         assert_eq!(hue_distance(0, 180), 180);
@@ -932,8 +1026,16 @@ mod tests {
         assert_eq!(code(create_instance(&e, req("bad/name")).await), (409, "INVALID_NAME".into()));
         let nover = CreateInstanceRequest { version: String::new(), ..req("nover") };
         assert_eq!(code(create_instance(&e, nover).await), (400, "VERSION_REQUIRED".into()));
+        // Loader builds are auto-picked: the wizard never sends one.
         let nf = CreateInstanceRequest { loader: Some(Loader::Neoforge), ..req("nf") };
-        assert_eq!(code(create_instance(&e, nf).await), (400, "LOADER_VERSION_REQUIRED".into()));
+        let created = create_instance(&e, nf).await.unwrap();
+        assert!(
+            created.loader_version.as_deref().is_some_and(|v| !v.is_empty()),
+            "NeoForge build auto-picked: {:?}",
+            created.loader_version
+        );
+        let forge = CreateInstanceRequest { loader: Some(Loader::Forge), version: "1.20.1".into(), ..req("forge-bad") };
+        assert_eq!(code(create_instance(&e, forge).await), (409, "FORGE_UNAVAILABLE".into()));
         create_instance(&e, req("dup")).await.unwrap();
         assert_eq!(code(create_instance(&e, req("dup")).await), (409, "ALREADY_EXISTS".into()));
     }

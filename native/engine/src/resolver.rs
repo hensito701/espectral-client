@@ -80,6 +80,7 @@ pub struct SeedResult {
     pub libraries: LibrariesInstall,
     pub fabric: Option<FabricProfile>,
     pub neoforge: Option<Value>,
+    pub forge: Option<Value>,
     pub assets: AssetsInstall,
 }
 
@@ -653,6 +654,11 @@ pub async fn install_libraries(
         let natives_only = lib.get("natives").is_some()
             && lib.get("downloads").is_some()
             && lib.pointer("/downloads/artifact").is_none();
+        // Loader-generated artifacts (Forge/NeoForge `-client`, `-srg`, `-extra`
+        // jars): the installer writes them into `libraries/`, the profile entry
+        // has NO download url. Never queue a download for those — the loader
+        // install is the authority that they exist.
+        let generated = lib.pointer("/downloads/artifact").is_some() && info.url.is_empty();
         if let Some(c) = classifier {
             natives.push(NativeJob { dest: dest.clone(), classifier: c, exclude: extract_exclude(lib) });
         } else {
@@ -684,7 +690,7 @@ pub async fn install_libraries(
                 }
             }
         }
-        if natives_only {
+        if natives_only || generated {
             continue;
         }
         if seed
@@ -1152,16 +1158,21 @@ pub async fn seed_instance(
     }
     let mut neoforge = None;
     if instance.loader == Loader::Neoforge {
-        let Some(lv) = instance.loader_version.as_deref().filter(|s| !s.is_empty()) else {
-            return Err(EngineError::api(
-                400,
-                "LOADER_VERSION_REQUIRED",
-                "loader_version es obligatorio para NeoForge",
-            ));
+        // Missing build: newest stable for this Minecraft version (the wizard
+        // never picks one).
+        let lv = match instance.loader_version.as_deref().filter(|s| !s.is_empty()) {
+            Some(lv) => lv.to_string(),
+            None => crate::neoforge::latest_neoforge_for(engine, &instance.version).await?.ok_or_else(|| {
+                EngineError::api(
+                    400,
+                    "LOADER_VERSION_REQUIRED",
+                    "loader_version es obligatorio para NeoForge (no hay build publicado)",
+                )
+            })?,
         };
-        let r = crate::neoforge::ensure_neoforge_loader(engine, lv, Some(instance)).await?;
+        let r = crate::neoforge::ensure_neoforge_loader(engine, &lv, Some(instance)).await?;
         let mut out = Map::new();
-        out.insert("loader_version".into(), Value::String(lv.to_string()));
+        out.insert("loader_version".into(), Value::String(lv));
         if let Value::Object(m) = r {
             for (k, v) in m {
                 if k != "json" {
@@ -1171,8 +1182,19 @@ pub async fn seed_instance(
         }
         neoforge = Some(Value::Object(out));
     }
+    let mut forge = None;
+    if instance.loader == Loader::Forge {
+        // Missing build: the promotions default (recommended, else latest).
+        let build =
+            crate::forge::resolve_forge_version(engine, &instance.version, instance.loader_version.as_deref()).await?;
+        let profile = crate::forge::ensure_forge_loader(engine, &instance.version, &build).await?;
+        let mut out = Map::new();
+        out.insert("loader_version".into(), Value::String(build));
+        out.insert("main_class".into(), profile.get("mainClass").cloned().unwrap_or(Value::Null));
+        forge = Some(Value::Object(out));
+    }
     let assets = install_assets(engine, instance, &version_json).await?;
-    Ok(SeedResult { version_json, libraries, fabric, neoforge, assets })
+    Ok(SeedResult { version_json, libraries, fabric, neoforge, forge, assets })
 }
 
 /// installInstance() request (the body of the JS resolver CLI).
@@ -1210,8 +1232,17 @@ pub async fn install_instance(engine: &Engine, req: InstallInstanceRequest) -> E
     let Some(loader) = Loader::parse(&loader_s) else {
         return Err(EngineError::other(format!("unknown loader: {loader_s}")));
     };
-    if loader == Loader::Neoforge && req.loader_version.as_deref().unwrap_or("").is_empty() {
-        return Err(EngineError::other("loader_version is required for neoforge"));
+    // A missing loader build is resolved downstream (NeoForge: newest stable,
+    // Forge: promotions default); only the Minecraft version is checked here.
+    if loader == Loader::Forge && !crate::forge::forge_supported(&req.version) {
+        return Err(EngineError::conflict(
+            "FORGE_UNAVAILABLE",
+            format!(
+                "Forge is not available for Minecraft {} (supported: {})",
+                req.version,
+                crate::forge::SUPPORTED_MC_SUMMARY
+            ),
+        ));
     }
     let version_info = resolve_version(engine, &req.version).await?;
     if !version_info.supported {

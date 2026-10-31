@@ -5,10 +5,14 @@
  *
  * The branding preset installs the Espectral brand mod from bundled jars
  * (assets/branding/*.jar) into an instance's mods/ dir — no Modrinth round
- * trip. One jar per loader: espectral-menu-* (Fabric, full menu) and
- * espectral-brand-* (NeoForge, brand-handshake companion). The manifest pins
- * filename/sha1/size/loaders per Minecraft version so the engine can pick
- * the loader-correct jar, sha1-verify the copy and list the mod in the UI.
+ * trip. One jar per Minecraft version + loader:
+ *   espectral-menu-<mc>-<ver>.jar   Fabric menu, or the Forge menu port
+ *   espectral-brand-<mc>-<ver>.jar  NeoForge brand-handshake companion
+ * The manifest pins filename/sha1/size/loaders per Minecraft version so the
+ * engine can pick the loader-correct jar, sha1-verify the copy and list the
+ * mod in the UI. The loader is read from the jar's own packaging (a Forge jar
+ * carries mcmod.info, a Fabric one fabric.mod.json, NeoForge a mods.toml) —
+ * the file name alone cannot tell a Forge port from the Fabric build.
  *
  * Run: node scripts/update-branding-manifest.mjs   (after building the mods)
  * ========================================================================== */
@@ -21,11 +25,40 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BRANDING_DIR = path.join(ROOT, 'assets', 'branding');
 
 const RE = /^(espectral-menu|espectral-brand)-(\d[\w.]*)-(\d+\.\d+\.\d+)\.jar$/;
-const LOADER_OF = { 'espectral-menu': 'fabric', 'espectral-brand': 'neoforge' };
 const MOD_OF = {
   'espectral-menu': { mod_id: 'espectral-menu', mod_name: 'Espectral Menu' },
   'espectral-brand': { mod_id: 'espectral-brand', mod_name: 'Espectral Brand' },
 };
+
+/** Entry names stored in a jar (central directory only — no extraction). */
+function jarEntries(abs) {
+  const buf = readFileSync(abs);
+  const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (eocd < 0) return new Set();
+  const count = buf.readUInt16LE(eocd + 10);
+  let off = buf.readUInt32LE(eocd + 16);
+  const names = new Set();
+  for (let i = 0; i < count && off + 46 <= buf.length; i++) {
+    if (buf.readUInt32LE(off) !== 0x02014b50) break;
+    const nlen = buf.readUInt16LE(off + 28);
+    const elen = buf.readUInt16LE(off + 30);
+    const clen = buf.readUInt16LE(off + 32);
+    names.add(buf.toString('utf8', off + 46, off + 46 + nlen));
+    off += 46 + nlen + elen + clen;
+  }
+  return names;
+}
+
+/** Loader a bundled jar targets, decided from its packaging. */
+function loaderOf(abs, prefix) {
+  if (prefix === 'espectral-brand') return 'neoforge';
+  const entries = jarEntries(abs);
+  if (entries.has('META-INF/neoforge.mods.toml') || entries.has('META-INF/mods.toml')) return 'neoforge';
+  if (entries.has('fabric.mod.json')) return 'fabric';
+  // Legacy Forge (1.8.9 / 1.12.2) ships mcmod.info and no loader manifest.
+  if (entries.has('mcmod.info')) return 'forge';
+  return 'fabric';
+}
 
 const jars = readdirSync(BRANDING_DIR)
   .filter((f) => RE.test(f))
@@ -38,6 +71,7 @@ const jars = readdirSync(BRANDING_DIR)
       prefix: m[1],
       game_version: m[2],
       mod_version: m[3],
+      loader: loaderOf(abs, m[1]),
       sha1: createHash('sha1').update(data).digest('hex'),
       size: data.length,
       mtimeMs: statSync(abs).mtimeMs,
@@ -50,11 +84,13 @@ const jars = readdirSync(BRANDING_DIR)
 const seenVersions = new Map();
 for (const j of jars) {
   const prev = seenVersions.get(j.game_version);
-  if (prev && prev !== j.prefix) {
-    console.error(`[branding] ${j.game_version} has jars for two loaders (${prev}, ${j.prefix}) — manifest keys one jar per version`);
+  if (prev && prev !== j.loader) {
+    console.error(
+      `[branding] ${j.game_version} has jars for two loaders (${prev}, ${j.loader}) — manifest keys one jar per version`,
+    );
     process.exit(1);
   }
-  seenVersions.set(j.game_version, j.prefix);
+  seenVersions.set(j.game_version, j.loader);
 }
 
 // All jars ship one launcher release: the manifest pins a single mod_version.
@@ -77,11 +113,11 @@ const manifest = {
     filename: j.filename,
     sha1: j.sha1,
     size: j.size,
-    loaders: [LOADER_OF[j.prefix]],
+    loaders: [j.loader],
     mod_id: MOD_OF[j.prefix].mod_id,
     mod_name: MOD_OF[j.prefix].mod_name,
   }])),
 };
 
 writeFileSync(path.join(BRANDING_DIR, 'branding.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(`[branding] wrote branding.json for ${jars.map((j) => `${j.game_version}/${LOADER_OF[j.prefix]} (${j.mod_version}, ${j.size} B)`).join(', ')}`);
+console.log(`[branding] wrote branding.json for ${jars.map((j) => `${j.game_version}/${j.loader} (${j.mod_version}, ${j.size} B)`).join(', ')}`);

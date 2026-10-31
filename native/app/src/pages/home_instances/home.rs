@@ -141,6 +141,9 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
             apply_version_filter(&ui, &q, &f);
         }
     });
+    hb.on_wiz_loader_offered(|version, loader| {
+        espectral_engine::instances::loader_offered(parse_loader(&loader), &version)
+    });
     let c = ctx.clone();
     hb.on_wiz_load_sources(move || {
         let Some(ui) = c.ui() else { return };

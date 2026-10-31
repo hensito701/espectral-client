@@ -598,18 +598,23 @@ pub async fn import_mrpack(
     let as_string = |v: &Value| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string());
     let (loader, loader_version) = if let Some(v) = dep("neoforge") {
         (Loader::Neoforge, Some(as_string(v)))
+    } else if let Some(v) = dep("forge") {
+        // The pack names its Forge build; an unsupported Minecraft version is
+        // refused by create_instance with the same 409 FORGE_UNAVAILABLE.
+        (Loader::Forge, Some(as_string(v)))
     } else if let Some(v) = dep("fabric-loader").or_else(|| dep("fabric")) {
         (Loader::Fabric, Some(as_string(v)))
-    } else if dep("forge").is_some() {
-        return Err(EngineError::bad_request(
-            "FORGE_UNSUPPORTED",
-            "Forge no está soportado; el modpack debe usar NeoForge",
-        ));
     } else if dep("quilt-loader").or_else(|| dep("quilt")).is_some() {
         return Err(EngineError::bad_request("QUILT_UNSUPPORTED", "Quilt no está soportado"));
     } else {
         (Loader::Vanilla, None)
     };
+    if loader == Loader::Forge && !crate::forge::forge_supported(&mc) {
+        return Err(EngineError::conflict(
+            "FORGE_UNAVAILABLE",
+            format!("Forge is not available for Minecraft {mc} (supported: {})", crate::forge::SUPPORTED_MC_SUMMARY),
+        ));
+    }
 
     let info = crate::resolver::resolve_version(engine, &mc).await?;
     if !info.supported {
@@ -891,8 +896,12 @@ mod tests {
         let path = dir.to_string_lossy().into_owned();
         write(json!({}));
         assert!(import_mrpack(&e, &path, None, None).await.unwrap_err().has_code("MC_VERSION_REQUIRED"));
-        write(json!({ "minecraft": "1.20.1", "forge": "47" }));
-        assert!(import_mrpack(&e, &path, None, None).await.unwrap_err().has_code("FORGE_UNSUPPORTED"));
+        // A Forge pack is supported only on the product's Forge versions.
+        write(json!({ "minecraft": "1.20.1", "forge": "47.4.28" }));
+        assert!(import_mrpack(&e, &path, None, None).await.unwrap_err().has_code("FORGE_UNAVAILABLE"));
+        write(json!({ "minecraft": "1.12.2", "forge": "14.23.5.2859" }));
+        let r = import_mrpack(&e, &path, None, None).await.expect("1.12.2 Forge packs are accepted");
+        assert_eq!((r.summary.loader, r.summary.loader_version.as_deref()), (Loader::Forge, Some("14.23.5.2859")));
         write(json!({ "minecraft": "1.20.1", "quilt-loader": "0.2" }));
         assert!(import_mrpack(&e, &path, None, None).await.unwrap_err().has_code("QUILT_UNSUPPORTED"));
         std::fs::write(dir.join("modrinth.index.json"), "[1]").unwrap();

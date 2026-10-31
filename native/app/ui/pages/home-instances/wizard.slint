@@ -241,10 +241,13 @@ component StepLoader inherits VerticalLayout {
     in-out property <string> loader;
     callback pick(loader: string);
     spacing: Theme.space-4;
-    LoaderCard {
+    /// Each card is offered only where the loader exists for the version
+    /// (engine `instances::loader_offered`: Fabric 1.14+, NeoForge 1.20.2+,
+    /// Forge 1.8.9 / 1.12.2 / 1.21.x / 26.x).
+    if HomeBridge.wiz-loader-offered(root.version, "fabric"): LoaderCard {
         loader: "fabric";
         version: root.version;
-        badge: "Recomendado";
+        badge: T.tr("home.wizardBadgeRecommended");
         badge-variant: BadgeVariant.accent;
         name: T.tr("home.wizardLoaderFabric");
         desc: T.tr("home.wizardLoaderFabricDesc");
@@ -254,22 +257,32 @@ component StepLoader inherits VerticalLayout {
     LoaderCard {
         loader: "vanilla";
         version: root.version;
-        badge: "Oficial";
+        badge: T.tr("home.wizardBadgeOfficial");
         badge-variant: BadgeVariant.ok;
         name: T.tr("home.wizardLoaderVanilla");
         desc: T.tr("home.wizardLoaderVanillaDesc");
         active: root.loader == "vanilla";
         clicked => { root.pick("vanilla"); }
     }
-    LoaderCard {
+    if HomeBridge.wiz-loader-offered(root.version, "neoforge"): LoaderCard {
         loader: "neoforge";
         version: root.version;
-        badge: "Avanzado";
+        badge: T.tr("home.wizardBadgeAdvanced");
         badge-variant: BadgeVariant.warn;
         name: T.tr("home.wizardLoaderNeoForge");
         desc: T.tr("home.wizardLoaderNeoForgeDesc");
         active: root.loader == "neoforge";
         clicked => { root.pick("neoforge"); }
+    }
+    if HomeBridge.wiz-loader-offered(root.version, "forge"): LoaderCard {
+        loader: "forge";
+        version: root.version;
+        badge: T.tr("home.wizardBadgeClassic");
+        badge-variant: BadgeVariant.gold;
+        name: T.tr("home.wizardLoaderForge");
+        desc: T.tr("home.wizardLoaderForgeDesc");
+        active: root.loader == "forge";
+        clicked => { root.pick("forge"); }
     }
 }
 
@@ -436,6 +449,15 @@ export component InstanceWizardModal inherits Rectangle {
     property <string> filter: "release";
     property <int> manifest-serial: HomeBridge.wiz-manifest-serial;
 
+    /// Keep the selected loader valid for the version: first offered of
+    /// Fabric, Forge, Vanilla (e.g. 1.8.9 -> Forge).
+    function fit-loader() {
+        if !HomeBridge.wiz-loader-offered(root.version, root.loader) {
+            root.loader = HomeBridge.wiz-loader-offered(root.version, "fabric") ? "fabric"
+                : HomeBridge.wiz-loader-offered(root.version, "forge") ? "forge" : "vanilla";
+            root.suggest-name();
+        }
+    }
     function suggest-name() {
         if root.name == "" || root.name.starts-with("Minecraft") || root.name == root.auto-name {
             root.name = (root.version != "" ? root.version : "1.21.1") + "-" + root.loader;
@@ -451,6 +473,7 @@ export component InstanceWizardModal inherits Rectangle {
         root.loader = "fabric";
         root.name = root.version != "" ? root.version + "-fabric" : "";
         root.auto-name = root.name;
+        root.fit-loader();
         root.memory = HomeBridge.wiz-default-memory;
         root.memory-touched = false;
         root.import-enabled = false;
@@ -484,6 +507,11 @@ export component InstanceWizardModal inherits Rectangle {
             HomeBridge.wiz-opened();
             if root.filter != "release" { HomeBridge.wiz-filter(root.query, root.filter); }
         }
+    }
+    // Moving to another version must not leave the wizard on a loader that
+    // would be refused (FABRIC_UNAVAILABLE / FORGE_UNAVAILABLE).
+    changed version => {
+        root.fit-loader();
     }
     // manifest arrived after opening: auto-fill the latest release
     changed manifest-serial => {

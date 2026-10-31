@@ -11,7 +11,7 @@ import net.neoforged.fml.common.Mod;
 @Mod(EspectralBrandMod.MOD_ID)
 public final class EspectralBrandMod {
 
-    public static final String MOD_ID = "espectral-brand";
+    public static final String MOD_ID = "espectral_brand";
 
     public EspectralBrandMod() {
         // Intentionally side-agnostic: no client classes touched here.
