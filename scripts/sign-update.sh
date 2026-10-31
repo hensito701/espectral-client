@@ -77,8 +77,10 @@ if ! printf '%s' "$KEY_B64" | base64 -d > "$KEYPATH" 2>/dev/null; then
 fi
 chmod 600 "$KEYPATH"
 [ -s "$KEYPATH" ] || die "decoded signing key is empty"
-head -c 40 "$KEYPATH" | grep -q "minisign" \
-  || die "decoded key is not a minisign secret key (want 'untrusted comment: minisign encrypted secret key')"
+# `tauri signer generate` (rsign2) labels the same key format "rsign
+# encrypted secret key"; minisign only reads the second line.
+head -n 1 "$KEYPATH" | grep -qE "^untrusted comment: (minisign|rsign) encrypted secret key" \
+  || die "decoded key is not a minisign secret key (want 'untrusted comment: minisign|rsign encrypted secret key')"
 
 # ---- sign ---------------------------------------------------------------
 status=0
