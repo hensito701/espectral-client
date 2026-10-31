@@ -1,0 +1,145 @@
+// OWNER: account-wardrobe agent. Small building blocks shared by the vault,
+// the wardrobe and the account popover.
+
+import { Theme, Icon, Icons, Spinner } from "../../widgets.slint";
+import { AccountBridge } from "api.slint";
+
+/// Plain styled single-line input (popover add-input, wardrobe hidden-input,
+/// gallery rename) — TextField has a fixed fill; these need their own.
+export component PlainInput inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder;
+    in property <bool> enabled: true;
+    in property <brush> fill: Theme.surface;
+    in property <brush> focus-border: Theme.border-focus;
+    in property <length> pad-x: Theme.space-3;
+    in property <length> font-size: Theme.text-sm;
+    in property <int> max-length: 0;
+    /// TextField look: card-bg-soft fill, 37px, accent focus ring.
+    in property <bool> field-style: false;
+    in property <bool> has-error: false;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(text: string);
+    callback accepted(text: string);
+    forward-focus: input;
+
+    height: field-style ? max(37px, input.preferred-height + 16px) : max(30px, input.preferred-height + 12px);
+    horizontal-stretch: 1;
+    border-radius: Theme.radius-md;
+    background: field-style ? Theme.card-bg-soft : fill;
+    border-width: 1px;
+    border-color: has-error ? Theme.accent-red : input.has-focus ? focus-border : (field-style && touch.has-hover) ? Theme.hover-border : Theme.border;
+    opacity: enabled ? 1 : 0.5;
+    animate border-color { duration: Theme.dur-fast; }
+
+    if root.field-style && input.has-focus: Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: parent.border-radius + 3px;
+        border-width: 2px;
+        border-color: Theme.accent.with-alpha(0.55);
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    Rectangle {
+        x: root.pad-x;
+        width: parent.width - 2 * root.pad-x;
+        clip: true;
+        input := TextInput {
+            y: (parent.height - self.height) / 2;
+            height: self.preferred-height;
+            width: parent.width;
+            font-size: root.font-size;
+            color: Theme.text;
+            selection-background-color: Theme.accent.with-alpha(0.3);
+            selection-foreground-color: Theme.text;
+            enabled: root.enabled;
+            single-line: true;
+            edited => {
+                if root.max-length > 0 && self.text.character-count > root.max-length {
+                    self.text = AccountBridge.truncate(self.text, root.max-length);
+                }
+                root.edited(self.text);
+            }
+            accepted => { root.accepted(self.text); }
+        }
+        if input.text == "": Text {
+            width: parent.width;
+            height: parent.height;
+            text: root.placeholder;
+            color: Theme.muted;
+            font-size: root.font-size;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+/// The four-square Microsoft logo (16x16).
+export component MsLogo inherits Rectangle {
+    in property <length> size: 16px;
+    width: size;
+    height: size;
+    property <length> cell: size * 10 / 24;
+    property <length> off: size * 1 / 24;
+    property <length> off2: size * 13 / 24;
+    Rectangle { x: root.off; y: root.off; width: root.cell; height: root.cell; background: #f25022; }
+    Rectangle { x: root.off2; y: root.off; width: root.cell; height: root.cell; background: #7fba00; }
+    Rectangle { x: root.off; y: root.off2; width: root.cell; height: root.cell; background: #00a4ef; }
+    Rectangle { x: root.off2; y: root.off2; width: root.cell; height: root.cell; background: #ffb900; }
+}
+
+/// Small centered spinner + label row (roster-loading / gallery loading).
+export component LoadingRow inherits HorizontalLayout {
+    in property <string> text;
+    alignment: center;
+    spacing: Theme.space-2;
+    padding: Theme.space-6;
+    VerticalLayout {
+        alignment: center;
+        Spinner { size: 18px; tint: Theme.accent; }
+    }
+    Text {
+        text: root.text;
+        color: Theme.muted;
+        font-size: Theme.text-sm;
+        vertical-alignment: center;
+    }
+}
+
+/// Copy-to-clipboard feedback: `copied` stays true for 2 s (useCopy(2000)).
+export component CopyFlag {
+    in-out property <bool> copied;
+    Timer {
+        interval: 2s;
+        running: root.copied;
+        triggered => { root.copied = false; }
+    }
+}
+
+/// .avatar-edit__upload: small outlined "file input" button.
+export component UploadChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: lbl.preferred-height + 10px;
+    width: lbl.preferred-width + 22px;
+    horizontal-stretch: 0;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: ta.has-hover && enabled ? rgba(255, 255, 255, 0.1) : rgba(255, 255, 255, 0.05);
+    opacity: enabled ? 1 : 0.5;
+    lbl := Text { text: root.text; font-size: 12px; color: Theme.text; }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+

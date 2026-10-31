@@ -1,0 +1,484 @@
+// OWNER: account-wardrobe agent. The "Skin Atelier" section of
+// AccountVault.svelte: 3D viewer stage, upload / variant / reset controls and
+// the named skin gallery (vanilla-launcher workflow).
+// The 3D viewer is the skin-renderer agent's SkinView (ui/skin3d).
+
+import { Theme, T, AppState, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, GlassCard, Elevation, Emoji } from "../../widgets.slint";
+import { SkinView } from "../../skin3d/skin-view.slint";
+import { AccountBridge, VaultSkinEntry } from "api.slint";
+import { LoadingRow, PlainInput, UploadChip } from "parts.slint";
+
+component Note inherits Text {
+    min-height: 22px; // line-height 1.6
+    vertical-alignment: center;
+    font-size: Theme.text-sm;
+    color: Theme.muted;
+    horizontal-alignment: center;
+    wrap: word-wrap;
+}
+
+component Hint inherits Text {
+    font-size: Theme.text-xs;
+    color: Theme.muted;
+    wrap: word-wrap;
+}
+
+component Radio inherits HorizontalLayout {
+    in property <string> text;
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    callback clicked();
+    spacing: Theme.space-1;
+    opacity: enabled ? 1 : 0.5;
+    VerticalLayout {
+        alignment: center;
+        Rectangle {
+            width: 14px;
+            height: 14px;
+            border-radius: 7px;
+            border-width: root.checked ? 4px : 1px;
+            border-color: root.checked ? Theme.accent : Theme.muted;
+            background: root.checked ? #ffffff : transparent;
+            TouchArea {
+                enabled: root.enabled;
+                mouse-cursor: pointer;
+                clicked => { root.clicked(); }
+            }
+        }
+    }
+    Text {
+        text: root.text;
+        font-size: Theme.text-sm;
+        color: Theme.text;
+        vertical-alignment: center;
+        TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// stage (viewer) + controls
+// ---------------------------------------------------------------------------
+
+component Stage inherits VerticalLayout {
+    in property <string> source;
+    in property <string> variant;
+    alignment: center;
+    spacing: Theme.space-2;
+    min-height: 200px;
+    if AccountBridge.skin-loading && !AccountBridge.skin-info && root.source == "": LoadingRow {
+        text: T.tr("vault.skin.viewerLoading");
+    }
+    if root.source != "": HorizontalLayout {
+        alignment: center;
+        SkinView {
+            source: root.source;
+            variant: root.variant;
+            width: 300px;
+            height: 340px;
+        }
+    }
+    if root.source != "" && AccountBridge.staged: Note { text: T.tr("vault.skin.galleryStaged"); }
+    if root.source != "" && !AccountBridge.staged && AccountBridge.preview-id != "": HorizontalLayout {
+        alignment: center;
+        Badge { text: T.tr("vault.skin.galleryPreviewing") + ": " + AccountBridge.preview-name; variant: BadgeVariant.accent; }
+    }
+    if root.source != "" && !AccountBridge.staged && AccountBridge.preview-id == "" && AccountBridge.skin-cape: HorizontalLayout {
+        alignment: center;
+        Badge { text: T.tr("vault.skin.capeBadge"); variant: BadgeVariant.accent; }
+    }
+    if root.source == "" && !(AccountBridge.skin-loading && !AccountBridge.skin-info): Note {
+        text: T.tr("vault.skin.noSkin");
+    }
+}
+
+component ResetActions inherits HorizontalLayout {
+    spacing: Theme.space-2;
+    alignment: start;
+    if !AccountBridge.confirming-skin-reset: Btn {
+        variant: BtnVariant.danger;
+        size: BtnSize.sm;
+        enabled: !AccountBridge.skin-busy && AccountBridge.skin-info && AccountBridge.skin-has-skin;
+        text: T.tr("vault.skin.reset");
+        clicked => { AccountBridge.confirming-skin-reset = true; }
+    }
+    if AccountBridge.confirming-skin-reset: Btn {
+        variant: BtnVariant.danger;
+        size: BtnSize.sm;
+        loading: AccountBridge.skin-busy;
+        text: T.tr("vault.skin.reset");
+        clicked => { AccountBridge.reset-skin(); }
+    }
+    if AccountBridge.confirming-skin-reset: Btn {
+        variant: BtnVariant.ghost;
+        size: BtnSize.sm;
+        enabled: !AccountBridge.skin-busy;
+        text: T.tr("vault.cardLogoutCancel");
+        clicked => { AccountBridge.confirming-skin-reset = false; }
+    }
+}
+
+component Controls inherits VerticalLayout {
+    in property <bool> offline;
+    spacing: Theme.space-3;
+    alignment: start;
+    HorizontalLayout {
+        alignment: start;
+        UploadChip {
+            text: T.tr("vault.skin.uploadLabel");
+            enabled: !AccountBridge.skin-busy;
+            clicked => { AccountBridge.pick-skin-file(); }
+        }
+    }
+    if AccountBridge.staged: Field {
+        label: T.tr("vault.skin.stageNameLabel");
+        required: true;
+        PlainInput {
+            field-style: true;
+            text <=> AccountBridge.staged-name;
+            placeholder: T.tr("vault.skin.stageNamePlaceholder");
+            max-length: 40;
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-3;
+        alignment: start;
+        Radio {
+            text: T.tr("vault.skin.variantClassic");
+            checked: AccountBridge.skin-variant == "classic";
+            enabled: !AccountBridge.skin-busy;
+            clicked => { AccountBridge.skin-variant = "classic"; }
+        }
+        Radio {
+            text: T.tr("vault.skin.variantSlim");
+            checked: AccountBridge.skin-variant == "slim";
+            enabled: !AccountBridge.skin-busy;
+            clicked => { AccountBridge.skin-variant = "slim"; }
+        }
+    }
+    if AccountBridge.staged: HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        Btn {
+            variant: BtnVariant.primary;
+            size: BtnSize.sm;
+            loading: AccountBridge.skin-busy;
+            enabled: AccountBridge.trim(AccountBridge.staged-name) != "";
+            text: T.tr("vault.skin.saveToGallery");
+            clicked => { AccountBridge.save-to-gallery(AccountBridge.staged-name); }
+        }
+        Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            enabled: !AccountBridge.skin-busy;
+            text: T.tr("vault.cardLogoutCancel");
+            clicked => { AccountBridge.clear-staged(); }
+        }
+    }
+    if !root.offline: HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        ResetActions { }
+        Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            enabled: !AccountBridge.skin-loading && !AccountBridge.skin-busy;
+            text: T.tr("vault.skin.refresh");
+            clicked => { AccountBridge.refresh-skin(); }
+        }
+    }
+    if root.offline: Hint { text: T.tr("vault.skin.offlineCantApply"); }
+    VerticalLayout {
+        spacing: Theme.space-1;
+        HorizontalLayout {
+            alignment: start;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                emoji: "🎨";
+                text: T.tr("vault.skin.editorLink");
+                clicked => { AppState.open-url("https://minecraft.novaskin.me/"); }
+            }
+        }
+        Hint { text: T.tr("vault.skin.editorHint"); }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// gallery
+// ---------------------------------------------------------------------------
+
+component RenameForm inherits VerticalLayout {
+    in property <VaultSkinEntry> entry;
+    property <string> value: entry.name;
+    spacing: Theme.space-1;
+    input := PlainInput {
+        text: root.entry.name;
+        fill: Theme.card-bg-soft;
+        max-length: 40;
+        edited(t) => { root.value = t; }
+        accepted => { AccountBridge.rename-entry(root.entry.id, root.value); }
+        init => { self.focus(); }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-1;
+        alignment: start;
+        Btn {
+            variant: BtnVariant.primary;
+            size: BtnSize.sm;
+            enabled: AccountBridge.trim(root.value) != "" && !AccountBridge.skin-busy;
+            text: T.tr("vault.skin.galleryRenameSave");
+            clicked => { AccountBridge.rename-entry(root.entry.id, root.value); }
+        }
+        Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            text: T.tr("vault.cardLogoutCancel");
+            clicked => { AccountBridge.renaming-id = ""; }
+        }
+    }
+}
+
+component CardButtons inherits VerticalLayout {
+    in property <VaultSkinEntry> entry;
+    in property <bool> offline;
+    property <bool> confirming: AccountBridge.confirming-delete-id == entry.id;
+    spacing: Theme.space-1;
+    padding-top: Theme.space-1;
+    HorizontalLayout {
+        spacing: Theme.space-1;
+        alignment: start;
+        if !root.offline: Btn {
+            variant: BtnVariant.primary;
+            size: BtnSize.sm;
+            loading: AccountBridge.applying-id == root.entry.id;
+            enabled: AccountBridge.applying-id == "" && !AccountBridge.skin-busy;
+            text: AccountBridge.applying-id == root.entry.id ? T.tr("vault.skin.galleryApplying") : T.tr("vault.skin.galleryUse");
+            clicked => { AccountBridge.apply-entry(root.entry.id); }
+        }
+        Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.sm;
+            enabled: !AccountBridge.skin-busy;
+            text: T.tr("vault.skin.galleryTry");
+            clicked => { AccountBridge.preview-entry(root.entry.id); }
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-1;
+        alignment: start;
+        Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            enabled: !AccountBridge.skin-busy;
+            text: T.tr("vault.skin.galleryRename");
+            clicked => {
+                AccountBridge.confirming-delete-id = "";
+                AccountBridge.renaming-id = root.entry.id;
+            }
+        }
+        if !root.confirming: Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            enabled: !AccountBridge.skin-busy;
+            text: T.tr("vault.skin.galleryDelete");
+            clicked => {
+                AccountBridge.renaming-id = "";
+                AccountBridge.confirming-delete-id = root.entry.id;
+            }
+        }
+    }
+    if root.confirming: HorizontalLayout {
+        spacing: Theme.space-1;
+        alignment: start;
+        Btn {
+            variant: BtnVariant.danger;
+            size: BtnSize.sm;
+            loading: AccountBridge.deleting-id == root.entry.id;
+            text: T.tr("vault.skin.galleryDelete");
+            clicked => { AccountBridge.delete-entry(root.entry.id); }
+        }
+        Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            text: T.tr("vault.cardLogoutCancel");
+            clicked => { AccountBridge.confirming-delete-id = ""; }
+        }
+    }
+}
+
+component SkinCard inherits Rectangle {
+    in property <VaultSkinEntry> entry;
+    in property <bool> offline;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: AccountBridge.preview-id == entry.id ? Theme.accent : Theme.border;
+    background: rgba(255, 255, 255, 0.02);
+    VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2;
+        alignment: start;
+        // frozen 3D render (click = preview in the main stage)
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 150px;
+                height: 112px;
+                border-radius: Theme.radius-sm;
+                clip: true;
+                SkinView {
+                    width: 100%;
+                    height: 100%;
+                    source: "library:" + root.entry.id;
+                    variant: root.entry.variant;
+                    autoplay: false;
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { AccountBridge.preview-entry(root.entry.id); }
+                }
+            }
+        }
+        if AccountBridge.renaming-id == root.entry.id: RenameForm { entry: root.entry; }
+        if AccountBridge.renaming-id != root.entry.id: VerticalLayout {
+            spacing: Theme.space-1;
+            Text {
+                text: root.entry.name;
+                font-size: Theme.text-sm;
+                font-weight: 600;
+                color: Theme.text;
+                overflow: elide;
+            }
+            Text {
+                text: root.entry.variant == "slim" ? T.tr("vault.skin.variantSlim") : T.tr("vault.skin.variantClassic");
+                font-size: Theme.text-xs;
+                color: Theme.muted;
+            }
+            CardButtons { entry: root.entry; offline: root.offline; }
+        }
+    }
+}
+
+/// CSS grid repeat(auto-fill, minmax(180px, 1fr)), gap 12px.
+component GalleryGrid inherits Rectangle {
+    in property <bool> offline;
+    property <length> gap: Theme.space-3;
+    property <int> cols: max(1, floor((root.width + gap) / (180px + gap)));
+    property <length> card-w: (root.width - (cols - 1) * gap) / cols;
+    property <length> card-h: AccountBridge.confirming-delete-id != "" ? 276px : 244px;
+    property <int> rows: ceil(AccountBridge.gallery.length / cols);
+    height: rows * card-h + max(0, rows - 1) * gap;
+    for e[i] in AccountBridge.gallery: SkinCard {
+        x: mod(i, root.cols) * (root.card-w + root.gap);
+        y: floor(i / root.cols) * (root.card-h + root.gap);
+        width: root.card-w;
+        height: root.card-h;
+        entry: e;
+        offline: root.offline;
+    }
+}
+
+component Gallery inherits VerticalLayout {
+    in property <bool> offline;
+    spacing: Theme.space-3;
+    padding-top: Theme.space-4;
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            horizontal-stretch: 1;
+            alignment: start;
+            Text {
+                text: T.tr("vault.skin.galleryTitle");
+                font-size: Theme.text-base;
+                font-weight: 600;
+                color: Theme.text;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                Badge { text: AccountBridge.gallery.length; variant: BadgeVariant.neutral; }
+            }
+        }
+        Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            loading: AccountBridge.importing-vanilla;
+            enabled: !AccountBridge.gallery-loading;
+            text: T.tr("vault.skin.importVanilla");
+            clicked => { AccountBridge.import-vanilla(); }
+        }
+        Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            enabled: !AccountBridge.gallery-loading && !AccountBridge.skin-busy;
+            text: T.tr("vault.skin.refresh");
+            clicked => { AccountBridge.reload-gallery(); }
+        }
+    }
+    if AccountBridge.gallery-loading && AccountBridge.gallery.length == 0: LoadingRow {
+        text: T.tr("vault.skin.viewerLoading");
+    }
+    if !AccountBridge.gallery-loading && AccountBridge.gallery.length == 0: Note {
+        text: T.tr("vault.skin.galleryEmpty");
+    }
+    if AccountBridge.gallery.length > 0: GalleryGrid { offline: root.offline; }
+}
+
+// ---------------------------------------------------------------------------
+// section
+// ---------------------------------------------------------------------------
+
+component AtelierBody inherits VerticalLayout {
+    callback scroll-request(top: length, bottom: length);
+    property <bool> offline: AccountBridge.active.token-kind != "msa";
+    property <string> source: AccountBridge.staged ? "file:" + AccountBridge.staged-path
+        : AccountBridge.preview-id != "" ? "library:" + AccountBridge.preview-id
+        : (!root.offline && AccountBridge.skin-info && AccountBridge.skin-has-skin) ? "account:" + AccountBridge.active.username
+        : "";
+    property <string> variant: AccountBridge.staged ? AccountBridge.skin-variant
+        : AccountBridge.preview-id != "" ? AccountBridge.preview-variant
+        : AccountBridge.skin-variant;
+    // "Probar": bring the stage into view
+    property <int> preview-serial: AccountBridge.preview-serial;
+    changed preview-serial => {
+        root.scroll-request(stage.absolute-position.y, stage.absolute-position.y + stage.height);
+    }
+    spacing: 0;
+    HorizontalLayout {
+        spacing: Theme.space-4;
+        // CSS grid align-items: start (the stage keeps its own height)
+        VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 1;
+            stage := Stage {
+                source: root.source;
+                variant: root.variant;
+            }
+        }
+        Controls {
+            width: 280px;
+            offline: root.offline;
+        }
+    }
+    // gallery: border-top + margin/padding 16
+    VerticalLayout {
+        padding-top: Theme.space-4;
+        Rectangle { height: 1px; background: Theme.border; }
+        Gallery { offline: root.offline; }
+    }
+}
+
+export component SkinAtelier inherits GlassCard {
+    callback scroll-request(top: length, bottom: length);
+    title: T.tr("vault.skin.title");
+    subtitle: T.tr("vault.skin.subtitle");
+    elevation: Elevation.md;
+    if !AccountBridge.has-active: Note { text: T.tr("vault.heroSelectPrompt"); }
+    if AccountBridge.has-active: AtelierBody {
+        scroll-request(top, bottom) => { root.scroll-request(top, bottom); }
+    }
+}
