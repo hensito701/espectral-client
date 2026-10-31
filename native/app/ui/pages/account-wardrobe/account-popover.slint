@@ -1,63 +1,360 @@
 // OWNER: account-wardrobe agent. Port of components/AccountPopover.svelte.
 // app.slint places it under the TopChrome account chip (top-right, 320px wide)
-// and shows it while Shell.account-popover-open. Close it by setting
-// Shell.account-popover-open = false. Placeholder: header + account list.
+// and shows it while Shell.account-popover-open (click outside / Esc close it).
 
-import { Theme, T, Shell, AppState, Router, Icon, Icons, MonogramTile, MonogramShape } from "../../widgets.slint";
+import { Theme, T, Shell, Router, Util, AccountRow, Icon, Icons, Spinner, MonogramTile, MonogramShape, ScrollArea } from "../../widgets.slint";
 import { AccountBridge } from "api.slint";
+import { PlainInput, MsLogo } from "parts.slint";
+
+component ActiveCard inherits Rectangle {
+    in property <AccountRow> acc;
+    border-radius: Theme.radius-lg;
+    background: @linear-gradient(135deg, Theme.accent.with-alpha(0.12) 0%, rgba(6, 182, 212, 0.06) 100%);
+    border-width: 1px;
+    border-color: Theme.accent.with-alpha(0.3);
+    HorizontalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-3;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                MonogramTile {
+                    name: root.acc.username;
+                    hue: root.acc.monogram-hue;
+                    avatar: root.acc.avatar;
+                    has-avatar: root.acc.has-avatar;
+                    size: 44px;
+                    shape: MonogramShape.circle;
+                }
+                Rectangle {
+                    x: parent.width - 8px;
+                    y: parent.height - 8px;
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: root.acc.token-kind == "msa" ? #00a4ef : Theme.mode-uhc;
+                    border-width: 2px;
+                    border-color: Theme.surface-solid;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Rectangle {
+                    background: Theme.accent;
+                    border-radius: Theme.radius-xs;
+                    width: active-lbl.preferred-width + 8px;
+                    height: active-lbl.preferred-height + 2px;
+                    active-lbl := Text {
+                        text: T.tr("account.active");
+                        font-family: Theme.font-pixel;
+                        font-size: 9px;
+                        color: #060a14;
+                    }
+                }
+                Text {
+                    text: root.acc.token-kind == "msa" ? "Microsoft" : "Offline";
+                    font-size: 11px;
+                    color: root.acc.token-kind == "msa" ? #38bdf8 : Theme.muted;
+                    vertical-alignment: center;
+                }
+            }
+            Text {
+                text: root.acc.username;
+                font-size: Theme.text-md;
+                font-weight: 700;
+                color: Theme.text;
+                overflow: elide;
+            }
+            if root.acc.last-used != "": Text {
+                text: T.tr("account.lastUsed") + ": " + Util.relative-time(root.acc.last-used, T.lang);
+                font-size: Theme.text-xs;
+                color: Theme.muted;
+            }
+        }
+    }
+}
+
+component SwitchItem inherits Rectangle {
+    in property <AccountRow> acc;
+    callback clicked();
+    height: row.preferred-height;
+    border-radius: Theme.radius-md;
+    background: ta.has-hover ? rgba(255, 255, 255, 0.05) : transparent;
+    border-width: 1px;
+    border-color: ta.has-hover ? Theme.border : transparent;
+    animate background, border-color { duration: Theme.dur-fast; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    row := HorizontalLayout {
+        padding: Theme.space-2;
+        spacing: Theme.space-2;
+        MonogramTile {
+            name: root.acc.username;
+            hue: root.acc.monogram-hue;
+            avatar: root.acc.avatar;
+            has-avatar: root.acc.has-avatar;
+            size: 32px;
+            shape: MonogramShape.circle;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text { text: root.acc.username; font-size: Theme.text-sm; font-weight: 600; color: Theme.text; overflow: elide; }
+            Text { text: root.acc.token-kind == "msa" ? "Microsoft" : "Offline"; font-size: 11px; color: Theme.muted; }
+        }
+        VerticalLayout {
+            alignment: center;
+            Icon { data: Icons.chevron-right; size: 14px; color: ta.has-hover ? Theme.accent : Theme.muted; }
+        }
+    }
+}
+
+component SectionLabel inherits HorizontalLayout {
+    in property <string> text;
+    in property <string> count;
+    // CSS line-height 1.6
+    min-height: 19px;
+    Text {
+        text: root.text.to-uppercase();
+        font-size: Theme.text-xs;
+        font-weight: 600;
+        letter-spacing: 0.48px;
+        color: Theme.muted;
+        horizontal-stretch: 1;
+        vertical-alignment: center;
+    }
+    if root.count != "": Rectangle {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        width: cnt.preferred-width + 10px;
+        height: cnt.preferred-height + 2px;
+        cnt := Text { text: root.count; font-family: Theme.font-pixel; font-size: 10px; color: Theme.muted; }
+    }
+}
+
+component FooterBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> msa;
+    callback clicked();
+    height: 34px;
+    border-radius: Theme.radius-md;
+    background: msa ? rgba(0, 164, 239, ta.has-hover ? 0.2 : 0.1) : rgba(255, 255, 255, ta.has-hover ? 0.08 : 0.04);
+    border-width: 1px;
+    border-color: msa ? rgba(0, 164, 239, ta.has-hover ? 0.5 : 0.25) : ta.has-hover ? Theme.accent : Theme.border;
+    animate background, border-color { duration: Theme.dur-fast; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            alignment: center;
+            if root.msa: MsLogo { size: 16px; }
+            if !root.msa: Icon { data: Icons.user; size: 16px; color: ta.has-hover ? Theme.accent : Theme.text; }
+        }
+        Text {
+            text: root.text;
+            font-size: Theme.text-xs;
+            font-weight: 600;
+            color: root.msa ? #38bdf8 : ta.has-hover ? Theme.accent : Theme.text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+component AddForm inherits VerticalLayout {
+    property <string> name;
+    property <int> created: AccountBridge.popover-created-serial;
+    changed created => { input.text = ""; root.name = ""; }
+    property <bool> valid: AccountBridge.valid-offline-name(root.name);
+    spacing: Theme.space-2;
+    SectionLabel { text: T.tr("account.createOffline"); }
+    HorizontalLayout {
+        spacing: 6px;
+        input := PlainInput {
+            height: 34px;
+            fill: Theme.surface-up-solid;
+            focus-border: Theme.accent;
+            pad-x: 10px;
+            placeholder: T.tr("account.usernamePlaceholder");
+            max-length: 16;
+            edited(t) => { root.name = t; }
+            accepted => { AccountBridge.popover-create(root.name); }
+        }
+        Rectangle {
+            property <bool> enabled: root.valid && !AccountBridge.popover-creating;
+            width: 34px;
+            height: 34px;
+            border-radius: Theme.radius-md;
+            background: Theme.accent;
+            opacity: self.enabled ? (add-ta.has-hover ? 0.9 : 1) : 0.35;
+            if AccountBridge.popover-creating: Spinner { size: 14px; tint: #060a14; }
+            if !AccountBridge.popover-creating: Icon { data: Icons.plus; size: 16px; weight: 2.5; color: #060a14; }
+            add-ta := TouchArea {
+                enabled: parent.enabled;
+                mouse-cursor: parent.enabled ? pointer : not-allowed;
+                clicked => { AccountBridge.popover-create(root.name); }
+            }
+        }
+    }
+    if AccountBridge.popover-error != "": Text {
+        text: AccountBridge.popover-error;
+        font-size: Theme.text-xs;
+        color: Theme.accent-red;
+        wrap: word-wrap;
+    }
+}
 
 export component AccountPopover inherits Rectangle {
     width: 320px;
     height: col.preferred-height;
-    border-radius: Theme.radius-lg;
+    border-radius: Theme.radius-xl;
     background: Theme.surface-solid;
     border-width: 1px;
-    border-color: Theme.border;
-    drop-shadow-color: Theme.shadow-lg-color;
+    border-color: Theme.glass-border;
+    drop-shadow-color: Theme.dark ? rgba(0, 0, 0, 0.6) : Theme.shadow-lg-color;
     drop-shadow-blur: Theme.shadow-lg-blur;
     drop-shadow-offset-y: Theme.shadow-lg-y;
+    clip: true;
+
+    init => { AccountBridge.popover-opened(); }
+
+    // swallow clicks (app.slint's click-outside area is underneath)
     TouchArea { }
+
     col := VerticalLayout {
-        HorizontalLayout {
-            padding: Theme.space-4;
-            spacing: Theme.space-2;
-            VerticalLayout {
-                alignment: center;
-                Rectangle { width: 7px; height: 7px; border-radius: 1px; background: Theme.accent; }
-            }
-            Text {
-                text: T.tr("account.profileTitle").to-uppercase();
-                font-size: Theme.text-sm;
-                font-weight: 700;
-                letter-spacing: 0.7px;
-                color: Theme.text;
-                horizontal-stretch: 1;
-                vertical-alignment: center;
-            }
-            Rectangle {
-                width: 24px;
-                height: 24px;
-                Icon { data: Icons.x; size: 14px; color: Theme.muted-strong; }
-                TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { Shell.account-popover-open = false; }
+        // ---- header ----
+        Rectangle {
+            background: Theme.card-bg-soft;
+            HorizontalLayout {
+                padding-left: Theme.space-4;
+                padding-right: Theme.space-4;
+                padding-top: Theme.space-3;
+                padding-bottom: Theme.space-3;
+                spacing: Theme.space-2;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 6px;
+                        height: 6px;
+                        background: Theme.accent;
+                        drop-shadow-color: Theme.accent;
+                        drop-shadow-blur: 8px;
+                    }
+                }
+                Text {
+                    text: T.tr("account.profileTitle").to-uppercase();
+                    font-size: Theme.text-sm;
+                    font-weight: 700;
+                    letter-spacing: 0.28px;
+                    color: Theme.text;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: Theme.radius-sm;
+                    background: close-ta.has-hover ? rgba(255, 255, 255, 0.08) : transparent;
+                    Icon { data: Icons.x; size: 16px; color: close-ta.has-hover ? Theme.text : Theme.muted; }
+                    close-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { Shell.account-popover-open = false; }
+                    }
                 }
             }
         }
         Rectangle { height: 1px; background: Theme.border; }
+
+        // ---- body ----
         VerticalLayout {
             padding: Theme.space-4;
-            spacing: Theme.space-2;
-            for acc in AppState.accounts: HorizontalLayout {
+            spacing: Theme.space-4;
+            if AccountBridge.loading && AccountBridge.accounts.length == 0: HorizontalLayout {
+                alignment: center;
                 spacing: Theme.space-2;
-                MonogramTile { name: acc.username; hue: acc.monogram-hue; avatar: acc.avatar; has-avatar: acc.has-avatar; size: 28px; shape: MonogramShape.circle; }
-                Text { text: acc.username; color: Theme.text; font-size: Theme.text-sm; vertical-alignment: center; }
+                padding-top: Theme.space-6;
+                padding-bottom: Theme.space-6;
+                Spinner { size: 20px; tint: Theme.accent; }
+                Text { text: T.tr("common.loading"); color: Theme.muted; font-size: Theme.text-sm; vertical-alignment: center; }
             }
-            if AppState.accounts.length == 0: Text {
-                text: T.tr("account.noAccounts");
-                color: Theme.text;
-                font-size: Theme.text-sm;
-                horizontal-alignment: center;
+            if !(AccountBridge.loading && AccountBridge.accounts.length == 0) && AccountBridge.has-active: ActiveCard {
+                acc: AccountBridge.active;
+            }
+            if !AccountBridge.loading && !AccountBridge.has-active: VerticalLayout {
+                padding-top: Theme.space-4;
+                padding-bottom: Theme.space-4;
+                Text {
+                    height: 22px;
+                    vertical-alignment: center;
+                    text: T.tr("account.noAccounts");
+                    color: Theme.text;
+                    font-size: Theme.text-sm;
+                    horizontal-alignment: center;
+                }
+            }
+            if AccountBridge.popover-others.length > 0: VerticalLayout {
+                spacing: Theme.space-2;
+                SectionLabel {
+                    text: T.tr("account.switchTitle");
+                    count: AccountBridge.popover-others.length;
+                }
+                // .switch-list: max-height 140px, scrolls beyond
+                Rectangle {
+                    height: min(140px, list.preferred-height);
+                    ScrollArea {
+                        list := VerticalLayout {
+                            spacing: 4px;
+                            for acc in AccountBridge.popover-others: SwitchItem {
+                                acc: acc;
+                                clicked => { AccountBridge.popover-switch(acc.username); }
+                            }
+                        }
+                    }
+                }
+            }
+            AddForm { }
+        }
+
+        // ---- footer ----
+        Rectangle { height: 1px; background: Theme.border; }
+        Rectangle {
+            background: Theme.card-bg-soft;
+            VerticalLayout {
+                padding-left: Theme.space-4;
+                padding-right: Theme.space-4;
+                padding-top: Theme.space-3;
+                padding-bottom: Theme.space-3;
+                spacing: 6px;
+                FooterBtn {
+                    msa: true;
+                    text: T.tr("account.msLogin");
+                    clicked => {
+                        Router.navigate("#/account");
+                        Shell.account-popover-open = false;
+                    }
+                }
+                FooterBtn {
+                    text: T.tr("account.manageAll");
+                    clicked => {
+                        Router.navigate("#/account");
+                        Shell.account-popover-open = false;
+                    }
+                }
             }
         }
     }
