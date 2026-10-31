@@ -1,13 +1,673 @@
-// OWNER: account-wardrobe agent. Port of src/ui/src/pages/Wardrobe.svelte.
+// OWNER: account-wardrobe agent. Port of src/ui/src/pages/Wardrobe.svelte
+// (#/armario): identity verification, Discord link, supporter flags,
+// cosmetics consent, MVP slot pickers, emotes and hidden players.
 // Keep the exported component name and the empty interface used by app.slint.
 
-import { PlaceholderPage, T } from "../../widgets.slint";
-import { AccountBridge } from "api.slint";
+import { Theme, T, Router, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, GlassCard, Elevation,
+    PageScaffold, Spinner } from "../../widgets.slint";
+import { AccountBridge, WardrobeAccount, WardrobeSlot, WardrobeItem } from "api.slint";
+import { PlainInput } from "parts.slint";
+
+// ---------------------------------------------------------------------------
+// small pieces
+// ---------------------------------------------------------------------------
+
+component SectionTitle inherits VerticalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <bool> small;
+    spacing: 4px;
+    Text {
+        text: root.title;
+        font-size: root.small ? Theme.text-base : Theme.text-lg;
+        font-weight: 600;
+        letter-spacing: -0.36px;
+        color: Theme.text;
+        wrap: word-wrap;
+    }
+    if root.subtitle != "": Text {
+        text: root.subtitle;
+        font-size: Theme.text-sm;
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+}
+
+component Note inherits Text {
+    font-size: Theme.text-xs;
+    color: Theme.muted;
+    wrap: word-wrap;
+}
+
+/// .locked-note (MVP gate).
+component LockedNote inherits Rectangle {
+    background: Theme.accent-alt.with-alpha(0.08);
+    border-width: 1px;
+    border-color: Theme.accent-alt.with-alpha(0.25);
+    border-radius: Theme.radius-md;
+    min-height: lbl-row.preferred-height;
+    lbl-row := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        Text {
+            text: T.tr("wardrobe.slots.locked");
+            font-size: Theme.text-sm;
+            color: Theme.accent-alt;
+            wrap: word-wrap;
+        }
+    }
+}
+
+/// .switch (42x24 pill, white thumb).
+component Switch inherits Rectangle {
+    in property <bool> on;
+    in property <bool> enabled: true;
+    callback toggled(on: bool);
+    width: 42px;
+    height: 24px;
+    border-radius: 12px;
+    background: on ? Theme.accent : rgba(255, 255, 255, 0.1);
+    border-width: 1px;
+    border-color: on ? Theme.accent.with-alpha(0.8) : Theme.border;
+    drop-shadow-color: on ? Theme.accent.with-alpha(0.35) : transparent;
+    drop-shadow-blur: 12px;
+    opacity: enabled ? 1 : 0.45;
+    animate background, border-color { duration: Theme.dur-slow; }
+    Rectangle {
+        x: root.on ? 21px : 3px;
+        y: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: #ffffff;
+        drop-shadow-color: rgba(0, 0, 0, 0.4);
+        drop-shadow-blur: 3px;
+        drop-shadow-offset-y: 1px;
+        animate x { duration: Theme.dur-slow; easing: ease-out; }
+    }
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : not-allowed;
+        clicked => { root.toggled(!root.on); }
+    }
+}
+
+/// .item-chip
+component ItemChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> equipped;
+    in property <bool> conflict;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: lbl.preferred-height + 12px;
+    width: lbl.preferred-width + 28px;
+    border-radius: 999px;
+    background: equipped ? Theme.accent-gold.with-alpha(0.14) : Theme.surface;
+    border-width: 1px;
+    border-color: equipped ? Theme.accent-gold : (ta.has-hover && enabled) ? Theme.hover-border : conflict ? Theme.muted.with-alpha(0.6) : Theme.border;
+    animate border-color, background { duration: 150ms; }
+    lbl := Text {
+        text: root.text;
+        font-size: Theme.text-sm;
+        font-weight: root.equipped ? 600 : 400;
+        color: root.equipped ? Theme.accent-gold : root.conflict ? Theme.muted : Theme.text;
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : not-allowed;
+        clicked => { root.clicked(); }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// hero + states
+// ---------------------------------------------------------------------------
+
+component Hero inherits VerticalLayout {
+    in property <length> page-width;
+    spacing: Theme.space-2;
+    HorizontalLayout {
+        alignment: start;
+        Badge { text: T.tr("wardrobe.tag"); variant: BadgeVariant.gold; dot: true; }
+    }
+    GradientText {
+        text: T.tr("wardrobe.title");
+        gradient: GradientKind.emerald-gold;
+        font-size: Theme.text-hero(root.page-width);
+        font-weight: 700;
+        letter-spacing: -1px;
+        height: self.font-size * 1.2;
+        vertical-alignment: center;
+    }
+    // max-width: 60ch; CSS line-height 1.6 (Slint has no line-height: pad the half-leading)
+    HorizontalLayout {
+        padding-top: 3px;
+        padding-bottom: 3px;
+        Text {
+            max-width: 572px;
+            text: T.tr("wardrobe.subtitle");
+            font-size: Theme.text-md;
+            color: Theme.muted;
+            wrap: word-wrap;
+        }
+        Rectangle { horizontal-stretch: 1; }
+    }
+    VerticalLayout {
+        padding-top: 20px - Theme.space-2;
+        Rectangle { height: 1px; background: Theme.border; }
+    }
+}
+
+component MessageCard inherits GlassCard {
+    in property <string> message;
+    in property <string> action;
+    callback act();
+    elevation: Elevation.md;
+    spacing: 12px;
+    Text {
+        min-height: 24px;
+        vertical-alignment: center;
+        text: root.message;
+        color: Theme.muted-strong;
+        font-size: Theme.text-md;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        alignment: start;
+        Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.sm;
+            text: root.action;
+            clicked => { root.act(); }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// account picker
+// ---------------------------------------------------------------------------
+
+component AccountChip inherits Rectangle {
+    in property <WardrobeAccount> acc;
+    in property <bool> active;
+    callback clicked();
+    height: row.preferred-height;
+    width: row.preferred-width;
+    border-radius: 999px;
+    background: active ? Theme.accent.with-alpha(0.12) : Theme.surface;
+    border-width: 1px;
+    border-color: active ? Theme.accent : ta.has-hover ? Theme.hover-border : Theme.border;
+    animate border-color, background { duration: 150ms; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    row := HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: Theme.space-2;
+        Rectangle {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            background: Theme.surface-up-solid;
+            clip: true;
+            if root.acc.has-avatar: Image {
+                width: 100%;
+                height: 100%;
+                source: root.acc.avatar;
+                image-fit: cover;
+                image-rendering: pixelated;
+            }
+        }
+        Text { text: root.acc.username; font-size: Theme.text-sm; color: Theme.text; vertical-alignment: center; }
+        Text { text: root.acc.supporter ? "⚛★" : "⚛"; font-size: Theme.text-sm; color: Theme.accent-gold; vertical-alignment: center; }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// identity card
+// ---------------------------------------------------------------------------
+
+component IdentityRow inherits Rectangle {
+    background: Theme.card-bg-soft;
+    border-width: 1px;
+    border-color: Theme.border;
+    border-radius: Theme.radius-md;
+    min-height: row.preferred-height;
+    row := HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        spacing: Theme.space-4;
+        @children
+    }
+}
+
+component RowLabel inherits Text {
+    font-size: Theme.text-md;
+    font-weight: 600;
+    color: Theme.text;
+    vertical-alignment: center;
+}
+
+component RowStatus inherits Text {
+    in property <bool> ok;
+    font-size: Theme.text-xs;
+    font-weight: 600;
+    letter-spacing: 0.48px;
+    color: ok ? Theme.accent-green : Theme.accent-alt;
+    vertical-alignment: center;
+}
+
+component VerifyRow inherits IdentityRow {
+    in property <WardrobeAccount> acc;
+    HorizontalLayout {
+        spacing: 10px;
+        horizontal-stretch: 1;
+        alignment: start;
+        RowLabel { text: root.acc.username; }
+        RowStatus {
+            ok: root.acc.verified;
+            text: (root.acc.verified ? T.tr("wardrobe.identity.verified") : T.tr("wardrobe.identity.notVerified")).to-uppercase();
+        }
+        if root.acc.grant-exp-es != "": Text {
+            text: T.tr1("wardrobe.identity.grantExp", "time", T.lang == "en" ? root.acc.grant-exp-en : root.acc.grant-exp-es);
+            font-size: Theme.text-xs;
+            color: Theme.muted;
+            vertical-alignment: center;
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: end;
+        if !root.acc.verified: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.primary;
+                size: BtnSize.sm;
+                loading: AccountBridge.w-verifying;
+                enabled: !root.acc.offline;
+                text: AccountBridge.w-verifying ? T.tr("wardrobe.identity.verifying") : T.tr("wardrobe.identity.verify");
+                clicked => { AccountBridge.w-verify(); }
+            }
+        }
+        if root.acc.verified: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                loading: AccountBridge.w-refreshing;
+                text: AccountBridge.w-refreshing ? T.tr("wardrobe.identity.refreshing") : T.tr("wardrobe.identity.refresh");
+                clicked => { AccountBridge.w-refresh-flags(); }
+            }
+        }
+    }
+}
+
+component DiscordRow inherits IdentityRow {
+    in property <WardrobeAccount> acc;
+    HorizontalLayout {
+        spacing: 10px;
+        horizontal-stretch: 1;
+        alignment: start;
+        if root.acc.has-discord && root.acc.has-discord-avatar: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                clip: true;
+                Image { width: 100%; height: 100%; source: root.acc.discord-avatar; image-fit: cover; }
+            }
+        }
+        RowLabel { text: root.acc.has-discord ? "@" + root.acc.discord-username : "Discord"; }
+        RowStatus {
+            ok: root.acc.has-discord;
+            text: (root.acc.has-discord ? T.tr("wardrobe.discord.linked") : T.tr("wardrobe.discord.notLinked")).to-uppercase();
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: end;
+        if AccountBridge.w-linking: Text {
+            text: T.tr("wardrobe.discord.linking");
+            font-size: Theme.text-xs;
+            color: Theme.muted;
+            vertical-alignment: center;
+        }
+        if AccountBridge.w-linking: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: T.tr("wardrobe.discord.cancel");
+                clicked => { AccountBridge.w-cancel-link(); }
+            }
+        }
+        if !AccountBridge.w-linking && root.acc.has-discord: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                loading: AccountBridge.w-unlinking;
+                text: T.tr("wardrobe.discord.unlink");
+                clicked => { AccountBridge.w-unlink(); }
+            }
+        }
+        if !AccountBridge.w-linking && !root.acc.has-discord: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                enabled: !root.acc.offline;
+                text: T.tr("wardrobe.discord.link");
+                clicked => { AccountBridge.w-link(); }
+            }
+        }
+    }
+}
+
+component IdentityCard inherits GlassCard {
+    in property <WardrobeAccount> acc;
+    elevation: Elevation.md;
+    spacing: Theme.space-4;
+    HorizontalLayout {
+        spacing: Theme.space-4;
+        SectionTitle {
+            horizontal-stretch: 1;
+            title: T.tr("wardrobe.identity.title");
+            subtitle: T.tr("wardrobe.identity.subtitle");
+        }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            VerticalLayout {
+                alignment: start;
+                if root.acc.supporter: Badge { text: T.tr("wardrobe.flags.supporter"); variant: BadgeVariant.gold; large: true; }
+                if !root.acc.supporter: Badge { text: T.tr("wardrobe.flags.none"); variant: BadgeVariant.accent; large: true; }
+            }
+            if root.acc.mvp: VerticalLayout {
+                alignment: start;
+                Badge { text: T.tr("wardrobe.flags.mvp"); variant: BadgeVariant.purple; large: true; }
+            }
+        }
+    }
+    Note { text: T.tr("wardrobe.flags.legend"); }
+    VerticalLayout {
+        spacing: Theme.space-3;
+        VerifyRow { acc: root.acc; }
+        if !root.acc.verified: Note { text: T.tr("wardrobe.identity.verifyHint"); }
+        DiscordRow { acc: root.acc; }
+        if !root.acc.has-discord && !root.acc.offline: Note { text: T.tr("wardrobe.discord.linkHint"); }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// consent / slots / emotes / hidden players
+// ---------------------------------------------------------------------------
+
+component ConsentCard inherits GlassCard {
+    in property <WardrobeAccount> acc;
+    elevation: Elevation.sm;
+    HorizontalLayout {
+        spacing: Theme.space-6;
+        VerticalLayout {
+            spacing: 6px;
+            horizontal-stretch: 1;
+            SectionTitle { small: true; title: T.tr("wardrobe.share.title"); subtitle: T.tr("wardrobe.share.desc"); }
+            if !root.acc.verified: Note { text: T.tr("wardrobe.share.needsVerify"); }
+        }
+        VerticalLayout {
+            alignment: center;
+            Switch {
+                on: AccountBridge.w-share;
+                enabled: !AccountBridge.w-saving;
+                toggled(v) => { AccountBridge.w-toggle-share(v); }
+            }
+        }
+    }
+}
+
+component SlotGroup inherits VerticalLayout {
+    in property <WardrobeSlot> data;
+    in property <bool> locked;
+    spacing: Theme.space-2;
+    Text {
+        text: (T.lang == "en" ? root.data.label-en : root.data.label-es).to-uppercase();
+        font-size: Theme.text-xs;
+        font-weight: 700;
+        letter-spacing: 0.96px;
+        color: Theme.muted;
+    }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        ItemChip {
+            text: T.tr("wardrobe.slots.none");
+            equipped: root.data.empty;
+            enabled: !root.locked;
+            clicked => { AccountBridge.w-equip(root.data.slot, ""); }
+        }
+        for item in root.data.items: ItemChip {
+            text: T.lang == "en" ? item.name-en : item.name-es;
+            equipped: item.equipped;
+            conflict: item.conflict;
+            enabled: !root.locked;
+            clicked => { AccountBridge.w-equip(root.data.slot, item.id); }
+        }
+    }
+}
+
+component SlotsCard inherits GlassCard {
+    in property <WardrobeAccount> acc;
+    elevation: Elevation.md;
+    spacing: Theme.space-4;
+    HorizontalLayout {
+        spacing: Theme.space-4;
+        SectionTitle {
+            horizontal-stretch: 1;
+            title: T.tr("wardrobe.slots.title");
+            subtitle: T.tr("wardrobe.slots.subtitle");
+        }
+        if !root.acc.mvp: VerticalLayout {
+            alignment: start;
+            Badge { text: "MVP"; variant: BadgeVariant.warn; }
+        }
+    }
+    if !root.acc.mvp: LockedNote { }
+    VerticalLayout {
+        spacing: Theme.space-4;
+        opacity: root.acc.mvp ? 1 : 0.55;
+        for slot in AccountBridge.w-slots: SlotGroup {
+            data: slot;
+            locked: !root.acc.mvp;
+        }
+    }
+}
+
+component EmotesCard inherits GlassCard {
+    in property <WardrobeAccount> acc;
+    elevation: Elevation.sm;
+    HorizontalLayout {
+        spacing: Theme.space-6;
+        VerticalLayout {
+            spacing: 6px;
+            horizontal-stretch: 1;
+            SectionTitle { small: true; title: T.tr("wardrobe.emotes.title"); subtitle: T.tr("wardrobe.emotes.desc"); }
+            if !root.acc.mvp: LockedNote { }
+            if root.acc.mvp && AccountBridge.w-emotes-catalog.length > 0: HorizontalLayout {
+                spacing: 6px;
+                padding-top: 6px;
+                alignment: start;
+                for e in AccountBridge.w-emotes-catalog: Rectangle {
+                    height: el.preferred-height + 8px;
+                    width: el.preferred-width + 20px;
+                    border-radius: 999px;
+                    background: Theme.surface-up;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    el := Text { text: T.lang == "en" ? e.name-en : e.name-es; font-size: Theme.text-xs; color: Theme.muted-strong; }
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Switch {
+                on: AccountBridge.w-emotes;
+                enabled: root.acc.mvp && !AccountBridge.w-saving;
+                toggled(v) => { AccountBridge.w-toggle-emotes(v); }
+            }
+        }
+    }
+}
+
+component HiddenCard inherits GlassCard {
+    property <string> draft;
+    property <int> serial: AccountBridge.w-hidden-serial;
+    changed serial => { input.text = ""; root.draft = ""; }
+    elevation: Elevation.sm;
+    spacing: Theme.space-4;
+    SectionTitle { title: T.tr("wardrobe.hidden.title"); subtitle: T.tr("wardrobe.hidden.desc"); }
+    VerticalLayout {
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            input := PlainInput {
+                height: 37px;
+                placeholder: T.tr("wardrobe.hidden.placeholder");
+                max-length: 16;
+                edited(t) => { root.draft = t; }
+                accepted => { AccountBridge.w-add-hidden(root.draft); }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    text: T.tr("wardrobe.hidden.add");
+                    clicked => { AccountBridge.w-add-hidden(root.draft); }
+                }
+            }
+        }
+        if AccountBridge.w-hidden-error != "": Text {
+            text: AccountBridge.w-hidden-error;
+            font-size: Theme.text-xs;
+            color: Theme.accent-red;
+        }
+    }
+    if AccountBridge.w-hidden.length == 0: Text {
+        text: T.tr("wardrobe.hidden.empty");
+        font-size: Theme.text-sm;
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+    if AccountBridge.w-hidden.length > 0: HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        for name in AccountBridge.w-hidden: Rectangle {
+            height: 30px;
+            width: hrow.preferred-width;
+            border-radius: 999px;
+            background: Theme.surface-up;
+            border-width: 1px;
+            border-color: Theme.border;
+            hrow := HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 6px;
+                spacing: 6px;
+                Text { text: name; font-size: Theme.text-sm; color: Theme.text; vertical-alignment: center; }
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 20px;
+                        height: 20px;
+                        border-radius: 10px;
+                        background: x-ta.has-hover ? Theme.accent-red.with-alpha(0.12) : transparent;
+                        Text { text: "×"; font-size: Theme.text-sm; color: x-ta.has-hover ? Theme.accent-red : Theme.muted; }
+                        x-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { AccountBridge.w-remove-hidden(name); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Disclaimer inherits Rectangle {
+    background: Theme.card-bg-soft;
+    border-width: 1px;
+    border-color: Theme.border;
+    border-radius: Theme.radius-md;
+    min-height: d-row.preferred-height;
+    d-row := HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: 14px;
+        padding-bottom: 14px;
+        Text {
+            text: T.tr("wardrobe.disclaimer");
+            font-size: Theme.text-xs;
+            letter-spacing: 0.24px;
+            color: Theme.muted;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component WardrobeBody inherits VerticalLayout {
+    property <WardrobeAccount> acc: AccountBridge.w-accounts[AccountBridge.w-selected];
+    spacing: Theme.space-6;
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        for a[i] in AccountBridge.w-accounts: AccountChip {
+            acc: a;
+            active: i == AccountBridge.w-selected;
+            clicked => { AccountBridge.w-select(i); }
+        }
+    }
+    IdentityCard { acc: root.acc; }
+    ConsentCard { acc: root.acc; }
+    SlotsCard { acc: root.acc; }
+    EmotesCard { acc: root.acc; }
+    HiddenCard { }
+    Disclaimer { }
+}
 
 export component WardrobePage inherits Rectangle {
-    PlaceholderPage {
-        title: T.tr("wardrobe.title");
-        subtitle: T.tr("wardrobe.subtitle");
-        source: "src/ui/src/pages/Wardrobe.svelte";
+    PageScaffold {
+        max-content-width: 1100px;
+        content-padding: 40px;
+        content-padding-top: Theme.space-8;
+        content-padding-bottom: Theme.space-16;
+        spacing: Theme.space-6;
+
+        Hero { page-width: root.width; }
+        if AccountBridge.w-loading: HorizontalLayout {
+            alignment: center;
+            padding-top: 64px;
+            padding-bottom: 64px;
+            Spinner { size: 28px; tint: Theme.accent; }
+        }
+        if !AccountBridge.w-loading && AccountBridge.w-load-error != "": MessageCard {
+            message: T.tr1("wardrobe.loadError", "error", AccountBridge.w-load-error);
+            action: T.tr("wardrobe.retry");
+            act => { AccountBridge.w-load(); }
+        }
+        if !AccountBridge.w-loading && AccountBridge.w-load-error == "" && AccountBridge.w-selected < 0: MessageCard {
+            message: T.tr("wardrobe.account.none");
+            action: T.tr("wardrobe.account.openVault");
+            act => { Router.navigate("#/account"); }
+        }
+        if !AccountBridge.w-loading && AccountBridge.w-load-error == "" && AccountBridge.w-selected >= 0: WardrobeBody { }
     }
 }
