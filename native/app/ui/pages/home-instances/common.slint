@@ -5,7 +5,7 @@ import { Theme, T, Icon, Icons, SelectOption, Spinner, TextField } from "../../w
 import { HiLogLine } from "api.slint";
 import { ListView } from "std-widgets.slint";
 
-/// <select class="glass-select"> with a scrollable option list (version lists are long).
+/// Bordered select with a scrollable option list (version lists are long).
 export component HiSelect inherits Rectangle {
     in property <[SelectOption]> options;
     in-out property <int> current-index: -1;
@@ -20,10 +20,11 @@ export component HiSelect inherits Rectangle {
     min-width: 100px;
     horizontal-stretch: 1;
     border-radius: Theme.radius-md;
-    background: Theme.dark ? rgba(8, 12, 24, 0.7) : Theme.surface-solid;
-    border-width: 1px;
-    border-color: touch.has-hover && enabled ? Theme.hover-border : Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: touch.has-hover && enabled ? Theme.hover-border : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
+    animate border-color { duration: Theme.dur-fast; }
 
     HorizontalLayout {
         padding-left: Theme.space-4;
@@ -56,11 +57,12 @@ export component HiSelect inherits Rectangle {
         Rectangle {
             border-radius: Theme.radius-md;
             background: Theme.surface-solid;
-            border-width: 1px;
-            border-color: Theme.border;
-            drop-shadow-color: Theme.shadow-lg-color;
-            drop-shadow-blur: 24px;
-            drop-shadow-offset-y: 8px;
+            border-width: 2px;
+            border-color: Theme.border-solid;
+            drop-shadow-color: Theme.brand-ink;
+            drop-shadow-blur: 0px;
+            drop-shadow-offset-x: Theme.shadow-md-x;
+            drop-shadow-offset-y: Theme.shadow-md-y;
             clip: true;
             Flickable {
                 x: 4px;
@@ -72,7 +74,7 @@ export component HiSelect inherits Rectangle {
                     for o[i] in root.options: Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: i == root.current-index ? Theme.accent.with-alpha(0.14) : ot.has-hover ? Theme.surface-up : transparent;
+                        background: i == root.current-index ? Theme.accent.with-alpha(0.16) : ot.has-hover ? Theme.surface-up : transparent;
                         HorizontalLayout {
                             padding-left: Theme.space-3;
                             padding-right: Theme.space-3;
@@ -108,11 +110,11 @@ export component HiCheck inherits Rectangle {
     width: box;
     height: box;
     border-radius: 3px;
-    background: checked ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.08) : #ffffff;
-    border-width: 1px;
-    border-color: checked ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.35) : #767676;
+    background: checked ? Theme.accent : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: checked ? Theme.brand-ink : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
-    if root.checked: Icon { data: Icons.check; size: root.box - 2px; color: Theme.dark ? #0d1222 : #ffffff; weight: 3.5; }
+    if root.checked: Icon { data: Icons.check; size: root.box - 3px; color: Theme.on-gold; weight: 3.5; }
     TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
@@ -159,19 +161,19 @@ export component HiLogView inherits Rectangle {
                 text: line.num;
                 font-family: Theme.font-mono;
                 font-size: 11px;
-                color: Theme.muted.with-alpha(0.4);
+                color: Theme.border-solid;
                 horizontal-alignment: right;
             }
             Rectangle {
                 horizontal-stretch: 1;
-                background: line.kind == 2 ? rgba(239, 68, 68, 0.08) : line.kind == 1 ? Theme.accent-alt.with-alpha(0.05) : transparent;
+                background: line.kind == 2 ? Theme.accent-red.with-alpha(0.12) : line.kind == 1 ? Theme.accent-alt.with-alpha(0.1) : transparent;
                 preferred-height: t.preferred-height;
                 t := Text {
                     width: parent.width;
                     text: line.text;
                     font-family: Theme.font-mono;
                     font-size: root.font-size;
-                    color: line.kind == 2 ? #f87171 : line.kind == 1 ? #fbbf24 : root.base-color;
+                    color: line.kind == 2 ? Theme.accent-red : line.kind == 1 ? Theme.accent-alt : root.base-color;
                     wrap: char-wrap;
                 }
             }
@@ -192,7 +194,7 @@ export component HiChip inherits Rectangle {
     horizontal-stretch: 0;
     border-radius: self.height / 2;
     background: bg;
-    border-width: 1px;
+    border-width: 2px;
     border-color: border;
     lbl := Text {
         text: root.text;

@@ -6,8 +6,12 @@
 // Click copies the host (Svelte useCopy: "✓ Copiado" for 1.8 s, no toast) and
 // also emits clicked(); set `copy-on-click: false` to only get clicked().
 // The beacon orb pulse animation is omitted (idle = 0% CPU).
+//
+// Poster look: the site's "Estado de servidores" card — flat block, 2px border,
+// hard ink shadow, pixel-font server name, address chip + Copiar pill, and
+// JUGADORES / MOTD labels in small-caps body text.
 
-import { Theme, T, AppState, ServerRow, GlassCard, Elevation, Badge, BadgeVariant, MonogramTile, MonogramShape } from "../../widgets.slint";
+import { Theme, T, AppState, ServerRow, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, MonogramTile, MonogramShape } from "../../widgets.slint";
 import { SettingsBridge, MotdLineRow, PingWaveGeometry } from "api.slint";
 
 /// components/PingWaveform.svelte: deterministic sparkline seeded by the ping,
@@ -29,13 +33,13 @@ export component PingWaveform inherits HorizontalLayout {
     Rectangle {
         width: root.wave-width;
         height: root.wave-height;
-        Path {
-            width: 100%;
-            height: 100%;
-            viewbox-width: root.wave-width / 1px;
-            viewbox-height: root.wave-height / 1px;
-            commands: root.geo.area;
-            fill: @linear-gradient(180deg, root.stroke.with-alpha(0.35) 0%, root.stroke.with-alpha(0) 100%);
+        // the gradient area fill is off-style: a flat low-alpha band instead
+        Rectangle {
+            x: 0;
+            y: root.wave-height * 0.5;
+            width: root.wave-width;
+            height: root.wave-height * 0.5;
+            background: root.stroke.with-alpha(0.12);
         }
         Path {
             width: 100%;
@@ -44,32 +48,25 @@ export component PingWaveform inherits HorizontalLayout {
             viewbox-height: root.wave-height / 1px;
             commands: root.geo.line;
             stroke: root.stroke;
-            stroke-width: 1.75px;
+            stroke-width: 2px;
             stroke-line-cap: round;
             stroke-line-join: round;
         }
         Rectangle {
-            x: root.geo.dot-x * 1px - 2.5px;
-            y: root.geo.dot-y * 1px - 2.5px;
-            width: 5px;
-            height: 5px;
-            border-radius: 2.5px;
+            x: root.geo.dot-x * 1px - 3px;
+            y: root.geo.dot-y * 1px - 3px;
+            width: 6px;
+            height: 6px;
+            border-radius: 1px;
             background: root.stroke;
-        }
-        if root.online: Rectangle {
-            x: root.geo.dot-x * 1px - 4.5px;
-            y: root.geo.dot-y * 1px - 4.5px;
-            width: 9px;
-            height: 9px;
-            border-radius: 4.5px;
             border-width: 1px;
-            border-color: root.stroke.with-alpha(0.4);
+            border-color: Theme.brand-ink;
         }
     }
     if root.show-label: Text {
         text: root.online && root.ping-ms >= 0 ? root.ping-ms + "ms" : root.online ? "--ms" : "OFF";
         font-family: Theme.font-pixel;
-        font-size: 10px;
+        font-size: 8px;
         color: Theme.muted-strong;
         vertical-alignment: center;
     }
@@ -81,9 +78,9 @@ component MotdStage inherits Rectangle {
     min-height: max(48px, inner.min-height);
     preferred-height: max(48px, inner.preferred-height);
     border-radius: Theme.radius-sm;
-    background: Theme.surface-solid;
-    border-width: 1px;
-    border-color: Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     clip: true;
     inner := HorizontalLayout {
         padding-left: 12px;
@@ -108,24 +105,28 @@ component MotdStage inherits Rectangle {
     }
 }
 
+/// Small flat chip (software / version). Pixel font at 8px for short labels.
 component Chip inherits Rectangle {
     in property <string> text;
     in property <bool> pixel;
-    in property <color> fg: Theme.muted;
-    in property <color> edge: Theme.border;
-    height: lbl.preferred-height + 2px;
-    width: min(lbl.preferred-width + 12px, 160px);
-    border-radius: Theme.radius-xs;
-    background: Theme.surface-up;
-    border-width: 1px;
+    in property <color> fg: Theme.muted-strong;
+    in property <color> edge: Theme.border-solid;
+    height: lbl.preferred-height + 8px;
+    width: min(lbl.preferred-width + 16px, 168px);
+    border-radius: Theme.radius-sm;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
     border-color: root.edge;
     lbl := Text {
         text: root.text;
         font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
         font-size: root.pixel ? 8px : 11px;
+        font-weight: root.pixel ? 400 : 600;
         color: root.fg;
+        horizontal-alignment: center;
+        vertical-alignment: center;
         overflow: elide;
-        width: min(self.preferred-width, 148px);
+        width: min(self.preferred-width, 152px);
     }
 }
 
@@ -173,8 +174,8 @@ export component ServerRadarCard inherits Rectangle {
         elevation: Elevation.md;
         clickable: true;
         interactive: root.interactive;
-        featured: root.featured || root.has-players;
-        padding-size: root.compact ? 32px : 36px;
+        featured: root.featured;
+        padding-size: root.compact ? 20px : 24px;
         spacing: root.compact ? 8px : 12px;
         clicked => {
             if root.copy-on-click {
@@ -183,69 +184,66 @@ export component ServerRadarCard inherits Rectangle {
             root.clicked();
         }
 
-        // beacon head
+        // ---- name row: server icon + status dot + pixel-font name + players
         HorizontalLayout {
             spacing: 12px;
+            alignment: start;
             VerticalLayout {
                 alignment: center;
                 Rectangle {
-                    width: root.compact ? 40px : 48px;
-                    height: root.compact ? 40px : 48px;
-                    if root.server.has-icon: Rectangle {
-                        border-radius: Theme.radius-md;
-                        border-width: 1px;
-                        border-color: Theme.border;
-                        clip: true;
-                        Image {
-                            width: 100%;
-                            height: 100%;
-                            source: root.server.icon;
-                            image-fit: cover;
-                            image-rendering: pixelated;
-                        }
+                    width: root.compact ? 32px : 40px;
+                    height: root.compact ? 32px : 40px;
+                    border-radius: Theme.radius-sm;
+                    border-width: 2px;
+                    border-color: Theme.brand-ink;
+                    clip: true;
+                    if root.server.has-icon: Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.server.icon;
+                        image-fit: cover;
+                        image-rendering: pixelated;
                     }
                     if !root.server.has-icon: MonogramTile {
+                        width: 100%;
+                        height: 100%;
                         name: root.server.hostname != "" ? root.server.hostname : root.server.host != "" ? root.server.host : "ES";
-                        size: root.compact ? 40px : 48px;
+                        size: root.compact ? 32px : 40px;
                         shape: MonogramShape.rounded;
-                    }
-                    // beacon orb (pulse omitted: idle = 0% CPU)
-                    Rectangle {
-                        x: parent.width - 10px;
-                        y: parent.height - 10px;
-                        width: 12px;
-                        height: 12px;
-                        border-radius: 6px;
-                        border-width: 2px;
-                        border-color: Theme.surface-solid;
-                        background: root.server.online ? Theme.accent-green : Theme.accent-red;
-                        drop-shadow-color: root.server.online ? Theme.accent-green : rgba(239, 68, 68, 0.6);
-                        drop-shadow-blur: root.server.online ? 10px : 6px;
                     }
                 }
             }
             VerticalLayout {
                 horizontal-stretch: 1;
                 min-width: 0px;
-                spacing: 4px;
+                spacing: 2px;
                 alignment: center;
-                Text {
-                    text: root.server.hostname != "" ? root.server.hostname : root.server.host;
-                    font-size: root.compact ? Theme.text-sm : Theme.text-base;
-                    font-weight: 700;
-                    letter-spacing: -0.16px;
-                    color: Theme.text;
-                    overflow: elide;
-                }
                 HorizontalLayout {
+                    spacing: 6px;
                     alignment: start;
-                    if root.server.online: Badge { text: T.tr("common.online"); variant: BadgeVariant.ok; dot: true; }
-                    if !root.server.online: Badge { text: T.tr("server.offline"); variant: BadgeVariant.err; }
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 1px;
+                        background: root.server.online ? Theme.accent-green : Theme.accent-red;
+                        border-width: 2px;
+                        border-color: Theme.brand-ink;
+                        // the row is centred: keep the dot on the text baseline
+                        y: (parent.height - self.height) / 2 + 3px;
+                    }
+                    Text {
+                        text: root.server.hostname != "" ? root.server.hostname : root.server.host;
+                        font-family: Theme.font-title;
+                        font-size: 16px;
+                        font-weight: 700;
+                        color: Theme.title-color;
+                        overflow: elide;
+                    }
                 }
-                if root.server.software != "" || root.server.version != "": HorizontalLayout {
+                if !root.compact && (root.server.software != "" || root.server.version != ""): HorizontalLayout {
                     alignment: start;
                     spacing: 4px;
-                    if root.server.software != "": Chip { text: root.server.software; pixel: true; fg: Theme.accent-cyan; edge: rgba(6, 182, 212, 0.3); }
+                    if root.server.software != "": Chip { text: root.server.software; pixel: true; fg: Theme.accent-cyan; edge: Theme.accent-cyan.with-alpha(0.5); }
                     if root.server.version != "": Chip { text: root.server.version; }
                 }
             }
@@ -254,8 +252,9 @@ export component ServerRadarCard inherits Rectangle {
                 spacing: 2px;
                 Text {
                     text: T.tr("server.players").to-uppercase();
-                    font-size: 11px;
-                    letter-spacing: 0.44px;
+                    font-size: 10px;
+                    font-weight: 700;
+                    letter-spacing: 0.8px;
                     color: Theme.muted;
                     horizontal-alignment: right;
                 }
@@ -271,62 +270,92 @@ export component ServerRadarCard inherits Rectangle {
             }
         }
 
-        if !root.compact: MotdStage { lines: SettingsBridge.motd-lines(root.server); }
-
-        // connect bar
-        VerticalLayout {
-            spacing: 0px;
-            Rectangle { height: 1px; background: Theme.border; }
-            HorizontalLayout {
-                padding-top: 8px;
-                spacing: 8px;
-                HorizontalLayout {
-                    horizontal-stretch: 1;
-                    min-width: 0px;
-                    spacing: 8px;
-                    alignment: start;
-                    Text {
-                        text: root.address;
-                        font-family: Theme.font-mono;
-                        font-size: 12px;
-                        font-weight: 600;
-                        color: Theme.muted-strong;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                    if root.show-ip && root.direct != "": Rectangle {
-                        height: ip.preferred-height + 4px;
-                        width: ip.preferred-width + 12px;
-                        border-radius: Theme.radius-xs;
-                        background: Theme.surface;
-                        border-width: 1px;
-                        border-color: ip-ta.has-hover ? Theme.accent-alt : Theme.border;
-                        ip := Text {
-                            text: "IP: " + root.direct;
-                            font-family: Theme.font-mono;
-                            font-size: 11px;
-                            color: ip-ta.has-hover ? Theme.accent-alt : Theme.muted;
-                        }
-                        ip-ta := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.copy(root.direct); }
-                        }
-                    }
+        // ---- address row: mono chip + Copiar pill
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Rectangle {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                height: addr.preferred-height + 12px;
+                border-radius: Theme.radius-sm;
+                background: Theme.log-bg;
+                border-width: 2px;
+                border-color: Theme.border-solid;
+                addr := Text {
+                    x: 10px;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width - 20px;
+                    text: root.address != "" ? root.address : "—";
+                    font-family: Theme.font-mono;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: Theme.accent-cyan;
+                    vertical-alignment: center;
+                    overflow: elide;
                 }
-                Rectangle {
-                    height: 24px;
-                    width: hint.preferred-width + 18px;
-                    border-radius: Theme.radius-xs;
-                    background: root.copied ? Theme.accent.with-alpha(0.2) : Theme.surface-up;
-                    border-width: 1px;
-                    border-color: root.copied ? Theme.accent : Theme.border;
-                    hint := Text {
-                        text: root.copied ? "✓ " + T.tr("server.copied") : "CLICK ↵ " + T.tr("server.copy");
-                        font-family: Theme.font-pixel;
-                        font-size: 10px;
-                        letter-spacing: 0.2px;
-                        color: Theme.accent;
-                    }
+            }
+            if !root.compact: Btn {
+                variant: root.copied ? BtnVariant.primary : BtnVariant.secondary;
+                size: BtnSize.sm;
+                text: root.copied ? T.tr("server.copied") : T.tr("server.copy");
+                clicked => { root.copy(root.direct != "" ? root.direct : root.address); }
+            }
+        }
+
+        if !root.compact && root.show-ip && root.direct != "": HorizontalLayout {
+            alignment: start;
+            spacing: 6px;
+            Rectangle {
+                height: ip.preferred-height + 6px;
+                width: ip.preferred-width + 14px;
+                border-radius: Theme.radius-sm;
+                background: Theme.card-bg-soft;
+                border-width: 2px;
+                border-color: ip-ta.has-hover ? Theme.hover-border : Theme.border-solid;
+                ip := Text {
+                    text: "IP: " + root.direct;
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                    color: ip-ta.has-hover ? Theme.hover-border : Theme.muted;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                ip-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.copy(root.direct); }
+                }
+            }
+        }
+
+        if !root.compact: VerticalLayout {
+            spacing: 4px;
+            Text {
+                text: "MOTD";
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.8px;
+                color: Theme.muted;
+            }
+            MotdStage { lines: SettingsBridge.motd-lines(root.server); }
+        }
+
+        // status footer (no ping in ServerRow: no sparkline here)
+        if !root.compact: VerticalLayout {
+            spacing: 8px;
+            Rectangle { height: 2px; background: Theme.border-solid; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                if root.server.online: Badge { text: T.tr("common.online"); variant: BadgeVariant.ok; dot: true; }
+                if !root.server.online: Badge { text: T.tr("server.offline"); variant: BadgeVariant.err; }
+                if root.server.error != "": Text {
+                    text: root.server.error;
+                    font-size: 11px;
+                    color: Theme.accent-red;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
                 }
             }
         }

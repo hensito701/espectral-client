@@ -19,19 +19,19 @@ component ToolBtn inherits Rectangle {
     in property <length> icon-size: 13px;
     callback clicked();
     property <bool> hovered: t.has-hover && enabled;
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     border-radius: Theme.radius-xs;
-    background: active ? Theme.accent.with-alpha(0.15) : hovered ? Theme.surface-up : transparent;
-    border-width: 1px;
-    border-color: active ? Theme.accent.with-alpha(0.3) : hovered ? Theme.border : transparent;
+    background: active ? Theme.gold : hovered ? Theme.surface-up : transparent;
+    border-width: 2px;
+    border-color: active ? Theme.brand-ink : hovered ? Theme.hover-border : transparent;
     opacity: enabled ? 1 : 0.5;
     if root.icon != "": Icon {
         data: root.icon;
         size: root.icon-size;
         filled: root.filled;
         weight: root.filled ? 0 : 2;
-        color: root.active ? Theme.accent : root.hovered ? Theme.text : Theme.muted;
+        color: root.active ? Theme.on-gold : root.hovered ? Theme.text : Theme.muted;
     }
     if root.emoji != "": Emoji { char: root.emoji; size: 13px; }
     t := TouchArea {
@@ -48,16 +48,16 @@ component StopChip inherits Rectangle {
     height: l.preferred-height + 8px;
     min-width: l.preferred-width + 14px;
     border-radius: Theme.radius-xs;
-    background: Theme.accent-red.with-alpha(t.has-hover ? 0.3 : 0.18);
-    border-width: 1px;
-    border-color: Theme.accent-red.with-alpha(0.4);
+    background: Theme.accent-red;
+    border-width: 2px;
+    border-color: Theme.brand-ink;
     opacity: enabled ? 1 : 0.5;
     l := Text {
         text: root.text;
         font-family: Theme.font-pixel;
-        font-size: 9px;
+        font-size: 8px;
         letter-spacing: 0.45px;
-        color: Theme.accent-red;
+        color: #ffffff;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -76,13 +76,13 @@ component LogTab inherits Rectangle {
     in property <bool> active;
     callback clicked();
     property <bool> hovered: t.has-hover;
-    height: 26px;
+    height: 28px;
     min-width: row.preferred-width;
     horizontal-stretch: 0;
-    border-radius: Theme.radius-sm;
-    background: active ? Theme.surface-up-solid : hovered ? Theme.surface-up : transparent;
-    border-width: 1px;
-    border-color: active ? Theme.border-focus : transparent;
+    border-radius: Theme.radius-pill;
+    background: active ? Theme.gold : hovered ? Theme.surface-up : transparent;
+    border-width: 2px;
+    border-color: active ? Theme.brand-ink : hovered ? Theme.hover-border : transparent;
     row := HorizontalLayout {
         padding-left: Theme.space-3;
         padding-right: Theme.space-3;
@@ -90,19 +90,18 @@ component LogTab inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Rectangle {
-                width: 6px;
-                height: 6px;
-                border-radius: 3px;
-                background: root.running ? Theme.accent : Theme.muted;
-                drop-shadow-color: root.running ? Theme.accent.with-alpha(0.6) : transparent;
-                drop-shadow-blur: 6px;
+                width: 8px;
+                height: 8px;
+                background: root.running ? Theme.accent-green : Theme.muted;
+                border-width: 2px;
+                border-color: root.active ? Theme.brand-ink : transparent;
             }
         }
         Text {
             text: root.label;
-            color: root.active || root.hovered ? Theme.text : Theme.muted;
+            color: root.active ? Theme.on-gold : root.hovered ? Theme.text : Theme.muted;
             font-size: Theme.text-xs;
-            font-weight: 600;
+            font-weight: 700;
             vertical-alignment: center;
         }
         if root.agent: VerticalLayout {
@@ -110,16 +109,16 @@ component LogTab inherits Rectangle {
             Rectangle {
                 height: al.preferred-height + 2px;
                 width: al.preferred-width + 10px;
-                border-radius: Theme.radius-sm;
-                background: rgba(167, 139, 250, 0.16);
-                border-width: 1px;
-                border-color: rgba(167, 139, 250, 0.4);
+                border-radius: Theme.radius-xs;
+                background: Theme.accent-purple;
+                border-width: 2px;
+                border-color: Theme.brand-ink;
                 al := Text {
                     text: T.tr("pip.agentBadge");
                     font-size: 9px;
                     font-weight: 700;
                     letter-spacing: 0.4px;
-                    color: Theme.accent-purple;
+                    color: #ffffff;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -157,22 +156,36 @@ export component PipLogDrawer inherits Rectangle {
     // ================= collapsed pill =================
     if !root.expanded: pill := Rectangle {
         property <bool> hovered: pt.has-hover;
-        width: prow.preferred-width;
-        height: 36px;
+        width: prow.preferred-width + 4px;
+        height: 36px + 4px;
         x: root.width - self.width - Theme.space-4;
-        y: root.height - self.height - root.bottom-gap - (self.hovered ? 1px : 0px);
-        border-radius: 18px;
-        background: self.hovered ? Theme.surface-up-solid.with-alpha(0.94) : Theme.surface-solid.with-alpha(0.9);
-        border-width: 1px;
-        border-color: self.hovered ? Theme.border-focus : Theme.border;
-        drop-shadow-color: Theme.shadow-md-color;
-        drop-shadow-blur: Theme.shadow-md-blur;
-        drop-shadow-offset-y: Theme.shadow-md-y;
+        y: root.height - self.height - root.bottom-gap - (pill.hovered ? 1px : 0px);
+        background: transparent;
+        // hard ink shadow
+        Rectangle {
+            x: 4px;
+            y: 4px;
+            width: parent.width - 4px;
+            height: 36px;
+            border-radius: Theme.radius-pill;
+            background: pill.hovered ? Theme.brand-purple : Theme.brand-ink;
+        }
+        Rectangle {
+            width: parent.width - 4px;
+            height: 36px;
+            border-radius: Theme.radius-pill;
+            background: pill.hovered ? Theme.surface-up : Theme.card-bg;
+            border-width: 2px;
+            border-color: pill.hovered ? Theme.hover-border : Theme.border-solid;
+            clip: true;
+        }
         pt := TouchArea {
             mouse-cursor: pointer;
             clicked => { Shell.pip-log-open = true; }
         }
         prow := HorizontalLayout {
+            width: parent.width - 4px;
+            height: 36px;
             padding-left: Theme.space-3;
             padding-right: Theme.space-3;
             spacing: Theme.space-4;
@@ -183,11 +196,9 @@ export component PipLogDrawer inherits Rectangle {
                     Rectangle {
                         width: 8px;
                         height: 8px;
-                        border-radius: 4px;
-                        background: AppState.running-count > 0 ? Theme.accent : Theme.muted;
-                        opacity: AppState.running-count > 0 ? 1 : 0.5;
-                        drop-shadow-color: AppState.running-count > 0 ? Theme.accent.with-alpha(0.7) : transparent;
-                        drop-shadow-blur: 10px;
+                        background: AppState.running-count > 0 ? Theme.accent-green : Theme.muted;
+                        border-width: 2px;
+                        border-color: Theme.brand-ink;
                     }
                 }
                 if AppState.running-count > 0: VerticalLayout {
@@ -196,14 +207,14 @@ export component PipLogDrawer inherits Rectangle {
                         height: cnt.preferred-height + 4px;
                         width: cnt.preferred-width + 10px;
                         border-radius: Theme.radius-xs;
-                        background: Theme.accent.with-alpha(0.15);
-                        border-width: 1px;
-                        border-color: Theme.accent.with-alpha(0.3);
+                        background: Theme.gold;
+                        border-width: 2px;
+                        border-color: Theme.brand-ink;
                         cnt := Text {
                             text: AppState.running-count;
                             font-family: Theme.font-pixel;
-                            font-size: 9px;
-                            color: Theme.accent;
+                            font-size: 8px;
+                            color: Theme.on-gold;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -216,7 +227,7 @@ export component PipLogDrawer inherits Rectangle {
                         : T.tr("pip.noActiveLaunch");
                     color: Theme.text;
                     font-size: Theme.text-xs;
-                    font-weight: 500;
+                    font-weight: 600;
                     vertical-alignment: center;
                 }
             }
@@ -254,10 +265,11 @@ export component PipLogDrawer inherits Rectangle {
         y: root.height - self.height - root.bottom-gap;
         border-radius: Theme.radius-lg;
         background: Theme.log-bg;
-        border-width: 1px;
+        border-width: 2px;
         border-color: Theme.border-solid;
-        drop-shadow-color: Theme.shadow-lg-color;
-        drop-shadow-blur: Theme.shadow-lg-blur;
+        drop-shadow-color: Theme.brand-ink;
+        drop-shadow-blur: 0px;
+        drop-shadow-offset-x: Theme.shadow-lg-x;
         drop-shadow-offset-y: Theme.shadow-lg-y;
         clip: true;
         // swallow clicks on the panel
@@ -266,9 +278,10 @@ export component PipLogDrawer inherits Rectangle {
         // header
         head := Rectangle {
             y: 0;
-            height: 38px;
-            background: Theme.surface-solid;
-            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+            height: 44px;
+            background: Theme.card-bg;
+            border-width: 0px;
+            Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border-solid; }
             HorizontalLayout {
                 padding-left: Theme.space-2;
                 padding-right: Theme.space-2;

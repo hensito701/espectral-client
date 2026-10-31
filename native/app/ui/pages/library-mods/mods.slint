@@ -6,7 +6,7 @@
 // when the query is empty), tracks mod-progress events and loads the result
 // icons from cdn.modrinth.com through the engine HTTP client (LRU cache).
 
-import { Theme, T, AppState, Router, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, Icon, Icons, Spinner, Emoji, ProgressBar, ProgressThickness, MonogramTile, MonogramShape, LoaderBadge, LoaderBadgeSize } from "../../widgets.slint";
+import { Theme, T, AppState, Router, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji, ProgressBar, ProgressThickness, MonogramTile, MonogramShape, LoaderBadge, LoaderBadgeSize } from "../../widgets.slint";
 import { LibraryBridge, ModRow, ModrinthCard, PinnedPill } from "api.slint";
 import { LibScroll, GlassPanel, GlowDot, VText, Chip, StatePanel, CenterText } from "parts.slint";
 
@@ -37,23 +37,18 @@ component CatalogHeader inherits HorizontalLayout {
             min-height: 22px;
             VerticalLayout {
                 alignment: center;
-                GlowDot { tint: Theme.dark ? Theme.accent : Theme.accent-ink; }
+                GlowDot { tint: Theme.accent; }
             }
             VText {
                 text: T.tr("mods.kicker");
                 font-family: Theme.font-pixel;
-                font-size: Theme.text-xs;
-                color: Theme.dark ? Theme.accent : Theme.accent-ink;
+                font-size: 8px;
+                color: Theme.accent;
             }
         }
-        GradientText {
+        McTitle {
             text: T.tr("mods.title");
-            gradient: GradientKind.emerald-gold;
-            font-size: Theme.text-2xl;
-            font-weight: 700;
-            letter-spacing: -0.56px;
-            min-height: 34px;
-            vertical-alignment: center;
+            font-size: 32px;
         }
         Rectangle { height: Theme.space-1; }
         Text {
@@ -90,11 +85,9 @@ component InstanceChip inherits Rectangle {
     min-width: row.preferred-width;
     horizontal-stretch: 0;
     border-radius: Theme.radius-md;
-    background: selected ? Theme.accent.with-alpha(Theme.dark ? 0.12 : 0.16) : hovered ? (Theme.dark ? rgba(255, 255, 255, 0.06) : rgba(0, 0, 0, 0.05)) : (Theme.dark ? rgba(255, 255, 255, 0.03) : rgba(0, 0, 0, 0.02));
-    border-width: 1px;
-    border-color: selected ? (Theme.dark ? Theme.accent : Theme.accent-ink) : hovered ? Theme.accent.with-alpha(0.3) : Theme.border;
-    drop-shadow-color: selected ? Theme.accent.with-alpha(0.2) : transparent;
-    drop-shadow-blur: 16px;
+    background: selected ? Theme.surface-up : hovered ? Theme.card-bg-soft : Theme.surface-solid;
+    border-width: 2px;
+    border-color: selected ? Theme.hover-border : hovered ? Theme.hover-border : Theme.border-solid;
     animate background, border-color { duration: Theme.dur-fast; }
     row := HorizontalLayout {
         padding-left: 13.6px;
@@ -106,12 +99,12 @@ component InstanceChip inherits Rectangle {
             text: root.name;
             font-size: 13px;
             font-weight: 600;
-            color: root.selected ? (Theme.dark ? #ffffff : #052e21) : Theme.text;
+            color: Theme.text;
         }
         VText {
             text: root.tag;
             font-size: 11px;
-            color: root.selected ? (Theme.dark ? rgba(255, 255, 255, 0.75) : rgba(5, 46, 33, 0.72)) : Theme.muted;
+            color: Theme.muted;
         }
         if root.selected: VerticalLayout {
             alignment: center;
@@ -196,8 +189,8 @@ component InstanceStrip inherits GlassPanel {
 }
 
 component ProgressDeck inherits GlassPanel {
-    fill: Theme.accent.with-alpha(Theme.dark ? 0.08 : 0.12);
-    stroke: Theme.accent.with-alpha(Theme.dark ? 0.3 : 0.45);
+    fill: Theme.card-bg-soft;
+    stroke: Theme.accent;
     height: col.preferred-height;
     col := VerticalLayout {
         padding-top: Theme.space-3;
@@ -220,7 +213,7 @@ component ProgressDeck inherits GlassPanel {
             VText {
                 text: LibraryBridge.m-progress-done + " / " + LibraryBridge.m-progress-total;
                 font-family: Theme.font-pixel;
-                font-size: Theme.text-xs;
+                font-size: 8px;
             }
         }
         ProgressBar {
@@ -242,13 +235,15 @@ component CatalogTab inherits Rectangle {
     in property <bool> badge-warn;
     callback clicked();
     property <bool> hovered: touch.has-hover;
-    property <color> fg: active ? (Theme.dark ? Theme.accent : Theme.accent-ink) : hovered ? Theme.text : Theme.muted;
+    property <color> fg: active || hovered ? Theme.accent : Theme.muted;
     height: row.preferred-height;
     min-width: row.preferred-width;
     horizontal-stretch: 0;
     border-radius: Theme.radius-sm;
-    background: active ? Theme.accent.with-alpha(Theme.dark ? 0.1 : 0.14) : hovered ? (Theme.dark ? rgba(255, 255, 255, 0.04) : rgba(0, 0, 0, 0.04)) : transparent;
-    animate background { duration: Theme.dur-fast; }
+    background: active ? Theme.surface-solid : hovered ? Theme.card-bg-soft : transparent;
+    border-width: 2px;
+    border-color: active ? Theme.hover-border : hovered ? Theme.border-solid : transparent;
+    animate background, border-color { duration: Theme.dur-fast; }
     row := HorizontalLayout {
         padding-left: 14.4px;
         padding-right: 14.4px;
@@ -263,8 +258,10 @@ component CatalogTab inherits Rectangle {
         if root.badge != "": VerticalLayout {
             alignment: center;
             Rectangle {
-                border-radius: 9px;
-                background: root.badge-warn ? Theme.accent-alt.with-alpha(0.2) : (Theme.dark ? rgba(255, 255, 255, 0.08) : rgba(0, 0, 0, 0.06));
+                border-radius: Theme.radius-pill;
+                background: root.badge-warn ? Theme.accent-alt.with-alpha(0.2) : Theme.card-bg-soft;
+                border-width: 2px;
+                border-color: root.badge-warn ? Theme.accent-alt : Theme.border-solid;
                 min-width: badge-text.preferred-width + 12.8px;
                 height: badge-text.preferred-height + 3.2px;
                 badge-text := Text {
@@ -310,7 +307,7 @@ component CatalogTabs inherits VerticalLayout {
             clicked => { LibraryBridge.m-set-tab(2); }
         }
     }
-    Rectangle { height: 1px; background: Theme.border; }
+    Rectangle { height: 2px; background: Theme.border-solid; }
 }
 
 // ---------------------------------------------------------------- installed tab
@@ -319,9 +316,9 @@ component SmallSearch inherits Rectangle {
     min-width: 240px;
     height: 30px;
     border-radius: Theme.radius-sm;
-    background: Theme.dark ? rgba(0, 0, 0, 0.25) : rgba(255, 255, 255, 0.7);
-    border-width: 1px;
-    border-color: input.has-focus ? Theme.accent : Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: input.has-focus ? Theme.hover-border : Theme.border-solid;
     TouchArea {
         mouse-cursor: MouseCursor.text;
         clicked => { input.focus(); }
@@ -388,11 +385,11 @@ component InventoryToolbar inherits GlassPanel {
                     pad-y: 4.8px;
                     radius: Theme.radius-sm;
                     idle-bg: transparent;
-                    hover-bg: Theme.dark ? rgba(255, 255, 255, 0.04) : rgba(0, 0, 0, 0.04);
-                    active-bg: Theme.dark ? rgba(255, 255, 255, 0.08) : rgba(0, 0, 0, 0.06);
+                    hover-bg: Theme.card-bg-soft;
+                    active-bg: Theme.surface-solid;
                     idle-border: transparent;
-                    hover-border: transparent;
-                    active-border: Theme.border;
+                    hover-border: Theme.hover-border;
+                    active-border: Theme.hover-border;
                     idle-fg: Theme.muted;
                     active-fg: Theme.text;
                     active-glow: false;
@@ -411,11 +408,11 @@ component InventoryToolbar inherits GlassPanel {
                     pad-y: 4.8px;
                     radius: Theme.radius-sm;
                     idle-bg: transparent;
-                    hover-bg: Theme.dark ? rgba(255, 255, 255, 0.04) : rgba(0, 0, 0, 0.04);
-                    active-bg: Theme.dark ? rgba(255, 255, 255, 0.08) : rgba(0, 0, 0, 0.06);
+                    hover-bg: Theme.card-bg-soft;
+                    active-bg: Theme.surface-solid;
                     idle-border: transparent;
-                    hover-border: transparent;
-                    active-border: Theme.border;
+                    hover-border: Theme.hover-border;
+                    active-border: Theme.hover-border;
                     idle-fg: Theme.muted;
                     active-fg: Theme.text;
                     active-glow: false;
@@ -433,11 +430,11 @@ component InventoryToolbar inherits GlassPanel {
                     pad-y: 4.8px;
                     radius: Theme.radius-sm;
                     idle-bg: transparent;
-                    hover-bg: Theme.dark ? rgba(255, 255, 255, 0.04) : rgba(0, 0, 0, 0.04);
-                    active-bg: Theme.dark ? rgba(255, 255, 255, 0.08) : rgba(0, 0, 0, 0.06);
+                    hover-bg: Theme.card-bg-soft;
+                    active-bg: Theme.surface-solid;
                     idle-border: transparent;
-                    hover-border: transparent;
-                    active-border: Theme.border;
+                    hover-border: Theme.hover-border;
+                    active-border: Theme.hover-border;
                     idle-fg: Theme.muted;
                     active-fg: Theme.text;
                     active-glow: false;
@@ -459,23 +456,18 @@ component Switch inherits Rectangle {
     width: 42px;
     height: 24px;
     border-radius: 12px;
-    background: on ? Theme.accent : (Theme.dark ? rgba(255, 255, 255, 0.1) : rgba(0, 0, 0, 0.1));
-    border-width: 1px;
-    border-color: on ? Theme.accent.with-alpha(0.8) : Theme.border;
-    drop-shadow-color: on ? Theme.accent.with-alpha(0.35) : transparent;
-    drop-shadow-blur: 12px;
-    animate background, border-color { duration: 200ms; easing: ease-out; }
+    background: on ? Theme.accent : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: on ? Theme.brand-ink : Theme.border-solid;
+    animate background, border-color { duration: Theme.dur-med; easing: ease-out; }
     Rectangle {
         x: root.on ? 21px : 3px;
-        y: 2px;
-        width: 18px;
-        height: 18px;
-        border-radius: 9px;
-        background: #ffffff;
-        drop-shadow-color: rgba(0, 0, 0, 0.4);
-        drop-shadow-blur: 3px;
-        drop-shadow-offset-y: 1px;
-        animate x { duration: 200ms; easing: ease-out; }
+        y: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        background: on ? Theme.brand-ink : Theme.muted;
+        animate x { duration: Theme.dur-med; easing: ease-out; }
     }
     TouchArea {
         mouse-cursor: pointer;
@@ -483,10 +475,22 @@ component Switch inherits Rectangle {
     }
 }
 
-component ModEntryRow inherits GlassPanel {
+component ModEntryRow inherits Rectangle {
     in property <ModRow> entry;
-    height: content.preferred-height;
+    /// Last row of the list: no trailing separator.
+    in property <bool> last: false;
+    height: content.preferred-height + 2px;
     opacity: entry.enabled ? 1 : 0.6;
+    background: hover.has-hover ? Theme.surface-up : transparent;
+    animate background { duration: Theme.dur-fast; }
+    // 2px list separator
+    Rectangle {
+        y: root.height - 2px;
+        height: 2px;
+        background: Theme.border-solid;
+        visible: !root.last;
+    }
+    hover := TouchArea { }
     content := HorizontalLayout {
         padding-top: 5.6px;
         padding-bottom: 5.6px;
@@ -510,14 +514,14 @@ component ModEntryRow inherits GlassPanel {
                     Rectangle {
                         border-radius: Theme.radius-pill;
                         background: Theme.card-bg-soft;
-                        border-width: 1px;
-                        border-color: Theme.glass-border;
+                        border-width: 2px;
+                        border-color: Theme.border-solid;
                         min-width: ver.preferred-width + 16px;
                         height: ver.preferred-height + 6px;
                         ver := Text {
                             text: root.entry.version;
                             font-family: Theme.font-pixel;
-                            font-size: Theme.text-xs;
+                            font-size: 8px;
                             letter-spacing: -0.48px;
                             color: Theme.muted;
                         }
@@ -577,8 +581,8 @@ component LoadingPanel inherits StatePanel {
 component ErrorBanner inherits GlassPanel {
     in property <string> text;
     in property <bool> retry;
-    fill: Theme.accent-red.with-alpha(0.1);
-    stroke: Theme.accent-red.with-alpha(0.3);
+    fill: Theme.surface-solid;
+    stroke: Theme.accent-red;
     height: row.preferred-height;
     row := HorizontalLayout {
         padding-top: Theme.space-3;
@@ -648,9 +652,11 @@ component InstalledPane inherits VerticalLayout {
         hint: LibraryBridge.m-count == 0 ? "Instala el conjunto de rendimiento o explora Modrinth para añadir mods." : "Prueba con otros términos de búsqueda o cambia los filtros de estado.";
         show-cta: LibraryBridge.m-count == 0;
     }
-    if !(LibraryBridge.m-loading && LibraryBridge.m-count == 0) && LibraryBridge.m-error == "" && LibraryBridge.m-rows.length > 0: VerticalLayout {
-        spacing: 6.4px;
-        for row in LibraryBridge.m-rows: ModEntryRow { entry: row; }
+    if !(LibraryBridge.m-loading && LibraryBridge.m-count == 0) && LibraryBridge.m-error == "" && LibraryBridge.m-rows.length > 0: GlassCard {
+        elevation: Elevation.md;
+        padding-size: 0px;
+        spacing: 0px;
+        for row[i] in LibraryBridge.m-rows: ModEntryRow { entry: row; last: i == LibraryBridge.m-rows.length - 1; }
     }
 }
 
@@ -662,9 +668,9 @@ component Pill inherits Rectangle {
     min-width: row.preferred-width;
     horizontal-stretch: 0;
     border-radius: Theme.radius-sm;
-    background: pill.installed ? Theme.accent-green.with-alpha(Theme.dark ? 0.1 : 0.14) : (Theme.dark ? rgba(255, 255, 255, 0.04) : rgba(0, 0, 0, 0.03));
-    border-width: 1px;
-    border-color: pill.installed ? Theme.accent-green.with-alpha(Theme.dark ? 0.3 : 0.5) : Theme.border;
+    background: pill.installed ? Theme.card-bg-soft : Theme.surface-solid;
+    border-width: 2px;
+    border-color: pill.installed ? Theme.accent-green : Theme.border-solid;
     row := HorizontalLayout {
         padding-left: Theme.space-2;
         padding-right: Theme.space-2;
@@ -679,7 +685,7 @@ component Pill inherits Rectangle {
             text: root.pill.slug;
             font-family: Theme.font-mono;
             font-size: Theme.text-xs;
-            color: root.pill.installed ? (Theme.dark ? Theme.text : #052e21) : Theme.muted;
+            color: root.pill.installed ? Theme.text : Theme.muted;
         }
         if root.pill.requires != "": VText {
             text: root.pill.requires;
@@ -692,8 +698,8 @@ component Pill inherits Rectangle {
 component PresetsPane inherits VerticalLayout {
     spacing: Theme.space-4;
     if LibraryBridge.m-preset-note != "": GlassPanel {
-        fill: Theme.accent-cyan.with-alpha(0.1);
-        stroke: Theme.accent-cyan.with-alpha(0.3);
+        fill: Theme.surface-solid;
+        stroke: Theme.accent-cyan;
         height: note-row.preferred-height;
         note-row := HorizontalLayout {
             padding-top: Theme.space-3;
@@ -722,16 +728,16 @@ component PresetsPane inherits VerticalLayout {
                     width: 32px;
                     height: 32px;
                     border-radius: Theme.radius-md;
-                    background: Theme.accent-green.with-alpha(Theme.dark ? 0.15 : 0.16);
-                    border-width: 1px;
-                    border-color: Theme.accent-green.with-alpha(Theme.dark ? 0.3 : 0.5);
+                    background: Theme.card-bg-soft;
+                    border-width: 2px;
+                    border-color: Theme.accent-green;
                     Emoji { char: "⚡"; size: 16px; }
                 }
             }
             VerticalLayout {
                 alignment: center;
                 Text { text: T.tr("mods.performance"); font-size: Theme.text-base; font-weight: 700; color: Theme.text; }
-                Text { text: "7 mods verificados"; font-family: Theme.font-pixel; font-size: Theme.text-xs; color: Theme.muted; }
+                Text { text: "7 mods verificados"; font-family: Theme.font-pixel; font-size: 8px; color: Theme.muted; }
             }
             Rectangle { horizontal-stretch: 1; }
             VerticalLayout {
@@ -756,7 +762,7 @@ component PresetsPane inherits VerticalLayout {
             alignment: start;
             for p in LibraryBridge.m-pinned: Pill { pill: p; }
         }
-        Rectangle { height: 1px; background: Theme.border; }
+        Rectangle { height: 2px; background: Theme.border-solid; }
         HorizontalLayout {
             padding-top: Theme.space-3;
             spacing: Theme.space-3;
@@ -786,11 +792,9 @@ component ModrinthInput inherits Rectangle {
     horizontal-stretch: 1;
     height: max(36px, input.preferred-height + 16px);
     border-radius: Theme.radius-md;
-    background: Theme.dark ? rgba(0, 0, 0, 0.3) : rgba(255, 255, 255, 0.75);
-    border-width: 1px;
-    border-color: input.has-focus ? (Theme.dark ? #1bd96a : Theme.accent-ink) : Theme.border;
-    drop-shadow-color: input.has-focus ? (Theme.dark ? rgba(27, 217, 106, 0.25) : rgba(4, 120, 87, 0.28)) : transparent;
-    drop-shadow-blur: 12px;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: input.has-focus ? Theme.hover-border : Theme.border-solid;
     TouchArea {
         mouse-cursor: MouseCursor.text;
         clicked => { input.focus(); }
@@ -830,13 +834,13 @@ component SearchHeader inherits GlassPanel {
             alignment: start;
             VerticalLayout {
                 alignment: center;
-                Icon { data: ModIcons.modrinth; size: 20px; filled: true; color: Theme.dark ? #1bd96a : Theme.accent-ink; }
+                Icon { data: ModIcons.modrinth; size: 20px; filled: true; color: Theme.accent-green; }
             }
             VText {
                 text: "Modrinth Matrix";
                 font-family: Theme.font-pixel;
-                font-size: Theme.text-xs;
-                color: Theme.dark ? #1bd96a : Theme.accent-ink;
+                font-size: 8px;
+                color: Theme.accent-green;
             }
         }
         HorizontalLayout {
@@ -876,7 +880,9 @@ component ResultCard inherits GlassPanel {
                     width: 44px;
                     height: 44px;
                     border-radius: Theme.radius-md;
-                    background: rgba(0, 0, 0, 0.3);
+                    background: Theme.card-bg-soft;
+                    border-width: 2px;
+                    border-color: Theme.border-solid;
                     clip: true;
                     Image {
                         width: 100%;
@@ -889,7 +895,9 @@ component ResultCard inherits GlassPanel {
                     width: 44px;
                     height: 44px;
                     border-radius: Theme.radius-md;
-                    background: rgba(0, 0, 0, 0.3);
+                    background: Theme.card-bg-soft;
+                    border-width: 2px;
+                    border-color: Theme.border-solid;
                 }
                 if !root.card.has-icon && root.card.icon-url == "": MonogramTile {
                     name: root.card.title;
@@ -926,7 +934,7 @@ component ResultCard inherits GlassPanel {
             height: 3 * 13px * 1.6;
         }
         Rectangle { min-height: Theme.space-3; vertical-stretch: 1; }
-        Rectangle { height: 1px; background: Theme.border; }
+        Rectangle { height: 2px; background: Theme.border-solid; }
         HorizontalLayout {
             padding-top: 9.6px;
             spacing: Theme.space-2;
@@ -1027,7 +1035,7 @@ component ModrinthPane inherits VerticalLayout {
         alignment: start;
         VerticalLayout {
             alignment: center;
-            GlowDot { tint: Theme.dark ? Theme.accent : Theme.accent-ink; }
+            GlowDot { tint: Theme.accent; }
         }
         VText { text: T.tr("mods.exploreTitle"); font-size: 15px; font-weight: 700; }
     }

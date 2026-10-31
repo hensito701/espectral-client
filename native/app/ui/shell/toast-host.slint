@@ -17,18 +17,21 @@ component ToastCard inherits Rectangle {
     height: row.preferred-height;
     border-radius: Theme.radius-md;
     background: Theme.surface-solid;
-    border-width: 1px;
-    border-color: tone.with-alpha(0.4);
-    drop-shadow-color: tone.with-alpha(0.18);
-    drop-shadow-blur: 24px;
-    drop-shadow-offset-y: 8px;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
     clip: true;
 
-    // top 2px gradient line (::before)
+    // flat tone rule under the top border (::before)
     Rectangle {
-        y: 0;
-        height: 2px;
-        background: @linear-gradient(90deg, transparent 0%, root.tone.with-alpha(0.8) 50%, transparent 100%);
+        x: 2px;
+        y: 2px;
+        width: parent.width - 4px;
+        height: 3px;
+        background: root.tone;
     }
 
     body-ta := TouchArea {
@@ -46,8 +49,8 @@ component ToastCard inherits Rectangle {
                 height: 32px;
                 border-radius: Theme.radius-sm;
                 background: Theme.card-bg-soft;
-                border-width: 1px;
-                border-color: Theme.border;
+                border-width: 2px;
+                border-color: Theme.border-solid;
                 Icon {
                     data: root.item.kind == ToastKind.ok ? Icons.check : root.item.kind == ToastKind.err ? Icons.alert-circle : Icons.info;
                     size: 18px;
@@ -63,8 +66,8 @@ component ToastCard inherits Rectangle {
             Text {
                 text: root.item.kind == ToastKind.ok ? "LOGRO DESBLOQUEADO" : root.item.kind == ToastKind.err ? "AVISO DEL SISTEMA" : "NOTIFICACIÓN";
                 font-family: Theme.font-pixel;
-                font-size: 9.3px;
-                letter-spacing: 0.74px;
+                font-weight: 700;
+                font-size: 8px;
                 color: root.tone;
             }
             Text {
@@ -81,7 +84,9 @@ component ToastCard inherits Rectangle {
                 height: 22px;
                 border-radius: Theme.radius-xs;
                 background: close-ta.has-hover ? Theme.card-bg-soft : transparent;
-                Icon { data: Icons.x; size: 14px; color: close-ta.has-hover ? Theme.text : Theme.muted; }
+                border-width: 2px;
+                border-color: close-ta.has-hover ? Theme.hover-border : transparent;
+                Icon { data: Icons.x; size: 13px; color: close-ta.has-hover ? Theme.text : Theme.muted; }
                 close-ta := TouchArea {
                     mouse-cursor: pointer;
                     clicked => { Shell.dismiss-toast(root.item.id); }

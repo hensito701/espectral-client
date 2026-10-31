@@ -124,7 +124,9 @@ export component McTitle inherits Rectangle {
     in property <bool> wrap: true;
     property <length> px: font-size / 8;
 
-    min-width: label.min-width + px;
+    // A long pixel title must never widen its parent: when it wraps, it
+    // wraps; when it doesn't, it is clipped by the layout instead.
+    min-width: root.wrap ? 0px : label.min-width + px;
     preferred-width: label.preferred-width + px;
     min-height: label.min-height + px;
     preferred-height: label.preferred-height + px;
@@ -202,23 +204,28 @@ export component Sticker inherits Rectangle {
     property <length> d: 3px;
     width: label.preferred-width + 16px + d;
     height: label.preferred-height + 8px + d;
-    transform-rotation: root.tilt;
-    Rectangle { x: root.d; y: root.d; width: root.width - root.d; height: root.height - root.d; border-radius: 4px; background: Theme.brand-ink; }
     Rectangle {
-        x: 0; y: 0;
-        width: root.width - root.d; height: root.height - root.d;
-        border-radius: 4px;
-        background: root.fill;
-        border-width: 2px;
-        border-color: Theme.brand-ink;
-        label := Text {
-            text: root.text;
-            font-family: Theme.font-title;
-            font-size: root.font-size;
-            font-weight: 700;
-            color: root.ink;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+        width: root.width;
+        height: root.height;
+        transform-rotation: root.tilt;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        Rectangle { x: root.d; y: root.d; width: root.width - root.d; height: root.height - root.d; border-radius: 4px; background: Theme.brand-ink; }
+        Rectangle {
+            x: 0; y: 0;
+            width: root.width - root.d; height: root.height - root.d;
+            border-radius: 4px;
+            background: root.fill;
+            border-width: 2px;
+            border-color: Theme.brand-ink;
+            label := Text {
+                text: root.text;
+                font-family: Theme.font-title;
+                font-size: root.font-size;
+                font-weight: 700;
+                color: root.ink;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
         }
     }
 }

@@ -5,16 +5,16 @@
 // LAST child of the page root Rectangle and open it with
 // `LibraryBridge.mrpack-open = true;` (Home's "Importar modpack" button).
 
-import { Theme, T, Modal, ModalFooter, Btn, BtnVariant, Field, Slider, ProgressBar, ProgressTone, ProgressThickness, Spinner, Emoji, Util } from "../../widgets.slint";
+import { Theme, T, Modal, ModalFooter, Btn, BtnVariant, McTitle, Field, Slider, ProgressBar, ProgressThickness, Spinner, Emoji, Util } from "../../widgets.slint";
 import { LibraryBridge } from "api.slint";
-import { VText, CenterText } from "parts.slint";
+import { VText } from "parts.slint";
 
 component ErrorBanner inherits Rectangle {
     height: row.preferred-height;
     border-radius: Theme.radius-md;
-    background: rgba(239, 68, 68, 0.15);
-    border-width: 1px;
-    border-color: rgba(239, 68, 68, 0.4);
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.accent-red;
     row := HorizontalLayout {
         padding: Theme.space-3;
         spacing: Theme.space-2;
@@ -27,7 +27,7 @@ component ErrorBanner inherits Rectangle {
             alignment: center;
             Text {
                 text: T.tr1("home.mrpackError", "error", LibraryBridge.mp-error);
-                color: Theme.dark ? #fca5a5 : Theme.accent-red;
+                color: Theme.accent-red;
                 font-size: Theme.text-sm;
                 wrap: word-wrap;
             }
@@ -43,11 +43,10 @@ component SuccessView inherits VerticalLayout {
         alignment: center;
         Emoji { char: "✨"; size: 48px; }
     }
-    CenterText {
+    McTitle {
         text: LibraryBridge.mp-already-exists ? T.tr("home.mrpackAlreadyExists") : T.tr("home.mrpackPhaseDone");
-        color: #22c55e;
-        font-size: Theme.text-xl;
-        font-weight: 700;
+        font-size: 24px;
+        horizontal-alignment: center;
     }
     HorizontalLayout {
         alignment: center;
@@ -98,8 +97,8 @@ component FormView inherits VerticalLayout {
                 height: 38px;
                 border-radius: Theme.radius-md;
                 background: Theme.card-bg-soft;
-                border-width: 1px;
-                border-color: path.has-focus ? Theme.border-focus : Theme.border;
+                border-width: 2px;
+                border-color: path.has-focus ? Theme.hover-border : Theme.border-solid;
                 TouchArea {
                     mouse-cursor: MouseCursor.text;
                     clicked => { path.focus(); }

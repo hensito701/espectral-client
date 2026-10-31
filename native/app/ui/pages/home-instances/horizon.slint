@@ -1,11 +1,15 @@
 // OWNER: home-instances agent. Port of components/HorizonRail.svelte +
 // HorizonTile.svelte (compact density: 280 x 260 tiles, always on).
 //
+// Poster look: each tile is a flat colour block in the instance's hue, 2px
+// border and a hard 4px ink shadow. Hover lifts one step and turns the border
+// gold with a purple shadow; selection keeps the gold border. No glass, no
+// gradients, no grid texture, no glow: the version watermark and the monogram
+// are flat low-contrast pixel-font glyphs.
+//
 // Tiles read AppState.instances directly; selection is HomeBridge.selected-instance.
-// The CSS 3D parallax on hover is not reproduced (it needs per-frame pointer
-// tracking); hover keeps the accent border + glow.
 
-import { Theme, T, AppState, InstanceRow, Util, LoaderBadge, LoaderBadgeSize, Badge, BadgeVariant, Btn, BtnVariant, BtnSize, Emoji } from "../../widgets.slint";
+import { Theme, T, AppState, InstanceRow, Util, LoaderBadge, LoaderBadgeSize, Badge, BadgeVariant, Btn, BtnVariant, BtnSize, Emoji, McTitle } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 
 export global TileArt {
@@ -17,33 +21,31 @@ export global TileArt {
     public pure function loader-hue(loader: string) -> int {
         return loader == "fabric" ? 190 : (loader == "neoforge" || loader == "forge") ? 24 : loader == "quilt" ? 280 : 160;
     }
-    public pure function banner(loader: string, hue: int) -> brush {
-        return hue >= 0
-            ? @linear-gradient(135deg, Theme.hsla(hue, 0.45, 0.08, 0.85) 0%, Theme.hsla(hue, 0.6, 0.2, 0.85) 45%, Theme.hsla(hue, 0.7, 0.3, 0.85) 80%, Theme.hsla(hue + 30, 0.8, 0.45, 0.85) 100%)
-            : loader == "fabric" ? @linear-gradient(135deg, #042f2ed9 0%, #0891b2d9 45%, #06b6d4d9 80%, #38bdf8d9 100%)
-            : (loader == "neoforge" || loader == "forge") ? @linear-gradient(135deg, #431407d9 0%, #ea580cd9 45%, #f97316d9 80%, #fb923cd9 100%)
-            : loader == "quilt" ? @linear-gradient(135deg, #3b0764d9 0%, #9333ead9 45%, #a855f7d9 80%, #c084fcd9 100%)
-            : @linear-gradient(135deg, #022c22d9 0%, #059669d9 45%, #10b981d9 80%, #34d399d9 100%);
+    /// The tile body: one flat, opaque colour block from the instance hue.
+    public pure function block(hue: int, loader: string) -> color {
+        return hue >= 0 ? Theme.hsla(hue, 0.7, 0.34, 1) : Theme.hsla(TileArt.loader-hue(loader), 0.7, 0.34, 1);
     }
-    public pure function mesh(loader: string, hue: int) -> color {
-        return hue >= 0 ? Theme.hsla(hue, 0.8, 0.55, 0.54) : TileArt.accent(loader).with-alpha(0.54);
+    /// The big ghost glyph: a lighter flat tint of the same hue (no alpha).
+    public pure function glyph(hue: int, loader: string) -> color {
+        return hue >= 0 ? Theme.hsla(hue, 0.62, 0.5, 1) : Theme.hsla(TileArt.loader-hue(loader), 0.62, 0.5, 1);
     }
 }
 
+/// Flat ink chip on the colour block.
 component TileChip inherits Rectangle {
     in property <string> text;
-    height: l.preferred-height + 4px;
+    height: l.preferred-height + 6px;
     min-width: l.preferred-width + 12px;
     horizontal-stretch: 0;
     border-radius: Theme.radius-xs;
-    background: rgba(0, 0, 0, 0.4);
-    border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.15);
+    background: #1f1252;
+    border-width: 2px;
+    border-color: #3a2488;
     l := Text {
         text: root.text;
         color: #ffffff;
-        font-size: Theme.text-xs;
-        font-weight: 600;
+        font-size: 11px;
+        font-weight: 700;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -57,121 +59,119 @@ export component HorizonTile inherits Rectangle {
 
     property <string> loader: inst.loader.to-lowercase();
     property <color> tile-accent: TileArt.accent(loader);
+    property <color> block-color: TileArt.block(inst.hue, loader);
+    property <color> glyph-color: TileArt.glyph(inst.hue, loader);
     property <bool> hovered: touch.has-hover;
     property <bool> running: inst.running;
+    property <bool> hot: selected || hovered;
+    property <length> depth: 4px;
+    property <length> lift: selected ? -2px : hovered ? -2px : 0px;
+    animate lift { duration: Theme.dur-med; easing: ease-out; }
 
     width: 280px;
     height: 260px;
+    background: transparent;
 
-    // selected: translateY(-6px) scale(1.02)
-    property <length> grow: selected ? 2.8px : 0px;
-    animate grow { duration: Theme.dur-med; easing: ease-out; }
-    property <length> shift: selected ? -6px : 0px;
-    animate shift { duration: Theme.dur-med; easing: ease-out; }
-
-    card := Rectangle {
-        background: Theme.card-bg;
-        x: -root.grow;
-        y: root.shift - root.grow * 260 / 280;
-        width: root.width + 2 * root.grow;
-        height: root.height + 2 * root.grow * 260 / 280;
+    // hard shadow block (6px purple when selected, 4px ink otherwise)
+    shadow := Rectangle {
+        x: root.depth + (root.selected ? 2px : 0px);
+        y: root.depth + (root.selected ? 2px : 0px);
+        width: root.width - root.depth - (root.selected ? 2px : 0px);
+        height: root.height - root.depth - (root.selected ? 2px : 0px);
         border-radius: Theme.radius-tile;
-        drop-shadow-color: root.selected ? root.tile-accent.with-alpha(0.45) : root.hovered ? root.tile-accent.with-alpha(0.3) : Theme.shadow-md-color;
-        drop-shadow-blur: root.selected ? 36px : root.hovered ? 28px : Theme.shadow-md-blur;
-        drop-shadow-offset-y: root.selected || root.hovered ? 4px : Theme.shadow-md-y;
+        background: root.hot ? Theme.brand-purple : Theme.brand-ink;
+        animate background { duration: Theme.dur-fast; }
+    }
 
-        inner := Rectangle {
-            border-radius: Theme.radius-tile;
-            background: Theme.card-bg;
-            clip: true;
+    face := Rectangle {
+        y: root.lift;
+        width: root.width - root.depth;
+        height: root.height - root.depth;
+        border-radius: Theme.radius-tile;
+        background: root.block-color;
+        border-width: 2px;
+        border-color: root.hot ? Theme.hover-border : Theme.brand-ink;
+        clip: true;
+        animate border-color { duration: Theme.dur-fast; }
 
-            // ---- banner art ----
-            Rectangle { background: TileArt.banner(root.loader, root.inst.hue); }
-            // radial mesh "circle at 80% 20%" (Slint gradients are centered: offset a big square)
-            Rectangle {
-                width: 600px;
-                height: 600px;
-                x: parent.width * 0.8 - 300px;
-                y: parent.height * 0.2 - 300px;
-                background: @radial-gradient(circle, TileArt.mesh(root.loader, root.inst.hue) 0%, TileArt.mesh(root.loader, root.inst.hue).transparentize(0.6) 22%, transparent 50%);
-            }
-            if root.inst.has-icon: Image {
-                width: parent.width;
-                height: parent.height;
-                source: root.inst.icon;
-                image-fit: cover;
-                opacity: 0.9;
-            }
-            // decorative 24px grid
-            for i in 13: Rectangle { x: i * 24px; y: 0; width: 1px; height: parent.height; background: rgba(255, 255, 255, 0.04); }
-            for i in 12: Rectangle { x: 0; y: i * 24px; width: parent.width; height: 1px; background: rgba(255, 255, 255, 0.04); }
-            // monogram watermark (Press Start 2P 80px, right -8px top 8px)
-            Text {
-                x: parent.width - self.width + 8px;
-                y: 8px;
-                text: Util.initial(root.inst.name);
-                font-family: Theme.font-pixel;
-                font-size: 80px;
-                color: rgba(255, 255, 255, 0.16);
-            }
-            // big version typography (left 16px, bottom 64px)
-            Text {
-                x: 16px;
-                y: parent.height - 64px - self.height;
-                text: root.inst.version;
-                font-size: 32px;
-                font-weight: 700;
-                letter-spacing: -1.28px;
-                // under the blurred body overlay in CSS: barely visible
-                color: rgba(255, 255, 255, 0.06);
-            }
-            // sheen
-            Rectangle { background: @linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.02) 40%, transparent 100%); }
-
-            // ---- header overlay ----
+        // big ghost monogram (flat pixel glyph, top right)
+        Text {
+            x: parent.width - self.width + 6px;
+            y: -10px;
+            text: Util.initial(root.inst.name);
+            font-family: Theme.font-pixel;
+            font-size: 96px;
+            color: root.glyph-color;
+            opacity: 0.38;
+        }
+        // version watermark (flat pixel glyph, above the caption band)
+        Text {
+            x: 14px;
+            y: caption.y - self.height - 6px;
+            text: root.inst.version;
+            font-family: Theme.font-pixel;
+            font-size: 32px;
+            color: root.glyph-color;
+            opacity: 0.45;
+        }
+        // ---- header row (inset by the 2px border) ----
+        HorizontalLayout {
+            x: 2px;
+            y: 2px;
+            width: parent.width - 4px;
+            height: 44px;
+            padding-left: Theme.space-3;
+            padding-right: Theme.space-3;
+            spacing: Theme.space-2;
+            alignment: space-between;
             HorizontalLayout {
-                y: 0;
-                height: self.preferred-height;
-                padding-left: Theme.space-4;
-                padding-right: Theme.space-4;
-                padding-top: Theme.space-3;
-                padding-bottom: Theme.space-3;
                 spacing: Theme.space-2;
-                alignment: space-between;
-                HorizontalLayout {
-                    spacing: Theme.space-2;
-                    LoaderBadge { loader: root.inst.loader; version: root.inst.version; size: LoaderBadgeSize.sm; }
-                    if root.inst.aot-cache-exists: Badge { text: "⚡ AOT"; variant: BadgeVariant.ok; }
-                }
-                if root.running: VerticalLayout {
+                VerticalLayout {
                     alignment: center;
-                    Rectangle {
-                        width: 14px;
-                        height: 14px;
-                        Rectangle { border-radius: 7px; background: rgba(34, 197, 94, 0.35); }
-                        Rectangle {
-                            width: 8px;
-                            height: 8px;
-                            border-radius: 4px;
-                            background: #22c55e;
-                            drop-shadow-color: #22c55e;
-                            drop-shadow-blur: 8px;
-                        }
-                    }
+                    LoaderBadge { loader: root.inst.loader; version: root.inst.version; size: LoaderBadgeSize.sm; }
+                }
+                if root.inst.aot-cache-exists: VerticalLayout {
+                    alignment: center;
+                    Badge { text: "⚡ AOT"; variant: BadgeVariant.ok; }
                 }
             }
+            if root.running: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    background: #22c55e;
+                    border-width: 2px;
+                    border-color: #07021a;
+                }
+            }
+        }
 
-            // ---- body overlay ----
-            body := Rectangle {
-                y: parent.height - self.height;
-                height: body-l.preferred-height;
-                background: @linear-gradient(180deg, transparent 0%, Theme.bg.with-alpha(0.82) 40%, Theme.bg.with-alpha(0.96) 100%);
-                body-l := VerticalLayout {
-                    padding-left: Theme.space-4;
-                    padding-right: Theme.space-4;
-                    padding-top: Theme.space-4;
+        // ---- caption band (flat ink block under the colour block) ----
+        // A vertical layout stacks the rule and the text, so the loader-hue
+        // rule can never land on the instance name.
+        caption := Rectangle {
+            x: 2px;
+            y: parent.height - self.height - 2px;
+            width: parent.width - 4px;
+            height: capcol.preferred-height;
+            background: #07021a;
+            capcol := VerticalLayout {
+                padding: 0px;
+                spacing: 0px;
+                // loader-hue rule on the caption's top edge, gold when hot
+                Rectangle {
+                    height: 3px;
+                    background: root.hot ? Theme.gold : root.tile-accent;
+                }
+                VerticalLayout {
+                    width: parent.width;
+                    padding-left: Theme.space-3;
+                    padding-right: Theme.space-3;
+                    padding-top: Theme.space-2;
                     padding-bottom: Theme.space-3;
-                    spacing: Theme.space-1;
+                    spacing: Theme.space-2;
+                    alignment: end;
                     HorizontalLayout {
                         spacing: Theme.space-2;
                         alignment: start;
@@ -189,28 +189,13 @@ export component HorizonTile inherits Rectangle {
                     }
                     Text {
                         text: T.tr("home.tileDoubleClickHint");
-                        color: root.hovered ? root.tile-accent : Theme.muted-strong;
-                        font-size: 11.2px;
+                        color: root.hot ? Theme.gold : #d8cdf5;
+                        font-size: 11px;
                         font-weight: 500;
+                        overflow: elide;
                     }
                 }
             }
-
-            // selection bar
-            Rectangle {
-                y: parent.height - self.height;
-                height: root.selected ? 4px : 3px;
-                background: root.tile-accent;
-                opacity: root.selected ? 1 : 0;
-                animate opacity { duration: Theme.dur-fast; }
-            }
-        }
-        // border on top of the art
-        Rectangle {
-            border-radius: Theme.radius-tile;
-            border-width: 1px;
-            border-color: root.running ? #22c55e : root.selected ? root.tile-accent : root.hovered ? root.tile-accent.with-alpha(0.7) : Theme.border;
-            animate border-color { duration: Theme.dur-med; }
         }
     }
 
@@ -222,47 +207,53 @@ export component HorizonTile inherits Rectangle {
 }
 
 
-/// "+ Crear Nueva Instancia" end tile (dashed border).
+/// "+ Crear Nueva Instancia" end tile (2px border, gold on hover).
 export component AddTile inherits Rectangle {
     callback clicked();
     property <bool> hovered: t.has-hover;
-    property <length> lift: hovered ? -4px : 0px;
+    property <length> lift: hovered ? -2px : 0px;
+    property <length> depth: 4px;
     animate lift { duration: Theme.dur-med; easing: ease-out; }
     width: 280px;
     height: 260px;
+    background: transparent;
+
+    // hard shadow
+    Rectangle {
+        x: root.depth;
+        y: root.depth;
+        width: root.width - root.depth;
+        height: root.height - root.depth;
+        border-radius: Theme.radius-tile;
+        background: root.hovered ? Theme.brand-purple : Theme.brand-ink;
+        animate background { duration: Theme.dur-fast; }
+    }
     face := Rectangle {
         y: root.lift;
+        width: root.width - root.depth;
+        height: root.height - root.depth;
         border-radius: Theme.radius-tile;
-        background: root.hovered ? Theme.accent.with-alpha(0.08) : Theme.surface;
-        drop-shadow-color: root.hovered ? Theme.accent.with-alpha(0.2) : transparent;
-        drop-shadow-blur: 30px;
-        drop-shadow-offset-y: 8px;
-        Image {
-            width: parent.width;
-            height: parent.height;
-            source: @image-url("assets/dashed-tile.svg");
-            image-fit: fill;
-            colorize: root.hovered ? Theme.accent : Theme.border;
-        }
+        background: Theme.card-bg-soft;
+        border-width: 2px;
+        border-color: root.hovered ? Theme.hover-border : Theme.border-solid;
+        animate border-color, background { duration: Theme.dur-fast; }
         VerticalLayout {
             alignment: center;
-            spacing: Theme.space-2;
+            spacing: Theme.space-3;
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
                     width: 48px;
                     height: 48px;
-                    border-radius: 24px;
-                    background: root.hovered ? Theme.accent : rgba(255, 255, 255, 0.05);
-                    border-width: 1px;
-                    border-color: root.hovered ? Theme.accent : Theme.border;
-                    drop-shadow-color: root.hovered ? Theme.accent : transparent;
-                    drop-shadow-blur: 16px;
+                    border-radius: Theme.radius-md;
+                    background: root.hovered ? Theme.gold : Theme.card-bg;
+                    border-width: 2px;
+                    border-color: root.hovered ? Theme.brand-ink : Theme.border-solid;
                     Text {
                         text: "+";
+                        font-family: Theme.font-pixel;
                         font-size: 24px;
-                        font-weight: 400;
-                        color: root.hovered ? #ffffff : Theme.muted-strong;
+                        color: root.hovered ? Theme.on-gold : Theme.muted-strong;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
@@ -277,7 +268,7 @@ export component AddTile inherits Rectangle {
             }
             Text {
                 text: T.tr("home.tileCreateNewHint");
-                color: Theme.muted-strong;
+                color: Theme.muted;
                 font-size: Theme.text-xs;
                 horizontal-alignment: center;
             }
@@ -293,23 +284,22 @@ component SkeletonTile inherits Rectangle {
     width: 280px;
     height: 260px;
     border-radius: Theme.radius-tile;
-    background: Theme.card-bg;
-    border-width: 1px;
-    border-color: Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
 }
 
 component EmptyRail inherits Rectangle {
     callback create();
-    border-radius: Theme.radius-xl;
-    background: Theme.card-bg;
+    border-radius: Theme.radius-lg;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: Theme.shadow-md-x;
+    drop-shadow-offset-y: Theme.shadow-md-y;
     min-height: 280px;
-    Image {
-        width: parent.width;
-        height: parent.height;
-        source: @image-url("assets/dashed-tile.svg");
-        image-fit: fill;
-        colorize: Theme.border;
-    }
     HorizontalLayout {
         padding-left: Theme.space-8;
         padding-right: Theme.space-8;
@@ -317,17 +307,15 @@ component EmptyRail inherits Rectangle {
             alignment: center;
             padding-top: Theme.space-8;
             padding-bottom: Theme.space-8;
-            spacing: Theme.space-2;
+            spacing: Theme.space-3;
             HorizontalLayout {
                 alignment: center;
                 padding-bottom: Theme.space-1;
                 Emoji { char: "🎮"; size: 48px; }
             }
-            Text {
+            McTitle {
                 text: T.tr("home.noInstancesTitle");
-                color: Theme.text;
-                font-size: Theme.text-2xl;
-                font-weight: 700;
+                font-size: 32px;
                 horizontal-alignment: center;
             }
             HorizontalLayout {
@@ -336,7 +324,7 @@ component EmptyRail inherits Rectangle {
                 Text {
                     max-width: 480px;
                     text: T.tr("home.noInstancesSubtitle");
-                    color: Theme.muted-strong;
+                    color: Theme.muted;
                     font-size: Theme.text-md;
                     horizontal-alignment: center;
                     wrap: word-wrap;
@@ -415,17 +403,6 @@ export component HorizonRail inherits Rectangle {
                 open => { HomeBridge.open-instance(inst.name); }
             }
             AddTile { clicked => { root.open-wizard(); } }
-        }
-        // edge fades (mask-image) approximated with background-colored gradients
-        if root.overflowing && rail.off > 10px: Rectangle {
-            x: 0;
-            width: 48px;
-            background: @linear-gradient(90deg, Theme.bg 0%, Theme.bg.transparentize(1) 100%);
-        }
-        if root.overflowing && rail.off < rail.max-off - 10px: Rectangle {
-            x: parent.width - 48px;
-            width: 48px;
-            background: @linear-gradient(90deg, Theme.bg.transparentize(1) 0%, Theme.bg 100%);
         }
     }
 }

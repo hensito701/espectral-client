@@ -7,7 +7,7 @@
 // drawn once, positioned over a same-height slot in the flow and pinned 8px
 // below the top chrome once the slot scrolls past it (CSS position: sticky).
 
-import { Theme, T, AppState, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, Icon, Icons, Spinner, Emoji, TextField } from "../../widgets.slint";
+import { Theme, T, AppState, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji } from "../../widgets.slint";
 import { LibraryBridge, VersionRow } from "api.slint";
 import { LibScroll, Chip, VText, CenterText } from "parts.slint";
 
@@ -17,12 +17,13 @@ component QuickStat inherits Rectangle {
     in property <string> tag;
     in property <BadgeVariant> tag-variant;
     border-radius: Theme.radius-lg;
-    background: Theme.card-bg;
-    border-width: 1px;
-    border-color: Theme.border;
-    drop-shadow-color: Theme.shadow-sm-color;
-    drop-shadow-blur: Theme.shadow-sm-blur;
-    drop-shadow-offset-y: Theme.shadow-sm-y;
+    background: Theme.surface-solid;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
     min-width: col.preferred-width;
     height: col.preferred-height;
     col := VerticalLayout {
@@ -56,7 +57,7 @@ component QuickStat inherits Rectangle {
 component Controls inherits GlassCard {
     in property <bool> stuck;
     elevation: Elevation.md;
-    fill: stuck ? Theme.surface-solid : Theme.card-bg;
+    fill: Theme.surface-solid;
     spacing: 0px;
     HorizontalLayout {
         padding-left: Theme.space-4;
@@ -69,18 +70,9 @@ component Controls inherits GlassCard {
             horizontal-stretch: 1;
             height: 40px;
             border-radius: Theme.radius-md;
-            background: Theme.surface-solid;
-            border-width: 1px;
-            border-color: input.has-focus ? Theme.accent : Theme.border;
-            if input.has-focus: Rectangle {
-                x: -2px;
-                y: -2px;
-                width: parent.width + 4px;
-                height: parent.height + 4px;
-                border-radius: parent.border-radius + 2px;
-                border-width: 2px;
-                border-color: Theme.accent.with-alpha(0.25);
-            }
+            background: Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: input.has-focus ? Theme.hover-border : Theme.border-solid;
             TouchArea {
                 mouse-cursor: MouseCursor.text;
                 clicked => { input.focus(); }
@@ -180,7 +172,7 @@ component Controls inherits GlassCard {
                 Chip {
                     text: T.tr("versions.filterInstalled") + " (" + LibraryBridge.v-installed-versions + ")";
                     active: LibraryBridge.v-filter == 5;
-                    active-bg: rgba(34, 197, 94, 0.2);
+                    active-bg: Theme.accent-green.with-alpha(0.18);
                     active-border: Theme.accent-green;
                     active-fg: Theme.accent-green;
                     clicked => { LibraryBridge.v-set-filter(5); }
@@ -203,13 +195,31 @@ component Controls inherits GlassCard {
     }
 }
 
-component VersionRowCard inherits GlassCard {
+component VersionRowCard inherits Rectangle {
     in property <VersionRow> entry;
-    elevation: Elevation.sm;
-    interactive: true;
-    featured: entry.latest-release || entry.installed-in != "";
-    spacing: 0px;
-    HorizontalLayout {
+    /// Last row of the matrix: no trailing separator.
+    in property <bool> last: false;
+    property <bool> hovered: touch.has-hover;
+    height: content.preferred-height + 2px;
+    background: hovered ? Theme.surface-up : transparent;
+    animate background { duration: Theme.dur-fast; }
+    touch := TouchArea { }
+    // 2px list separator
+    Rectangle {
+        y: root.height - 2px;
+        height: 2px;
+        background: Theme.border-solid;
+        visible: !root.last;
+    }
+    // latest release / in-use version: flat gold marker on the left edge
+    if root.entry.latest-release || root.entry.installed-in != "": Rectangle {
+        x: 0;
+        y: 0;
+        width: 4px;
+        height: root.height - 2px;
+        background: Theme.title-color;
+    }
+    content := HorizontalLayout {
         padding-left: Theme.space-4;
         padding-right: Theme.space-4;
         padding-top: Theme.space-3;
@@ -228,15 +238,15 @@ component VersionRowCard inherits GlassCard {
                     font-size: Theme.text-base;
                     font-weight: 700;
                     letter-spacing: -0.32px;
-                    color: id-touch.has-hover ? Theme.accent : Theme.text;
+                    color: id-touch.has-hover ? Theme.accent-gold : Theme.text;
                     id-touch := TouchArea {
                         mouse-cursor: pointer;
                         clicked => { LibraryBridge.v-copy(root.entry.id); }
                     }
                     if id-touch.has-hover: Rectangle {
                         y: parent.height - 3px;
-                        height: 1px;
-                        background: Theme.accent;
+                        height: 2px;
+                        background: Theme.accent-gold;
                     }
                 }
             }
@@ -270,15 +280,15 @@ component VersionRowCard inherits GlassCard {
                     alignment: center;
                     Rectangle {
                         border-radius: Theme.radius-xs;
-                        background: Theme.surface-up-solid;
-                        border-width: 1px;
-                        border-color: Theme.border;
+                        background: Theme.card-bg-soft;
+                        border-width: 2px;
+                        border-color: Theme.border-solid;
                         min-width: jdk.preferred-width + 12px;
                         height: jdk.preferred-height + 4px;
                         jdk := Text {
                             text: "JDK " + root.entry.java;
                             font-family: Theme.font-pixel;
-                            font-size: 9px;
+                            font-size: 8px;
                             letter-spacing: 0.18px;
                             color: Theme.accent-gold;
                         }
@@ -407,8 +417,12 @@ component EmptyBlock inherits GlassCard {
 }
 
 component Matrix inherits VerticalLayout {
-    spacing: Theme.space-2;
-    for row in LibraryBridge.v-rows: VersionRowCard { entry: row; }
+    GlassCard {
+        elevation: Elevation.md;
+        padding-size: 0px;
+        spacing: 0px;
+        for row[i] in LibraryBridge.v-rows: VersionRowCard { entry: row; last: i == LibraryBridge.v-rows.length - 1; }
+    }
     HorizontalLayout {
         padding-top: Theme.space-4;
         padding-bottom: Theme.space-4;
@@ -459,12 +473,9 @@ export component VersionsPage inherits Rectangle {
                         font-family: Theme.font-mono;
                     }
                 }
-                GradientText {
+                McTitle {
                     text: T.tr("versions.title");
-                    gradient: GradientKind.emerald-gold;
-                    font-size: Theme.text-3xl;
-                    font-weight: 700;
-                    letter-spacing: -1.08px;
+                    font-size: 32px;
                 }
                 Text {
                     text: T.tr("versions.subtitle");

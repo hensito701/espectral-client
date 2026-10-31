@@ -1,72 +1,36 @@
 // OWNER: settings-suite-servers agent. Small building blocks shared by the
 // Settings / Client Suite / Server Radar pages (not exported to other groups).
+//
+// Poster look: flat blocks, 2px borders, hard offset shadows, pixel-font card
+// titles (16px, title colour). No glass, glow or gradient.
 
-import { Theme, Icon, Icons, TextField } from "../../widgets.slint";
+import { Theme, Icon, TextField, McTitle } from "../../widgets.slint";
 
-/// CSS `.switch-control` (Settings, 44x24, accent) and `.switch` (Client Suite, 42x24, cyan).
-export component SwitchControl inherits Rectangle {
-    in-out property <bool> checked;
-    in property <bool> enabled: true;
-    in property <color> on-color: Theme.accent;
-    /// Client-suite look: translucent off track + glow when on.
-    in property <bool> suite-style: false;
-    callback toggled(bool);
-
-    width: suite-style ? 42px : 44px;
-    height: 24px;
-    border-radius: 12px;
-    background: checked ? on-color : suite-style ? (Theme.dark ? rgba(255, 255, 255, 0.1) : rgba(18, 24, 41, 0.1)) : Theme.surface-up;
-    border-width: 1px;
-    border-color: checked ? on-color.with-alpha(suite-style ? 0.8 : 1) : Theme.border;
-    drop-shadow-color: checked && suite-style ? on-color.with-alpha(0.35) : transparent;
-    drop-shadow-blur: 12px;
-    opacity: enabled ? 1 : 0.45;
-    animate background, border-color { duration: Theme.dur-med; }
-
-    knob := Rectangle {
-        property <length> size: root.suite-style ? 18px : 16px;
-        width: size;
-        height: size;
-        y: (parent.height - self.height) / 2;
-        x: root.checked ? parent.width - self.width - (root.suite-style ? 3px : 4px) : (root.suite-style ? 3px : 4px);
-        border-radius: self.width / 2;
-        background: #ffffff;
-        drop-shadow-color: rgba(0, 0, 0, root.suite-style ? 0.4 : 0.3);
-        drop-shadow-blur: 3px;
-        drop-shadow-offset-y: 1px;
-        animate x { duration: Theme.dur-med; easing: ease-out; }
-    }
-
-    TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: root.enabled ? pointer : default;
-        clicked => {
-            root.checked = !root.checked;
-            root.toggled(root.checked);
-        }
-    }
-}
-
-/// `.preset-chip` (memory / thread presets).
+/// `.preset-chip`: flat pill, 2px border; the active one is a gold pill with
+/// purple ink and a hard 3px ink shadow.
 export component PresetChip inherits Rectangle {
     in property <string> text;
     in property <bool> active;
     in property <bool> enabled: true;
     callback clicked();
-    height: lbl.preferred-height + 2 * 5.6px + 2px;
-    min-width: lbl.preferred-width + 24px + 2px;
+    height: lbl.preferred-height + 2 * 5.6px + 4px;
+    min-width: lbl.preferred-width + 24px + 4px;
     horizontal-stretch: 0;
     border-radius: self.height / 2;
-    background: active ? Theme.accent : Theme.surface-up;
-    border-width: 1px;
-    border-color: active ? Theme.accent : ta.has-hover ? Theme.border-focus : Theme.border;
+    background: active ? Theme.gold : ta.has-hover ? Theme.surface-up-solid : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: active ? Theme.brand-ink : ta.has-hover ? Theme.hover-border : Theme.border-solid;
+    drop-shadow-color: active ? Theme.brand-purple : transparent;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 3px;
+    drop-shadow-offset-y: 3px;
     opacity: enabled ? 1 : 0.5;
     animate background, border-color { duration: Theme.dur-fast; }
     lbl := Text {
         text: root.text;
         font-size: 12.8px;
-        font-weight: root.active ? 600 : 500;
-        color: root.active ? Theme.text-inverse : ta.has-hover ? Theme.text : Theme.muted;
+        font-weight: root.active ? 700 : 500;
+        color: root.active ? Theme.on-gold : ta.has-hover ? Theme.text : Theme.muted;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -85,8 +49,8 @@ export component WarnBadge inherits Rectangle {
     horizontal-stretch: 0;
     border-radius: self.height / 2;
     background: Theme.accent-alt.with-alpha(0.14);
-    border-width: 1px;
-    border-color: Theme.accent-alt.with-alpha(0.35);
+    border-width: 2px;
+    border-color: Theme.accent-alt.with-alpha(0.5);
     row := HorizontalLayout {
         padding-left: 8px;
         padding-right: 8px;
@@ -112,7 +76,8 @@ export component WarnBadge inherits Rectangle {
     }
 }
 
-/// `.card-head`: title (+ optional badge row) and muted description on the left, slot on the right.
+/// `.card-head`: pixel title (+ optional badge) and muted description on the
+/// left, slot on the right.
 export component CardHead inherits HorizontalLayout {
     in property <string> title;
     in property <string> desc;
@@ -128,11 +93,13 @@ export component CardHead inherits HorizontalLayout {
             alignment: start;
             Text {
                 text: root.title;
-                color: Theme.text;
+                color: Theme.title-color;
+                font-family: Theme.font-title;
                 font-size: 16px;
-                font-weight: 600;
+                font-weight: 700;
                 line-height-factor: 1.25;
                 vertical-alignment: center;
+                wrap: word-wrap;
             }
             if root.badge != "": VerticalLayout {
                 alignment: center;
@@ -150,20 +117,17 @@ export component CardHead inherits HorizontalLayout {
     @children
 }
 
-/// `.section-header`: h2 (1.15rem / 600) + muted description.
+/// `.section-header`: h2 in the pixel font (24px, title colour) + muted description.
 export component SectionHeader inherits VerticalLayout {
     in property <string> title;
     in property <string> desc;
     spacing: 4px;
-    Text {
+    horizontal-stretch: 1;
+    McTitle {
         text: root.title;
-        color: Theme.text;
-        font-size: 18.4px;
-        font-weight: 600;
-        letter-spacing: -0.18px;
-        line-height-factor: 0.94;
+        font-size: 24px;
     }
-    Text {
+    if root.desc != "": Text {
         text: root.desc;
         color: Theme.muted;
         font-size: 13.6px;
@@ -185,9 +149,9 @@ export component InfoBox inherits Rectangle {
     in property <length> pad-y: 12px;
     in property <bool> top-icon: true;
     border-radius: Theme.radius-md;
-    background: Theme.surface-up;
-    border-width: 1px;
-    border-color: Theme.border;
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
     inner := HorizontalLayout {
         padding-left: root.pad-x;
         padding-right: root.pad-x;
@@ -220,5 +184,3 @@ export component SsTextField inherits TextField {
     in property <length> min-h: 36px;
     field-height: root.min-h;
 }
-
-/// Multi-line text input (JVM args, notes).

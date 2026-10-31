@@ -20,11 +20,12 @@ import { Theme } from "../theme.slint";
 import { Shell } from "../state.slint";
 import { IconBtn, Btn, BtnVariant } from "btn.slint";
 import { Icons } from "icon.slint";
+import { McTitle } from "badge.slint";
 
 export component ModalFooter inherits Rectangle {
     in property <LayoutAlignment> alignment: end;
     // top divider
-    Rectangle { y: 0; height: 1px; background: Theme.border; }
+    Rectangle { y: 0; height: 2px; background: Theme.border-solid; }
     HorizontalLayout {
         padding-top: Theme.space-4;
         padding-bottom: Theme.space-4;
@@ -90,13 +91,15 @@ export component Modal inherits Rectangle {
             width: min(root.dialog-width, root.width - 2 * Theme.space-6);
             max-height: root.height - 64px;
             preferred-height: root.dialog-height > 0px ? root.dialog-height : body.preferred-height;
-            border-radius: Theme.radius-xl;
+            border-radius: Theme.radius-lg;
             background: Theme.surface-solid;
-            border-width: 1px;
-            border-color: Theme.border;
-            drop-shadow-color: Theme.shadow-lg-color;
-            drop-shadow-blur: Theme.shadow-lg-blur;
-            drop-shadow-offset-y: Theme.shadow-lg-y;
+            border-width: 2px;
+            border-color: Theme.border-solid;
+            // hard 6px ink shadow (poster block, no blur)
+            drop-shadow-color: Theme.brand-ink;
+            drop-shadow-blur: 0px;
+            drop-shadow-offset-x: 6px;
+            drop-shadow-offset-y: 6px;
             clip: true;
 
             // swallow clicks on the card
@@ -114,13 +117,10 @@ export component Modal inherits Rectangle {
                             horizontal-stretch: 1;
                             spacing: Theme.space-1;
                             alignment: center;
-                            Text {
+                            if root.title != "": McTitle {
                                 text: root.title;
-                                color: Theme.text;
-                                font-size: Theme.text-xl;
-                                font-weight: 700;
-                                letter-spacing: -0.44px;
-                                wrap: word-wrap;
+                                font-size: 24px;
+                                wrap: true;
                             }
                             if root.subtitle != "": Text {
                                 text: root.subtitle;
@@ -139,7 +139,7 @@ export component Modal inherits Rectangle {
                             }
                         }
                     }
-                    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+                    Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border-solid; }
                 }
                 @children
             }

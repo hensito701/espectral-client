@@ -2,6 +2,9 @@
 // Segmented (ES|EN, Oscuro|Claro|Sistema, filter pills), Tabs (InstanceHub
 // workbench tabs) and Select (dropdown).
 //
+// Poster style: flat opaque fields, 2px solid borders, gold on hover/focus and
+// for the filled part of switches/sliders. No glow, no blur, no gradients.
+//
 //     Toggle { checked <=> root.flag; toggled(v) => { ... } }
 //     Slider { minimum: 1024; maximum: 16384; step: 512; value <=> root.mem; released(v) => { ... } }
 //     Segmented { items: ["ES", "EN"]; current: T.lang == "es" ? 0 : 1; selected(i) => { ... } }
@@ -16,29 +19,27 @@ export component Toggle inherits Rectangle {
     in property <bool> enabled: true;
     callback toggled(checked: bool);
 
-    width: 40px;
-    height: 22px;
-    border-radius: 11px;
-    background: checked ? Theme.accent : Theme.surface-up-solid;
-    border-width: 1px;
-    border-color: checked ? Theme.accent.with-alpha(0.6) : Theme.border;
+    width: 44px;
+    height: 24px;
+    border-radius: Theme.radius-pill;
+    background: checked ? Theme.btn-fill : Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: checked ? Theme.brand-ink : (touch.has-hover ? Theme.hover-border : Theme.border-solid);
     opacity: enabled ? 1 : 0.45;
-    animate background { duration: Theme.dur-fast; }
+    animate background, border-color { duration: Theme.dur-fast; }
 
     knob := Rectangle {
-        width: 16px;
-        height: 16px;
-        y: 2px;
-        x: root.checked ? parent.width - self.width - 3px : 3px;
-        border-radius: 8px;
-        background: root.checked ? Theme.text-inverse : Theme.muted-strong;
-        drop-shadow-color: rgba(0, 0, 0, 0.3);
-        drop-shadow-blur: 4px;
-        drop-shadow-offset-y: 1px;
+        width: 14px;
+        height: 14px;
+        y: 5px;
+        x: root.checked ? parent.width - self.width - 5px : 5px;
+        border-radius: 7px;
+        background: root.checked ? Theme.btn-ink : Theme.muted-strong;
         animate x { duration: Theme.dur-fast; easing: ease-out; }
+        animate background { duration: Theme.dur-fast; }
     }
 
-    TouchArea {
+    touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => {
@@ -62,10 +63,11 @@ export component Checkbox inherits HorizontalLayout {
             width: 18px;
             height: 18px;
             border-radius: Theme.radius-xs;
-            background: root.checked ? Theme.accent : Theme.card-bg-soft;
-            border-width: 1px;
-            border-color: root.checked ? Theme.accent : Theme.border;
-            if root.checked: Icon { data: Icons.check; size: 14px; color: Theme.text-inverse; weight: 3; }
+            background: root.checked ? Theme.btn-fill : Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: root.checked ? Theme.brand-ink : (ct.has-hover ? Theme.hover-border : Theme.border-solid);
+            animate background, border-color { duration: Theme.dur-fast; }
+            if root.checked: Icon { data: Icons.check; size: 13px; color: Theme.btn-ink; weight: 3; }
         }
     }
     if root.text != "": Text {
@@ -74,7 +76,7 @@ export component Checkbox inherits HorizontalLayout {
         font-size: Theme.text-sm;
         vertical-alignment: center;
     }
-    TouchArea {
+    ct := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => {
@@ -103,19 +105,20 @@ export component Slider inherits Rectangle {
 
     track := Rectangle {
         y: (parent.height - self.height) / 2;
-        height: 6px;
-        border-radius: 3px;
+        height: 8px;
+        border-radius: 4px;
         background: Theme.card-bg-soft;
-        border-width: 1px;
-        border-color: Theme.border;
+        border-width: 2px;
+        border-color: touch.has-hover ? Theme.hover-border : Theme.border-solid;
+        animate border-color { duration: Theme.dur-fast; }
     }
     Rectangle {
-        x: 0;
-        y: track.y;
-        height: track.height;
-        width: (parent.width - 16px) * root.ratio + 8px;
-        border-radius: 3px;
-        background: @linear-gradient(90deg, Theme.accent-ink 0%, Theme.accent 100%);
+        x: 2px;
+        y: track.y + 2px;
+        height: track.height - 4px;
+        width: clamp(6px + (parent.width - 16px) * root.ratio, 0px, parent.width - 4px);
+        border-radius: 2px;
+        background: Theme.btn-fill;
     }
     thumb := Rectangle {
         width: 16px;
@@ -123,11 +126,10 @@ export component Slider inherits Rectangle {
         y: (parent.height - self.height) / 2;
         x: (parent.width - self.width) * root.ratio;
         border-radius: 8px;
-        background: Theme.accent;
+        background: touch.has-hover || touch.pressed ? Theme.btn-fill-hover : Theme.btn-fill;
         border-width: 2px;
-        border-color: Theme.surface-solid;
-        drop-shadow-color: Theme.accent.with-alpha(touch.has-hover || touch.pressed ? 0.6 : 0.35);
-        drop-shadow-blur: 8px;
+        border-color: Theme.brand-ink;
+        animate background { duration: Theme.dur-fast; }
     }
     touch := TouchArea {
         enabled: root.enabled;
@@ -169,8 +171,8 @@ export component Segmented inherits Rectangle {
     horizontal-stretch: 0;
     border-radius: Theme.radius-sm;
     background: Theme.card-bg-soft;
-    border-width: 1px;
-    border-color: Theme.border;
+    border-width: 2px;
+    border-color: Theme.border-solid;
 
     row := HorizontalLayout {
         padding: compact ? 1px : 2px;
@@ -180,14 +182,13 @@ export component Segmented inherits Rectangle {
             min-width: lbl.preferred-width + (root.compact ? 8px : 12px);
             height: lbl.preferred-height + (root.compact ? 2px : 4px);
             border-radius: Theme.radius-xs;
-            background: active ? Theme.surface-up-solid : transparent;
-            drop-shadow-color: active ? Theme.shadow-sm-color : transparent;
-            drop-shadow-blur: active ? 6px : 0px;
+            background: active ? Theme.btn-fill : t.has-hover ? Theme.surface-up : transparent;
             lbl := Text {
                 text: item;
-                font-size: root.font-size;
+                font-family: root.compact ? Theme.font-pixel : Theme.font-body;
+                font-size: root.compact ? 8px : root.font-size;
                 font-weight: 600;
-                color: active ? Theme.accent : t.has-hover ? Theme.text : Theme.muted;
+                color: active ? Theme.btn-ink : t.has-hover ? Theme.text : Theme.muted;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -220,9 +221,9 @@ export component Tabs inherits Rectangle {
     border-width: 0px;
     // bottom divider
     Rectangle {
-        y: parent.height - 1px;
-        height: 1px;
-        background: Theme.border;
+        y: parent.height - 2px;
+        height: 2px;
+        background: Theme.border-solid;
     }
     fs := FocusScope {
         key-pressed(e) => {
@@ -266,23 +267,23 @@ export component Tabs inherits Rectangle {
                             min-width: 18px;
                             preferred-width: bl.preferred-width + 10px;
                             border-radius: 9px;
-                            background: active ? Theme.accent.with-alpha(0.18) : Theme.card-bg-soft;
+                            background: active ? Theme.btn-fill : Theme.card-bg-soft;
+                            border-width: 2px;
+                            border-color: active ? Theme.brand-ink : Theme.border-solid;
                             bl := Text {
                                 text: item.badge;
                                 font-size: 11px;
                                 font-weight: 700;
-                                color: active ? Theme.accent : Theme.muted;
+                                color: active ? Theme.btn-ink : Theme.muted;
                                 horizontal-alignment: center;
                             }
                         }
                     }
                 }
                 Rectangle {
-                    y: parent.height - 2px;
-                    height: 2px;
-                    background: active ? Theme.accent : transparent;
-                    drop-shadow-color: active ? Theme.accent.with-alpha(0.5) : transparent;
-                    drop-shadow-blur: 8px;
+                    y: parent.height - 3px;
+                    height: 3px;
+                    background: active ? Theme.hover-border : transparent;
                 }
                 tt := TouchArea {
                     mouse-cursor: pointer;
@@ -317,9 +318,10 @@ export component Select inherits Rectangle {
     horizontal-stretch: 1;
     border-radius: Theme.radius-md;
     background: Theme.card-bg-soft;
-    border-width: 1px;
-    border-color: touch.has-hover ? Theme.hover-border : Theme.border;
+    border-width: 2px;
+    border-color: touch.has-hover ? Theme.hover-border : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
+    animate border-color { duration: Theme.dur-fast; }
 
     HorizontalLayout {
         padding-left: Theme.space-3;
@@ -351,25 +353,27 @@ export component Select inherits Rectangle {
         Rectangle {
             border-radius: Theme.radius-md;
             background: Theme.surface-solid;
-            border-width: 1px;
-            border-color: Theme.border;
-            drop-shadow-color: Theme.shadow-lg-color;
-            drop-shadow-blur: 24px;
-            drop-shadow-offset-y: 8px;
+            border-width: 2px;
+            border-color: Theme.border-solid;
+            drop-shadow-color: Theme.brand-ink;
+            drop-shadow-blur: 0px;
+            drop-shadow-offset-x: 4px;
+            drop-shadow-offset-y: 4px;
             VerticalLayout {
                 padding: 4px;
                 spacing: 2px;
                 for o[i] in root.options: Rectangle {
                     height: 32px;
                     border-radius: Theme.radius-sm;
-                    background: i == root.current-index ? Theme.accent.with-alpha(0.14) : ot.has-hover ? Theme.surface-up : transparent;
+                    background: i == root.current-index ? Theme.btn-fill : ot.has-hover ? Theme.surface-up : transparent;
                     HorizontalLayout {
                         padding-left: Theme.space-3;
                         padding-right: Theme.space-3;
                         Text {
                             text: o.label;
-                            color: i == root.current-index ? Theme.accent : Theme.text;
+                            color: i == root.current-index ? Theme.btn-ink : Theme.text;
                             font-size: Theme.text-sm;
+                            font-weight: i == root.current-index ? 700 : 400;
                             vertical-alignment: center;
                             overflow: elide;
                         }

@@ -50,21 +50,22 @@ export component LibScroll inherits Rectangle {
     }
 }
 
-/// base.css .glass-panel: --surface fill, glass border, radius-lg, card shadow.
+/// Poster block: opaque surface, 2px border, hard 4px ink shadow (no glass).
 export component GlassPanel inherits Rectangle {
-    in property <brush> fill: Theme.surface;
-    in property <color> stroke: Theme.glass-border;
+    in property <brush> fill: Theme.surface-solid;
+    in property <color> stroke: Theme.border-solid;
     in property <length> radius: Theme.radius-lg;
     border-radius: radius;
     background: fill;
-    border-width: 1px;
+    border-width: 2px;
     border-color: stroke;
-    drop-shadow-color: Theme.shadow-card-color;
-    drop-shadow-blur: Theme.shadow-card-blur;
-    drop-shadow-offset-y: Theme.shadow-card-y;
+    drop-shadow-color: Theme.brand-ink;
+    drop-shadow-blur: 0px;
+    drop-shadow-offset-x: 4px;
+    drop-shadow-offset-y: 4px;
 }
 
-/// Small glowing status dot.
+/// Flat status dot (the poster look has no glow; the name is kept for callers).
 export component GlowDot inherits Rectangle {
     in property <color> tint: Theme.accent;
     in property <length> size: 6px;
@@ -73,8 +74,6 @@ export component GlowDot inherits Rectangle {
     height: size;
     border-radius: size / 2;
     background: tint;
-    drop-shadow-color: glow ? tint : transparent;
-    drop-shadow-blur: glow ? 8px : 0px;
 }
 
 /// Text in a VerticalLayout centred vertically (keeps HorizontalLayout rows tidy).
@@ -108,11 +107,11 @@ export component Chip inherits Rectangle {
     in property <length> font-size: Theme.text-xs;
     in property <length> radius: Theme.radius-pill;
     /// Colors (defaults: VersionArmory .filter-chip).
-    in property <brush> idle-bg: Theme.surface;
+    in property <brush> idle-bg: Theme.surface-solid;
     in property <brush> hover-bg: Theme.surface-up;
     in property <brush> active-bg: Theme.accent.with-alpha(0.18);
-    in property <color> idle-border: Theme.border;
-    in property <color> hover-border: Theme.border-focus;
+    in property <color> idle-border: Theme.border-solid;
+    in property <color> hover-border: Theme.hover-border;
     in property <color> active-border: Theme.accent;
     in property <color> idle-fg: Theme.muted-strong;
     in property <color> hover-fg: Theme.text;
@@ -132,11 +131,9 @@ export component Chip inherits Rectangle {
     horizontal-stretch: 0;
     border-radius: radius;
     background: active ? active-bg : hovered ? hover-bg : idle-bg;
-    border-width: 1px;
+    border-width: 2px;
     border-color: active ? active-border : hovered ? hover-border : idle-border;
     opacity: enabled ? 1 : 0.5;
-    drop-shadow-color: active && active-glow ? Theme.accent.with-alpha(0.25) : transparent;
-    drop-shadow-blur: 12px;
     animate background, border-color { duration: Theme.dur-fast; }
 
     row := HorizontalLayout {
