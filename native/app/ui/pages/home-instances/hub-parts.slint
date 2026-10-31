@@ -1,0 +1,241 @@
+// OWNER: home-instances agent. Building blocks of the InstanceHub workbench.
+
+import { Theme, T, Icon, Icons } from "../../widgets.slint";
+
+component CardHead inherits VerticalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    spacing: Theme.space-1;
+    Text {
+        text: root.title;
+        color: Theme.text;
+        font-size: Theme.text-lg;
+        font-weight: 600;
+        wrap: word-wrap;
+    }
+    if root.subtitle != "": Text {
+        text: root.subtitle;
+        color: Theme.muted;
+        font-size: Theme.text-xs;
+        wrap: word-wrap;
+    }
+}
+
+component CardFoot inherits VerticalLayout {
+    in property <string> text;
+    padding-top: Theme.space-3;
+    spacing: Theme.space-3;
+    Rectangle { height: 1px; background: Theme.border; }
+    Text { text: root.text; color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+}
+
+/// GlassCard look (InstanceHub cards) with overridable border / fill.
+export component HubCard inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> footer;
+    in property <brush> fill: Theme.card-bg;
+    in property <color> stroke: Theme.border;
+    in property <length> pad: Theme.space-5;
+    in property <length> gap: Theme.space-3;
+    in property <bool> large-shadow;
+    border-radius: Theme.radius-lg;
+    drop-shadow-color: large-shadow ? Theme.shadow-lg-color : Theme.shadow-md-color;
+    drop-shadow-blur: large-shadow ? Theme.shadow-lg-blur : Theme.shadow-md-blur;
+    drop-shadow-offset-y: large-shadow ? Theme.shadow-lg-y : Theme.shadow-md-y;
+    min-height: content.min-height;
+    preferred-height: content.preferred-height;
+    Rectangle {
+        border-radius: root.border-radius;
+        background: root.fill;
+        border-width: 1px;
+        border-color: root.stroke;
+        clip: true;
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: 1px;
+            background: @linear-gradient(90deg, transparent 0%, Theme.glass-border 25%, Theme.glass-highlight 50%, Theme.glass-border 75%, transparent 100%);
+        }
+        content := HorizontalLayout {
+            padding-left: root.pad;
+            padding-right: root.pad;
+            VerticalLayout {
+                padding-top: root.pad;
+                padding-bottom: root.pad;
+                spacing: root.gap;
+                if root.title != "" || root.subtitle != "": CardHead { title: root.title; subtitle: root.subtitle; }
+                @children
+                if root.footer != "": CardFoot { text: root.footer; }
+            }
+        }
+    }
+}
+
+
+
+/// Right-aligned action row (CSS .card-action-footer, margin-top 8px).
+export component ActionFooter inherits HorizontalLayout {
+    padding-top: Theme.space-2;
+    spacing: Theme.space-2;
+    alignment: end;
+    @children
+}
+
+/// Memory preset pill.
+export component PresetPill inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: l.preferred-height + 11px;
+    min-width: l.preferred-width + 21px;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-sm;
+    background: active ? Theme.accent.with-alpha(0.18) : t.has-hover ? Theme.surface-up : Theme.surface;
+    border-width: 1px;
+    border-color: active ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.border;
+    opacity: enabled ? 1 : 0.5;
+    l := Text {
+        text: root.text;
+        color: root.active ? Theme.accent : t.has-hover ? Theme.text : Theme.muted-strong;
+        font-size: Theme.text-xs;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Dark inset panel (jvm-spec-grid / aot-stats-grid background).
+export component Inset inherits Rectangle {
+    in property <length> pad: Theme.space-3;
+    border-radius: Theme.radius-md;
+    background: Theme.dark ? rgba(0, 0, 0, 0.2) : rgba(18, 24, 41, 0.05);
+    HorizontalLayout {
+        padding-left: root.pad;
+        padding-right: root.pad;
+        padding-top: root.pad;
+        padding-bottom: root.pad;
+        spacing: Theme.space-3;
+        @children
+    }
+}
+
+/// Uppercase micro label (spec-label / stat-label).
+export component MicroLabel inherits Text {
+    color: Theme.muted;
+    font-size: 11.2px;
+    font-weight: 600;
+    letter-spacing: 0.56px;
+}
+
+/// Checkbox row with title + hint (toggle-checkbox-row).
+export component CheckRow inherits Rectangle {
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    in property <string> title;
+    in property <string> hint;
+    callback toggled();
+    opacity: enabled ? 1 : 0.65;
+    min-height: row.min-height;
+    preferred-height: row.preferred-height;
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+    row := HorizontalLayout {
+        spacing: Theme.space-3;
+        VerticalLayout {
+            padding-top: 2px;
+            alignment: start;
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border-radius: 4px;
+                background: root.checked ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.06) : #ffffff;
+                border-width: 1px;
+                border-color: root.checked ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.35) : #767676;
+                if root.checked: Icon { data: Icons.check; size: 14px; color: Theme.dark ? #0d1222 : #ffffff; weight: 3.5; }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 3px;
+            Text { text: root.title; color: Theme.text; font-size: Theme.text-sm; font-weight: 600; wrap: word-wrap; }
+            Text { text: root.hint; color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+        }
+        @children
+    }
+}
+
+/// Feedback line (options-feedback / options-hint).
+export component Note inherits Text {
+    in property <bool> hint;
+    color: hint ? Theme.muted : Theme.accent-green;
+    font-size: hint ? 11.5px : Theme.text-xs;
+    wrap: word-wrap;
+}
+
+/// Pill switch (client-feature toggle).
+export component Switch inherits Rectangle {
+    in property <bool> on;
+    in property <bool> enabled: true;
+    callback clicked();
+    width: 44px;
+    height: 24px;
+    border-radius: 12px;
+    background: on ? Theme.accent : Theme.dark ? rgba(255, 255, 255, 0.12) : rgba(18, 24, 41, 0.15);
+    opacity: enabled ? 1 : 0.5;
+    animate background { duration: Theme.dur-fast; }
+    Rectangle {
+        x: root.on ? 22px : 2px;
+        y: 2px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: #ffffff;
+        drop-shadow-color: rgba(0, 0, 0, 0.3);
+        drop-shadow-blur: 4px;
+        drop-shadow-offset-y: 2px;
+        animate x { duration: Theme.dur-fast; easing: ease-out; }
+    }
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Small bordered "label button" (icon-upload-btn).
+export component FileBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: l.preferred-height + 13px;
+    min-width: l.preferred-width + 26px;
+    horizontal-stretch: 0;
+    border-radius: 8px;
+    background: t.has-hover ? rgba(255, 255, 255, 0.1) : rgba(255, 255, 255, 0.05);
+    border-width: 1px;
+    border-color: Theme.border;
+    opacity: enabled ? 1 : 0.5;
+    l := Text {
+        text: root.text;
+        color: Theme.text;
+        font-size: 12.8px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
