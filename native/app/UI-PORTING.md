@@ -450,7 +450,11 @@ one rustc on it peaks at ~11.5-12.7 GB (debug build, test build *and* release
 build alike; ~7.7 GB for `check`/`clippy`). On a 16 GB machine never let two
 app-crate compilations overlap: `cargo clippy --all-targets` checks the bin and
 the test harness in parallel unless you pass `-j 1`, and never run two cargo
-commands at once. Release builds: `-j 2`, ~15 min.
+commands at once. Release builds: `-j 2`, ~15 min. **Disk:** each incremental
+session of the app crate is several GB (`target/debug/incremental` reached
+~20 GB after build + test + clippy and filled the disk); use
+`CARGO_INCREMENTAL=0` for one-off `test` / `clippy` runs or delete
+`target/*/incremental` afterwards.
 
 Disk is limited: `[profile.dev.package."*"]` already disables debug info for
 dependencies (the app crate itself builds with `debug = "line-tables-only"`). Use your worktree's own `native/target`, and delete it when you
