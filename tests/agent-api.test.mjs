@@ -90,8 +90,12 @@ test('agent access: disabled by default, PUT validates, token file is 0600', asy
   // Normalized: lowercased, trailing dot stripped, invalid entries dropped.
   assert.deepEqual(on.json.allowed_servers, ['play.example.com', 'localhost:25565']);
 
-  const mode = fs.statSync(on.json.token_path).mode & 0o777;
-  assert.equal(mode, 0o600, 'token file is 0600');
+  // Windows has no POSIX permission bits (stat reports 0o666); the mode is only
+  // meaningful elsewhere.
+  if (process.platform !== 'win32') {
+    const mode = fs.statSync(on.json.token_path).mode & 0o777;
+    assert.equal(mode, 0o600, 'token file is 0600');
+  }
   assert.match(fs.readFileSync(on.json.token_path, 'utf8'), /^[0-9a-f]{64}\n$/);
 });
 
