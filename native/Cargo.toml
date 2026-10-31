@@ -98,6 +98,9 @@ rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 open = "5"
 # PNG decode (engine PNG bytes -> slint::Image) and encode (headless screenshots).
 png = "0.18"
+# Modrinth icon decode + downscale (library-mods): png/jpeg are already built for
+# Slint's own image loading; webp/gif cover the remaining cdn.modrinth.com formats.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 espectral-skin3d = { path = "skin3d" }
 
 # Disk budget: no debug info for third-party crates (Slint + winit + femtovg
