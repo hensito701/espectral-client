@@ -131,6 +131,9 @@ export global AccountBridge {
     callback save-to-gallery(name: string);
     callback reset-skin();
     callback refresh-skin();
+    /// Open NovaSkin's editor with the skin the atelier is showing (gallery
+    /// preview, else the active account's skin; the bare editor otherwise).
+    callback open-novaskin();
 
     // gallery
     in property <[VaultSkinEntry]> gallery;

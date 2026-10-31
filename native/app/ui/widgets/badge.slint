@@ -161,15 +161,17 @@ export component McTitle inherits Rectangle {
     }
 }
 
-/// One letter of the brand wordmark (pixel font + one-pixel purple shadow).
+/// One letter of the brand wordmark: pixel font with the site's lockup shadow
+/// (purple at 60%, one game pixel = font-size / 8, down-right). The shadow
+/// overhangs: letters advance by the glyph width only.
 component WordmarkLetter inherits Rectangle {
     in property <string> letter;
     in property <color> tint;
     in property <length> font-size;
     property <length> px: font-size / 8;
-    width: glyph.preferred-width + px;
+    width: glyph.preferred-width;
     height: glyph.preferred-height + px;
-    Text { x: root.px; y: root.px; text: root.letter; font-family: Theme.font-title; font-size: root.font-size; font-weight: 700; color: Theme.brand-purple; }
+    Text { x: root.px; y: root.px; text: root.letter; font-family: Theme.font-title; font-size: root.font-size; font-weight: 700; color: Theme.brand-purple.with-alpha(0.6); }
     glyph := Text { x: 0; y: 0; text: root.letter; font-family: Theme.font-title; font-size: root.font-size; font-weight: 700; color: root.tint; }
 }
 
@@ -201,6 +203,8 @@ export component Sticker inherits Rectangle {
     in property <color> ink: #ffffff;
     in property <length> font-size: 8px;
     in property <angle> tilt: -4deg;
+    /// 2px ink outline (the site's version tag has none).
+    in property <bool> outlined: true;
     property <length> d: 3px;
     width: label.preferred-width + 16px + d;
     height: label.preferred-height + 8px + d;
@@ -215,7 +219,7 @@ export component Sticker inherits Rectangle {
             width: root.width - root.d; height: root.height - root.d;
             border-radius: 4px;
             background: root.fill;
-            border-width: 2px;
+            border-width: root.outlined ? 2px : 0px;
             border-color: Theme.brand-ink;
             label := Text {
                 text: root.text;
@@ -229,3 +233,46 @@ export component Sticker inherits Rectangle {
         }
     }
 }
+
+/// The "Espectral / Client" lockup of espectral.uhce.top/client: two lines of
+/// per-letter gold wordmark with the green tilted version tag after "Client".
+/// The site draws it at 64px; the header uses 16px.
+///
+///     ClientLockup { font-size: 16px; version: AppState.version-label; }
+export component ClientLockup inherits VerticalLayout {
+    in property <length> font-size: 16px;
+    /// "v1.7"; the tag is hidden when empty.
+    in property <string> version;
+    accessible-role: text;
+    accessible-label: "Espectral Client " + version;
+    spacing: 0px;
+    alignment: center;
+    Wordmark { font-size: root.font-size; }
+    HorizontalLayout {
+        spacing: 0px;
+        alignment: start;
+        WordmarkLetter { letter: "C"; tint: #ffaa00; font-size: root.font-size; }
+        WordmarkLetter { letter: "l"; tint: #ffc500; font-size: root.font-size; }
+        WordmarkLetter { letter: "i"; tint: #ffdf11; font-size: root.font-size; }
+        WordmarkLetter { letter: "e"; tint: #fff744; font-size: root.font-size; }
+        WordmarkLetter { letter: "n"; tint: #ffef33; font-size: root.font-size; }
+        WordmarkLetter { letter: "t"; tint: #ffd700; font-size: root.font-size; }
+        if root.version != "": HorizontalLayout {
+            padding-left: root.font-size * 0.375;
+            alignment: center;
+            VerticalLayout {
+                alignment: center;
+                Sticker {
+                    text: root.version;
+                    fill: #10b981;
+                    ink: #07021a;
+                    tilt: -8deg;
+                    outlined: false;
+                    // the site's tag is 3/8 of the title size; 8px is the smallest crisp size
+                    font-size: max(8px, round(root.font-size * 0.375 / 8px) * 8px);
+                }
+            }
+        }
+    }
+}
+

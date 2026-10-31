@@ -240,7 +240,7 @@ export component ServerRadarCard inherits Rectangle {
                         overflow: elide;
                     }
                 }
-                if !root.compact && (root.server.software != "" || root.server.version != ""): HorizontalLayout {
+                if root.server.software != "" || root.server.version != "": HorizontalLayout {
                     alignment: start;
                     spacing: 4px;
                     if root.server.software != "": Chip { text: root.server.software; pixel: true; fg: Theme.accent-cyan; edge: Theme.accent-cyan.with-alpha(0.5); }
@@ -273,10 +273,12 @@ export component ServerRadarCard inherits Rectangle {
         // ---- address row: mono chip + Copiar pill
         HorizontalLayout {
             spacing: 8px;
-            alignment: start;
+            // no `alignment: start` here: it would pin the chip at its
+            // (zero) preferred width instead of letting it stretch
             Rectangle {
                 horizontal-stretch: 1;
                 min-width: 0px;
+                preferred-width: addr.preferred-width + 20px;
                 height: addr.preferred-height + 12px;
                 border-radius: Theme.radius-sm;
                 background: Theme.log-bg;
@@ -295,7 +297,7 @@ export component ServerRadarCard inherits Rectangle {
                     overflow: elide;
                 }
             }
-            if !root.compact: Btn {
+            Btn {
                 variant: root.copied ? BtnVariant.primary : BtnVariant.secondary;
                 size: BtnSize.sm;
                 text: root.copied ? T.tr("server.copied") : T.tr("server.copy");
@@ -328,7 +330,7 @@ export component ServerRadarCard inherits Rectangle {
             }
         }
 
-        if !root.compact: VerticalLayout {
+        VerticalLayout {
             spacing: 4px;
             Text {
                 text: "MOTD";
