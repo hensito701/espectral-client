@@ -7,7 +7,8 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 ### Added
 - **Forge instances** for Minecraft 1.8.9, 1.12.2, 1.21.x and 26.x: pick
   *Forge* when creating an instance (the recommended Forge build is chosen
-  for you), import Forge modpacks, and search/install Forge mods.
+  for you), import Forge `.mrpack` modpacks, and search/install Forge mods
+  from Modrinth.
 - **Minecraft 1.8.9**: vanilla and Forge 1.8.9 instances run on Java 8, with
   the Espectral menu for 1.8.9 Forge: Espectral title screen and menu look,
   the Suite (fullbright, no fog, low fire, clear water, 3D skin layers, HUD
