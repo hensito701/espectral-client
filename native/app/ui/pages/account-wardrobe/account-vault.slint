@@ -1,13 +1,1157 @@
-// OWNER: account-wardrobe agent. Port of src/ui/src/pages/AccountVault.svelte.
+// OWNER: account-wardrobe agent. Port of src/ui/src/pages/AccountVault.svelte
+// (#/account): hero, identity pedestal, Skin Atelier (3D viewer + gallery),
+// account directory, identity forge (offline / Microsoft device flow),
+// advanced client id, Lunar shield card.
 // Keep the exported component name and the empty interface used by app.slint.
 
-import { PlaceholderPage, T } from "../../widgets.slint";
+import { Theme, T, Router, AppState, Util, AccountRow, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind,
+    Icon, Icons, Emoji, Spinner, MonogramTile, MonogramShape, Field, PageScaffold, GlassCard, Elevation } from "../../widgets.slint";
 import { AccountBridge } from "api.slint";
+import { CopyFlag, LoadingRow, UploadChip, PlainInput } from "parts.slint";
+import { SkinAtelier } from "skin-atelier.slint";
+
+// ---------------------------------------------------------------------------
+// hero
+// ---------------------------------------------------------------------------
+
+component VaultHero inherits HorizontalLayout {
+    spacing: Theme.space-4;
+    VerticalLayout {
+        spacing: Theme.space-2;
+        horizontal-stretch: 1;
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            alignment: start;
+            Badge { text: T.tr("vault.badge"); variant: BadgeVariant.accent; dot: true; }
+            Text {
+                text: T.tr1("vault.rosterCount", "count", AccountBridge.accounts.length);
+                font-size: Theme.text-xs;
+                font-weight: 500;
+                color: Theme.muted;
+                vertical-alignment: center;
+            }
+        }
+        GradientText {
+            // CSS line-height 1.1
+            height: 40px;
+            vertical-alignment: center;
+            text: T.tr("vault.title");
+            gradient: GradientKind.emerald-gold;
+            font-size: Theme.text-3xl;
+            font-weight: 700;
+            letter-spacing: -1.08px;
+        }
+        HorizontalLayout {
+            Text {
+                max-width: 680px;
+                text: T.tr("vault.subtitle");
+                font-size: Theme.text-sm;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+    }
+    VerticalLayout {
+        alignment: start;
+        horizontal-stretch: 0;
+        Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.md;
+            icon: Icons.refresh;
+            loading: AccountBridge.refreshing;
+            text: AccountBridge.refreshing ? T.tr("vault.refreshing") : T.tr("vault.refresh");
+            clicked => { AccountBridge.refresh(); }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// pedestal
+// ---------------------------------------------------------------------------
+
+/// 140px dashed circle (CSS 1px dashed var(--accent), opacity .35). Static (the CSS one rotates).
+component PedestalRing inherits Path {
+    width: 140px;
+    height: 140px;
+    viewbox-width: 140;
+    viewbox-height: 140;
+    stroke: Theme.accent;
+    stroke-width: 1px;
+    opacity: 0.35;
+    commands: "M 139.50 70.00 A 69.5 69.5 0 0 1 139.43 73.03 M 139.24 76.06 A 69.5 69.5 0 0 1 138.91 79.07 M 138.44 82.07 A 69.5 69.5 0 0 1 137.85 85.04 M 137.13 87.99 A 69.5 69.5 0 0 1 136.28 90.90 M 135.31 93.77 A 69.5 69.5 0 0 1 134.21 96.60 M 132.99 99.37 A 69.5 69.5 0 0 1 131.65 102.09 M 130.19 104.75 A 69.5 69.5 0 0 1 128.62 107.34 M 126.93 109.86 A 69.5 69.5 0 0 1 125.14 112.31 M 123.24 114.67 A 69.5 69.5 0 0 1 121.24 116.95 M 119.14 119.14 A 69.5 69.5 0 0 1 116.95 121.24 M 114.67 123.24 A 69.5 69.5 0 0 1 112.31 125.14 M 109.86 126.93 A 69.5 69.5 0 0 1 107.34 128.62 M 104.75 130.19 A 69.5 69.5 0 0 1 102.09 131.65 M 99.37 132.99 A 69.5 69.5 0 0 1 96.60 134.21 M 93.77 135.31 A 69.5 69.5 0 0 1 90.90 136.28 M 87.99 137.13 A 69.5 69.5 0 0 1 85.04 137.85 M 82.07 138.44 A 69.5 69.5 0 0 1 79.07 138.91 M 76.06 139.24 A 69.5 69.5 0 0 1 73.03 139.43 M 70.00 139.50 A 69.5 69.5 0 0 1 66.97 139.43 M 63.94 139.24 A 69.5 69.5 0 0 1 60.93 138.91 M 57.93 138.44 A 69.5 69.5 0 0 1 54.96 137.85 M 52.01 137.13 A 69.5 69.5 0 0 1 49.10 136.28 M 46.23 135.31 A 69.5 69.5 0 0 1 43.40 134.21 M 40.63 132.99 A 69.5 69.5 0 0 1 37.91 131.65 M 35.25 130.19 A 69.5 69.5 0 0 1 32.66 128.62 M 30.14 126.93 A 69.5 69.5 0 0 1 27.69 125.14 M 25.33 123.24 A 69.5 69.5 0 0 1 23.05 121.24 M 20.86 119.14 A 69.5 69.5 0 0 1 18.76 116.95 M 16.76 114.67 A 69.5 69.5 0 0 1 14.86 112.31 M 13.07 109.86 A 69.5 69.5 0 0 1 11.38 107.34 M 9.81 104.75 A 69.5 69.5 0 0 1 8.35 102.09 M 7.01 99.37 A 69.5 69.5 0 0 1 5.79 96.60 M 4.69 93.77 A 69.5 69.5 0 0 1 3.72 90.90 M 2.87 87.99 A 69.5 69.5 0 0 1 2.15 85.04 M 1.56 82.07 A 69.5 69.5 0 0 1 1.09 79.07 M 0.76 76.06 A 69.5 69.5 0 0 1 0.57 73.03 M 0.50 70.00 A 69.5 69.5 0 0 1 0.57 66.97 M 0.76 63.94 A 69.5 69.5 0 0 1 1.09 60.93 M 1.56 57.93 A 69.5 69.5 0 0 1 2.15 54.96 M 2.87 52.01 A 69.5 69.5 0 0 1 3.72 49.10 M 4.69 46.23 A 69.5 69.5 0 0 1 5.79 43.40 M 7.01 40.63 A 69.5 69.5 0 0 1 8.35 37.91 M 9.81 35.25 A 69.5 69.5 0 0 1 11.38 32.66 M 13.07 30.14 A 69.5 69.5 0 0 1 14.86 27.69 M 16.76 25.33 A 69.5 69.5 0 0 1 18.76 23.05 M 20.86 20.86 A 69.5 69.5 0 0 1 23.05 18.76 M 25.33 16.76 A 69.5 69.5 0 0 1 27.69 14.86 M 30.14 13.07 A 69.5 69.5 0 0 1 32.66 11.38 M 35.25 9.81 A 69.5 69.5 0 0 1 37.91 8.35 M 40.63 7.01 A 69.5 69.5 0 0 1 43.40 5.79 M 46.23 4.69 A 69.5 69.5 0 0 1 49.10 3.72 M 52.01 2.87 A 69.5 69.5 0 0 1 54.96 2.15 M 57.93 1.56 A 69.5 69.5 0 0 1 60.93 1.09 M 63.94 0.76 A 69.5 69.5 0 0 1 66.97 0.57 M 70.00 0.50 A 69.5 69.5 0 0 1 73.03 0.57 M 76.06 0.76 A 69.5 69.5 0 0 1 79.07 1.09 M 82.07 1.56 A 69.5 69.5 0 0 1 85.04 2.15 M 87.99 2.87 A 69.5 69.5 0 0 1 90.90 3.72 M 93.77 4.69 A 69.5 69.5 0 0 1 96.60 5.79 M 99.37 7.01 A 69.5 69.5 0 0 1 102.09 8.35 M 104.75 9.81 A 69.5 69.5 0 0 1 107.34 11.38 M 109.86 13.07 A 69.5 69.5 0 0 1 112.31 14.86 M 114.67 16.76 A 69.5 69.5 0 0 1 116.95 18.76 M 119.14 20.86 A 69.5 69.5 0 0 1 121.24 23.05 M 123.24 25.33 A 69.5 69.5 0 0 1 125.14 27.69 M 126.93 30.14 A 69.5 69.5 0 0 1 128.62 32.66 M 130.19 35.25 A 69.5 69.5 0 0 1 131.65 37.91 M 132.99 40.63 A 69.5 69.5 0 0 1 134.21 43.40 M 135.31 46.23 A 69.5 69.5 0 0 1 136.28 49.10 M 137.13 52.01 A 69.5 69.5 0 0 1 137.85 54.96 M 138.44 57.93 A 69.5 69.5 0 0 1 138.91 60.93 M 139.24 63.94 A 69.5 69.5 0 0 1 139.43 66.97";
+}
+
+component MetaItem inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    spacing: 2px;
+    Text {
+        text: root.label.to-uppercase();
+        font-size: Theme.text-xs;
+        font-weight: 600;
+        letter-spacing: 0.6px;
+        color: #5c6b84;
+    }
+    Text {
+        text: root.value;
+        font-size: Theme.text-sm;
+        font-weight: 500;
+        color: Theme.text;
+    }
+}
+
+component PedestalMeta inherits HorizontalLayout {
+    in property <AccountRow> acc;
+    spacing: Theme.space-6;
+    alignment: start;
+    padding-top: Theme.space-3 - Theme.space-2;
+    MetaItem {
+        label: T.tr("account.lastUsed");
+        value: root.acc.last-used != "" ? Util.relative-time(root.acc.last-used, T.lang) : T.tr("vault.heroNever");
+    }
+    MetaItem {
+        label: T.tr("account.created");
+        value: root.acc.created-at != "" ? Util.relative-time(root.acc.created-at, T.lang) : "—";
+    }
+    VerticalLayout {
+        spacing: 2px;
+        min-width: 180px;
+        Text { text: "UUID"; font-size: Theme.text-xs; font-weight: 600; letter-spacing: 0.6px; color: #5c6b84; }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            Rectangle {
+                background: Theme.dark ? rgba(0, 0, 0, 0.3) : Theme.card-bg-soft;
+                border-radius: Theme.radius-xs;
+                border-width: 1px;
+                border-color: rgba(255, 255, 255, 0.06);
+                width: uuid-text.preferred-width + 12px;
+                height: uuid-text.preferred-height + 4px;
+                uuid-text := Text {
+                    text: AccountBridge.truncate(root.acc.uuid, 14) + "…";
+                    font-family: Theme.font-mono;
+                    font-size: Theme.text-xs;
+                    color: Theme.muted;
+                }
+            }
+            Rectangle {
+                width: 21px;
+                height: 21px;
+                border-radius: Theme.radius-xs;
+                background: copy-ta.has-hover ? rgba(255, 255, 255, 0.08) : transparent;
+                copied := CopyFlag { }
+                if copied.copied: Text { text: "✓"; color: Theme.accent-green; font-family: Theme.font-mono; font-size: Theme.text-sm; }
+                if !copied.copied: Icon { data: Icons.copy; size: 13px; color: copy-ta.has-hover ? Theme.text : Theme.muted; }
+                copy-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        AppState.copy-text(root.acc.uuid);
+                        copied.copied = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Pedestal inherits Rectangle {
+    property <bool> has: AccountBridge.has-active;
+    property <AccountRow> acc: AccountBridge.active;
+    property <int> hue: has && acc.avatar-color >= 0 ? acc.avatar-color : has ? acc.monogram-hue : -1;
+    border-radius: Theme.radius-xl;
+    background: Theme.dark ? @linear-gradient(135deg, rgba(16, 24, 40, 0.75) 0%, rgba(8, 14, 26, 0.85) 100%) : @linear-gradient(135deg, Theme.card-bg 0%, Theme.card-bg-soft 100%);
+    border-width: 1px;
+    border-color: Theme.glass-border;
+    drop-shadow-color: Theme.dark ? rgba(0, 0, 0, 0.4) : Theme.shadow-md-color;
+    drop-shadow-blur: 36px;
+    drop-shadow-offset-y: 16px;
+    min-height: layout.preferred-height;
+    clip: true;
+
+    // pedestal-glow: --ambient-1 (account hue) radial at top -50%, left 20%
+    Rectangle {
+        x: parent.width * 0.2;
+        y: -150px;
+        width: 600px;
+        height: 300px;
+        background: @radial-gradient(circle, (root.hue >= 0 ? Theme.hsla(root.hue, 0.7, 0.5, 0.14) : Theme.accent.with-alpha(0.12)) 0%, transparent 70%);
+    }
+    // inset 0 1px 0 rgba(255,255,255,.08)
+    Rectangle { x: 0; y: 0; width: parent.width; height: 1px; background: rgba(255, 255, 255, 0.08); }
+
+    layout := HorizontalLayout {
+        padding-left: Theme.space-8;
+        padding-right: Theme.space-8;
+        padding-top: Theme.space-6;
+        padding-bottom: Theme.space-6;
+        spacing: Theme.space-8;
+        // stage: ring + avatar + floor
+        Rectangle {
+            width: 140px;
+            PedestalRing { }
+            Rectangle {
+                y: (parent.height + 104px) / 2;
+                width: 120px;
+                height: 16px;
+                border-radius: 8px;
+                background: @radial-gradient(circle, Theme.accent.with-alpha(0.18) 0%, transparent 70%);
+            }
+            Rectangle {
+                width: 104px;
+                height: 104px;
+                drop-shadow-color: rgba(0, 0, 0, 0.6);
+                drop-shadow-blur: 24px;
+                drop-shadow-offset-y: 12px;
+                border-radius: Theme.radius-md;
+                MonogramTile {
+                    name: root.has ? root.acc.username : "?";
+                    hue: root.has ? root.acc.monogram-hue : Util.name-hue("?", -1);
+                    avatar: root.acc.avatar;
+                    has-avatar: root.has && root.acc.has-avatar;
+                    size: 104px;
+                    shape: MonogramShape.rounded;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.space-2;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                alignment: start;
+                Badge { text: T.tr("vault.heroActiveBadge"); variant: BadgeVariant.ok; dot: true; large: true; }
+                if root.has && root.acc.token-kind == "msa": Badge { text: T.tr("vault.cardKindMsa"); variant: BadgeVariant.accent; large: true; }
+                if !(root.has && root.acc.token-kind == "msa"): Badge { text: T.tr("vault.cardKindOffline"); variant: BadgeVariant.neutral; large: true; }
+            }
+            Text {
+                height: 34px; // line-height 1.2
+                vertical-alignment: center;
+                text: root.has ? root.acc.username : T.tr("vault.heroNoActive");
+                font-size: Theme.text-2xl;
+                font-weight: 700;
+                letter-spacing: -0.56px;
+                color: Theme.text;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: Theme.space-1;
+                alignment: start;
+                height: 19px;
+                Text { text: "✦"; color: Theme.accent; font-size: Theme.text-xs; vertical-alignment: center; }
+                Text { text: T.tr("vault.heroSkinHint"); color: Theme.muted; font-size: Theme.text-xs; vertical-alignment: center; }
+            }
+            if root.has: PedestalMeta { acc: root.acc; }
+            if !root.has: Text {
+                min-height: 22px;
+                vertical-alignment: center;
+                text: T.tr("vault.heroSelectPrompt");
+                color: Theme.muted;
+                font-size: Theme.text-sm;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// account directory
+// ---------------------------------------------------------------------------
+
+component SectionHead inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> sub;
+    in property <string> count;
+    spacing: Theme.space-2;
+    VerticalLayout {
+        spacing: 2px;
+        horizontal-stretch: 1;
+        Text { text: root.title; font-size: Theme.text-lg; font-weight: 600; letter-spacing: -0.36px; color: Theme.text; }
+        Text { text: root.sub; font-size: Theme.text-xs; color: Theme.muted; }
+    }
+    VerticalLayout {
+        alignment: center;
+        Badge { text: root.count; variant: BadgeVariant.neutral; }
+    }
+}
+
+component RosterBox inherits Rectangle {
+    background: Theme.dark ? rgba(16, 24, 40, 0.4) : Theme.card-bg-soft;
+    border-width: 1px;
+    border-color: Theme.glass-border;
+    border-radius: Theme.radius-lg;
+}
+
+component RosterEmpty inherits RosterBox {
+    min-height: col.preferred-height;
+    col := HorizontalLayout {
+        padding: Theme.space-8;
+        alignment: center;
+        VerticalLayout {
+            spacing: Theme.space-2;
+            max-width: 360px;
+            HorizontalLayout {
+                alignment: center;
+                padding-bottom: 4px;
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    opacity: 0.5;
+                    Emoji { char: "👤"; size: 32px; }
+                }
+            }
+            Text {
+                text: T.tr("vault.rosterEmpty");
+                color: Theme.text;
+                font-size: Theme.text-base;
+                font-weight: 700;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: T.tr("vault.rosterEmptyHint");
+                color: Theme.muted;
+                font-size: Theme.text-sm;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+component Swatch inherits Rectangle {
+    in property <int> hue;
+    in property <bool> active;
+    in property <bool> enabled: true;
+    callback clicked();
+    width: 22px;
+    height: 22px;
+    Rectangle {
+        property <length> s: ta.has-hover && root.enabled ? 24.6px : 22px;
+        width: self.s;
+        height: self.s;
+        border-radius: self.s / 2;
+        background: Theme.hsla(root.hue, 0.7, 0.5, 1);
+        border-width: 2px;
+        border-color: root.active ? (Theme.dark ? #ffffff : Theme.text) : transparent;
+        drop-shadow-color: root.active ? rgba(255, 255, 255, 0.4) : transparent;
+        drop-shadow-blur: 8px;
+        animate s { duration: Theme.dur-fast; }
+    }
+    opacity: enabled ? 1 : 0.5;
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component AvatarEdit inherits VerticalLayout {
+    in property <AccountRow> acc;
+    property <bool> busy: AccountBridge.avatar-busy == acc.username;
+    spacing: Theme.space-2;
+    Rectangle { height: 1px; background: Theme.border; }
+    Text { text: T.tr("vault.avatarTitle"); font-size: Theme.text-xs; color: Theme.muted; }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        for h in [4, 32, 48, 145, 190, 222, 265, 315]: Swatch {
+            hue: h;
+            active: root.acc.avatar-color == h;
+            enabled: !root.busy;
+            clicked => { AccountBridge.set-avatar-color(root.acc.username, root.acc.avatar-color == h ? -1 : h); }
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        UploadChip {
+            text: T.tr("vault.avatarUpload");
+            enabled: !root.busy;
+            clicked => { AccountBridge.upload-avatar(root.acc.username); }
+        }
+        if root.acc.has-avatar: Rectangle {
+            width: rm.preferred-width + 13px;
+            rm := Text { text: T.tr("vault.avatarRemove"); font-size: 12px; color: #f87171; }
+            TouchArea {
+                enabled: !root.busy;
+                mouse-cursor: pointer;
+                clicked => { AccountBridge.remove-avatar(root.acc.username); }
+            }
+        }
+    }
+}
+
+component LogoutConfirm inherits Rectangle {
+    in property <string> username;
+    background: Theme.dark ? rgba(12, 18, 30, 0.95) : rgba(255, 255, 255, 0.96);
+    border-radius: Theme.radius-lg;
+    TouchArea { }
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        spacing: Theme.space-3;
+        Text {
+            text: T.tr1("vault.cardLogoutConfirm", "name", root.username);
+            font-size: Theme.text-sm;
+            font-weight: 500;
+            color: Theme.text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: center;
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.danger;
+                    size: BtnSize.sm;
+                    loading: AccountBridge.logging-out;
+                    text: T.tr("vault.cardLogoutBtn");
+                    clicked => { AccountBridge.logout-msa(root.username); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.ghost;
+                    size: BtnSize.sm;
+                    enabled: !AccountBridge.logging-out;
+                    text: T.tr("vault.cardLogoutCancel");
+                    clicked => { AccountBridge.confirming-logout = ""; }
+                }
+            }
+        }
+    }
+}
+
+component AccountCard inherits Rectangle {
+    in property <AccountRow> acc;
+    in property <bool> active;
+    property <bool> hovered: ta.has-hover;
+    property <length> lift: hovered ? -2px : 0px;
+    animate lift { duration: Theme.dur-fast; easing: ease-out; }
+    min-height: body.preferred-height;
+    drop-shadow-color: active ? Theme.accent.with-alpha(0.12) : hovered ? rgba(0, 0, 0, 0.35) : transparent;
+    drop-shadow-blur: active ? 20px : 24px;
+    drop-shadow-offset-y: active ? 0px : 8px;
+    border-radius: Theme.radius-lg;
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { AccountBridge.set-active(root.acc.username); }
+    }
+    face := Rectangle {
+        y: root.lift;
+        height: root.height;
+        border-radius: Theme.radius-lg;
+        background: root.active ? @linear-gradient(135deg, Theme.accent.with-alpha(0.08) 0%, (Theme.dark ? rgba(16, 24, 40, 0.7) : Theme.card-bg) 100%)
+            : root.hovered ? (Theme.dark ? rgba(22, 34, 56, 0.7) : Theme.surface-up) : (Theme.dark ? rgba(16, 24, 40, 0.55) : Theme.card-bg);
+        border-width: 1px;
+        border-color: root.active ? Theme.accent : root.hovered ? rgba(255, 255, 255, 0.16) : Theme.glass-border;
+        animate border-color { duration: Theme.dur-fast; }
+
+        body := VerticalLayout {
+            padding: Theme.space-4;
+            spacing: Theme.space-3;
+            // head
+            HorizontalLayout {
+                spacing: Theme.space-3;
+                Rectangle {
+                    width: 46px;
+                    height: 46px;
+                    MonogramTile {
+                        name: root.acc.username;
+                        hue: root.acc.monogram-hue;
+                        avatar: root.acc.avatar;
+                        has-avatar: root.acc.has-avatar;
+                        size: 46px;
+                        shape: MonogramShape.rounded;
+                    }
+                    if root.active: Rectangle {
+                        x: parent.width - 12px;
+                        y: parent.height - 12px;
+                        width: 14px;
+                        height: 14px;
+                        border-radius: 7px;
+                        background: Theme.accent;
+                        border-width: 2px;
+                        border-color: #0b1320;
+                        drop-shadow-color: Theme.accent;
+                        drop-shadow-blur: 8px;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 3px;
+                    horizontal-stretch: 1;
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        alignment: start;
+                        Text {
+                            text: root.acc.username;
+                            font-size: Theme.text-base;
+                            font-weight: 600;
+                            color: Theme.text;
+                            overflow: elide;
+                            vertical-alignment: center;
+                        }
+                        if root.active: Badge { text: T.tr("vault.cardActive"); variant: BadgeVariant.ok; }
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        alignment: start;
+                        if root.acc.token-kind == "msa": Badge { text: T.tr("vault.cardKindMsa"); variant: BadgeVariant.accent; }
+                        if root.acc.token-kind != "msa": Badge { text: T.tr("vault.cardKindOffline"); variant: BadgeVariant.neutral; }
+                        Text {
+                            text: AccountBridge.truncate(root.acc.uuid, 8) + "…";
+                            font-family: Theme.font-mono;
+                            font-size: Theme.text-xs;
+                            color: #5c6b84;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+            // footer: timestamps + actions
+            VerticalLayout {
+                spacing: Theme.space-2;
+                padding-top: 2px;
+                Rectangle { height: 1px; background: Theme.border; }
+                HorizontalLayout {
+                    spacing: Theme.space-3;
+                    min-height: 28px;
+                    Text {
+                        text: T.tr1("vault.cardLastUsed", "time", root.acc.last-used != "" ? Util.relative-time(root.acc.last-used, T.lang) : T.tr("vault.cardNever"));
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    if !root.active: Btn {
+                        variant: BtnVariant.ghost;
+                        size: BtnSize.sm;
+                        text: T.tr("vault.cardSetActive");
+                        clicked => { AccountBridge.set-active(root.acc.username); }
+                    }
+                    if root.acc.token-kind == "msa": Btn {
+                        variant: BtnVariant.danger;
+                        size: BtnSize.sm;
+                        text: T.tr("vault.cardLogoutMsa");
+                        clicked => { AccountBridge.confirming-logout = root.acc.username; }
+                    }
+                }
+            }
+            // avatar customization (clicks here do not activate the card)
+            Rectangle {
+                min-height: edit.preferred-height;
+                TouchArea { }
+                edit := AvatarEdit { acc: root.acc; }
+            }
+        }
+
+        if AccountBridge.confirming-logout == root.acc.username: LogoutConfirm {
+            width: parent.width;
+            height: parent.height;
+            username: root.acc.username;
+        }
+    }
+}
+
+component Roster inherits VerticalLayout {
+    spacing: Theme.space-4;
+    alignment: start;
+    SectionHead {
+        title: T.tr("vault.rosterTitle");
+        sub: T.tr("vault.rosterSubtitle");
+        count: AccountBridge.accounts.length;
+    }
+    if AccountBridge.loading && AccountBridge.accounts.length == 0: RosterBox {
+        min-height: lr.preferred-height;
+        lr := LoadingRow { text: T.tr("vault.loading"); padding: Theme.space-8; }
+    }
+    if !AccountBridge.loading && AccountBridge.accounts.length == 0: RosterEmpty { }
+    if AccountBridge.accounts.length > 0: VerticalLayout {
+        spacing: Theme.space-3;
+        for acc[i] in AccountBridge.accounts: AccountCard {
+            acc: acc;
+            active: i == 0 && AccountBridge.has-active;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// identity forge
+// ---------------------------------------------------------------------------
+
+component ForgeTab inherits Rectangle {
+    in property <string> emoji;
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    height: 40px;
+    border-radius: Theme.radius-sm;
+    background: active ? (Theme.dark ? rgba(255, 255, 255, 0.08) : Theme.surface-solid) : transparent;
+    drop-shadow-color: active ? rgba(0, 0, 0, 0.2) : transparent;
+    drop-shadow-blur: 8px;
+    drop-shadow-offset-y: 2px;
+    animate background { duration: Theme.dur-fast; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    HorizontalLayout {
+        alignment: center;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            alignment: center;
+            Emoji { char: root.emoji; size: 14px; }
+        }
+        Text {
+            text: root.text;
+            font-size: Theme.text-sm;
+            font-weight: 600;
+            color: root.active || ta.has-hover ? Theme.text : Theme.muted;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component OfflinePane inherits VerticalLayout {
+    property <string> name;
+    property <int> created: AccountBridge.offline-created-serial;
+    changed created => { input.text = ""; root.name = ""; }
+    property <bool> valid: AccountBridge.valid-offline-name(root.name);
+    spacing: Theme.space-4;
+    Text {
+        text: T.tr("vault.offlineDesc");
+        font-size: Theme.text-sm;
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+    Field {
+        label: T.tr("vault.offlineLabel");
+        hint: T.tr("vault.offlineValidationHint");
+        error: AccountBridge.offline-error;
+        required: true;
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            VerticalLayout {
+                alignment: center;
+                MonogramTile {
+                    name: root.name != "" ? root.name : "?";
+                    size: 32px;
+                    shape: MonogramShape.rounded;
+                }
+            }
+            input := PlainInput {
+                field-style: true;
+                has-error: AccountBridge.offline-error != "";
+                placeholder: T.tr("vault.offlinePlaceholder");
+                max-length: 16;
+                edited(t) => {
+                    root.name = AccountBridge.trim(t);
+                }
+                accepted => {
+                    if root.valid { AccountBridge.create-offline(root.name); }
+                }
+            }
+        }
+    }
+    VerticalLayout {
+        padding-top: Theme.space-2;
+        Btn {
+            variant: BtnVariant.primary;
+            size: BtnSize.md;
+            block: true;
+            emoji: "⚡";
+            enabled: root.valid && !AccountBridge.offline-creating;
+            loading: AccountBridge.offline-creating;
+            text: AccountBridge.offline-creating ? T.tr("vault.offlineCreating") : T.tr("vault.offlineCreateBtn");
+            clicked => { AccountBridge.create-offline(root.name); }
+        }
+    }
+}
+
+component FlowStepHead inherits HorizontalLayout {
+    in property <string> mark;
+    in property <string> label;
+    spacing: Theme.space-2;
+    alignment: start;
+    Rectangle {
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: Theme.accent;
+        Text { text: root.mark; color: #060a14; font-size: Theme.text-xs; font-weight: 700; }
+    }
+    Text {
+        text: root.label;
+        font-size: Theme.text-sm;
+        font-weight: 600;
+        color: Theme.text;
+        vertical-alignment: center;
+        wrap: word-wrap;
+        horizontal-stretch: 1;
+    }
+}
+
+component UriPill inherits Rectangle {
+    in property <string> label;
+    in property <string> url;
+    in property <bool> copy-button;
+    background: Theme.dark ? rgba(0, 0, 0, 0.4) : Theme.card-bg-soft;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.06);
+    min-height: row.preferred-height;
+    copied := CopyFlag { }
+    row := HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        padding-top: Theme.space-2;
+        padding-bottom: Theme.space-2;
+        spacing: Theme.space-2;
+        Rectangle {
+            horizontal-stretch: 1;
+            min-height: link.preferred-height;
+            link := Text {
+                width: parent.width;
+                text: root.label + " ↗";
+                color: Theme.accent;
+                font-size: Theme.text-sm;
+                wrap: word-wrap;
+                vertical-alignment: center;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { AppState.open-url(root.url); }
+            }
+        }
+        if root.copy-button: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: copied.copied ? T.tr("vault.msLinkCopied") : T.tr("vault.msCopyLink");
+                clicked => {
+                    AppState.copy-text(root.url);
+                    copied.copied = true;
+                }
+            }
+        }
+    }
+}
+
+component CodeBanner inherits Rectangle {
+    background: @linear-gradient(135deg, Theme.accent.with-alpha(0.15) 0%, rgba(6, 182, 212, 0.1) 100%);
+    border-width: 1px;
+    border-color: Theme.accent;
+    border-radius: Theme.radius-md;
+    min-height: row.preferred-height;
+    copied := CopyFlag { }
+    row := HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        spacing: Theme.space-3;
+        Text {
+            text: AccountBridge.ms-user-code;
+            font-family: Theme.font-pixel;
+            font-size: Theme.text-xl;
+            letter-spacing: 3.3px;
+            color: Theme.dark ? #ffffff : Theme.text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.primary;
+                size: BtnSize.sm;
+                emoji: "📋";
+                text: copied.copied ? T.tr("vault.msCodeCopied") : T.tr("vault.msCopyCode");
+                clicked => {
+                    AppState.copy-text(AccountBridge.ms-user-code);
+                    copied.copied = true;
+                }
+            }
+        }
+    }
+}
+
+component DeviceFlowCard inherits Rectangle {
+    property <bool> complete: AccountBridge.ms-verification-uri-complete != "";
+    background: Theme.dark ? rgba(0, 0, 0, 0.25) : Theme.card-bg-soft;
+    border-width: 1px;
+    border-color: Theme.glass-border;
+    border-radius: Theme.radius-md;
+    min-height: col.preferred-height;
+    col := VerticalLayout {
+        padding: Theme.space-4;
+        spacing: Theme.space-4;
+        VerticalLayout {
+            spacing: Theme.space-2;
+            FlowStepHead {
+                mark: root.complete ? "✓" : "1";
+                label: root.complete ? T.tr("vault.msBrowserOpened") : T.tr("vault.msStep1");
+            }
+            UriPill {
+                label: root.complete ? T.tr("vault.msReopenLink") : AccountBridge.ms-verification-uri;
+                url: root.complete ? AccountBridge.ms-verification-uri-complete : AccountBridge.ms-verification-uri;
+                copy-button: !root.complete;
+            }
+        }
+        VerticalLayout {
+            spacing: Theme.space-2;
+            FlowStepHead {
+                mark: root.complete ? "?" : "2";
+                label: root.complete ? T.tr("vault.msFallbackLabel") : T.tr("vault.msStep2");
+            }
+            CodeBanner { }
+        }
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            padding-top: Theme.space-2;
+            padding-bottom: Theme.space-2;
+            VerticalLayout {
+                alignment: center;
+                // static pulse dot (the CSS pulse animation would keep the UI busy)
+                Rectangle {
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 6px;
+                    background: Theme.accent;
+                    drop-shadow-color: Theme.accent.with-alpha(0.7);
+                    drop-shadow-blur: 8px;
+                }
+            }
+            Text {
+                text: T.tr("vault.msWaiting");
+                font-size: Theme.text-sm;
+                color: Theme.muted;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: T.tr("vault.msCancelBtn");
+                clicked => { AccountBridge.cancel-ms(); }
+            }
+        }
+    }
+}
+
+component MsAlert inherits Rectangle {
+    in property <bool> pending;
+    border-radius: Theme.radius-md;
+    background: pending ? Theme.accent-alt.with-alpha(0.12) : rgba(239, 68, 68, 0.12);
+    border-width: 1px;
+    border-color: pending ? Theme.accent-alt.with-alpha(0.35) : rgba(239, 68, 68, 0.35);
+    min-height: col.preferred-height;
+    col := HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        VerticalLayout {
+            spacing: 4px;
+            if root.pending: HorizontalLayout {
+                spacing: Theme.space-2;
+                alignment: start;
+                VerticalLayout { alignment: center; Emoji { char: "⏳"; size: 14px; } }
+                Text { text: T.tr("vault.msaPending"); color: #fbbf24; font-size: Theme.text-sm; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
+            }
+            if root.pending: Text { text: T.tr("vault.msaPendingHint"); color: #fbbf24; font-size: Theme.text-xs; wrap: word-wrap; }
+            if !root.pending: HorizontalLayout {
+                spacing: Theme.space-2;
+                VerticalLayout { alignment: start; Emoji { char: "⚠️"; size: 14px; } }
+                Text { text: AccountBridge.ms-error; color: #f87171; font-size: Theme.text-xs; wrap: word-wrap; horizontal-stretch: 1; }
+            }
+        }
+    }
+}
+
+component MsaPane inherits VerticalLayout {
+    spacing: Theme.space-4;
+    Text {
+        text: T.tr("vault.msDesc");
+        font-size: Theme.text-sm;
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+    if AccountBridge.ms-flow: DeviceFlowCard { }
+    if !AccountBridge.ms-flow: Btn {
+        variant: BtnVariant.primary;
+        size: BtnSize.lg;
+        block: true;
+        emoji: "🌐";
+        loading: AccountBridge.ms-polling;
+        text: AccountBridge.ms-polling ? T.tr("vault.msStarting") : T.tr("vault.msStartBtn");
+        clicked => { AccountBridge.start-ms(); }
+    }
+    if AccountBridge.ms-pending: MsAlert { pending: true; }
+    if !AccountBridge.ms-pending && AccountBridge.ms-error != "": MsAlert { pending: false; }
+}
+
+component Forge inherits GlassCard {
+    in-out property <int> tab;
+    title: T.tr("vault.addTitle");
+    subtitle: T.tr("vault.addSubtitle");
+    elevation: Elevation.md;
+    spacing: Theme.space-4;
+    Rectangle {
+        background: Theme.dark ? rgba(0, 0, 0, 0.3) : Theme.card-bg-soft;
+        border-radius: Theme.radius-md;
+        height: 48px;
+        HorizontalLayout {
+            padding: 4px;
+            spacing: 4px;
+            ForgeTab {
+                emoji: "⚡";
+                text: T.tr("vault.tabOffline");
+                active: root.tab == 0;
+                clicked => { root.tab = 0; }
+            }
+            ForgeTab {
+                emoji: "🌐";
+                text: T.tr("vault.tabMicrosoft");
+                active: root.tab == 1;
+                clicked => { root.tab = 1; }
+            }
+        }
+    }
+    if root.tab == 0: OfflinePane { }
+    if root.tab == 1: MsaPane { }
+}
+
+component AdvancedClientId inherits Rectangle {
+    in-out property <bool> open;
+    property <string> value;
+    property <int> serial: AccountBridge.client-id-serial;
+    changed serial => { root.value = AccountBridge.client-id; }
+    background: Theme.dark ? rgba(16, 24, 40, 0.4) : Theme.card-bg-soft;
+    border-width: 1px;
+    border-color: Theme.glass-border;
+    border-radius: Theme.radius-lg;
+    min-height: col.preferred-height;
+    clip: true;
+    col := VerticalLayout {
+        Rectangle {
+            height: toggle-row.preferred-height;
+            background: toggle-ta.has-hover ? rgba(255, 255, 255, 0.03) : transparent;
+            toggle-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.open = !root.open;
+                    if root.open && root.value == "" { AccountBridge.load-client-id(); }
+                }
+            }
+            toggle-row := HorizontalLayout {
+                padding-left: Theme.space-4;
+                padding-right: Theme.space-4;
+                padding-top: Theme.space-3;
+                padding-bottom: Theme.space-3;
+                spacing: Theme.space-2;
+                VerticalLayout { alignment: center; Emoji { char: "⚙️"; size: 14px; } }
+                Text {
+                    text: T.tr("vault.clientIdToggle");
+                    font-size: Theme.text-sm;
+                    font-weight: 500;
+                    color: toggle-ta.has-hover ? Theme.text : Theme.muted;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: "▼";
+                    font-size: 10.4px;
+                    color: toggle-ta.has-hover ? Theme.text : Theme.muted;
+                    vertical-alignment: center;
+                    transform-rotation: root.open ? 180deg : 0deg;
+                    animate transform-rotation { duration: Theme.dur-fast; }
+                }
+            }
+        }
+        if root.open: Rectangle {
+            background: Theme.dark ? rgba(0, 0, 0, 0.2) : Theme.card-bg-soft;
+            min-height: pane.preferred-height;
+            Rectangle { y: 0; height: 1px; background: Theme.border; }
+            pane := HorizontalLayout {
+                padding: Theme.space-4;
+                VerticalLayout {
+                    spacing: Theme.space-3;
+                    Field {
+                        label: T.tr("vault.clientIdLabel");
+                        hint: T.tr("vault.clientIdHint");
+                        error: AccountBridge.client-id-error;
+                        PlainInput {
+                            field-style: true;
+                            text <=> root.value;
+                            placeholder: T.tr("vault.clientIdPlaceholder");
+                            enabled: !AccountBridge.client-id-loading && !AccountBridge.client-id-saving;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        alignment: start;
+                        Btn {
+                            variant: BtnVariant.secondary;
+                            size: BtnSize.sm;
+                            loading: AccountBridge.client-id-saving;
+                            enabled: !AccountBridge.client-id-loading;
+                            text: AccountBridge.client-id-saving ? T.tr("vault.clientIdSaving") : T.tr("vault.clientIdSave");
+                            clicked => { AccountBridge.save-client-id(root.value); }
+                        }
+                        Btn {
+                            variant: BtnVariant.ghost;
+                            size: BtnSize.sm;
+                            enabled: !AccountBridge.client-id-saving && !AccountBridge.client-id-loading;
+                            text: T.tr("vault.clientIdReset");
+                            clicked => {
+                                root.value = "";
+                                AccountBridge.save-client-id("");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component LunarCard inherits Rectangle {
+    background: @linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, (Theme.dark ? rgba(16, 24, 40, 0.5) : Theme.card-bg-soft) 100%);
+    border-width: 1px;
+    border-color: rgba(168, 85, 247, 0.25);
+    border-radius: Theme.radius-lg;
+    min-height: col.preferred-height;
+    col := HorizontalLayout {
+        padding: Theme.space-4;
+        VerticalLayout {
+            spacing: Theme.space-3;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                VerticalLayout { alignment: center; Emoji { char: "🌙"; size: 17.6px; } }
+                Text {
+                    text: T.tr("vault.lunarShieldTitle");
+                    font-size: Theme.text-sm;
+                    font-weight: 600;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("vault.lunarBadge"); variant: BadgeVariant.purple; }
+                }
+            }
+            Text {
+                text: T.tr("vault.lunarShieldDesc");
+                font-size: Theme.text-xs;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: end;
+                Btn {
+                    variant: BtnVariant.ghost;
+                    size: BtnSize.sm;
+                    emoji: "📦";
+                    text: T.tr("vault.lunarImportCta");
+                    clicked => { Router.navigate("#/library/import"); }
+                }
+            }
+        }
+    }
+}
+
+component ForgeColumn inherits VerticalLayout {
+    in-out property <int> tab;
+    in-out property <bool> advanced-open;
+    spacing: Theme.space-4;
+    alignment: start;
+    Forge { tab <=> root.tab; }
+    AdvancedClientId { open <=> root.advanced-open; }
+    LunarCard { }
+}
+
+// ---------------------------------------------------------------------------
+// page
+// ---------------------------------------------------------------------------
 
 export component AccountPage inherits Rectangle {
-    PlaceholderPage {
-        title: T.tr("vault.title");
-        subtitle: T.tr("vault.subtitle");
-        source: "src/ui/src/pages/AccountVault.svelte";
+    property <int> forge-tab: 0;
+    property <bool> advanced-open: false;
+    // CSS @media (max-width: 1024px): workbench stacks
+    property <bool> narrow: root.width <= 1024px;
+
+    scaffold := PageScaffold {
+        max-content-width: 1400px;
+        content-padding: Theme.space-8;
+        content-padding-top: Theme.space-6;
+        content-padding-bottom: Theme.space-12;
+        spacing: Theme.space-6;
+
+        VaultHero { }
+        Pedestal { }
+        atelier := VerticalLayout {
+            padding-top: Theme.space-4;
+            SkinAtelier {
+                scroll-request(top, bottom) => { root.ensure-visible(top, bottom); }
+            }
+        }
+        if !root.narrow: HorizontalLayout {
+            spacing: Theme.space-6;
+            Roster {
+                width: (root.content-width - Theme.space-6) * 1.4 / 2.4;
+            }
+            ForgeColumn {
+                horizontal-stretch: 1;
+                tab <=> root.forge-tab;
+                advanced-open <=> root.advanced-open;
+            }
+        }
+        if root.narrow: VerticalLayout {
+            spacing: Theme.space-6;
+            Roster { }
+            ForgeColumn {
+                tab <=> root.forge-tab;
+                advanced-open <=> root.advanced-open;
+            }
+        }
+    }
+
+    // content width inside PageScaffold (max 1400 incl. 2x32 padding)
+    property <length> content-width: min(1400px, root.width) - 2 * Theme.space-8;
+
+    /// Bring an absolute y-range (window coordinates) into the viewport.
+    function ensure-visible(top: length, bottom: length) {
+        let view-top = root.absolute-position.y;
+        let view-bottom = view-top + root.height;
+        if top < view-top {
+            scaffold.content-y = min(0px, scaffold.content-y + (view-top - top) + Theme.space-4);
+        } else if bottom > view-bottom {
+            scaffold.content-y = scaffold.content-y - min(bottom - view-bottom + Theme.space-4, top - view-top);
+        }
+    }
+
+    // #/account?section=skin: scroll the Skin Atelier under the header once laid out
+    Timer {
+        interval: 120ms;
+        running: Router.query == "section=skin";
+        triggered => {
+            self.running = false;
+            scaffold.content-y = -max(0px, atelier.absolute-position.y - root.absolute-position.y - scaffold.content-y + Theme.space-4 - 12px);
+        }
     }
 }
