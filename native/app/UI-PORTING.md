@@ -1,11 +1,16 @@
 # Native UI (Slint) — architecture & porting guide
 
-Branch `rust-native`. The Svelte 5 UI (`src/ui/src`) is being replaced by a
+Branch `rust-native`. The Svelte 5 UI (`src/ui/src`) was replaced by a
 native Slint UI in the binary crate **`espectral-client`** (`native/app`). The
 binary links **`espectral-engine`** (`native/engine`, see `../PORTING.md`) and
 calls `Engine` methods directly: no webview, no Node, no HTTP between UI and
 engine. Goal: visual + functional parity with the Svelte UI at a fraction of
 the RAM (target: well under 150 MB while open; idle = 0% CPU).
+
+**1.7.0 shipped this UI as the only UI.** The Svelte sources (`src/ui/`), the
+Tauri shell (`src-tauri/`) and the Node engine were deleted in that release;
+they are referenced below only as the historical porting reference (read them
+from git history, tag `v1.6.3`). Nothing here is a live dependency any more.
 
 The foundation (this document, the shell, the widgets, the bridge) is done.
 Five agents ported the pages in parallel, each in its own worktree, touching
@@ -13,8 +18,8 @@ Five agents ported the pages in parallel, each in its own worktree, touching
 groups are merged and integrated — see [12. Integration status](#12-integration-status)
 for the per-page status, the release size and the memory / CPU measurements.
 
-- Reference implementation: `src/ui/src` (never modify it, nor `src/`, `src-tauri/`, `tests/`).
-- Reference screenshots of the Svelte UI: `/tmp/claude-0/-home-user-espectral-client/7274c801-56fc-5f5d-bdc2-b83be817cf63/scratchpad/ref-screens/*.png` (index below).
+- Historical reference implementation: `src/ui/src` (deleted in 1.7.0; see git history at tag `v1.6.3`). The live reference is now the Slint UI itself plus `i18n/*.json`.
+- Reference screenshots of the (deleted) Svelte UI: `/tmp/claude-0/-home-user-espectral-client/7274c801-56fc-5f5d-bdc2-b83be817cf63/scratchpad/ref-screens/*.png` (index below).
 - Headless screenshots of the Slint UI: `native/app/scripts/screenshot.sh` (below).
 
 ---
@@ -218,7 +223,7 @@ source (`account:<username>`, `library:<id>`, `file:<path>`). Pages use
 | `T` | strings: `T.tr("key")`, `T.tr1("key", "name", v)`, `T.tr2(..)`, `T.tr3(..)`; `T.lang` ("es"/"en"). |
 | `Router` | `page` (enum `Page`), `instance-name`, `query`, `route`, `serial`; `navigate("#/...")`, `back()`. |
 | `AppState` | `instances: [InstanceRow]`, `instances-loaded`, `accounts: [AccountRow]`, `active-account` + `has-active-account`, `launches: [LaunchRow]`, `running-count`, `servers: [ServerRow]`, `servers-loaded`, `version`, `data-dir`; `refresh-*()`, `open-url(url)`, `open-folder(path)`, `copy-text(text)`. |
-| `Shell` | `set-theme-mode("dark"\|"light"\|"system")`, `toggle-theme()`, `set-accent(id)`, `set-language("es"\|"en")`, `toggle-language()`, `ambient-hue` (CSS `--ambient-hue`, set it from Home/InstanceHub), `palette-open`, `account-popover-open`, `pip-log-open`, `pip-log-pinned`, `wizard-open` (Home's instance wizard; the palette sets it), `modal-depth` (Modal maintains it; hotkeys off while > 0), `hide-hotkeys`, `toast(kind, text, href)`, update-CTA placeholders (`update-status`, `update-version`, `update-progress`, `install-update()`). |
+| `Shell` | `set-theme-mode("dark"\|"light"\|"system")`, `toggle-theme()`, `set-accent(id)`, `set-language("es"\|"en")`, `toggle-language()`, `ambient-hue` (CSS `--ambient-hue`, set it from Home/InstanceHub), `palette-open`, `account-popover-open`, `pip-log-open`, `pip-log-pinned`, `wizard-open` (Home's instance wizard; the palette sets it), `modal-depth` (Modal maintains it; hotkeys off while > 0), `hide-hotkeys`, `toast(kind, text, href)`, update CTA (`update-status`: `"idle" / "available" / "downloading" / "ready" / "error"`, `update-version`, `update-progress`, `install-update()`) driven by `src/updater.rs`. |
 | `Session` | Discord: `status`, `show-gate`, `user-name`, `user-avatar`, `authenticating`, `auth-error`; `login-discord()`, `continue-anonymous()`, `logout()`. |
 | `Util` | pure helpers: `initial(name)`, `name-hue(name, hue)`, `format-bytes(n)`, `relative-time(ms-or-iso, lang)`, `format-memory(mb)`. |
 | `PaletteState` | command palette model (shell only). |
@@ -332,7 +337,7 @@ Shell components (foundation): `TopChrome` (+ `ThemeToggle`, `LanguageToggle`),
 | lib/stores.ts launchLog (ring buffers) | src/pages/home_instances.rs | home-instances |
 | lib/format.ts | src/util.rs + Util | foundation |
 | lib/dialog.ts, /api/pick-* | src/dialogs.rs | foundation |
-| lib/updater.svelte.ts | Shell.update-* placeholders (not ported) | later |
+| lib/updater.svelte.ts | `src/updater.rs` + `espectral_engine::updater` | done |
 | pages/Home + HorizonRail/Tile, TelemetryCapsule, InstanceWizardModal, MrpackModal, DryRunModal | ui/pages/home-instances/home.slint (+ your files) | home-instances |
 | pages/InstanceHub | ui/pages/home-instances/instance-hub.slint | home-instances |
 | components/PipLogDrawer | ui/pages/home-instances/pip-log.slint | home-instances |
@@ -500,7 +505,7 @@ Every reference screenshot was re-taken with the Slint app
 | AccountPopover | done | |
 | Settings (`#/settings`) | done | incl. "Acceso para agentes" (MCP): toggle, safety rules, JSON/TOML config copy, token path + rotate, allowlist editor. Deliberate difference: the blocked-host warning also catches `host:port` forms (`play.uhce.top:25565`), which the Svelte check let through |
 | Donations (`#/donaciones`) | done | |
-| Updater (lib/updater) | missing | `Shell.update-*` placeholders only |
+| Updater (lib/updater) | done | `native/app/src/updater.rs` + `espectral_engine::updater`: boot check 30 s after start, re-check every 6 h, minisign-verified download, Windows NSIS `/P /R /UPDATE`, Linux `pkexec dpkg -i` + relaunch |
 
 Known cosmetic differences: the Home tile's ghost version watermark is a bit
 more visible than in the reference; the wizard dialog sits a little higher.

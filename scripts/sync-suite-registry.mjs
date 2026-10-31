@@ -3,11 +3,12 @@
  * sync-suite-registry.mjs — copy the canonical Suite registry into the mod jar
  * sources and generate the mod's language files from it.
  *
- * Single source of truth: `src/engine/suite-registry.json` (frozen, owned by
- * the launcher). This script derives everything the mod ships:
+ * Single source of truth: `native/engine/data/suite-registry.json` (frozen,
+ * owned by the launcher, compiled into the engine). This script derives
+ * everything the mod ships:
  *   - `branding-mod/.../assets/espectral-menu/suite-registry.json` (verbatim copy)
  *   - `branding-mod/.../assets/espectral-menu/cosmetics-catalog.json`
- *     (byte-identical copy of `src/engine/cosmetics-catalog.json`)
+ *     (byte-identical copy of `native/engine/data/cosmetics-catalog.json`)
  *   - `branding-mod/.../assets/espectral-menu/lang/en_us.json` (English strings)
  *   - `branding-mod/.../assets/espectral-menu/lang/es_es.json` (Spanish strings)
 
@@ -19,16 +20,16 @@
  * keys, 2-space indent, trailing newline); the freshness test in
  * `tests/suite-registry.test.mjs` regenerates the same bytes.
  *
- * Run with the bundled node:
- *   "/usr/lib/Espectral Client/node-bin/node" scripts/sync-suite-registry.mjs
+ * Run with Node 24+:
+ *   node scripts/sync-suite-registry.mjs
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const REGISTRY_SOURCE = path.join(REPO_ROOT, 'src/engine/suite-registry.json');
-export const CATALOG_SOURCE = path.join(REPO_ROOT, 'src/engine/cosmetics-catalog.json');
+export const REGISTRY_SOURCE = path.join(REPO_ROOT, 'native/engine/data/suite-registry.json');
+export const CATALOG_SOURCE = path.join(REPO_ROOT, 'native/engine/data/cosmetics-catalog.json');
 const MENU_ASSETS = path.join(REPO_ROOT, 'branding-mod/src/main/resources/assets/espectral-menu');
 export const DEST_REGISTRY = path.join(MENU_ASSETS, 'suite-registry.json');
 export const DEST_CATALOG = path.join(MENU_ASSETS, 'cosmetics-catalog.json');
@@ -193,7 +194,7 @@ export function buildLangMaps(doc, extra = readExtraStrings()) {
       if (registryKeys.has(key)) {
         throw new Error(
           `branding-mod/lang-extra.json redeclares registry-owned key '${key}' (${lang}); ` +
-            'edit src/engine/suite-registry.json instead',
+            'edit native/engine/data/suite-registry.json instead',
         );
       }
     }

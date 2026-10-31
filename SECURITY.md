@@ -25,9 +25,18 @@ to your user profile can use it.
 
 ## Local engine
 
-The launcher's engine listens on `127.0.0.1:4199` only. It requires a custom request header on
-cross-origin requests, enforces a Host allowlist, and caps request bodies, so a web page you visit
-cannot drive your launcher.
+The launcher is a single native process: the engine runs inside it, so there is no IPC surface
+between a shell and a background server any more. Two small loopback listeners remain, both bound to
+`127.0.0.1` only:
+
+- the in-game mod bridge and the Discord OAuth redirect (`127.0.0.1:4199`, `ESPECTRAL_PORT`
+  overrides), guarded by the Host allowlist, a required `x-espectral-client` header on non-GET
+  requests and per-launch bridge tokens;
+- the agent API used by `espectral-client --mcp` and by an external MCP client, which additionally
+  requires a bearer token from `<data dir>/agent-token` (0600) and is refused entirely while agent
+  access is off.
+
+Requests are body-capped, so a web page you visit cannot drive your launcher.
 
 One known limitation: like every Minecraft launcher, the session token is passed to the game as a
 command-line argument, where other processes running as your user can read it. This is required by

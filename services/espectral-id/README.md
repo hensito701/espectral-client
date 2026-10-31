@@ -53,7 +53,7 @@ ESPECTRAL_ID_ENV=E:/NPv2/espectral-backup-2026-08-05/local-workspace/connections
 
 Idempotent; `.env` is written 0600 via ssh stdin and never printed
 (`VALUES=refresh` to overwrite an existing one). The script re-syncs
-`app/cosmetics-catalog.json` from `src/engine/cosmetics-catalog.json`
+`app/cosmetics-catalog.json` from `native/engine/data/cosmetics-catalog.json`
 (byte-identical; `tests/test_catalog_sync.py` enforces it).
 
 ## DNS / TLS / firewall (one-time, already applied)

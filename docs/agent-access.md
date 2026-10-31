@@ -17,6 +17,11 @@ machine (`127.0.0.1`, guarded by a private token).
 3. Keep the launcher open while the agent works — the agent talks to it, and
    it talks to the game.
 
+The command in that config is the launcher itself: `espectral-client.exe
+--mcp` on Windows, `espectral-client --mcp` on Linux. It has to be the real
+path to the installed binary — if you move or reinstall Espectral Client,
+re-copy the block.
+
 **Rotate token** invalidates the old one at once; connected agents keep
 working because the MCP server re-reads the token file on every call.
 

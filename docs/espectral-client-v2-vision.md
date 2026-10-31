@@ -1,5 +1,10 @@
 # Espectral Client v2 — Product Vision and Grand Plan
 
+> **Historical design note.** Written while the launcher was the Tauri shell plus a
+> Node engine (both deleted in **1.7.0**). `src/engine/…`, `src-tauri/…` and the
+> HTTP route names below are history; the live code is `native/engine` +
+> `native/app`. Numbers and measurements are from the 1.6.x builds.
+
 **Status:** Approved product and engineering vision  
 **Date:** 2026-09-11
 

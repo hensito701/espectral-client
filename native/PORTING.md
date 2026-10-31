@@ -1,37 +1,51 @@
 # Porting the engine to Rust — foundation & cluster guide
 
-Branch `rust-native`. The Node engine (`src/engine/*.mjs`) is being rewritten
-as the Rust library crate **`espectral-engine`** (`native/engine`, lib
-`espectral_engine`). A later phase adds a Slint UI that calls it directly — no
-webview, no Node, no internal HTTP. `native/app` (`espectral-client` bin) is the
-native Slint UI that links the engine — see `native/app/UI-PORTING.md`.
+Branch `rust-native`. The Node engine (`src/engine/*.mjs`) was rewritten as the
+Rust library crate **`espectral-engine`** (`native/engine`, lib
+`espectral_engine`). The Slint UI that calls it directly — no webview, no Node,
+no internal HTTP — is `native/app` (`espectral-client` bin); see
+`native/app/UI-PORTING.md`.
 
-**Reference implementation:** `src/engine`, `src/ui`, `src-tauri`, `tests/` —
-never modify or delete them. Read the JS module **and** its tests before
-porting it. Parity is the goal: same on-disk layout and JSON formats (existing
-users' data keeps working), same endpoints, same SHA-1 verification, same JVM
-argv, same Java tier selection, same AOT cache keys.
+**The port is complete: 1.7.0 shipped the Rust launcher as the only launcher.**
+The JS engine, the Tauri shell (`src-tauri/`) and the Svelte UI (`src/ui/`) were
+deleted in that release; the only JavaScript left is
+`src/engine/{accounts,config,error}.mjs`, kept solely because the protected
+`scripts/import-lunar-account.mjs` imports them. The JS originals named
+throughout this document ("port of `X.mjs`") describe where a module came from;
+they no longer exist in the tree — read them from git history (last released
+version: tag `v1.6.3`) when a parity question comes up.
 
-> **Status (integration on `rust-native`, agent access on `rust-agent`):** all
-> five clusters are merged and wired, and the *agent access* feature that
-> landed upstream afterwards (c22767f + the MCP tool texts of 5fc98f7:
-> routes/agent.mjs, agent.mjs, ffmpeg.mjs, mcp.mjs, capture tools in mods.mjs,
-> launch options) is ported too — see [Agent access](#agent-access). Every route
-> of the JS engine has a working `Engine` method or loopback HTTP handler. On-disk compatibility was
-> checked both ways against a data dir written by the JS engine
+Parity is the goal: same on-disk layout and JSON formats (existing users' data
+keeps working), same SHA-1 verification, same JVM argv, same Java tier
+selection, same AOT cache keys.
+
+> **Status:** all five clusters are merged and wired, and the *agent access*
+> feature that landed upstream afterwards (c22767f + the MCP tool texts of
+> 5fc98f7: routes/agent.mjs, agent.mjs, ffmpeg.mjs, mcp.mjs, capture tools in
+> mods.mjs, launch options) is ported too — see [Agent access](#agent-access).
+> Every route of the old JS engine has a working `Engine` method or loopback
+> HTTP handler. On-disk compatibility was checked both ways against a data dir
+> written by the JS engine
 > (`cargo run -p espectral-engine --example data_dir_probe -- <dir> [--write]`,
 > agent config + token included).
 
-## Verify (every cluster, before merge)
+## Verify (before merging a change)
 
 ```sh
+# one-time, for the Windows check
+rustup target add x86_64-pc-windows-gnu   # + gcc-mingw-w64-x86-64, binutils-mingw-w64-x86-64
+
 cd native
 cargo build
 cargo test --workspace
-cargo check --target x86_64-pc-windows-gnu --all-targets
-cargo clippy --workspace --all-targets  # keep it warning-free (also with --target x86_64-pc-windows-gnu)
+cargo check -p espectral-client --target x86_64-pc-windows-gnu  # gnu target: mingw-w64 required (linker + icon resource)
+cargo clippy --workspace --all-targets -- -D warnings  # keep it warning-free (also with --target x86_64-pc-windows-gnu)
 cargo fmt --all                       # rustfmt.toml: max_width 120
 ```
+
+CI (`.github/workflows/ci.yml`) runs `cargo test --workspace` + `cargo clippy
+-- -D warnings` on Linux, the windows-gnu `cargo check` cross-job, and
+`cargo test -p espectral-engine` on Windows. No npm/Node step is involved.
 
 Use the default `CARGO_TARGET_DIR` (`<worktree>/native/target`) — never share
 a target dir across worktrees.
@@ -45,10 +59,11 @@ native/
     lib.rs            module list (every module already declared — do not reorder)
     engine.rs         Engine (Arc inner), EngineOptions, start/shutdown, ActiveInstances
     api/              the facade: one `impl Engine` block per cluster (+ core.rs)
-    types.rs          shared cross-cluster + API JSON types (mirror of src/ui/src/lib/types.ts)
+    types.rs          shared cross-cluster + API JSON types
     error.rs events.rs paths.rs platform.rs config.rs download.rs util.rs rules.rs
     stats.rs ziputil.rs nbt.rs fingerprint.rs onboarding.rs test_support.rs
-    <domain>.rs       one file per JS module (stubs owned by a cluster)
+    <domain>.rs       one file per domain (historically one per JS module)
+  engine/data/        suite-registry.json + cosmetics-catalog.json (include_str!)
   engine/tests/       integration tests (facade.rs is a template)
   app/                the native Slint UI binary (see app/UI-PORTING.md)
   skin3d/             espectral-skin3d: CPU 3D skin renderer used by the UI
@@ -99,11 +114,12 @@ your own module (`src/resolver.rs` + `src/resolver/fabric.rs` with
 | presence.mjs | `presence.rs` | identity-discord | **ported** |
 | bridge.mjs | `bridge.rs` | identity-discord | **ported** |
 | client.mjs (+ suite-registry.json) | `client.rs` | identity-discord | **ported** |
-| cosmetics-catalog.json | `include_str!` from `src/engine/` in `cosmetics.rs` | accounts-skins | — |
+| cosmetics-catalog.json | `include_str!` from `native/engine/data/` in `cosmetics.rs` | accounts-skins | — |
 | *(new)* loopback HTTP listener | `loopback.rs` | identity-discord + agent | **ported** (axum: bridge/visible, discord/callback, `/api/agent/*`, `/api/bridge/agent/*`) |
 | agent.mjs, routes/agent.mjs (upstream c22767f) | `agent.rs`, `api/agent.rs` (UI routes), `loopback.rs` (HTTP routes) | agent | **ported** |
 | ffmpeg.mjs (upstream c22767f) | `ffmpeg.rs` | agent | **ported** |
 | mcp.mjs (MCP shim) | `mcp.rs` + `mcp/tools.json` (`include_str!`, dumped verbatim from the JS `toolList()`) | agent | **ported** (stdio server run as `espectral-client --mcp`; no Node needed) |
+| accounts.mjs, config.mjs, error.mjs | `accounts.rs`, `config.rs`, `error.rs` | foundation | **ported** — the JS files themselves are kept for `scripts/import-lunar-account.mjs` only |
 
 Facade files: `api/game_resolve.rs`, `api/game_launch.rs`, `api/content.rs`,
 `api/accounts_skins.rs`, `api/identity_discord.rs` — each owned by the
@@ -290,15 +306,22 @@ checked at integration.
   failed once in about eight full-suite runs (adopt found no live session);
   it passes alone and in reruns. Likely a timing issue reading
   `/proc/<pid>/cmdline` under load; not root-caused.
-- The JS reference moved during the port (c22767f refactored
-  routes/launch.mjs into `startLaunch` for the agent API). The plain launch
-  path was spot-checked, not re-audited line by line against the new file.
-- Packaging must stage `assets/branding` next to the binary (`<exe>/branding`
-  or `<exe>/resources/branding`); otherwise branding falls back to the repo
-  path baked in at compile time (`CARGO_MANIFEST_DIR`).
-- `src/ui/src/lib/types.ts` marks some fields non-null that the JS (and now
-  Rust) send as `null` (`ModEntry.project_slug/version_number/version_id/sha1/size`,
-  `ServerStatus.ip/version/software`); the Slint UI must treat them as optional.
+- The JS reference moved late in the port (c22767f refactored
+  routes/launch.mjs into `startLaunch` for the agent API). The plain launch path
+  was spot-checked, not re-audited line by line against the last JS version;
+  the JS tree is now gone (read it at tag `v1.6.3` in git history).
+- ~~Packaging must stage `assets/branding` next to the binary~~ — **fixed in
+  1.7.0.** Both installers now stage `assets/branding/` as a `branding/` dir
+  beside the exe (`%LOCALAPPDATA%\Espectral Client\branding` on Windows,
+  `/usr/lib/Espectral Client/branding` on Linux) and the engine looks there
+  first. The `<exe>/resources/branding` path is kept only so installs staged by
+  hand during the port keep working; the `CARGO_MANIFEST_DIR` fallback still
+  exists for `cargo run` from the repo and is useless in an install.
+- The old Svelte typing (`src/ui/src/lib/types.ts`, deleted) marked some fields
+  non-null that the engine sends as `null`
+  (`ModEntry.project_slug/version_number/version_id/sha1/size`,
+  `ServerStatus.ip/version/software`); the Slint UI must treat them as
+  optional. `types.rs` still encodes that rule.
 
 ## Cross-cluster contract functions
 
@@ -347,7 +370,8 @@ your merge and flag it).
 
 ## Shared types (`types.rs`)
 
-API shapes (mirror `src/ui/src/lib/types.ts` field-for-field): `VersionEntry
+API shapes (field-for-field compatible with the 1.6.x JSON, so old data dirs
+and `latest.json` keep working): `VersionEntry
 VersionManifest VersionInfo JvmInfo AppConfig InstanceSummary InstanceDetail
 ModEntry ModPresetInfo ModrinthProject ModrinthSearchResult ModRef
 ModInstallPlan ServerEntry ServerStatus ImportSource ImportResult LunarInfo

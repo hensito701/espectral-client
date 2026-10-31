@@ -1,6 +1,6 @@
 //! Port of `src/engine/client.mjs` — the Espectral Client mod config
 //! `<gameDir>/config/espectral-client.json` (schema 2): suite registry
-//! (`src/engine/suite-registry.json`, compiled in), feature defaults, macros,
+//! (`native/engine/data/suite-registry.json`, compiled in), feature defaults, macros,
 //! personalization (theme / hud_theme / background / reduced_motion /
 //! tagline), seeding at launch, PATCH reconciliation.
 //!
@@ -34,9 +34,9 @@ pub use crate::config::ACCENT_IDS as THEME_IDS;
 pub const HUD_THEME_IDS: [&str; 4] = ["cristal", "oro", "minimo", "pixel"];
 pub const TAGLINE_MAX: usize = 40;
 
-/// `src/engine/suite-registry.json` — shared verbatim with the mod jar.
-pub const SUITE_REGISTRY_JSON: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/engine/suite-registry.json"));
+/// `native/engine/data/suite-registry.json` — shared verbatim with the mod jar
+/// (`scripts/sync-suite-registry.mjs` copies it into branding-mod).
+pub const SUITE_REGISTRY_JSON: &str = include_str!("../data/suite-registry.json");
 
 const MAX_MACROS: usize = 32;
 const MAX_MACRO_NAME: usize = 40;

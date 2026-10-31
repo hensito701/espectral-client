@@ -26,12 +26,13 @@ Microsoft account.
 
 ## 2. Give the client ID to the launcher
 
-Resolution order (first hit wins — see `clientId()` in `src/engine/msauth.mjs`):
+Resolution order (first hit wins — see `client_id()` in `native/engine/src/msauth.rs`):
 
 1. **`msa_client_id` in `config.json`** — works everywhere, including the installed desktop app
-   (the Tauri shell does not forward arbitrary env vars to the engine). The file lives at
-   `<dataDir>/config.json` (`data/config.json` next to the repo in dev, or next to the installed
-   engine; `ESPECTRAL_DATA_DIR` overrides the location). Add the key at the top level:
+   (it is read from the file, so nothing needs an env var). The file lives at
+   `<dataDir>/config.json` — `%LOCALAPPDATA%\espectral-client\config.json` on Windows,
+   `~/.local/share/espectral-client/config.json` on Linux, `<repo>/data/config.json` in dev;
+   `ESPECTRAL_DATA_DIR` overrides the location. Add the key at the top level:
 
    ```jsonc
    {
@@ -40,11 +41,11 @@ Resolution order (first hit wins — see `clientId()` in `src/engine/msauth.mjs`
    }
    ```
 
-2. **`ESPECTRAL_MSA_CLIENT_ID` environment variable** — convenient for the dev/browser flow:
+2. **`ESPECTRAL_MSA_CLIENT_ID` environment variable** — convenient when running from the source tree:
 
    ```powershell
    $env:ESPECTRAL_MSA_CLIENT_ID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-   npm run dev
+   cd native; cargo run --release -p espectral-client
    ```
 
 3. Baked default (Espectral's app — pending approval).

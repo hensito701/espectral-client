@@ -1,7 +1,8 @@
 # Espectral Client
 
-Open-source Minecraft launcher for [Espectral](https://espectral.uhce.top). Windows desktop app
-(Tauri 2 shell) around a plain-Node engine, with a Svelte 5 interface in Spanish and English.
+Open-source Minecraft launcher for [Espectral](https://espectral.uhce.top). A native desktop app
+written in Rust, with a [Slint](https://slint.dev) interface in Spanish and English — no WebView, no
+Node.js runtime.
 
 Licensed **GPL-3.0** (see [LICENSE](LICENSE)).
 
@@ -17,7 +18,10 @@ Licensed **GPL-3.0** (see [LICENSE](LICENSE)).
 - Microsoft accounts (device-code sign-in) and offline accounts.
 - Imports your existing settings — `options.txt`, server list — from a vanilla `.minecraft`
   or another launcher's profile.
-- Discord presence, live launch progress, and per-instance mod management.
+- Discord presence, live launch progress, per-instance mod management and the in-game Espectral
+  Suite.
+- Optional **agent access**: a local MCP server (`espectral-client --mcp`) an AI agent can drive.
+  See [docs/agent-access.md](docs/agent-access.md).
 
 ### Faster boot on Java 25
 
@@ -46,8 +50,9 @@ It is deliberately small and still early — the launcher is the mature half of 
 
 ## Install
 
-**Users:** download the installer from [espectral.uhce.top/client](https://espectral.uhce.top/client) and run it.
-The app is self-contained; it bundles its own Node runtime and manages its own Java.
+**Users:** download the installer from [espectral.uhce.top/client](https://espectral.uhce.top/client)
+and run it (Windows `EspectralClient_<version>_x64-setup.exe`) or the `.deb` (Linux). The app is
+self-contained: it needs neither Node.js nor WebView2, and it manages its own Java.
 
 The installer is not code-signed, so Windows SmartScreen may warn on first run.
 
@@ -55,69 +60,90 @@ The installer is not code-signed, so Windows SmartScreen may warn on first run.
 
 ## Build from source
 
+Requirements: a Rust toolchain (1.80+, [rustup](https://rustup.rs)) and, on Linux, the Slint/winit
+development packages (`libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-dev
+libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev`).
+
 ```bash
 git clone https://github.com/hensito701/espectral-client.git
 cd espectral-client
-npm install
-npm run dev          # engine on http://127.0.0.1:4199, opens the UI in your browser
+cd native
+cargo run --release -p espectral-client      # builds and starts the launcher
 ```
-
-The engine is plain Node ESM (`node:http`, one runtime dependency: `extract-zip`). Node 24+ is
-recommended. `ESPECTRAL_PORT` overrides the port; `ESPECTRAL_DATA_DIR` overrides the data directory.
 
 | Task | Command |
 |---|---|
-| Engine + browser UI | `npm run dev` |
-| UI dev server (Vite) | `npm run ui` |
-| Build the UI | `npm run build` |
-| Desktop shell (dev) | `npm run tauri:dev` |
-| Tests | `npm test` |
-| Type/template check | `npm run check` |
+| Build + run the launcher | `cargo run --release -p espectral-client` (from `native/`) |
+| All tests | `cargo test --workspace` |
+| Lint (warning-free gate) | `cargo clippy --workspace --all-targets -- -D warnings` |
+| Windows cross-check | `cargo check -p espectral-client --target x86_64-pc-windows-gnu` |
+| JS tests (config/accounts + Suite registry) | `node --test tests/*.test.mjs` |
 | Client mod (Java 21) | `cd branding-mod && ./gradlew build` |
 | Brand companion, NeoForge (Java 21) | `cd branding-mod-nf && ./gradlew build` |
+| Rebuild + ship the mod jars | `npm run deploy:mod` |
 
-### Windows installer
+`ESPECTRAL_DATA_DIR` overrides the data directory, `SLINT_BACKEND=winit-software` falls back to the
+software renderer, and `SLINT_BACKEND=winit-femtovg` forces OpenGL.
 
-`scripts/build-windows-exe.sh` cross-compiles the Windows binary and NSIS installer from Linux or
-WSL. It needs, once: rustup with the `x86_64-pc-windows-gnu` target, mingw-w64, and NSIS 3.x.
-Output lands in `src-tauri/target/x86_64-pc-windows-gnu/release/`.
+### Packaging
 
-The desktop shell targets Windows only — port reclaim shells out to `netstat`/`taskkill`, and
-bundling is NSIS-only. The engine, UI and mod are portable.
+Releases are built locally (not in CI) from this Linux checkout:
+
+| Platform | Script | Output |
+|---|---|---|
+| Windows | `scripts/build-windows-exe.sh` | `build/windows/EspectralClient_<ver>_x64-setup.exe` (+ `.sig`) |
+| Linux | `scripts/build-linux-deb.sh` | `build/linux/espectral-client_<ver>_amd64.deb` (+ `.sig`) |
+| Signing | `scripts/sign-update.sh <file>` | `<file>.sig` (minisign, `tauri signer` format) |
+
+The Windows script cross-compiles for `x86_64-pc-windows-gnu` (mingw-w64 + NSIS 3.x) and needs the
+`x86_64-pc-windows-gnu` rustup target. The Linux `.deb` installs `/usr/bin/espectral-client` and
+`/usr/lib/Espectral Client/{espectral-client,branding/}`. Both stage `assets/branding/` into a
+`branding/` folder next to the binary — that is where the launcher looks first.
+
+Both installers are drop-in replacements for the 1.6.x Tauri build: same Windows install folder,
+same Apps & Features entry, same update feed and signature format.
 
 ---
 
 ## Architecture
 
 ```
-┌────────────────────── Tauri 2 shell (src-tauri/, Rust) ──────────────────────┐
-│ spawns and supervises the engine · single-instance lock · .mrpack handler    │
-└──────────────┬───────────────────────────────────────────────────────────────┘
-               │ 127.0.0.1:4199 — REST + SSE, loopback only
-┌──────────────▼──────────────┐     ┌──────────────────────────────────────────┐
-│ Node engine (src/engine/)   │◄────│ Svelte 5 UI (src/ui/)                    │
-│ versions · mods · accounts  │HTTP │ Vite + TypeScript, ES/EN, live progress  │
-│ launch · AOT · presence     │     └──────────────────────────────────────────┘
-└──────────────┬──────────────┘
-               │ spawns java
-┌──────────────▼──────────────┐     ┌──────────────────────────────────────────┐
-│ Minecraft (Fabric/NeoForge) │◄───►│ Espectral client mod (branding-mod/)     │
-└─────────────────────────────┘     └──────────────────────────────────────────┘
+┌────────────────────────────── native/ (Cargo workspace) ────────────────────────────┐
+│  app/      espectral-client — the binary: Slint UI, pages, theme, i18n (ES/EN)      │
+│            ↓ links directly (no IPC, no HTTP, no webview)                           │
+│  engine/   espectral-engine — resolver, downloads, accounts, launch, AOT, mods,     │
+│            instances, presence, updater, agent API/MCP server                       │
+│  skin3d/   espectral-skin3d — CPU 3D skin renderer used by the UI                   │
+└──────────────┬──────────────────────────────────────────────────────────────────────┘
+               │ spawns java (the game outlives the launcher)
+┌──────────────▼──────────────┐     ┌─────────────────────────────────────────────────┐
+│ Minecraft (Fabric/NeoForge) │◄───►│ Espectral client mod (branding-mod/)            │
+└─────────────────────────────┘     └─────────────────────────────────────────────────┘
 ```
 
-- **`src/engine/`** — resolver and version handling, Modrinth and `.mrpack` support, mod management,
-  accounts, launch and AOT training, Discord presence. One route module per area under `routes/`.
-- **`src/ui/src/`** — pages, one typed fetch wrapper per endpoint in `lib/api.ts`.
-- **`src-tauri/`** — thin Rust wrapper: engine lifecycle, port reclaim, window.
+- **`native/engine/`** (`espectral-engine`) — everything that is not UI: version resolution, Modrinth
+  and `.mrpack` support, mod management, accounts, launch and AOT training, Discord presence,
+  game-session adoption, the updater, and the agent/MCP surface. One module per area; the API
+  facade lives in `src/api/`.
+- **`native/app/`** (`espectral-client`) — the Slint UI. Pages live in `ui/pages/`, strings in
+  `i18n/*.json` (every key in both `es` and `en`; `build.rs` lints them), platform glue in `src/`.
+  `--mcp` turns the same binary into a stdio MCP server.
+- **`native/skin3d/`** (`espectral-skin3d`) — software rasterizer for the 3D skin previews, so no
+  GPU-specific code is needed for them.
 - **`branding-mod/`** — shared Java source with per-version overlays behind a compatibility shim.
 - **`branding-mod-nf/`** — brand-only NeoForge companion (MC 1.21.1): same handshake contract, no menu.
+
+Porting notes and the original JS→Rust conventions are kept in [native/PORTING.md](native/PORTING.md)
+and [native/app/UI-PORTING.md](native/app/UI-PORTING.md).
 
 ---
 
 ## Data directory
 
-`<repo>/data` in development, next to the installed engine in the desktop app. Override with
-`ESPECTRAL_DATA_DIR`.
+`%LOCALAPPDATA%\espectral-client` on Windows, `$XDG_DATA_HOME/espectral-client` (usually
+`~/.local/share/espectral-client`) on Linux. `<repo>/data` in development. Override with
+`ESPECTRAL_DATA_DIR`. This is the same folder 1.6.x used, so accounts, instances and settings carry
+over.
 
 ```
 data/
@@ -146,8 +172,16 @@ Account credentials stay on your machine. See [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
-Issues and pull requests are welcome. Please run `npm test` and `npm run check` before opening a PR;
-CI runs both on Linux and Windows.
+Issues and pull requests are welcome. Before opening a PR run, from `native/`:
+
+```sh
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all
+```
+
+CI runs those on Linux, cross-checks the Windows target, and runs the engine tests natively on
+Windows.
 
 ## License
 
