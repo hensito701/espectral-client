@@ -355,11 +355,12 @@ public final class Compat {
     /**
      * Title-menu primitive: horizontal-gradient text drawn at a uniform scale.
      * Translates to ({@code x}, {@code y}), scales, draws at the origin through
-     * {@link #uiTextGradient} (with the vanilla drop shadow), then restores
+     * {@link #uiTextGradient} (with a hard {@code shadowArgb} shadow one
+     * game pixel down-right), then restores
      * the pose.
      */
     public static void uiTextScaledGradient(Object gfx, net.minecraft.client.gui.Font font,
-            String text, int x, int y, float scale, int argbLeft, int argbRight) {
+            String text, int x, int y, float scale, int argbLeft, int argbRight, int shadowArgb) {
         if (!(gfx instanceof net.minecraft.client.gui.GuiGraphics graphics)
                 || font == null || text == null) {
             return;
@@ -367,9 +368,11 @@ public final class Compat {
         graphics.pose().pushMatrix();
         graphics.pose().translate(x, y);
         graphics.pose().scale(scale, scale);
-        uiTextGradient(graphics, font,
-                net.minecraft.network.chat.Component.literal(text),
-                0, 0, argbLeft, argbRight, true);
+        net.minecraft.network.chat.Component line = net.minecraft.network.chat.Component.literal(text);
+        // Hard shadow one game pixel down-right in the given colour (the site's
+        // purple title shadow), instead of vanilla's darkened-text shadow.
+        uiTextGradient(graphics, font, line, 1, 1, shadowArgb, shadowArgb, false);
+        uiTextGradient(graphics, font, line, 0, 0, argbLeft, argbRight, false);
         graphics.pose().popMatrix();
     }
 
