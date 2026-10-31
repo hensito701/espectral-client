@@ -1,7 +1,8 @@
 # Espectral Client — native (Rust) workspace.
 #
 # engine/  espectral-engine: the launcher engine as a library (port of src/engine/*.mjs)
-# app/     espectral-client: the native binary (Slint UI lands in a later phase)
+# app/     espectral-client: the native binary (Slint UI, see app/UI-PORTING.md)
+# skin3d/  espectral-skin3d: software 3D Minecraft skin renderer used by the UI
 #
 # Every third-party dependency is pinned HERE, once. Member crates reference
 # them with `dep = { workspace = true }` so the parallel porting worktrees can
@@ -10,7 +11,7 @@
 
 [workspace]
 resolver = "2"
-members = ["engine", "app"]
+members = ["engine", "app", "skin3d"]
 
 [workspace.package]
 # Mirrors package.json "version" (the JS engine reports it from /api/health).
@@ -84,6 +85,26 @@ windows-sys = { version = "0.59", features = [
 
 # tests
 tempfile = "3"
+
+# ---- native UI (app/) -------------------------------------------------------
+# Slint is GPL-3.0 / royalty-free / commercial; this project is GPL-3.0-only.
+# winit backend with the femtovg (OpenGL) renderer, plus the software renderer
+# as a fallback (SLINT_BACKEND=winit-software) and for headless screenshots.
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "software-renderer-path", "software-renderer-systemfonts"] }
+slint-build = "=1.18.1"
+# Native file dialogs (xdg-desktop-portal on Linux, Win32 on Windows).
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
+# Open URLs / folders with the system handler.
+open = "5"
+# PNG decode (engine PNG bytes -> slint::Image) and encode (headless screenshots).
+png = "0.18"
+espectral-skin3d = { path = "skin3d" }
+
+# Disk budget: no debug info for third-party crates (Slint + winit + femtovg
+# are large), and a light optimization so the UI is usable in dev builds.
+[profile.dev.package."*"]
+debug = false
+opt-level = 1
 
 [profile.release]
 lto = "thin"

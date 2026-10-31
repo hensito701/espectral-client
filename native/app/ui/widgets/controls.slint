@@ -1,0 +1,389 @@
+// Form controls used across pages: Toggle (switch), Checkbox, Slider,
+// Segmented (ES|EN, Oscuro|Claro|Sistema, filter pills), Tabs (InstanceHub
+// workbench tabs) and Select (dropdown).
+//
+//     Toggle { checked <=> root.flag; toggled(v) => { ... } }
+//     Slider { minimum: 1024; maximum: 16384; step: 512; value <=> root.mem; released(v) => { ... } }
+//     Segmented { items: ["ES", "EN"]; current: T.lang == "es" ? 0 : 1; selected(i) => { ... } }
+//     Tabs { items: [{ label: T.tr("instance.tabConfig"), icon: Icons.settings }, ...]; current <=> tab; }
+//     Select { options: [{ value: "a", label: "A" }]; current-index: 0; selected(i, v) => { ... } }
+
+import { Theme } from "../theme.slint";
+import { Icon, Icons } from "icon.slint";
+
+export component Toggle inherits Rectangle {
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled(checked: bool);
+
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: checked ? Theme.accent : Theme.surface-up-solid;
+    border-width: 1px;
+    border-color: checked ? Theme.accent.with-alpha(0.6) : Theme.border;
+    opacity: enabled ? 1 : 0.45;
+    animate background { duration: Theme.dur-fast; }
+
+    knob := Rectangle {
+        width: 16px;
+        height: 16px;
+        y: 2px;
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        border-radius: 8px;
+        background: root.checked ? Theme.text-inverse : Theme.muted-strong;
+        drop-shadow-color: rgba(0, 0, 0, 0.3);
+        drop-shadow-blur: 4px;
+        drop-shadow-offset-y: 1px;
+        animate x { duration: Theme.dur-fast; easing: ease-out; }
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+export component Checkbox inherits HorizontalLayout {
+    in-out property <bool> checked;
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback toggled(checked: bool);
+    spacing: Theme.space-2;
+    alignment: start;
+    opacity: enabled ? 1 : 0.45;
+    VerticalLayout {
+        alignment: center;
+        Rectangle {
+            width: 18px;
+            height: 18px;
+            border-radius: Theme.radius-xs;
+            background: root.checked ? Theme.accent : Theme.card-bg-soft;
+            border-width: 1px;
+            border-color: root.checked ? Theme.accent : Theme.border;
+            if root.checked: Icon { data: Icons.check; size: 14px; color: Theme.text-inverse; weight: 3; }
+        }
+    }
+    if root.text != "": Text {
+        text: root.text;
+        color: Theme.text;
+        font-size: Theme.text-sm;
+        vertical-alignment: center;
+    }
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+export component Slider inherits Rectangle {
+    in-out property <float> value;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <float> step: 1;
+    in property <bool> enabled: true;
+    /// Every value change while dragging.
+    callback changed(value: float);
+    /// Pointer released (commit point — e.g. PATCH the engine here).
+    callback released(value: float);
+
+    height: 20px;
+    min-width: 80px;
+    horizontal-stretch: 1;
+    opacity: enabled ? 1 : 0.45;
+    property <float> ratio: maximum > minimum ? clamp((value - minimum) / (maximum - minimum), 0, 1) : 0;
+
+    track := Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.card-bg-soft;
+        border-width: 1px;
+        border-color: Theme.border;
+    }
+    Rectangle {
+        x: 0;
+        y: track.y;
+        height: track.height;
+        width: (parent.width - 16px) * root.ratio + 8px;
+        border-radius: 3px;
+        background: @linear-gradient(90deg, Theme.accent-ink 0%, Theme.accent 100%);
+    }
+    thumb := Rectangle {
+        width: 16px;
+        height: 16px;
+        y: (parent.height - self.height) / 2;
+        x: (parent.width - self.width) * root.ratio;
+        border-radius: 8px;
+        background: Theme.accent;
+        border-width: 2px;
+        border-color: Theme.surface-solid;
+        drop-shadow-color: Theme.accent.with-alpha(touch.has-hover || touch.pressed ? 0.6 : 0.35);
+        drop-shadow-blur: 8px;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        function set-from(px: length) {
+            let r = clamp((px - 8px) / max(1px, root.width - 16px), 0, 1);
+            let raw = root.minimum + r * (root.maximum - root.minimum);
+            let snapped = root.step > 0 ? round((raw - root.minimum) / root.step) * root.step + root.minimum : raw;
+            let v = clamp(snapped, root.minimum, root.maximum);
+            if v != root.value {
+                root.value = v;
+                root.changed(v);
+            }
+        }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                self.set-from(self.mouse-x);
+            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                root.released(root.value);
+            }
+        }
+        moved => {
+            if self.pressed { self.set-from(self.mouse-x); }
+        }
+    }
+}
+
+export component Segmented inherits Rectangle {
+    in property <[string]> items;
+    in-out property <int> current;
+    in property <length> font-size: Theme.text-xs;
+    /// Pixel font (ES/EN chip style).
+    in property <bool> compact: false;
+    callback selected(index: int);
+
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    preferred-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-sm;
+    background: Theme.card-bg-soft;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    row := HorizontalLayout {
+        padding: compact ? 1px : 2px;
+        spacing: 2px;
+        for item[i] in root.items: Rectangle {
+            property <bool> active: i == root.current;
+            min-width: lbl.preferred-width + (root.compact ? 8px : 12px);
+            height: lbl.preferred-height + (root.compact ? 2px : 4px);
+            border-radius: Theme.radius-xs;
+            background: active ? Theme.surface-up-solid : transparent;
+            drop-shadow-color: active ? Theme.shadow-sm-color : transparent;
+            drop-shadow-blur: active ? 6px : 0px;
+            lbl := Text {
+                text: item;
+                font-size: root.font-size;
+                font-weight: 600;
+                color: active ? Theme.accent : t.has-hover ? Theme.text : Theme.muted;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            t := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.current = i;
+                    root.selected(i);
+                }
+            }
+        }
+    }
+}
+
+export struct TabItem {
+    label: string,
+    /// Icons.* path ("" = none)
+    icon: string,
+    /// Optional trailing count badge ("" = none)
+    badge: string,
+}
+
+/// Underlined workbench tabs (InstanceHub). Keyboard: Left/Right when focused.
+export component Tabs inherits Rectangle {
+    in property <[TabItem]> items;
+    in-out property <int> current;
+    callback selected(index: int);
+
+    height: 44px;
+    border-width: 0px;
+    // bottom divider
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border;
+    }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.RightArrow && root.items.length > 0 {
+                root.current = mod(root.current + 1, root.items.length);
+                root.selected(root.current);
+                return accept;
+            }
+            if e.text == Key.LeftArrow && root.items.length > 0 {
+                root.current = mod(root.current - 1 + root.items.length, root.items.length);
+                root.selected(root.current);
+                return accept;
+            }
+            return reject;
+        }
+        HorizontalLayout {
+            spacing: Theme.space-1;
+            alignment: start;
+            for item[i] in root.items: Rectangle {
+                property <bool> active: i == root.current;
+                min-width: tab-row.preferred-width;
+                tab-row := HorizontalLayout {
+                    padding-left: Theme.space-4;
+                    padding-right: Theme.space-4;
+                    spacing: Theme.space-2;
+                    if item.icon != "": VerticalLayout {
+                        alignment: center;
+                        Icon { data: item.icon; size: 16px; color: active ? Theme.accent : tt.has-hover ? Theme.text : Theme.muted; }
+                    }
+                    Text {
+                        text: item.label;
+                        font-size: Theme.text-sm;
+                        font-weight: 600;
+                        color: active ? Theme.text : tt.has-hover ? Theme.text : Theme.muted;
+                        vertical-alignment: center;
+                    }
+                    if item.badge != "": VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            height: 18px;
+                            min-width: 18px;
+                            preferred-width: bl.preferred-width + 10px;
+                            border-radius: 9px;
+                            background: active ? Theme.accent.with-alpha(0.18) : Theme.card-bg-soft;
+                            bl := Text {
+                                text: item.badge;
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: active ? Theme.accent : Theme.muted;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    y: parent.height - 2px;
+                    height: 2px;
+                    background: active ? Theme.accent : transparent;
+                    drop-shadow-color: active ? Theme.accent.with-alpha(0.5) : transparent;
+                    drop-shadow-blur: 8px;
+                }
+                tt := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.current = i;
+                        root.selected(i);
+                        fs.focus();
+                    }
+                }
+            }
+        }
+    }
+}
+
+export struct SelectOption {
+    value: string,
+    label: string,
+}
+
+export component Select inherits Rectangle {
+    in property <[SelectOption]> options;
+    /// Index into `options` (-1 = nothing selected: shows the placeholder).
+    in-out property <int> current-index: -1;
+    in property <string> placeholder;
+    in property <bool> enabled: true;
+    callback selected(index: int, value: string);
+
+    property <string> current-label: current-index >= 0 && current-index < options.length ? options[current-index].label : "";
+
+    height: 36px;
+    min-width: 120px;
+    horizontal-stretch: 1;
+    border-radius: Theme.radius-md;
+    background: Theme.card-bg-soft;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.hover-border : Theme.border;
+    opacity: enabled ? 1 : 0.5;
+
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-2;
+        spacing: Theme.space-2;
+        Text {
+            text: root.current-label != "" ? root.current-label : root.placeholder;
+            color: root.current-label != "" ? Theme.text : Theme.muted;
+            font-size: Theme.text-sm;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        VerticalLayout {
+            alignment: center;
+            Icon { data: Icons.chevron-down; size: 14px; color: Theme.muted-strong; }
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { popup.show(); }
+    }
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: root.width;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            border-radius: Theme.radius-md;
+            background: Theme.surface-solid;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-color: Theme.shadow-lg-color;
+            drop-shadow-blur: 24px;
+            drop-shadow-offset-y: 8px;
+            VerticalLayout {
+                padding: 4px;
+                spacing: 2px;
+                for o[i] in root.options: Rectangle {
+                    height: 32px;
+                    border-radius: Theme.radius-sm;
+                    background: i == root.current-index ? Theme.accent.with-alpha(0.14) : ot.has-hover ? Theme.surface-up : transparent;
+                    HorizontalLayout {
+                        padding-left: Theme.space-3;
+                        padding-right: Theme.space-3;
+                        Text {
+                            text: o.label;
+                            color: i == root.current-index ? Theme.accent : Theme.text;
+                            font-size: Theme.text-sm;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                    ot := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.current-index = i;
+                            popup.close();
+                            root.selected(i, o.value);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

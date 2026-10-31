@@ -1,0 +1,14 @@
+// OWNER: home-instances agent. Port of pages/Home.svelte (+ HorizonRail,
+// HorizonTile, TelemetryCapsule, InstanceWizardModal, MrpackModal, DryRunModal).
+// Keep the exported component name and the empty interface used by app.slint.
+
+import { PlaceholderPage, T } from "../../widgets.slint";
+import { HomeBridge } from "api.slint";
+
+export component HomePage inherits Rectangle {
+    PlaceholderPage {
+        title: T.tr1("home.greetingEvening", "name", "Jugador");
+        subtitle: "#/";
+        source: "src/ui/src/pages/Home.svelte";
+    }
+}

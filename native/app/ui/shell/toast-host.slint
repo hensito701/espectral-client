@@ -1,0 +1,103 @@
+// Toast host — port of components/Toast.svelte ("advancement" style:
+// LOGRO DESBLOQUEADO / AVISO DEL SISTEMA / NOTIFICACIÓN). FOUNDATION-OWNED.
+// Push toasts from Rust with `toast::push(kind, text, href)` or from Slint with
+// `Shell.toast(ToastKind.ok, "...", "")`. Auto-dismiss after 6 s (Rust timer).
+
+import { Theme } from "../theme.slint";
+import { Shell, ToastKind, ToastItem } from "../state.slint";
+import { Icon, Icons } from "../widgets/icon.slint";
+
+component ToastCard inherits Rectangle {
+    in property <ToastItem> item;
+    property <color> tone: item.kind == ToastKind.ok ? Theme.accent-green : item.kind == ToastKind.err ? Theme.accent-red : Theme.accent-cyan;
+    property <bool> hovered: body-ta.has-hover || close-ta.has-hover;
+    property <length> slide: 0px;
+
+    width: 384px;
+    height: row.preferred-height;
+    border-radius: Theme.radius-md;
+    background: Theme.surface-solid;
+    border-width: 1px;
+    border-color: tone.with-alpha(0.4);
+    drop-shadow-color: tone.with-alpha(0.18);
+    drop-shadow-blur: 24px;
+    drop-shadow-offset-y: 8px;
+    clip: true;
+
+    // top 2px gradient line (::before)
+    Rectangle {
+        y: 0;
+        height: 2px;
+        background: @linear-gradient(90deg, transparent 0%, root.tone.with-alpha(0.8) 50%, transparent 100%);
+    }
+
+    body-ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Shell.toast-clicked(root.item.id); }
+    }
+
+    row := HorizontalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-3;
+        VerticalLayout {
+            alignment: start;
+            Rectangle {
+                width: 32px;
+                height: 32px;
+                border-radius: Theme.radius-sm;
+                background: Theme.card-bg-soft;
+                border-width: 1px;
+                border-color: Theme.border;
+                Icon {
+                    data: root.item.kind == ToastKind.ok ? Icons.check : root.item.kind == ToastKind.err ? Icons.alert-circle : Icons.info;
+                    size: 18px;
+                    weight: 2.5;
+                    color: root.tone;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            alignment: center;
+            Text {
+                text: root.item.kind == ToastKind.ok ? "LOGRO DESBLOQUEADO" : root.item.kind == ToastKind.err ? "AVISO DEL SISTEMA" : "NOTIFICACIÓN";
+                font-family: Theme.font-pixel;
+                font-size: 9.3px;
+                letter-spacing: 0.74px;
+                color: root.tone;
+            }
+            Text {
+                text: root.item.text;
+                font-size: Theme.text-xs;
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            alignment: start;
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                border-radius: Theme.radius-xs;
+                background: close-ta.has-hover ? Theme.card-bg-soft : transparent;
+                Icon { data: Icons.x; size: 14px; color: close-ta.has-hover ? Theme.text : Theme.muted; }
+                close-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Shell.dismiss-toast(root.item.id); }
+                }
+            }
+        }
+    }
+}
+
+export component ToastHost inherits Rectangle {
+    // bottom: 32px; right: 24px; stack grows upward (CSS flex column, newest last)
+    VerticalLayout {
+        x: root.width - 384px - Theme.space-6;
+        y: root.height - self.preferred-height - Theme.space-8;
+        width: 384px;
+        spacing: Theme.space-3;
+        for item in Shell.toasts: ToastCard { item: item; }
+    }
+}
