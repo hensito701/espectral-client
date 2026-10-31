@@ -82,27 +82,3 @@ test('isLegacyIdentityUrl matches only the bare legacy host', async () => {
     assert.equal(mod.isLegacyIdentityUrl(url), false, String(url));
   }
 });
-
-test('identityUrl() defaults to id.uhce.top, honours config, then the env override', async () => {
-  // config.mjs here is the instance identity.mjs imports (no query), which was
-  // first loaded with the legacy document written above by the helpers case —
-  // rewrite and load explicitly so the assertion is order-independent.
-  writeConfig({ identity_url: 'https://id.espectral.es' });
-  const identity = await import('../src/engine/identity.mjs');
-  assert.equal(identity.DEFAULT_IDENTITY_URL, 'https://id.uhce.top');
-
-  delete process.env.ESPECTRAL_ID_URL;
-  assert.equal(identity.identityUrl(), 'https://id.uhce.top');
-
-  const cfg = await import('../src/engine/config.mjs');
-  const fromConfig = cfg.loadConfig();
-  assert.equal(fromConfig.identity_url, 'https://id.uhce.top');
-  assert.equal(identity.identityUrl(), 'https://id.uhce.top');
-
-  process.env.ESPECTRAL_ID_URL = 'http://127.0.0.1:9/';
-  try {
-    assert.equal(identity.identityUrl(), 'http://127.0.0.1:9'); // trailing slash trimmed
-  } finally {
-    delete process.env.ESPECTRAL_ID_URL;
-  }
-});

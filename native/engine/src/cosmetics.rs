@@ -1,5 +1,5 @@
 //! Port of `src/engine/cosmetics.mjs` — supporter cosmetics: catalog
-//! (`src/engine/cosmetics-catalog.json`), per-uuid state
+//! (`native/engine/data/cosmetics-catalog.json`), per-uuid state
 //! (`<data>/cosmetics.json`), loadout validation vs verified flags +
 //! exclusivity, the per-gameDir `config/espectral-cosmetics.json` the mod reads.
 //!
@@ -20,7 +20,7 @@
 //! [`crate::presence::republish_now`], and "running launches of a uuid" are
 //! the bridge registry ([`crate::bridge::launches_for`]), like the JS.
 //!
-//! Tests: tests/cosmetics.test.mjs.
+//! Tests: the `tests` module below.
 //!
 //! CONTRACT (called by game-launch resolveLaunch, identity-discord presence):
 //! write_cosmetics_file, share_enabled.
@@ -39,8 +39,7 @@ use crate::types::{CosmeticItem, CosmeticsAccountState, CosmeticsCatalog};
 pub const STATE_SCHEMA: u32 = 1;
 pub const MAX_HIDDEN: usize = 200;
 
-const CATALOG_JSON: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/engine/cosmetics-catalog.json"));
+const CATALOG_JSON: &str = include_str!("../data/cosmetics-catalog.json");
 
 /// The parsed catalog + lookup tables (JS `catalog()`).
 #[derive(Debug)]
@@ -50,7 +49,7 @@ pub struct Catalog {
     pub items: IndexMap<String, CosmeticItem>,
 }
 
-/// The catalog (single source: `src/engine/cosmetics-catalog.json`).
+/// The catalog (single source: `native/engine/data/cosmetics-catalog.json`).
 pub fn catalog() -> &'static Catalog {
     static C: OnceLock<Catalog> = OnceLock::new();
     C.get_or_init(|| {

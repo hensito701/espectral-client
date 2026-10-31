@@ -1,7 +1,7 @@
 """Cosmetics catalog loading and loadout validation.
 
 The bundled catalog (app/cosmetics-catalog.json) is byte-identical to the
-repository source of truth src/engine/cosmetics-catalog.json — deploy.sh
+repository source of truth native/engine/data/cosmetics-catalog.json — deploy.sh
 copies it at deploy time and tests/test_catalog_sync.py enforces equality.
 """
 from __future__ import annotations

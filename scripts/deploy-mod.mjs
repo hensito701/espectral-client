@@ -3,10 +3,11 @@
  * deploy-mod.mjs — one-shot branding-mod deploy.
  *
  * Rebuilds the Espectral brand/mod jars, refreshes assets/branding (jars +
- * branding.json manifest), and mirrors the result into the installed desktop
- * client's branding dir so the next launch picks it up. Replaces the manual
- * sequence: gradle build → copy jars → update-branding-manifest.mjs → copy to
- * %LOCALAPPDATA%\Espectral Client\branding.
+ * branding.json manifest), and mirrors the result into the installed launcher's
+ * `branding/` dir so the next launch picks it up. Replaces the manual sequence:
+ * gradle build → copy jars → update-branding-manifest.mjs → copy to
+ * %LOCALAPPDATA%\Espectral Client\branding (Windows) or
+ * /usr/lib/Espectral Client/branding (Linux .deb).
  *
  * Run: npm run deploy:mod
  * ========================================================================== */
@@ -126,9 +127,21 @@ log('regenerating branding.json…');
 run(process.execPath, [path.join(ROOT, 'scripts', 'update-branding-manifest.mjs')], ROOT);
 
 // ── 4. Mirror into the installed desktop client ───────────────────────────
-const CLIENT_DIR = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Espectral Client') : null;
-if (!CLIENT_DIR || !existsSync(CLIENT_DIR)) {
-  log('warning: %LOCALAPPDATA%\\Espectral Client not found — installed client not updated (repo assets are ready)');
+// 1.7.0 layout: the Rust launcher (espectral-client.exe) reads `branding/`
+// sitting next to itself, not a Tauri resource dir. Windows install dir is the
+// same %LOCALAPPDATA%\Espectral Client\ the Tauri NSIS used; the Linux .deb
+// puts the binary and branding under /usr/lib/Espectral Client/.
+const CLIENT_DIR = process.env.LOCALAPPDATA
+  ? path.join(process.env.LOCALAPPDATA, 'Espectral Client')
+  : existsSync('/usr/lib/Espectral Client')
+    ? '/usr/lib/Espectral Client'
+    : null;
+const CLIENT_EXE = CLIENT_DIR
+  ? path.join(CLIENT_DIR, process.platform === 'win32' ? 'espectral-client.exe' : 'espectral-client')
+  : null;
+if (!CLIENT_DIR || !CLIENT_EXE || !existsSync(CLIENT_EXE)) {
+  log('warning: installed Espectral Client not found — installed client not updated (repo assets are ready)');
+  log(`looked for: ${CLIENT_EXE ?? 'no install dir (set LOCALAPPDATA or install the .deb)'}`);
 } else {
   const dest = path.join(CLIENT_DIR, 'branding');
   mkdirSync(dest, { recursive: true });

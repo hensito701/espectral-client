@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-maintained Suite UI strings that are NOT derived from src/engine/suite-registry.json. scripts/sync-suite-registry.mjs merges this file on top of the generated keys, so adding a string here survives regeneration. Registry-derived keys (espectral.feature.<id>.*, espectral.category.<id>) must NOT be repeated here — the sync script fails when they are.",
+  "_comment": "Hand-maintained Suite UI strings that are NOT derived from native/engine/data/suite-registry.json. scripts/sync-suite-registry.mjs merges this file on top of the generated keys, so adding a string here survives regeneration. Registry-derived keys (espectral.feature.<id>.*, espectral.category.<id>) must NOT be repeated here — the sync script fails when they are.",
   "es": {
     "espectral.suite.config": "Configurar",
     "espectral.suite.back": "Volver",

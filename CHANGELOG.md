@@ -4,6 +4,8 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-31
+
 ### Added
 - **Agent access (opt-in): let your own AI agent use Espectral Client.**
   Settings → *Agent access* turns on a local MCP server (Claude Code, Codex,
@@ -32,6 +34,32 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   connected by raw address); input and chat are refused there with a clear
   error, including on the kick screen. Singleplayer, replays, localhost and
   hosts you allowlist are unaffected.
+
+### Changed
+- **The launcher is new, and it is much lighter.** Espectral Client is now a
+  native app written in Rust (the same engine, rewritten) instead of a web
+  page inside a WebView. It starts in a fraction of the time, uses far less
+  RAM (no Chromium/WebView2, no Node.js process sitting next to it), and no
+  longer needs Node.js or WebView2 installed at all — the installer is the
+  whole launcher. Everything you could do before is still there: same
+  screens, same Spanish and English, same mods and modpacks, same Java and
+  AOT handling, same Discord status, same agent access (MCP).
+- **Your things stay where they are.** Accounts, instances, worlds, settings
+  and the Espectral Suite config live in the same data folder, so they carry
+  over untouched. The Windows installer replaces the old launcher in the same
+  folder (one Start-menu shortcut, one entry in Apps & Features) and deletes
+  the files the old version left behind.
+- **Updates keep arriving the same way.** The launcher still checks the same
+  update channel, verifies the download with the same signature before
+  installing it, and updates itself in place (`/P /R /UPDATE` on Windows,
+  `pkexec dpkg -i` on Linux). No action needed from you.
+- **Agent users: re-copy your MCP config from Settings → Agent access.** The
+  launcher is now one program instead of a Node script, so the command in the
+  config changed: Windows `"command": "espectral-client.exe", "args":
+  ["--mcp"]`, Linux `"command": "espectral-client", "args": ["--mcp"]` —
+  instead of the old `node-bin\node.exe …\mcp.mjs`. Configs copied before
+  this version still point at the old Node files and must be replaced (the
+  launcher shows the new block with the rotate/copy buttons).
 
 ## [1.6.3] - 2026-10-31
 

@@ -10,7 +10,7 @@
 #
 # What it does (all idempotent):
 #   1. Syncs app/, requirements.txt into /home/ubuntu/espectral-id/
-#   2. Refreshes the bundled catalog from src/engine/cosmetics-catalog.json
+#   2. Refreshes the bundled catalog from native/engine/data/cosmetics-catalog.json
 #   3. Builds/updates the venv
 #   4. Writes .env from the secrets file ONLY if absent or forced
 #      (VALUES=refresh to overwrite), mode 0600, never printed
@@ -29,7 +29,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"          # services/espectral-id
 REPO="$(cd "$ROOT/../.." && pwd)"
 
 # Refresh bundled catalog from the repo source of truth.
-cp "$REPO/src/engine/cosmetics-catalog.json" "$ROOT/app/cosmetics-catalog.json"
+cp "$REPO/native/engine/data/cosmetics-catalog.json" "$ROOT/app/cosmetics-catalog.json"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

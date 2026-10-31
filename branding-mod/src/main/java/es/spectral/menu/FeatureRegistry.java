@@ -18,7 +18,7 @@ import com.google.gson.JsonParser;
 /**
  * Canonical in-game feature registry.
  *
- * <p>The single source of truth is {@code src/engine/data/suite-registry.json}
+ * <p>The single source of truth is {@code native/engine/data/suite-registry.json}
  * in the launcher repo; the generator script copies it into the mod jar as
  * {@code assets/espectral-menu/suite-registry.json}. This class loads that jar
  * resource with Gson and never hand-maintains a second list, so mod defaults

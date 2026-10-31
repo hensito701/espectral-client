@@ -8,7 +8,7 @@ java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
 dependencies {
     minecraft 'com.mojang:minecraft:26.3'
     implementation 'net.fabricmc:fabric-loader:0.19.3'
-    // Dev-runtime-only parity with production installs (src/engine/mods.mjs
+    // Dev-runtime-only parity with production installs (native/engine/src/mods.rs
     // pins the same release). Non-remap Loom has no modImplementation;
     // runtimeOnly keeps it off the compile classpath and the jar.
     runtimeOnly 'net.fabricmc.fabric-api:fabric-api:0.165.0+26.3'

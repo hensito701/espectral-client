@@ -4,6 +4,13 @@ Status: **implemented on devLIN (2026-10-31)** — P0–P4 done and proven on
 26.3 (see the phase table and findings). Open: a human F8 press, in-game runs
 on 26.2/1.21.11, Windows ffmpeg provisioning on a Windows box.
 
+> **Historical design note.** This plan was executed against the Node engine
+> (`src/engine/*.mjs`) and the Tauri shell, both deleted in **1.7.0**. Every
+> `src/engine` / `mcp.mjs` / `/api/...` path below is history: the feature now
+> lives in `native/engine/src/{agent,ffmpeg,mcp,loopback}.rs` and the MCP
+> server is `espectral-client --mcp` (no shim, no Node). Read the paths as
+> "what the JS implementation did", not as files in this tree.
+
 ## Goals
 
 1. **Testing** — an agent launches the *real* Espectral Client, reaches a known
@@ -394,9 +401,10 @@ Gradle for all three mod variants, cargo check if Rust is touched).
 - Workspace: `~/Documentos/Workspaces/espectrallauncher` (owned by `aitor`;
   run git as `aitor` — root gets "dubious ownership"). `git pull` first: on
   2026-10-30 it sat at `b00fc26`, main is ahead (release 1.6.2 + this doc).
-- `npm run deploy:mod` only mirrors into `%LOCALAPPDATA%` (Windows); on Linux
-  build with `./gradlew :mc263:build` (etc.) in `branding-mod/` and copy jars
-  into the instance yourself, or teach the script the Linux install dir.
+- `npm run deploy:mod` mirrors into the installed launcher's `branding/` dir —
+  `%LOCALAPPDATA%\Espectral Client\branding` (Windows) or
+  `/usr/lib/Espectral Client/branding` (Linux .deb). It does not copy jars into
+  individual instances; do that by hand if you need it there.
 - Start with P0 and write the findings into this file before building P1+.
 
 ## P2 implementation notes (mod relay, 2026-10-31)

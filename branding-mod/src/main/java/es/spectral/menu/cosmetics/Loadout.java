@@ -2,7 +2,7 @@ package es.spectral.menu.cosmetics;
 
 /**
  * Equipped cosmetics per slot. {@code null} means the slot is empty.
- * Slots follow {@code src/engine/cosmetics-catalog.json}: espalda, cuello,
+ * Slots follow {@code native/engine/data/cosmetics-catalog.json}: espalda, cuello,
  * cabeza, elitros. The {@code brazos} slot (Vendas Rúnicas) was withdrawn on
  * 2026-10-25; a stored loadout that still names it simply loses that entry when
  * it is sanitized, because no catalog item declares the slot any more.

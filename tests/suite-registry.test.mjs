@@ -20,9 +20,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const doc = JSON.parse(fs.readFileSync(REGISTRY_SOURCE, 'utf8'));
 const en = JSON.parse(fs.readFileSync(DEST_EN, 'utf8'));
 const es = JSON.parse(fs.readFileSync(DEST_ES, 'utf8'));
-const clientI18n = fs.readFileSync(
-  path.join(repoRoot, 'src/ui/src/lib/i18n/client.ts'),
-  'utf8',
+// 1.7.0: the Svelte UI is gone; the live launcher strings now live in the
+// Rust app's i18n tables (native/app/i18n/<ns>.json, { es, en } maps).
+const clientI18n = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, 'native/app/i18n/client.json'), 'utf8'),
 );
 
 test('registry shape: 16 features, 5 categories, schema 2, suite on by default', () => {
@@ -61,12 +62,10 @@ test('parity: every feature and category has a key in both lang files', () => {
 });
 
 test('parity: launcher i18n carries every feature name/desc in both languages', () => {
-  const esSection = clientI18n.slice(0, clientI18n.indexOf('export const en'));
-  const enSection = clientI18n.slice(clientI18n.indexOf('export const en'));
   for (const f of doc.features) {
     for (const key of [`client.feat.${f.id}.name`, `client.feat.${f.id}.desc`]) {
-      assert.ok(esSection.includes(`'${key}'`), `es missing ${key}`);
-      assert.ok(enSection.includes(`'${key}'`), `en missing ${key}`);
+      assert.ok(key in clientI18n.es, `es missing ${key}`);
+      assert.ok(key in clientI18n.en, `en missing ${key}`);
     }
   }
 });

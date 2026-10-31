@@ -5,7 +5,7 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
-REPO_CATALOG = os.path.join(ROOT, "src", "engine", "cosmetics-catalog.json")
+REPO_CATALOG = os.path.join(ROOT, "native", "engine", "data", "cosmetics-catalog.json")
 BUNDLED = os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "app", "cosmetics-catalog.json")
 
@@ -17,4 +17,4 @@ def test_bundled_catalog_matches_repo_source():
         bundled = f.read()
     assert bundled == repo, (
         "app/cosmetics-catalog.json drifted from "
-        "src/engine/cosmetics-catalog.json — re-copy it (deploy.sh does this)")
+        "native/engine/data/cosmetics-catalog.json — re-copy it (deploy.sh does this)")

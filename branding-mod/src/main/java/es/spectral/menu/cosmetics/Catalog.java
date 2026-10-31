@@ -21,7 +21,7 @@ import com.google.gson.JsonParser;
 
 /**
  * The bundled cosmetics catalog ({@code assets/espectral-menu/cosmetics-catalog.json},
- * synced byte-identical from {@code src/engine/cosmetics-catalog.json}).
+ * synced byte-identical from {@code native/engine/data/cosmetics-catalog.json}).
  * Immutable once loaded; a missing/broken resource yields an empty catalog
  * (everything renders nothing) instead of a crash.
  */
