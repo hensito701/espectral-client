@@ -1,0 +1,753 @@
+// OWNER: library-mods agent. Port of src/ui/src/pages/DonationsPavilion.svelte.
+// Keep the exported component name and the empty interface used by app.slint.
+//
+// Static content: the rank list is filtered (category + search over the
+// translated texts) and chunked into grid rows in Rust
+// (library_mods/donations.rs); rows carry i18n KEYS so a language switch
+// re-renders without a round trip.
+
+import { Theme, T, Router, AppState, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, Icon, Icons, Emoji } from "../../widgets.slint";
+import { LibraryBridge, RankCard } from "api.slint";
+import { LibScroll, GlowDot, VText, CenterText } from "parts.slint";
+
+global PavIcons {
+    out property <string> paypal: "M 7 11.5 L 9.5 2 L 15.5 2 A 4.5 4.5 0 0 1 15.5 11 L 11.5 11 L 10 18.5 L 6.5 18.5 L 7 11.5 Z";
+    out property <string> cart: "M 10 21 A 1 1 0 1 1 8 21 A 1 1 0 1 1 10 21 M 21 21 A 1 1 0 1 1 19 21 A 1 1 0 1 1 21 21 M 1 1 L 5 1 L 7.68 14.39 A 2 2 0 0 0 9.68 16 L 19.4 16 A 2 2 0 0 0 21.4 14.39 L 23 6 L 6 6";
+    out property <string> message: "M 21 15 A 2 2 0 0 1 19 17 L 7 17 L 3 21 L 3 5 A 2 2 0 0 1 5 3 L 19 3 A 2 2 0 0 1 21 5 Z";
+}
+
+component Capsule inherits Rectangle {
+    in property <string> emoji;
+    in property <string> text;
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-pill;
+    background: Theme.surface-up;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-color: Theme.shadow-sm-color;
+    drop-shadow-blur: Theme.shadow-sm-blur;
+    row := HorizontalLayout {
+        padding-left: 14.4px;
+        padding-right: 14.4px;
+        padding-top: 9px;
+        padding-bottom: 9px;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            alignment: center;
+            Emoji { char: root.emoji; size: 15px; }
+        }
+        VText { text: root.text; font-size: 13.4px; font-weight: 600; }
+    }
+}
+
+component Hero inherits Rectangle {
+    border-radius: Theme.radius-xl;
+    // (a 3-stop 135deg gradient leaves a diagonal seam in the software renderer)
+    background: @linear-gradient(135deg, Theme.accent-alt.with-alpha(0.08) 0%, rgba(6, 182, 212, 0.04) 100%);
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-color: Theme.shadow-md-color;
+    drop-shadow-blur: Theme.shadow-md-blur;
+    drop-shadow-offset-y: Theme.shadow-md-y;
+    height: col.preferred-height;
+    clip: true;
+    // ::before glow blob (top -40%, right -10%, 480px, blurred): a soft
+    // radial fill kept inside the card (a clipped oversize gradient leaves
+    // seams in the software renderer)
+    Rectangle {
+        width: min(parent.width, 560px);
+        height: parent.height;
+        x: parent.width - self.width;
+        y: 0;
+        border-radius: parent.border-radius;
+        background: @radial-gradient(circle, Theme.accent-gold.with-alpha(0.10) 0%, Theme.accent.with-alpha(0.04) 40%, transparent 70%);
+    }
+    col := HorizontalLayout {
+        padding-left: 36px;
+        padding-right: 36px;
+        VerticalLayout {
+            padding-top: 40px;
+            padding-bottom: 40px;
+            spacing: 20px;
+            HorizontalLayout {
+                spacing: Theme.space-3;
+                alignment: start;
+                VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("pav.heroBadge"); variant: BadgeVariant.gold; dot: true; }
+                }
+                VText { text: "ESPECTRAL CLIENT NETWORK"; font-family: Theme.font-pixel; font-size: 9.9px; letter-spacing: 0.8px; color: Theme.muted; }
+            }
+            VerticalLayout {
+                spacing: Theme.space-2;
+                GradientText {
+                    text: T.tr("pav.heroTitle");
+                    gradient: GradientKind.emerald-gold;
+                    font-size: 33.6px;
+                    font-weight: 700;
+                    letter-spacing: -0.67px;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    Text {
+                        max-width: 860px;
+                        text: T.tr("pav.heroPitch");
+                        color: Theme.muted-strong;
+                        font-size: 16.3px;
+                        line-height-factor: 1.6 / 1.28;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            HorizontalLayout {
+                padding-top: Theme.space-2;
+                spacing: Theme.space-3;
+                alignment: start;
+                Capsule { emoji: "🛡️"; text: T.tr("pav.perkHighlight1"); }
+                Capsule { emoji: "⚡"; text: T.tr("pav.perkHighlight2"); }
+                Capsule { emoji: "🎮"; text: T.tr("pav.perkHighlight3"); }
+            }
+        }
+    }
+}
+
+component SectionHeader inherits VerticalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    spacing: Theme.space-1;
+    Text { text: root.title; color: Theme.text; font-size: 21.6px; font-weight: 700; letter-spacing: -0.2px; }
+    Text { text: root.subtitle; color: Theme.muted; font-size: 14.4px; wrap: word-wrap; }
+}
+
+/// <a class="channel-btn"> (flex: 1).
+component LinkBtn inherits Rectangle {
+    in property <string> text;
+    in property <string> icon: Icons.external-link;
+    in property <brush> fill;
+    in property <color> fg;
+    in property <color> stroke: transparent;
+    callback clicked();
+    property <bool> hovered: touch.has-hover;
+    horizontal-stretch: 1;
+    height: 41px;
+    min-width: row.preferred-width;
+    border-radius: Theme.radius-md;
+    background: fill;
+    border-width: 1px;
+    border-color: stroke;
+    if root.hovered: Rectangle { border-radius: parent.border-radius; background: rgba(255, 255, 255, 0.08); }
+    row := HorizontalLayout {
+        padding-left: 17.6px;
+        padding-right: 17.6px;
+        spacing: Theme.space-2;
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Icon { data: root.icon; size: 16px; color: root.fg; }
+        }
+        VText { text: root.text; font-size: 14px; font-weight: 600; color: root.fg; }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component ChannelCard inherits Rectangle {
+    in property <string> id;
+    in property <string> icon;
+    in property <bool> icon-filled;
+    in property <color> tone;
+    in property <string> title;
+    in property <string> url-label;
+    in property <string> badge;
+    in property <BadgeVariant> badge-variant;
+    in property <string> desc;
+    in property <string> action;
+    in property <brush> action-fill;
+    in property <color> action-fg;
+    in property <color> action-stroke: transparent;
+    in property <string> url;
+    property <bool> hovered: touch.has-hover;
+    border-radius: Theme.radius-lg;
+    background: Theme.card-bg;
+    border-width: 1px;
+    border-color: hovered ? tone.with-alpha(0.4) : Theme.border;
+    drop-shadow-color: Theme.shadow-md-color;
+    drop-shadow-blur: Theme.shadow-md-blur;
+    drop-shadow-offset-y: Theme.shadow-md-y;
+    min-height: col.preferred-height;
+    animate border-color { duration: Theme.dur-fast; }
+    touch := TouchArea { }
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: @linear-gradient(90deg, transparent 0%, Theme.glass-border 25%, Theme.glass-highlight 50%, Theme.glass-border 75%, transparent 100%);
+    }
+    // GlassCard body: 20px padding, block flow inside (no flex gaps)
+    col := HorizontalLayout {
+        padding-left: Theme.space-5;
+        padding-right: Theme.space-5;
+        VerticalLayout {
+            padding-top: Theme.space-5;
+            padding-bottom: Theme.space-5;
+            spacing: Theme.space-2;
+            HorizontalLayout {
+                spacing: Theme.space-3;
+                HorizontalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 13.6px;
+                    Rectangle {
+                        width: 44px;
+                        height: 44px;
+                        border-radius: Theme.radius-md;
+                        background: root.tone.with-alpha(0.15);
+                        border-width: 1px;
+                        border-color: root.tone.with-alpha(0.3);
+                        Icon { data: root.icon; size: 24px; color: root.tone; filled: root.icon-filled; }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Text { text: root.title; color: Theme.text; font-size: 16.8px; font-weight: 700; overflow: elide; }
+                        Text { text: root.url-label; color: Theme.muted; font-size: 12.8px; font-family: Theme.font-mono; overflow: elide; }
+                    }
+                }
+                VerticalLayout {
+                    alignment: start;
+                    Badge { text: root.badge; variant: root.badge-variant; }
+                }
+            }
+            Text {
+                vertical-stretch: 1;
+                text: root.desc;
+                color: Theme.muted-strong;
+                font-size: 14.1px;
+                line-height-factor: 1.55 / 1.28;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                padding-top: Theme.space-2;
+                spacing: 9.6px;
+                LinkBtn {
+                    text: root.action;
+                    fill: root.action-fill;
+                    fg: root.action-fg;
+                    stroke: root.action-stroke;
+                    clicked => { AppState.open-url(root.url); }
+                }
+                Btn {
+                    variant: BtnVariant.secondary;
+                    icon: LibraryBridge.d-copied == root.id ? Icons.check : Icons.copy;
+                    text: LibraryBridge.d-copied == root.id ? T.tr("pav.copied") : T.tr("pav.copyLink");
+                    clicked => { LibraryBridge.d-copy(root.id, root.url); }
+                }
+            }
+        }
+    }
+}
+
+component PaypalCard inherits ChannelCard {
+    id: "paypal";
+    icon: PavIcons.paypal;
+    tone: Theme.accent;
+    title: T.tr("pav.paypalTitle");
+    url-label: "paypal.me/uhcespectral";
+    badge: T.tr("pav.paypalBadge");
+    badge-variant: BadgeVariant.accent;
+    desc: T.tr("pav.paypalDesc");
+    action: T.tr("pav.paypalAction");
+    action-fill: Theme.accent;
+    action-fg: Theme.text-inverse;
+    url: "https://paypal.me/uhcespectral";
+}
+
+component TebexCard inherits ChannelCard {
+    id: "tebex";
+    icon: PavIcons.cart;
+    tone: Theme.accent-cyan;
+    title: T.tr("pav.tebexTitle");
+    url-label: "espectral.uhce.top/donaciones";
+    badge: T.tr("pav.tebexBadge");
+    badge-variant: BadgeVariant.neutral;
+    desc: T.tr("pav.tebexDesc");
+    action: T.tr("pav.tebexAction");
+    action-fill: rgba(6, 182, 212, 0.2);
+    action-fg: #38bdf8;
+    action-stroke: rgba(6, 182, 212, 0.4);
+    url: "https://espectral.uhce.top/donaciones";
+}
+
+component DiscordCard inherits ChannelCard {
+    id: "discord";
+    icon: Icons.discord;
+    icon-filled: true;
+    tone: #a855f7;
+    title: T.tr("pav.discordTitle");
+    url-label: "discord.gg/espectral";
+    badge: T.tr("pav.discordBadge");
+    badge-variant: BadgeVariant.purple;
+    desc: T.tr("pav.discordDesc");
+    action: T.tr("pav.discordAction");
+    action-fill: rgba(168, 85, 247, 0.2);
+    action-fg: #c084fc;
+    action-stroke: rgba(168, 85, 247, 0.4);
+    url: "https://discord.gg/espectral";
+}
+
+component CategoryTab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    height: label.preferred-height + 14.4px;
+    min-width: label.preferred-width + 28.8px;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-md;
+    background: active ? Theme.card-bg : transparent;
+    drop-shadow-color: active ? Theme.shadow-sm-color : transparent;
+    drop-shadow-blur: Theme.shadow-sm-blur;
+    label := Text {
+        text: root.text;
+        font-size: 13.8px;
+        font-weight: 600;
+        color: root.active || touch.has-hover ? Theme.text : Theme.muted;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component RankSearch inherits Rectangle {
+    min-width: 280px;
+    height: 37px;
+    border-radius: Theme.radius-md;
+    background: Theme.card-bg;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+    TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    Icon { x: 13.6px; data: Icons.search; size: 16px; color: Theme.muted; }
+    input := TextInput {
+        x: 36.8px;
+        width: parent.width - 36.8px - 32px;
+        height: self.preferred-height;
+        y: (parent.height - self.height) / 2;
+        text <=> LibraryBridge.d-query;
+        font-size: 13.8px;
+        color: Theme.text;
+        single-line: true;
+        selection-background-color: Theme.accent.with-alpha(0.3);
+        edited => { LibraryBridge.d-refresh(); }
+    }
+    if LibraryBridge.d-query == "": Text {
+        x: 36.8px;
+        width: parent.width - 36.8px - 32px;
+        height: parent.height;
+        text: T.tr("pav.searchPlaceholder");
+        color: Theme.muted;
+        font-size: 13.8px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    if LibraryBridge.d-query != "": Text {
+        x: parent.width - 9.6px - self.width;
+        height: parent.height;
+        text: "×";
+        color: Theme.muted;
+        font-size: 17.6px;
+        vertical-alignment: center;
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                LibraryBridge.d-query = "";
+                LibraryBridge.d-refresh();
+            }
+        }
+    }
+}
+
+component RankCardView inherits Rectangle {
+    in property <RankCard> rank;
+    property <bool> hovered: touch.has-hover;
+    border-radius: Theme.radius-lg;
+    background: rank.featured ? @linear-gradient(180deg, Theme.accent-gold.with-alpha(0.05) 0%, Theme.card-bg 60%) : Theme.card-bg;
+    border-width: 1px;
+    border-color: rank.featured ? Theme.accent-gold.with-alpha(0.45) : Theme.border;
+    drop-shadow-color: rank.featured ? Theme.accent-gold.with-alpha(0.12) : hovered ? Theme.shadow-lg-color : Theme.shadow-md-color;
+    drop-shadow-blur: rank.featured ? 32px : Theme.shadow-md-blur;
+    drop-shadow-offset-y: 8px;
+    min-height: col.preferred-height;
+    clip: true;
+    touch := TouchArea { }
+    // border-top: 2px solid <tier>
+    Rectangle { y: 0; height: 2px; background: root.rank.tone; }
+    col := HorizontalLayout {
+        padding-left: Theme.space-6;
+        padding-right: Theme.space-6;
+        VerticalLayout {
+            padding-top: Theme.space-6;
+            padding-bottom: Theme.space-6;
+            spacing: 0px;
+            // head
+            VerticalLayout {
+                spacing: Theme.space-2;
+                HorizontalLayout {
+                    alignment: start;
+                    if root.rank.badge-kind == "featured": Badge { text: T.tr(root.rank.badge-key); variant: BadgeVariant.gold; dot: true; }
+                    if root.rank.badge-kind == "custom": Badge { text: T.tr(root.rank.badge-key); variant: BadgeVariant.purple; }
+                    if root.rank.badge-kind == "diamond": Badge { text: T.tr("pav.tierDiamond"); variant: BadgeVariant.info; }
+                    if root.rank.badge-kind == "gold": Badge { text: T.tr("pav.tierGold"); variant: BadgeVariant.gold; }
+                    if root.rank.badge-kind == "emerald": Badge { text: T.tr("pav.tierEmerald"); variant: BadgeVariant.accent; }
+                }
+                HorizontalLayout {
+                    padding-top: Theme.space-1;
+                    spacing: Theme.space-2;
+                    Text { text: T.tr(root.rank.name-key); color: Theme.text; font-size: 22.4px; font-weight: 700; horizontal-stretch: 1; wrap: word-wrap; }
+                    VerticalLayout {
+                        alignment: end;
+                        padding-bottom: 5px;
+                        Text { text: T.tr(root.rank.price-key); color: Theme.accent-gold; font-family: Theme.font-pixel; font-size: 12.5px; }
+                    }
+                }
+                Text {
+                    text: T.tr(root.rank.tagline-key);
+                    color: Theme.muted;
+                    font-size: 13.4px;
+                    line-height-factor: 1.4 / 1.28;
+                    wrap: word-wrap;
+                }
+            }
+            Rectangle {
+                height: 33px;
+                Rectangle { height: 1px; background: Theme.border; opacity: 0.6; }
+            }
+            // perks
+            VerticalLayout {
+                vertical-stretch: 1;
+                spacing: 9.6px;
+                alignment: start;
+                Text {
+                    text: T.tr1("pav.perksCount", "count", root.rank.perks.length).to-uppercase();
+                    color: Theme.muted;
+                    font-size: 12.2px;
+                    font-weight: 700;
+                    letter-spacing: 0.73px;
+                }
+                VerticalLayout {
+                    spacing: Theme.space-2;
+                    for perk in root.rank.perks: HorizontalLayout {
+                        spacing: 9.6px;
+                        VerticalLayout {
+                            padding-top: 7px;
+                            alignment: start;
+                            Rectangle { width: 6px; height: 6px; border-radius: 3px; background: root.rank.accent; }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: T.tr(perk);
+                            color: Theme.muted-strong;
+                            font-size: 13.8px;
+                            line-height-factor: 1.45 / 1.28;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+            // foot
+            VerticalLayout {
+                padding-top: 20px;
+                spacing: Theme.space-2;
+                cta := Rectangle {
+                    height: 40px;
+                    border-radius: Theme.radius-md;
+                    background: cta-touch.has-hover ? root.rank.accent : Theme.surface-up;
+                    border-width: 1px;
+                    border-color: cta-touch.has-hover ? transparent : Theme.border;
+                    animate background { duration: Theme.dur-fast; }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: Theme.space-2;
+                        VText { text: T.tr("pav.getRank"); font-size: 13.8px; font-weight: 700; color: cta-touch.has-hover ? #ffffff : Theme.text; }
+                        VerticalLayout {
+                            alignment: center;
+                            Icon { data: Icons.arrow-right; size: 14px; weight: 2.5; color: cta-touch.has-hover ? #ffffff : Theme.text; }
+                        }
+                    }
+                    cta-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { AppState.open-url("https://espectral.uhce.top/donaciones"); }
+                    }
+                }
+                if root.rank.wardrobe: HorizontalLayout {
+                    alignment: center;
+                    Text {
+                        text: T.tr("pav.wardrobeLink");
+                        font-size: 12.8px;
+                        font-weight: 600;
+                        color: wl.has-hover ? Theme.accent-alt : Theme.accent-gold;
+                        wl := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Router.navigate("#/armario"); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component UnbanTier inherits Rectangle {
+    in property <string> level;
+    in property <string> label;
+    in property <string> price;
+    height: row.preferred-height;
+    horizontal-stretch: 1;
+    border-radius: Theme.radius-md;
+    background: Theme.surface-up-solid;
+    border-width: 1px;
+    border-color: Theme.border;
+    row := HorizontalLayout {
+        padding-top: Theme.space-4;
+        padding-bottom: Theme.space-4;
+        padding-left: 20px;
+        padding-right: 20px;
+        spacing: 9.6px;
+        VText { text: "# " + root.level; font-family: Theme.font-pixel; font-size: 10.4px; color: Theme.accent-gold; }
+        VText { text: root.label; font-size: 14.4px; font-weight: 600; horizontal-stretch: 1; }
+        VText { text: root.price; font-family: Theme.font-pixel; font-size: 13.4px; color: Theme.accent; }
+    }
+}
+
+component WarningBox inherits Rectangle {
+    in property <string> emoji;
+    in property <string> text;
+    in property <bool> strict;
+    height: row.preferred-height;
+    border-radius: Theme.radius-md;
+    background: strict ? rgba(239, 68, 68, 0.08) : rgba(6, 182, 212, 0.08);
+    border-width: 1px;
+    border-color: strict ? rgba(239, 68, 68, 0.3) : rgba(6, 182, 212, 0.25);
+    row := HorizontalLayout {
+        padding-top: 13.6px;
+        padding-bottom: 13.6px;
+        padding-left: 17.6px;
+        padding-right: 17.6px;
+        spacing: Theme.space-3;
+        VerticalLayout {
+            alignment: start;
+            padding-top: 2px;
+            Emoji { char: root.emoji; size: 16px; }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            color: root.strict ? (Theme.dark ? #fca5a5 : #b91c1c) : Theme.text;
+            font-size: 13.4px;
+            line-height-factor: 1.5 / 1.28;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component UnbansCard inherits GlassCard {
+    padding-size: 29.6px;
+    radius: Theme.radius-xl;
+    spacing: 20px;
+    VerticalLayout {
+        spacing: 0px;
+        HorizontalLayout {
+            alignment: start;
+            padding-bottom: 6.4px;
+            Badge { text: "FAIR PLAY & RECOVERY"; variant: BadgeVariant.warn; dot: true; }
+        }
+        Text { text: T.tr("pav.unbansTitle"); color: Theme.text; font-size: 21.6px; font-weight: 700; }
+        Text { text: T.tr("pav.unbansSubtitle"); color: Theme.muted; font-size: 14.1px; wrap: word-wrap; }
+    }
+    Text { text: T.tr("pav.unbansNote"); color: Theme.muted-strong; font-size: 14.7px; wrap: word-wrap; }
+    HorizontalLayout {
+        spacing: Theme.space-4;
+        UnbanTier { level: "1"; label: T.tr("donations.unbans.first"); price: T.tr("donations.unbans.firstPrice"); }
+        UnbanTier { level: "2"; label: T.tr("donations.unbans.second"); price: T.tr("donations.unbans.secondPrice"); }
+        UnbanTier { level: "3+"; label: T.tr("donations.unbans.third"); price: T.tr("donations.unbans.thirdPrice"); }
+    }
+    VerticalLayout {
+        spacing: Theme.space-3;
+        WarningBox { emoji: "📌"; text: T.tr("donations.unbans.warning1"); }
+        WarningBox { emoji: "⚠️"; text: T.tr("donations.unbans.warning2"); strict: true; }
+    }
+    VerticalLayout {
+        Rectangle { height: 1px; background: Theme.border; }
+        HorizontalLayout {
+            padding-top: Theme.space-2;
+            spacing: Theme.space-4;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                Text {
+                    max-width: 680px;
+                    text: T.tr("pav.claimInstructions");
+                    color: Theme.muted;
+                    font-size: 13.8px;
+                    line-height-factor: 1.45 / 1.28;
+                    wrap: word-wrap;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                LinkBtn {
+                    horizontal-stretch: 0;
+                    icon: PavIcons.message;
+                    text: T.tr("pav.openTicketAction");
+                    fill: rgba(168, 85, 247, 0.2);
+                    fg: #c084fc;
+                    stroke: rgba(168, 85, 247, 0.4);
+                    clicked => { AppState.open-url("https://discord.gg/espectral"); }
+                }
+            }
+        }
+    }
+}
+
+export component DonationsPage inherits Rectangle {
+    // ranks grid: repeat(auto-fill, minmax(290px, 1fr)), gap 20px
+    property <length> content-w: min(1400px, root.width) - 64px;
+    property <int> rank-cols: max(1, floor((content-w + 20px) / 310px));
+    changed rank-cols => { LibraryBridge.d-set-cols(self.rank-cols); }
+    init => { LibraryBridge.d-set-cols(self.rank-cols); }
+    property <length> cell-w: (content-w - (rank-cols - 1) * 20px) / rank-cols;
+    property <bool> wide: content-w >= 1000px;
+
+    LibScroll {
+        max-content-width: 1400px;
+        content-padding: 32px;
+        content-padding-top: Theme.space-6;
+        content-padding-bottom: 64px;
+        spacing: 36px;
+        Hero { }
+        // channels
+        VerticalLayout {
+            spacing: 20px;
+            SectionHeader { title: T.tr("pav.channelsTitle"); subtitle: T.tr("pav.channelsSubtitle"); }
+            if root.wide: HorizontalLayout {
+                spacing: 20px;
+                PaypalCard { width: (root.content-w - 40px) / 3; }
+                TebexCard { width: (root.content-w - 40px) / 3; }
+                DiscordCard { width: (root.content-w - 40px) / 3; }
+            }
+            if !root.wide: VerticalLayout {
+                spacing: 20px;
+                HorizontalLayout {
+                    spacing: 20px;
+                    PaypalCard { width: (root.content-w - 20px) / 2; }
+                    TebexCard { width: (root.content-w - 20px) / 2; }
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    DiscordCard { width: (root.content-w - 20px) / 2; }
+                }
+            }
+        }
+        // ranks
+        VerticalLayout {
+            spacing: 20px;
+            VerticalLayout {
+                spacing: Theme.space-4;
+                SectionHeader { title: T.tr("pav.ranksTitle"); subtitle: T.tr("pav.ranksSubtitle"); }
+                HorizontalLayout {
+                    spacing: Theme.space-4;
+                    Rectangle {
+                        horizontal-stretch: 0;
+                        min-width: tabs.preferred-width;
+                        height: tabs.preferred-height;
+                        border-radius: Theme.radius-lg;
+                        background: Theme.surface-up-solid;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        tabs := HorizontalLayout {
+                            padding: Theme.space-1;
+                            spacing: Theme.space-1;
+                            CategoryTab {
+                                text: T.tr1("pav.filterAll", "count", LibraryBridge.d-count-all);
+                                active: LibraryBridge.d-category == 0;
+                                clicked => { LibraryBridge.d-category = 0; LibraryBridge.d-refresh(); }
+                            }
+                            CategoryTab {
+                                text: T.tr1("pav.filterPermanent", "count", LibraryBridge.d-count-permanent);
+                                active: LibraryBridge.d-category == 1;
+                                clicked => { LibraryBridge.d-category = 1; LibraryBridge.d-refresh(); }
+                            }
+                            CategoryTab {
+                                text: T.tr1("pav.filterServices", "count", LibraryBridge.d-count-services);
+                                active: LibraryBridge.d-category == 2;
+                                clicked => { LibraryBridge.d-category = 2; LibraryBridge.d-refresh(); }
+                            }
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    VerticalLayout {
+                        alignment: center;
+                        RankSearch { }
+                    }
+                }
+            }
+            Rectangle {
+                height: disc.preferred-height;
+                border-radius: Theme.radius-md;
+                background: Theme.card-bg-soft;
+                border-width: 1px;
+                border-color: Theme.border;
+                disc := HorizontalLayout {
+                    padding-top: 13.6px;
+                    padding-bottom: 13.6px;
+                    padding-left: 17.6px;
+                    padding-right: 17.6px;
+                    spacing: Theme.space-3;
+                    VerticalLayout {
+                        alignment: start;
+                        Text { text: "ℹ️"; font-size: 17.6px; color: Theme.accent-cyan; }
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: T.tr("donations.disclaimer");
+                        color: Theme.muted-strong;
+                        font-size: 13.4px;
+                        line-height-factor: 1.5 / 1.28;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            if LibraryBridge.d-rows.length == 0: VerticalLayout {
+                padding-top: 48px;
+                padding-bottom: 48px;
+                spacing: Theme.space-3;
+                CenterText { text: T.tr("pav.noRanksFound"); font-size: 15.2px; }
+                HorizontalLayout {
+                    alignment: center;
+                    Btn {
+                        variant: BtnVariant.secondary;
+                        size: BtnSize.sm;
+                        text: T.tr("pav.clearSearch");
+                        clicked => {
+                            LibraryBridge.d-category = 0;
+                            LibraryBridge.d-query = "";
+                            LibraryBridge.d-refresh();
+                        }
+                    }
+                }
+            }
+            if LibraryBridge.d-rows.length > 0: VerticalLayout {
+                spacing: 20px;
+                for row in LibraryBridge.d-rows: HorizontalLayout {
+                    spacing: 20px;
+                    alignment: start;
+                    for r in row.cards: RankCardView { rank: r; width: root.cell-w; }
+                }
+            }
+        }
+        UnbansCard { }
+    }
+}

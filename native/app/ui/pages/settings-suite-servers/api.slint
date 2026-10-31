@@ -1,0 +1,209 @@
+// OWNER: settings-suite-servers agent. The group's single bridge global — the only Slint global
+// of this group that Rust can see (app.slint re-exports it by name). Every
+// property / callback / struct of Settings, Client Suite and Server Radar
+// lives HERE. Rust side: native/app/src/pages/settings_suite_servers.rs
+// (+ settings_suite_servers/{settings,client,servers}.rs).
+
+import { ServerRow } from "../../state.slint";
+
+// ---- Client Suite ----------------------------------------------------------
+
+/// One registry feature of ClientSuite (already filtered by search/category in Rust).
+export struct SuiteFeatureRow {
+    id: string,
+    name: string,
+    desc: string,
+    /// kind == "managed" (restart needed) vs "owned" (live).
+    managed: bool,
+    on: bool,
+}
+
+/// Category filter pill ("all" first).
+export struct SuiteCategoryRow {
+    id: string,
+    label: string,
+}
+
+/// Macro selector pill.
+export struct SuiteMacroPill {
+    id: string,
+    label: string,
+    keybind: string,
+}
+
+/// One action of the active macro.
+export struct SuiteMacroAction {
+    /// "chat" | "command"
+    kind: string,
+    text: string,
+}
+
+// ---- Server Radar ------------------------------------------------------------
+
+/// One MOTD run with a single § style (lib/motd.ts parseMotd segment).
+export struct MotdSegment {
+    text: string,
+    color: color,
+    has-color: bool,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    strike: bool,
+}
+
+export struct MotdLineRow {
+    segments: [MotdSegment],
+}
+
+/// ServerRadar aggregates (computed in Rust from AppState.servers).
+export struct ServerRadarSummary {
+    total: int,
+    online: int,
+    offline: int,
+    players: int,
+    /// "optimal" | "degraded" | "offline"
+    health: string,
+    /// epoch ms (string) of the newest status, "" when none.
+    last-fetched: string,
+}
+
+/// One row of the ServerRadar card grid (auto-fill columns, computed in Rust).
+export struct ServerGridRow {
+    items: [ServerRow],
+}
+
+/// PingWaveform geometry (SVG path commands in a width x height viewbox).
+export struct PingWaveGeometry {
+    line: string,
+    area: string,
+    dot-x: float,
+    dot-y: float,
+}
+
+export global SettingsBridge {
+    // ======================= Settings dashboard (#/settings) ====================
+    /// Engine config loaded (get_config answered).
+    in property <bool> cfg-loaded;
+    /// get_config error ("" = none) — error banner with retry.
+    in property <string> cfg-error;
+    // persisted values (engine config)
+    in property <int> cfg-memory: 3072;
+    in property <bool> cfg-memory-auto;
+    in property <int> cfg-concurrency: 6;
+    in property <string> cfg-jdk;
+    in property <bool> cfg-aot: true;
+    in property <bool> cfg-fastboot;
+    in property <bool> cfg-fullbright;
+    in property <bool> cfg-discord: true;
+    in property <string> cfg-data-dir;
+    // form drafts (reset from the config by Rust on load / reset)
+    in-out property <float> memory: 3072;
+    in-out property <float> concurrency: 6;
+    in-out property <string> jdk;
+    in-out property <bool> aot: true;
+    in-out property <bool> fastboot;
+    in-out property <bool> fullbright;
+    in-out property <bool> discord: true;
+    in-out property <bool> close-on-start;
+    in-out property <bool> reduced-motion;
+    // busy flags
+    /// "" | "memory" | "concurrency" | "jdk" | "aot" | "fastboot" | "fullbright" | "discord" | "closeOnStart"
+    in property <string> saving-field;
+    in property <bool> saving-all;
+    in property <bool> saving-motion;
+    in property <bool> checking-health;
+    in property <bool> data-dir-copied;
+    // JDK probe
+    in property <bool> probing;
+    in property <string> probe-msg;
+    in property <bool> probe-ok;
+    in property <string> jvm-version;
+    in property <string> jvm-vendor;
+    in property <string> jvm-source;
+    in property <string> jvm-path;
+
+    callback settings-reload();
+    callback save-memory(int);
+    callback save-memory-auto();
+    callback save-concurrency(int);
+    callback save-jdk(string);
+    /// field: "aot" | "fastboot" | "fullbright" | "discord" | "closeOnStart"
+    callback save-flag(string, bool);
+    callback save-all();
+    callback reset-all();
+    callback probe-jdk();
+    callback toggle-reduced-motion();
+    /// "" (root) | "instances" | "logs" | "mods"
+    callback open-data-folder(string);
+    callback copy-data-dir();
+    callback recheck-health();
+
+    // ======================= Client Suite (#/client) ==========================
+    /// Selected instance name (persisted in prefs "client.instance").
+    in property <string> client-instance;
+    in property <string> client-loader;
+    in property <string> client-version;
+    in property <bool> client-loading: true;
+    in property <string> client-error;
+    /// get_client_info answered for client-instance.
+    in property <bool> client-has-info;
+    in property <bool> client-supported;
+    in property <string> client-patch-error;
+    in property <bool> client-suite-enabled: true;
+    in property <bool> client-toggling-suite;
+    in property <string> client-toggling-feature;
+    in property <[SuiteFeatureRow]> client-features;
+    in property <int> client-feature-total;
+    in property <[SuiteCategoryRow]> client-categories;
+    in-out property <string> client-category: "all";
+    in-out property <string> client-search;
+    in-out property <bool> client-confirming-reset;
+    in property <bool> client-resetting;
+    in property <string> client-hud-theme: "cristal";
+    in property <bool> client-saving-hud;
+    // macros (draft edited in Rust; text edits never rebuild the models)
+    in property <[SuiteMacroPill]> macros;
+    in property <int> macro-count;
+    in property <int> macro-active: 0;
+    in property <string> macro-name;
+    in property <string> macro-keybind;
+    in property <[SuiteMacroAction]> macro-actions;
+    in property <bool> macros-dirty;
+    in property <bool> macros-valid: true;
+    in property <bool> saving-macros;
+    in property <string> macro-error;
+    in property <string> macro-saved-msg;
+    /// Bumped whenever the active macro changes (editor re-reads its texts).
+    in property <int> macro-serial;
+
+    /// Page shown / instance list changed: pick a valid instance (prefs or first) and load it.
+    callback client-ensure();
+    callback client-select(string);
+    callback client-reload();
+    callback client-filter-changed();
+    callback client-toggle-feature(string, bool);
+    callback client-toggle-suite(bool);
+    callback client-reset();
+    callback client-set-hud(string);
+    callback macro-add();
+    callback macro-remove(int);
+    callback macro-select(int);
+    callback macro-set-name(string);
+    /// KeyEvent.text of a captured key -> MacroEngine keybind; false = unknown key (stay armed).
+    callback macro-capture-key(string) -> bool;
+    callback action-add();
+    callback action-remove(int);
+    callback action-set-kind(int, string);
+    callback action-set-text(int, string);
+    callback macros-save();
+
+    // ======================= Server Radar (#/servers) =========================
+    in property <bool> servers-refreshing;
+    callback servers-refresh();
+    pure callback servers-summary([ServerRow]) -> ServerRadarSummary;
+    pure callback motd-lines(ServerRow) -> [MotdLineRow];
+    /// Split the server list into rows of `columns` cards.
+    pure callback server-grid([ServerRow], int) -> [ServerGridRow];
+    /// PingWaveform: ping ms (-1 = unknown/offline), online, width, height (px).
+    pure callback ping-wave(int, bool, float, float) -> PingWaveGeometry;
+}

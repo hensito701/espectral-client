@@ -1,0 +1,1356 @@
+// OWNER: settings-suite-servers agent. Port of src/ui/src/pages/SettingsDashboard.svelte.
+// Keep the exported component name and the empty interface used by app.slint.
+//
+// Sections: hero (+ dirty dock), appearance & language (theme / language /
+// accent + reduced motion), engine (memory / downloads / JDK), feature toggles
+// (AOT, fast boot, close-on-start, Discord RPC, fullbright), data directory +
+// diagnostics, about. TODO(agent-access): the "Acceso para agentes" section
+// (MCP toggle, config snippets, token rotation, allowlist) is not ported — the
+// native engine has no agent-access routes yet (agent.json strings are kept).
+
+import { Theme, T, Router, AppState, Shell, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GradientText, GradientKind, Field, Slider, Segmented, Icon, Icons, Emoji, PageScaffold } from "../../widgets.slint";
+import { ThemeToggle } from "../../shell/top-chrome.slint";
+import { SettingsBridge } from "api.slint";
+import { SwitchControl, PresetChip, CardHead, WarnBadge, SectionHeader, InfoBox, SsTextField } from "parts.slint";
+
+// ---- local icons (feather) ---------------------------------------------------
+global SetIcons {
+    out property <string> save: "M 19 21 L 5 21 A 2 2 0 0 1 3 19 L 3 5 A 2 2 0 0 1 5 3 L 16 3 L 21 8 L 21 19 A 2 2 0 0 1 19 21 Z M 17 21 L 17 13 L 7 13 L 7 21 M 7 3 L 7 8 L 15 8";
+    out property <string> check-circle: "M 22 11.08 L 22 12 A 10 10 0 1 1 16.07 2.86 M 22 4 L 12 14.01 L 9 11.01";
+    out property <string> rotate: "M 21.5 2 L 21.5 8 L 15.5 8 M 21.34 15.57 A 10 10 0 1 1 20.77 7.19 L 26.44 1.52";
+    out property <string> briefcase: "M 4 7 L 20 7 A 2 2 0 0 1 22 9 L 22 19 A 2 2 0 0 1 20 21 L 4 21 A 2 2 0 0 1 2 19 L 2 9 A 2 2 0 0 1 4 7 Z M 16 21 L 16 5 A 2 2 0 0 0 14 3 L 10 3 A 2 2 0 0 0 8 5 L 8 21";
+    out property <string> file-text: "M 14 2 L 6 2 A 2 2 0 0 0 4 4 L 4 20 A 2 2 0 0 0 6 22 L 18 22 A 2 2 0 0 0 20 20 L 20 8 Z M 14 2 L 14 8 L 20 8 M 16 13 L 8 13 M 16 17 L 8 17 M 10 9 L 8 9";
+}
+
+// ---- hero ----------------------------------------------------------------------
+
+component DirtyDock inherits Rectangle {
+    in property <bool> memory-invalid;
+    border-radius: Theme.radius-lg;
+    background: Theme.surface-solid;
+    border-width: 1px;
+    border-color: Theme.border-focus;
+    drop-shadow-color: Theme.shadow-md-color;
+    drop-shadow-blur: Theme.shadow-md-blur;
+    drop-shadow-offset-y: Theme.shadow-md-y;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Badge { text: T.tr("dash.unsavedBadge"); variant: BadgeVariant.warn; dot: true; large: true; }
+        }
+        Btn {
+            variant: BtnVariant.primary;
+            size: BtnSize.md;
+            icon: SetIcons.save;
+            loading: SettingsBridge.saving-all;
+            enabled: !root.memory-invalid;
+            text: SettingsBridge.saving-all ? T.tr("dash.savingAll") : T.tr("dash.saveAll");
+            clicked => { SettingsBridge.save-all(); }
+        }
+        Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.md;
+            text: T.tr("dash.resetField");
+            clicked => { SettingsBridge.reset-all(); }
+        }
+    }
+}
+
+component Hero inherits VerticalLayout {
+    in property <bool> any-dirty;
+    in property <bool> memory-invalid;
+    spacing: 0px;
+    HorizontalLayout {
+        spacing: 24px;
+        padding-bottom: 20px;
+        VerticalLayout {
+            spacing: 8px;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+                Badge { text: T.tr("dash.badge").to-uppercase(); variant: BadgeVariant.accent; dot: true; }
+                // health: the engine is in-process, so it is always "online"
+                HorizontalLayout {
+                    spacing: 6.4px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 6px;
+                            height: 6px;
+                            border-radius: 3px;
+                            background: Theme.accent-green;
+                            drop-shadow-color: Theme.accent-green;
+                            drop-shadow-blur: 8px;
+                        }
+                    }
+                    Text {
+                        text: T.tr("dash.health.online");
+                        color: Theme.muted;
+                        font-size: 12px;
+                        font-weight: 500;
+                        line-height-factor: 1.25;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            GradientText {
+                text: T.tr("dash.title");
+                gradient: GradientKind.emerald-gold;
+                font-size: Theme.text-3xl;
+                font-weight: 700;
+                letter-spacing: -1.08px;
+                line-height-factor: 0.86;
+            }
+            HorizontalLayout {
+                alignment: start;
+                Text {
+                    max-width: 650px;
+                    text: T.tr("dash.subtitle");
+                    color: Theme.muted;
+                    font-size: 15.2px;
+                    line-height-factor: 1.17;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        if root.any-dirty: VerticalLayout {
+            alignment: start;
+            DirtyDock { memory-invalid: root.memory-invalid; }
+        }
+    }
+    Rectangle { height: 1px; background: Theme.border; }
+}
+
+// ---- appearance ------------------------------------------------------------------
+
+component ThemeChoice inherits Rectangle {
+    in property <string> mode;
+    in property <string> label;
+    in property <string> icon;
+    property <bool> active: Theme.mode == root.mode;
+    height: 76px;
+    horizontal-stretch: 1;
+    min-width: 0px;
+    preferred-width: 1px;
+    border-radius: Theme.radius-md;
+    background: active ? Theme.accent.with-alpha(0.1) : ta.has-hover ? Theme.surface-up-solid : Theme.surface-up;
+    border-width: 1px;
+    border-color: active ? Theme.accent : ta.has-hover ? Theme.border-focus : Theme.border;
+    animate background, border-color { duration: Theme.dur-fast; }
+    VerticalLayout {
+        alignment: center;
+        spacing: 8px;
+        HorizontalLayout {
+            alignment: center;
+            Icon { data: root.icon; size: 18px; color: root.active || ta.has-hover ? Theme.text : Theme.muted; }
+        }
+        Text {
+            text: root.label;
+            font-size: 13.6px;
+            font-weight: 500;
+            color: root.active || ta.has-hover ? Theme.text : Theme.muted;
+            horizontal-alignment: center;
+        }
+    }
+    if root.active: Rectangle {
+        x: parent.width - 8px - 6px;
+        y: 8px;
+        width: 6px;
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.accent;
+        drop-shadow-color: Theme.accent;
+        drop-shadow-blur: 6px;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Shell.set-theme-mode(root.mode); }
+    }
+}
+
+/// .theme-preview-stage (mini window in the resolved scheme).
+component ThemePreview inherits Rectangle {
+    border-radius: Theme.radius-md;
+    background: Theme.surface-up-solid;
+    border-width: 1px;
+    border-color: Theme.border;
+    clip: true;
+    VerticalLayout {
+        Rectangle {
+            background: Theme.topbar-bg;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 6.4px;
+                alignment: start;
+                for c in [#ef4444, #f59e0b, #10b981]: VerticalLayout {
+                    alignment: center;
+                    Rectangle { width: 8px; height: 8px; border-radius: 4px; background: c; }
+                }
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: "Espectral Client";
+                        font-size: 12px;
+                        line-height-factor: 1.25;
+                        font-weight: 500;
+                        color: Theme.muted;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+        }
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 16px;
+            padding-bottom: 16px;
+            spacing: 16px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    height: chip.preferred-height + 8px;
+                    width: chip.preferred-width + 16px;
+                    border-radius: self.height / 2;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    chip := Text {
+                        text: (Theme.dark ? "DARK" : "LIGHT") + " MODE";
+                        font-size: 11.2px;
+                        font-weight: 600;
+                        line-height-factor: 1.25;
+                        color: Theme.text;
+                    }
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            VerticalLayout {
+                alignment: center;
+                spacing: 5.6px;
+                width: 160px;
+                Rectangle { height: 4px; border-radius: 2px; background: Theme.muted.with-alpha(0.3); }
+                HorizontalLayout {
+                    alignment: start;
+                    Rectangle { width: 96px; height: 4px; border-radius: 2px; background: Theme.muted.with-alpha(0.3); }
+                }
+            }
+        }
+    }
+}
+
+component SettingCard inherits GlassCard {
+    min-width: 0px;
+    elevation: Elevation.sm;
+    spacing: 0px;
+    padding-size: 20px;
+    preferred-width: 1px;
+    horizontal-stretch: 1;
+}
+
+component ThemeCard inherits SettingCard {
+    VerticalLayout {
+        alignment: start;
+        CardHead {
+            title: T.tr("dash.appearance.themeLabel");
+            desc: T.tr("dash.appearance.themeDesc");
+            VerticalLayout {
+                alignment: start;
+                ThemeToggle { }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            ThemeChoice { mode: "dark"; label: T.tr("settings.theme.dark"); icon: Icons.moon; }
+            ThemeChoice { mode: "light"; label: T.tr("settings.theme.light"); icon: Icons.sun; }
+            ThemeChoice { mode: "system"; label: T.tr("settings.theme.system"); icon: Icons.monitor; }
+        }
+        InfoBox {
+            text: T.tr("dash.appearance.systemDesc");
+            icon: Icons.info;
+        }
+        ThemePreview { }
+    }
+}
+
+component LangTile inherits Rectangle {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    in property <string> lang;
+    in property <string> flag;
+    in property <string> name;
+    in property <string> sub;
+    in property <string> active-text;
+    property <bool> active: T.lang == root.lang;
+    border-radius: Theme.radius-md;
+    background: active ? Theme.accent.with-alpha(0.08) : ta.has-hover ? Theme.surface-up-solid : Theme.surface-up;
+    border-width: 1px;
+    border-color: active ? Theme.accent : ta.has-hover ? Theme.border-focus : Theme.border;
+    animate background, border-color { duration: Theme.dur-fast; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Shell.set-language(root.lang); }
+    }
+    inner := HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 14px;
+        padding-bottom: 14px;
+        spacing: 0px;
+        VerticalLayout {
+            alignment: center;
+            padding-right: 12px;
+            Emoji { char: root.flag; size: 24px; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2.4px;
+            alignment: center;
+            Text { text: root.name; font-size: 15.2px; font-weight: 600; color: Theme.text; line-height-factor: 1.25; }
+            Text { text: root.sub; font-size: 12px; color: Theme.muted; line-height-factor: 1.25; }
+        }
+        if root.active: VerticalLayout {
+            alignment: center;
+            Badge { text: root.active-text; variant: BadgeVariant.accent; }
+        }
+    }
+}
+
+component LanguageCard inherits SettingCard {
+    VerticalLayout {
+        alignment: start;
+        CardHead {
+            title: T.tr("dash.appearance.langLabel");
+            desc: T.tr("dash.appearance.langDesc");
+            VerticalLayout {
+                alignment: start;
+                Segmented {
+                    items: ["ES", "EN"];
+                    current: T.lang == "es" ? 0 : 1;
+                    selected(i) => { Shell.set-language(i == 0 ? "es" : "en"); }
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 12px;
+            LangTile { lang: "es"; flag: "🇪🇸"; name: "Español"; sub: "Predeterminado (Espectral)"; active-text: "ACTIVO"; }
+            LangTile { lang: "en"; flag: "🇬🇧"; name: "English"; sub: "International Standard"; active-text: "ACTIVE"; }
+        }
+    }
+}
+
+component AccentSwatch inherits Rectangle {
+    in property <string> id;
+    in property <string> label;
+    in property <color> swatch;
+    property <bool> active: Theme.accent-id == root.id;
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: self.height / 2;
+    background: active ? Theme.accent.with-alpha(0.12) : ta.has-hover ? Theme.surface-up-solid : Theme.surface-up;
+    border-width: 1px;
+    border-color: active ? Theme.accent : ta.has-hover ? Theme.border-focus : Theme.border;
+    animate background, border-color { duration: Theme.dur-fast; }
+    row := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 14px;
+                height: 14px;
+                border-radius: 7px;
+                background: root.swatch;
+                border-width: root.active ? 1px : 0px;
+                border-color: Theme.bg;
+                drop-shadow-color: root.active ? Theme.accent : rgba(0, 0, 0, 0.35);
+                drop-shadow-blur: root.active ? 2px : 8px;
+            }
+        }
+        Text {
+            text: root.label;
+            font-size: 12.8px;
+            font-weight: 500;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Shell.set-accent(root.id); }
+    }
+}
+
+component AccentCard inherits SettingCard {
+    VerticalLayout {
+        alignment: start;
+        CardHead {
+            title: T.tr("dash.accent.title");
+            desc: T.tr("dash.accent.desc");
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            AccentSwatch { id: "oro"; label: T.tr("dash.accent.oro"); swatch: #d9a93b; }
+            AccentSwatch { id: "carmesi"; label: T.tr("dash.accent.carmesi"); swatch: #e5484d; }
+            AccentSwatch { id: "amatista"; label: T.tr("dash.accent.amatista"); swatch: #bb86fc; }
+            AccentSwatch { id: "esmeralda"; label: T.tr("dash.accent.esmeralda"); swatch: #10b981; }
+            AccentSwatch { id: "glaciar"; label: T.tr("dash.accent.glaciar"); swatch: #38bdf8; }
+        }
+        // .motion-row (margin-top + border-top)
+        VerticalLayout {
+            padding-top: 16px;
+            Rectangle { height: 1px; background: Theme.border; }
+            HorizontalLayout {
+                padding-top: 16px;
+                spacing: 16px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2.4px;
+                    alignment: center;
+                    Text { text: T.tr("dash.motion.title"); font-size: 15.2px; font-weight: 600; color: Theme.text; line-height-factor: 1.25; }
+                    Text {
+                        text: T.tr("dash.motion.desc");
+                        font-size: 12.5px;
+                        color: Theme.muted;
+                        line-height-factor: 1.13;
+                        wrap: word-wrap;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        variant: SettingsBridge.reduced-motion ? BtnVariant.primary : BtnVariant.secondary;
+                        size: BtnSize.sm;
+                        loading: SettingsBridge.saving-motion;
+                        text: SettingsBridge.reduced-motion ? T.tr("dash.motion.on") : T.tr("dash.motion.off");
+                        clicked => { SettingsBridge.toggle-reduced-motion(); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---- engine: memory / downloads / jdk ------------------------------------------------
+
+/// `.slider-control-group`: range + number input + unit + save button.
+component SliderRow inherits HorizontalLayout {
+    in-out property <float> value;
+    in property <float> minimum;
+    in property <float> maximum;
+    in property <float> step;
+    in property <string> unit;
+    in property <string> save-text;
+    in property <bool> dirty;
+    in property <bool> saving;
+    in property <bool> save-enabled: true;
+    in property <bool> narrow;
+    callback text-edited(string);
+    callback save();
+    spacing: 20px;
+    property <int> shown: round(root.value);
+    changed shown => {
+        if !num.has-focus { num.text = root.shown; }
+    }
+    Slider {
+        horizontal-stretch: 1;
+        minimum: root.minimum;
+        maximum: root.maximum;
+        step: root.step;
+        value <=> root.value;
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        horizontal-stretch: 0;
+        num := SsTextField {
+            width: 110px;
+            horizontal-stretch: 0;
+            mono: true;
+            text: root.shown;
+            edited(t) => { root.text-edited(t); }
+        }
+        Text {
+            text: root.unit;
+            font-size: 13.6px;
+            font-weight: 500;
+            color: Theme.muted;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: root.dirty ? BtnVariant.primary : BtnVariant.secondary;
+                size: BtnSize.sm;
+                loading: root.saving;
+                enabled: !root.saving && root.save-enabled;
+                text: root.saving ? T.tr("common.saving") : root.save-text;
+                clicked => { root.save(); }
+            }
+        }
+    }
+}
+
+component RamBadge inherits Rectangle {
+    in property <string> value;
+    height: row.preferred-height;
+    width: row.preferred-width;
+    border-radius: Theme.radius-md;
+    background: Theme.accent.with-alpha(0.12);
+    border-width: 1px;
+    border-color: Theme.accent.with-alpha(0.3);
+    row := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 5.6px;
+        padding-bottom: 5.6px;
+        spacing: 4px;
+        Text { text: root.value; font-size: 20px; font-weight: 700; color: Theme.accent; vertical-alignment: bottom; }
+        VerticalLayout {
+            alignment: end;
+            padding-bottom: 1px;
+            Text { text: "GB"; font-size: 12px; font-weight: 600; color: Theme.accent; }
+        }
+    }
+}
+
+component MemoryCard inherits SettingCard {
+    in property <bool> dirty;
+    in property <string> error;
+    callback text-edited(string);
+    VerticalLayout {
+        alignment: start;
+        spacing: 0px;
+        CardHead {
+            title: T.tr("dash.memory.title");
+            badge: root.dirty ? T.tr("dash.unsavedBadge") : "";
+            desc: T.tr1("settings.memoryDefault", "mem", Util.format-memory(round(SettingsBridge.memory))) + " — " + T.tr("dash.memory.desc");
+            VerticalLayout {
+                alignment: start;
+                RamBadge { value: round(SettingsBridge.memory / 1024 * 10) / 10; }
+            }
+        }
+        Field {
+            label: T.tr("dash.memory.sliderLabel");
+            hint: T.tr("settings.memoryHint");
+            error: root.error;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                padding-bottom: 12px;
+                PresetChip {
+                    text: T.tr("instance.memoryAuto");
+                    active: SettingsBridge.cfg-memory-auto && round(SettingsBridge.memory) == SettingsBridge.cfg-memory;
+                    enabled: SettingsBridge.saving-field != "memory";
+                    clicked => { SettingsBridge.save-memory-auto(); }
+                }
+                for mb in [2048, 3072, 4096, 6144, 8192, 12288, 16384]: PresetChip {
+                    text: (mb / 1024) + " GB";
+                    active: round(SettingsBridge.memory) == mb && !(SettingsBridge.cfg-memory-auto && round(SettingsBridge.memory) == SettingsBridge.cfg-memory);
+                    clicked => { SettingsBridge.memory = mb; }
+                }
+            }
+            SliderRow {
+                value <=> SettingsBridge.memory;
+                minimum: 1024;
+                maximum: 16384;
+                step: 512;
+                unit: "MB";
+                save-text: T.tr("dash.memory.saveBtn");
+                dirty: root.dirty;
+                saving: SettingsBridge.saving-field == "memory";
+                save-enabled: root.error == "";
+                text-edited(t) => { root.text-edited(t); }
+                save => { SettingsBridge.save-memory(round(SettingsBridge.memory)); }
+            }
+        }
+    }
+}
+
+component DownloadsCard inherits SettingCard {
+    in property <bool> dirty;
+    VerticalLayout {
+        alignment: start;
+        CardHead {
+            title: T.tr("dash.downloads.title");
+            badge: root.dirty ? T.tr("dash.unsavedBadge") : "";
+            desc: T.tr1("dash.downloads.threads", "n", round(SettingsBridge.concurrency)) + " — " + T.tr("settings.downloadConcurrencyHint");
+        }
+        Field {
+            label: T.tr("settings.downloadConcurrency");
+            hint: T.tr("dash.downloads.desc");
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                padding-bottom: 12px;
+                for n in [2, 4, 6, 8, 12, 16]: PresetChip {
+                    text: n + " threads";
+                    active: round(SettingsBridge.concurrency) == n;
+                    clicked => { SettingsBridge.concurrency = n; }
+                }
+            }
+            SliderRow {
+                value <=> SettingsBridge.concurrency;
+                minimum: 1;
+                maximum: 16;
+                step: 1;
+                unit: "hilos";
+                save-text: T.tr("dash.downloads.saveBtn");
+                dirty: root.dirty;
+                saving: SettingsBridge.saving-field == "concurrency";
+                text-edited(t) => {
+                    if t.is-float() { SettingsBridge.concurrency = t.to-float(); }
+                }
+                save => { SettingsBridge.save-concurrency(round(SettingsBridge.concurrency)); }
+            }
+        }
+    }
+}
+
+component JvmKv inherits VerticalLayout {
+    in property <string> key;
+    in property <string> value;
+    spacing: 4px;
+    horizontal-stretch: 1;
+    Text { text: root.key; font-size: 12px; font-weight: 500; color: Theme.muted; line-height-factor: 1.25; }
+    @children
+    if root.value != "": Text { text: root.value; font-size: 14px; font-weight: 600; color: Theme.text; line-height-factor: 1.25; overflow: elide; }
+}
+
+component JdkCard inherits SettingCard {
+    in property <bool> dirty;
+    VerticalLayout {
+        alignment: start;
+        CardHead {
+            title: T.tr("dash.jdk.title");
+            badge: root.dirty ? T.tr("dash.unsavedBadge") : "";
+            desc: T.tr("dash.jdk.desc");
+        }
+        Field {
+            label: T.tr("settings.jdkPath");
+            hint: T.tr("settings.jdkPathHint");
+            VerticalLayout {
+                spacing: 12px;
+                SsTextField {
+                    text <=> SettingsBridge.jdk;
+                    placeholder: T.tr("settings.jdkPlaceholder");
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+                    Btn {
+                        variant: root.dirty ? BtnVariant.primary : BtnVariant.secondary;
+                        size: BtnSize.sm;
+                        loading: SettingsBridge.saving-field == "jdk";
+                        text: SettingsBridge.saving-field == "jdk" ? T.tr("common.saving") : T.tr("dash.jdk.saveBtn");
+                        clicked => { SettingsBridge.save-jdk(SettingsBridge.jdk); }
+                    }
+                    Btn {
+                        variant: BtnVariant.ghost;
+                        size: BtnSize.sm;
+                        icon: Icons.play;
+                        loading: SettingsBridge.probing;
+                        text: SettingsBridge.probing ? T.tr("dash.jdk.testingBtn") : T.tr("dash.jdk.testBtn");
+                        clicked => { SettingsBridge.probe-jdk(); }
+                    }
+                }
+            }
+            if SettingsBridge.probe-msg != "": VerticalLayout {
+                padding-top: 8px;
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    background: (SettingsBridge.probe-ok ? Theme.accent-green : #ef4444).with-alpha(0.1);
+                    border-width: 1px;
+                    border-color: (SettingsBridge.probe-ok ? Theme.accent-green : #ef4444).with-alpha(0.3);
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        padding-top: 12px;
+                        padding-bottom: 12px;
+                        spacing: 12px;
+                        VerticalLayout {
+                            alignment: center;
+                            Icon {
+                                data: SettingsBridge.probe-ok ? SetIcons.check-circle : Icons.alert-circle;
+                                size: 16px;
+                                color: SettingsBridge.probe-ok ? Theme.accent-green : Theme.accent-red;
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: SettingsBridge.probe-msg;
+                            font-size: 13.6px;
+                            color: SettingsBridge.probe-ok ? Theme.accent-green : Theme.accent-red;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+            if SettingsBridge.probe-ok && SettingsBridge.jvm-version != "": VerticalLayout {
+                padding-top: 12px;
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    background: Theme.surface-up;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    HorizontalLayout {
+                        padding: 16px;
+                        VerticalLayout {
+                            spacing: 12px;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                JvmKv { key: T.tr("dash.jdk.versionLabel"); value: SettingsBridge.jvm-version; }
+                                JvmKv { key: T.tr("dash.jdk.vendorLabel"); value: SettingsBridge.jvm-vendor; }
+                                JvmKv {
+                                    key: T.tr("dash.jdk.sourceLabel");
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        Badge { text: SettingsBridge.jvm-source; variant: BadgeVariant.accent; }
+                                    }
+                                }
+                            }
+                            JvmKv {
+                                key: T.tr("dash.jdk.pathLabel");
+                                HorizontalLayout {
+                                    alignment: start;
+                                    Rectangle {
+                                        border-radius: Theme.radius-sm;
+                                        background: Theme.log-bg;
+                                        border-width: 1px;
+                                        border-color: Theme.border;
+                                        min-width: 0;
+                                        horizontal-stretch: 1;
+                                        max-width: path-text.preferred-width + 20px;
+                                        HorizontalLayout {
+                                            padding-left: 9.6px;
+                                            padding-right: 9.6px;
+                                            padding-top: 5.6px;
+                                            padding-bottom: 5.6px;
+                                            path-text := Text {
+                                                text: SettingsBridge.jvm-path;
+                                                font-family: Theme.font-mono;
+                                                font-size: 12.8px;
+                                                color: Theme.text;
+                                                overflow: elide;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---- feature toggles ----------------------------------------------------------------
+
+component ToggleCard inherits GlassCard {
+    in property <string> badge;
+    in property <BadgeVariant> badge-variant: BadgeVariant.accent;
+    in property <string> speedup;
+    in property <string> heading;
+    in property <string> desc;
+    in-out property <bool> checked;
+    in property <bool> busy;
+    callback toggled(bool);
+    min-width: 0px;
+    elevation: Elevation.sm;
+    spacing: 0px;
+    padding-size: 20px;
+    preferred-width: 1px;
+    horizontal-stretch: 1;
+    HorizontalLayout {
+        spacing: 16px;
+        alignment: stretch;
+        VerticalLayout {
+            spacing: 6.4px;
+            horizontal-stretch: 1;
+            alignment: start;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Badge { text: root.badge; variant: root.badge-variant; }
+                if root.speedup != "": Text {
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    wrap: word-wrap;
+                    text: root.speedup;
+                    font-size: 11.2px;
+                    font-weight: 600;
+                    line-height-factor: 1.25;
+                    color: Theme.accent-purple;
+                    vertical-alignment: center;
+                }
+            }
+            Text {
+                text: root.heading;
+                font-size: 15.2px;
+                font-weight: 600;
+                line-height-factor: 0.94;
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+            Text {
+                text: root.desc;
+                font-size: 12.8px;
+                color: Theme.muted;
+                line-height-factor: 1.09;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            alignment: start;
+            padding-top: 4px;
+            SwitchControl {
+                checked <=> root.checked;
+                enabled: !root.busy;
+                toggled(v) => { root.toggled(v); }
+            }
+        }
+    }
+}
+
+component AotCard inherits ToggleCard {
+    badge: T.tr("dash.aot.badge");
+    badge-variant: BadgeVariant.purple;
+    speedup: T.tr("dash.aot.speedup");
+    heading: T.tr("dash.aot.title");
+    desc: T.tr("dash.aot.desc");
+    checked <=> SettingsBridge.aot;
+    busy: SettingsBridge.saving-field == "aot";
+    toggled(v) => { SettingsBridge.save-flag("aot", v); }
+}
+
+component FastBootCard inherits ToggleCard {
+    badge: T.tr("dash.fastboot.badge");
+    badge-variant: BadgeVariant.ok;
+    speedup: T.tr("dash.fastboot.speedup");
+    heading: T.tr("dash.fastboot.title");
+    desc: T.tr("dash.fastboot.desc");
+    checked <=> SettingsBridge.fastboot;
+    busy: SettingsBridge.saving-field == "fastboot";
+    toggled(v) => { SettingsBridge.save-flag("fastboot", v); }
+}
+
+component CloseOnStartCard inherits ToggleCard {
+    badge: T.tr("dash.closeOnStart.badge");
+    heading: T.tr("dash.closeOnStart.title");
+    desc: T.tr("dash.closeOnStart.desc");
+    checked <=> SettingsBridge.close-on-start;
+    busy: SettingsBridge.saving-field == "closeOnStart";
+    toggled(v) => { SettingsBridge.save-flag("closeOnStart", v); }
+}
+
+component DiscordCard inherits ToggleCard {
+    badge: T.tr("dash.discord.badge");
+    heading: T.tr("dash.discord.title");
+    desc: T.tr("dash.discord.desc");
+    checked <=> SettingsBridge.discord;
+    busy: SettingsBridge.saving-field == "discord";
+    toggled(v) => { SettingsBridge.save-flag("discord", v); }
+}
+
+component FullbrightCard inherits ToggleCard {
+    badge: T.tr("dash.fullbright.badge");
+    badge-variant: BadgeVariant.gold;
+    heading: T.tr("dash.fullbright.title");
+    desc: T.tr("dash.fullbright.desc");
+    checked <=> SettingsBridge.fullbright;
+    busy: SettingsBridge.saving-field == "fullbright";
+    toggled(v) => { SettingsBridge.save-flag("fullbright", v); }
+}
+
+// ---- data dir + diagnostics ----------------------------------------------------------
+
+component SubfolderChip inherits Rectangle {
+    in property <string> icon;
+    in property <string> text;
+    callback clicked();
+    horizontal-stretch: 1;
+    preferred-width: 1px;
+    border-radius: Theme.radius-md;
+    background: ta.has-hover ? Theme.surface-up-solid : Theme.surface-up;
+    border-width: 1px;
+    border-color: ta.has-hover ? Theme.border-focus : Theme.border;
+    animate background, border-color { duration: Theme.dur-fast; }
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Icon { data: root.icon; size: 16px; color: ta.has-hover ? Theme.text : Theme.muted; }
+        }
+        Text {
+            text: root.text;
+            font-size: 13.6px;
+            font-weight: 500;
+            color: ta.has-hover ? Theme.text : Theme.muted;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component DataDirCard inherits SettingCard {
+    in property <bool> narrow;
+    VerticalLayout {
+        alignment: start;
+        CardHead {
+            title: T.tr("dash.data.rootLabel");
+            desc: T.tr("dash.data.rootDesc");
+        }
+        Rectangle {
+            border-radius: Theme.radius-md;
+            background: Theme.surface-up;
+            border-width: 1px;
+            border-color: Theme.border;
+            HorizontalLayout {
+                padding: 16px;
+                VerticalLayout {
+                    spacing: 12px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        VerticalLayout {
+                            alignment: start;
+                            padding-top: 1px;
+                            Icon { data: Icons.folder; size: 16px; color: Theme.accent; }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: SettingsBridge.cfg-data-dir != "" ? SettingsBridge.cfg-data-dir : "—";
+                            font-family: Theme.font-mono;
+                            font-size: 13.6px;
+                            color: Theme.text;
+                            wrap: char-wrap;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
+                        Btn {
+                            variant: BtnVariant.ghost;
+                            size: BtnSize.sm;
+                            icon: SettingsBridge.data-dir-copied ? Icons.check : Icons.copy;
+                            text: SettingsBridge.data-dir-copied ? T.tr("dash.data.copied") : T.tr("dash.data.copyPath");
+                            clicked => { SettingsBridge.copy-data-dir(); }
+                        }
+                        Btn {
+                            variant: BtnVariant.secondary;
+                            size: BtnSize.sm;
+                            icon: Icons.external-link;
+                            text: T.tr("dash.data.openRoot");
+                            clicked => { SettingsBridge.open-data-folder(""); }
+                        }
+                    }
+                }
+            }
+        }
+        if !root.narrow: HorizontalLayout {
+            spacing: 12px;
+            padding-top: 0px;
+            SubfolderChip { icon: SetIcons.briefcase; text: T.tr("dash.data.openInstances"); clicked => { SettingsBridge.open-data-folder("instances"); } }
+            SubfolderChip { icon: SetIcons.file-text; text: T.tr("dash.data.openLogs"); clicked => { SettingsBridge.open-data-folder("logs"); } }
+            SubfolderChip { icon: Icons.package; text: T.tr("dash.data.openMods"); clicked => { SettingsBridge.open-data-folder("mods"); } }
+        }
+        if root.narrow: VerticalLayout {
+            spacing: 12px;
+            SubfolderChip { icon: SetIcons.briefcase; text: T.tr("dash.data.openInstances"); clicked => { SettingsBridge.open-data-folder("instances"); } }
+            SubfolderChip { icon: SetIcons.file-text; text: T.tr("dash.data.openLogs"); clicked => { SettingsBridge.open-data-folder("logs"); } }
+            SubfolderChip { icon: Icons.package; text: T.tr("dash.data.openMods"); clicked => { SettingsBridge.open-data-folder("mods"); } }
+        }
+    }
+}
+
+component HealthRow inherits Rectangle {
+    in property <string> key;
+    in property <string> value;
+    border-radius: Theme.radius-md;
+    background: Theme.surface-up;
+    border-width: 1px;
+    border-color: Theme.border;
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 12px;
+        Text { text: root.key; font-size: 13.6px; color: Theme.muted; line-height-factor: 1.25; vertical-alignment: center; horizontal-stretch: 1; }
+        @children
+        if root.value != "": Text {
+            text: root.value;
+            font-family: Theme.font-mono;
+            font-size: 12.8px;
+            font-weight: 600;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component HealthCard inherits SettingCard {
+    VerticalLayout {
+        alignment: start;
+        CardHead {
+            title: T.tr("dash.health.title");
+            desc: T.tr("dash.health.subtitle");
+            VerticalLayout {
+                alignment: start;
+                Btn {
+                    variant: BtnVariant.ghost;
+                    size: BtnSize.sm;
+                    icon: Icons.refresh;
+                    loading: SettingsBridge.checking-health;
+                    text: SettingsBridge.checking-health ? T.tr("dash.health.reconnecting") : T.tr("dash.health.reconnect");
+                    clicked => { SettingsBridge.recheck-health(); }
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 12px;
+            HealthRow {
+                key: "Estado del Engine";
+                VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("dash.health.online"); variant: BadgeVariant.ok; dot: true; }
+                }
+            }
+            HealthRow { key: T.tr("dash.health.version"); value: AppState.version != "" ? AppState.version : "—"; }
+            // The engine runs in-process (no HTTP API between UI and engine).
+            HealthRow { key: T.tr("dash.health.apiEndpoint"); value: "in-process"; }
+        }
+    }
+}
+
+// ---- about ------------------------------------------------------------------------------
+
+component AboutMeta inherits VerticalLayout {
+    in property <string> key;
+    in property <string> value;
+    spacing: 3.2px;
+    horizontal-stretch: 1;
+    preferred-width: 1px;
+    min-width: 0px;
+    alignment: start;
+    Text { text: root.key; font-size: 12px; color: Theme.muted; line-height-factor: 1.25; }
+    if root.value != "": Text { text: root.value; font-size: 13.6px; font-weight: 600; color: Theme.text; line-height-factor: 1.25; wrap: word-wrap; }
+    @children
+}
+
+component VipBanner inherits Rectangle {
+    min-height: inner.min-height;
+    preferred-height: inner.preferred-height;
+    border-radius: Theme.radius-lg;
+    background: Theme.surface-up;
+    drop-shadow-color: Theme.accent.with-alpha(0.08);
+    drop-shadow-blur: 24px;
+    drop-shadow-offset-y: 8px;
+    Rectangle {
+        border-radius: parent.border-radius;
+        background: @radial-gradient(circle, Theme.accent.with-alpha(0.12) 0%, rgba(6, 182, 212, 0.04) 100%);
+        border-width: 1px;
+        border-color: Theme.accent.with-alpha(0.3);
+    }
+    inner := HorizontalLayout {
+        padding-left: 28px;
+        padding-right: 28px;
+        VerticalLayout {
+            padding-top: 28px;
+            padding-bottom: 28px;
+            spacing: 16px;
+            alignment: center;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 24px;
+                    background: Theme.accent.with-alpha(0.15);
+                    Icon { data: Icons.star; size: 24px; color: Theme.accent; }
+                }
+            }
+            VerticalLayout {
+                spacing: 5.6px;
+                Text { text: T.tr("dash.about.supportBanner"); font-size: 16px; font-weight: 700; color: Theme.text; line-height-factor: 1.25; horizontal-alignment: center; wrap: word-wrap; }
+                Text { text: T.tr("dash.about.rankPerks"); font-size: 12.8px; color: Theme.muted; line-height-factor: 1.09; horizontal-alignment: center; wrap: word-wrap; }
+            }
+            HorizontalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.primary;
+                    size: BtnSize.md;
+                    icon: Icons.heart;
+                    text: T.tr("dash.about.viewDonations");
+                    clicked => { Router.navigate("#/donaciones"); }
+                }
+            }
+        }
+    }
+}
+
+component AboutLeft inherits VerticalLayout {
+    spacing: 12px;
+    alignment: start;
+    min-width: 0px;
+    horizontal-stretch: 1.2;
+    HorizontalLayout {
+        alignment: start;
+        Badge { text: "ESPECTRAL ECOSYSTEM"; variant: BadgeVariant.accent; }
+    }
+    GradientText {
+        text: T.tr("dash.about.title");
+        gradient: GradientKind.emerald-gold;
+        font-size: Theme.text-2xl;
+        font-weight: 700;
+        letter-spacing: -0.7px;
+        line-height-factor: 0.94;
+        wrap: word-wrap;
+    }
+    Text { text: T.tr("dash.about.tagline"); font-size: 14.4px; color: Theme.muted; line-height-factor: 1.09; wrap: word-wrap; }
+    VerticalLayout {
+        padding-top: 12px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 12px;
+            AboutMeta { key: T.tr("settings.name"); value: "Espectral Client"; }
+            AboutMeta { key: T.tr("settings.version"); value: AppState.version != "" ? AppState.version : "2.4.0-horizon"; }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            AboutMeta { key: T.tr("dash.about.stack"); value: T.tr("dash.about.stackDetails"); }
+            AboutMeta {
+                key: T.tr("settings.web");
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 4.8px;
+                    link := Text {
+                        text: "espectral.uhce.top";
+                        font-size: 13.6px;
+                        font-weight: 600;
+                        color: Theme.accent;
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { AppState.open-url("https://espectral.uhce.top"); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Icon { data: Icons.external-link; size: 12px; color: Theme.accent; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component AboutCard inherits Rectangle {
+    in property <bool> narrow;
+    border-radius: Theme.radius-xl;
+    background: Theme.surface-solid;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-color: Theme.shadow-sm-color;
+    drop-shadow-blur: Theme.shadow-sm-blur;
+    drop-shadow-offset-y: Theme.shadow-sm-y;
+    // grid-template-columns: 1.2fr 1fr, positioned by hand (a layout would
+    // measure the wrapped texts at their preferred width)
+    property <length> inner: root.width - 64px;
+    property <length> lw: root.narrow ? root.inner : (root.inner - 24px) * 1.2 / 2.2;
+    property <length> bw: root.narrow ? root.inner : root.inner - root.lw - 24px;
+    height: root.narrow ? left.preferred-height + 24px + banner.preferred-height + 64px : max(left.preferred-height, banner.preferred-height) + 64px;
+    left := AboutLeft {
+        x: 32px;
+        y: 32px;
+        width: root.lw;
+        height: self.preferred-height;
+    }
+    banner := VipBanner {
+        x: root.narrow ? 32px : 32px + root.lw + 24px;
+        width: root.bw;
+        height: self.preferred-height;
+        y: root.narrow ? 32px + left.preferred-height + 24px : (root.height - self.height) / 2;
+    }
+}
+
+// ---- page ------------------------------------------------------------------------------------
+
+export component SettingsPage inherits Rectangle {
+    /// CSS @media (max-width: 1100px): every grid collapses to one column.
+    property <bool> narrow: root.width < 1100px;
+    /// memory number input holds something that is not an integer.
+    property <bool> mem-text-bad: false;
+    property <int> mem: round(SettingsBridge.memory);
+    property <string> memory-error: (root.mem-text-bad || root.mem < 512 || root.mem > 65536) ? T.tr("settings.memory.invalid") : "";
+    property <bool> memory-dirty: SettingsBridge.cfg-loaded && root.mem != SettingsBridge.cfg-memory && root.memory-error == "";
+    property <bool> concurrency-dirty: SettingsBridge.cfg-loaded && round(SettingsBridge.concurrency) != SettingsBridge.cfg-concurrency;
+    property <bool> jdk-dirty: SettingsBridge.cfg-loaded && SettingsBridge.jdk != SettingsBridge.cfg-jdk;
+    property <bool> any-dirty: root.memory-dirty || root.concurrency-dirty || root.jdk-dirty || (SettingsBridge.cfg-loaded && (SettingsBridge.aot != SettingsBridge.cfg-aot || SettingsBridge.fastboot != SettingsBridge.cfg-fastboot || SettingsBridge.fullbright != SettingsBridge.cfg-fullbright || SettingsBridge.discord != SettingsBridge.cfg-discord));
+
+    PageScaffold {
+        max-content-width: 1400px;
+        content-padding: root.width < 768px ? 16px : 40px;
+        content-padding-top: root.width < 768px ? 20px : 30px;
+        content-padding-bottom: 64px;
+        spacing: 28px;
+
+        Hero { any-dirty: root.any-dirty; memory-invalid: root.memory-error != ""; }
+
+        if SettingsBridge.cfg-error != "": Rectangle {
+            border-radius: Theme.radius-md;
+            background: rgba(239, 68, 68, 0.12);
+            border-width: 1px;
+            border-color: rgba(239, 68, 68, 0.4);
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 14px;
+                padding-bottom: 14px;
+                spacing: 16px;
+                VerticalLayout {
+                    alignment: center;
+                    Icon { data: Icons.alert-circle; size: 20px; color: Theme.accent-red; }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: T.tr("dash.saveError") + ": " + SettingsBridge.cfg-error;
+                    font-size: 14px;
+                    color: Theme.accent-red;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        variant: BtnVariant.secondary;
+                        size: BtnSize.sm;
+                        text: T.tr("servers.retry");
+                        clicked => { SettingsBridge.settings-reload(); }
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 36px;
+
+            // SECTION 1: appearance & language
+            VerticalLayout {
+                spacing: 16px;
+                SectionHeader { title: T.tr("dash.appearance.title"); desc: T.tr("dash.appearance.subtitle"); }
+                if !root.narrow: VerticalLayout {
+                    spacing: 20px;
+                    HorizontalLayout {
+                        spacing: 20px;
+                        ThemeCard { }
+                        LanguageCard { }
+                    }
+                    HorizontalLayout {
+                        spacing: 20px;
+                        AccentCard { }
+                        Rectangle { horizontal-stretch: 1; preferred-width: 1px; }
+                    }
+                }
+                if root.narrow: VerticalLayout {
+                    spacing: 20px;
+                    ThemeCard { }
+                    LanguageCard { }
+                    AccentCard { }
+                }
+            }
+
+            // SECTION 2: engine, memory & JVM (one column)
+            VerticalLayout {
+                spacing: 16px;
+                SectionHeader { title: T.tr("dash.engine.title"); desc: T.tr("dash.engine.subtitle"); }
+                MemoryCard {
+                    dirty: root.memory-dirty;
+                    error: root.memory-error;
+                    text-edited(t) => {
+                        if t.is-float() && round(t.to-float()) == t.to-float() {
+                            root.mem-text-bad = false;
+                            SettingsBridge.memory = t.to-float();
+                        } else {
+                            root.mem-text-bad = true;
+                        }
+                    }
+                }
+                DownloadsCard { dirty: root.concurrency-dirty; }
+                JdkCard { dirty: root.jdk-dirty; }
+            }
+
+            // SECTION 3: feature toggles (3 columns)
+            VerticalLayout {
+                spacing: 16px;
+                SectionHeader { title: T.tr("dash.toggles.title"); desc: T.tr("dash.toggles.subtitle"); }
+                if !root.narrow: VerticalLayout {
+                    spacing: 20px;
+                    HorizontalLayout {
+                        spacing: 20px;
+                        AotCard { }
+                        FastBootCard { }
+                        CloseOnStartCard { }
+                    }
+                    HorizontalLayout {
+                        spacing: 20px;
+                        DiscordCard { }
+                        FullbrightCard { }
+                        Rectangle { horizontal-stretch: 1; preferred-width: 1px; }
+                    }
+                }
+                if root.narrow: VerticalLayout {
+                    spacing: 20px;
+                    AotCard { }
+                    FastBootCard { }
+                    CloseOnStartCard { }
+                    DiscordCard { }
+                    FullbrightCard { }
+                }
+            }
+
+            // SECTION 4: agent access (MCP) — TODO(agent-access): not ported, the
+            // native engine does not implement get/put agent-access nor token rotation.
+
+            // SECTION 5: system storage & diagnostics
+            VerticalLayout {
+                spacing: 16px;
+                SectionHeader { title: T.tr("dash.data.title"); desc: T.tr("dash.data.subtitle"); }
+                if !root.narrow: HorizontalLayout {
+                    spacing: 20px;
+                    DataDirCard { narrow: root.width < 768px; }
+                    HealthCard { }
+                }
+                if root.narrow: VerticalLayout {
+                    spacing: 20px;
+                    DataDirCard { narrow: root.width < 768px; }
+                    HealthCard { }
+                }
+            }
+
+            // SECTION 6: about + donations bridge
+            AboutCard { narrow: root.narrow; }
+        }
+    }
+}

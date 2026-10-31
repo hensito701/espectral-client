@@ -1,0 +1,168 @@
+// AppWindow — port of App.svelte (shell, z-order, router). FOUNDATION-OWNED.
+//
+// Z-order (CSS --z-*): ambient backdrop 0 · page 10 · PiP log 20 · top chrome /
+// popovers 30 · modals 40 (inside pages) · command palette 50 · toasts 60 ·
+// login gate 90.
+//
+// Page agents never edit this file: every page component and bridge global
+// it references already exists in the group's own files.
+
+import { Theme } from "theme.slint";
+import { T } from "i18n.slint";
+import { Page, Router, AppState, Shell, Session, Util, PaletteState } from "state.slint";
+
+import "fonts/SpaceGrotesk-Regular.ttf";
+import "fonts/SpaceGrotesk-Medium.ttf";
+import "fonts/SpaceGrotesk-SemiBold.ttf";
+import "fonts/SpaceGrotesk-Bold.ttf";
+import "fonts/PressStart2P-Regular.ttf";
+import "fonts/JetBrainsMono-Regular.ttf";
+
+import { AmbientBackdrop } from "shell/backdrop.slint";
+import { TopChrome } from "shell/top-chrome.slint";
+import { ToastHost } from "shell/toast-host.slint";
+import { CommandPalette } from "shell/command-palette.slint";
+import { LoginGate } from "shell/login-gate.slint";
+
+// ---- page groups (each owned by one agent) ----
+import { HomePage } from "pages/home-instances/home.slint";
+import { InstanceHubPage } from "pages/home-instances/instance-hub.slint";
+import { PipLogDrawer } from "pages/home-instances/pip-log.slint";
+import { VersionsPage } from "pages/library-mods/versions.slint";
+import { ImportPage } from "pages/library-mods/import.slint";
+import { ModsPage } from "pages/library-mods/mods.slint";
+import { DonationsPage } from "pages/library-mods/donations.slint";
+import { AccountPage } from "pages/account-wardrobe/account-vault.slint";
+import { WardrobePage } from "pages/account-wardrobe/wardrobe.slint";
+import { AccountPopover } from "pages/account-wardrobe/account-popover.slint";
+import { SettingsPage } from "pages/settings-suite-servers/settings.slint";
+import { ClientPage } from "pages/settings-suite-servers/client-suite.slint";
+import { ServersPage } from "pages/settings-suite-servers/servers.slint";
+
+// ---- globals visible from Rust ----
+export { Theme, T, Page, Router, AppState, Shell, Session, Util, PaletteState }
+export { InstanceRow, AccountRow, LaunchRow, ServerRow, ToastKind, ToastItem, PaletteItem } from "state.slint";
+export { HomeBridge } from "pages/home-instances/api.slint";
+export { LibraryBridge } from "pages/library-mods/api.slint";
+export { AccountBridge } from "pages/account-wardrobe/api.slint";
+export { SettingsBridge } from "pages/settings-suite-servers/api.slint";
+export { SkinBridge, SkinFrameRequest } from "skin3d/skin-view.slint";
+
+export component AppWindow inherits Window {
+    title: "Espectral Client";
+    icon: @image-url("assets/favicon.png");
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    min-width: 960px;
+    min-height: 640px;
+    background: Theme.bg;
+    default-font-family: Theme.font-body;
+    default-font-size: Theme.text-md;
+
+    /// Pre-composed ambient orbs (src/backdrop.rs).
+    in property <image> backdrop-image;
+    /// Window size / scheme / accent / hue changed: Rust re-renders the backdrop.
+    callback backdrop-inputs-changed(width: length, height: length, dark: bool, accent: color, accent-2: color, gold: color, hue: int);
+    property <string> backdrop-key: self.width / 1px + "x" + self.height / 1px + (Theme.dark ? "d" : "l") + Theme.accent-id + Shell.ambient-hue;
+    changed backdrop-key => { root.refresh-backdrop(); }
+    /// Called by Rust once the handler is wired (init runs before that).
+    public function refresh-backdrop() {
+        root.backdrop-inputs-changed(root.width, root.height, Theme.dark, Theme.accent, Theme.accent-2, Theme.accent-gold, Shell.ambient-hue);
+    }
+
+    forward-focus: keys;
+
+    keys := FocusScope {
+        // Global hotkeys (CommandPalette / PipLogDrawer / AccountPopover handlers).
+        // Text inputs consume printable keys first, so "/" and Space only fire
+        // when no input has focus (same rule as the Svelte `isEditable` check).
+        key-pressed(e) => {
+            if (e.modifiers.control || e.modifiers.meta) && (e.text == "k" || e.text == "K") {
+                Shell.palette-open = !Shell.palette-open;
+                return accept;
+            }
+            if Session.show-gate || Session.just-authed { return reject; }
+            if e.text == Key.Escape {
+                if Shell.palette-open { Shell.palette-open = false; return accept; }
+                if Shell.account-popover-open { Shell.account-popover-open = false; return accept; }
+                if Shell.pip-log-open && !Shell.pip-log-pinned { Shell.pip-log-open = false; return accept; }
+                return reject;
+            }
+            if Shell.modal-depth > 0 || Shell.palette-open { return reject; }
+            if e.text == "/" && !e.modifiers.control {
+                Shell.palette-open = true;
+                return accept;
+            }
+            if e.text == " " {
+                Shell.pip-log-open = !Shell.pip-log-open;
+                return accept;
+            }
+            return reject;
+        }
+
+        AmbientBackdrop {
+            width: 100%;
+            height: 100%;
+            orbs: root.backdrop-image;
+        }
+
+        // ---- routed page viewport (below the top chrome) ----
+        viewport := Rectangle {
+            x: 0;
+            y: Theme.topbar-height;
+            width: parent.width;
+            height: parent.height - Theme.topbar-height;
+
+            if Router.page == Page.home: HomePage { }
+            if Router.page == Page.instance: InstanceHubPage { }
+            if Router.page == Page.servers: ServersPage { }
+            if Router.page == Page.versions: VersionsPage { }
+            if Router.page == Page.import: ImportPage { }
+            if Router.page == Page.mods: ModsPage { }
+            if Router.page == Page.client: ClientPage { }
+            if Router.page == Page.account: AccountPage { }
+            if Router.page == Page.settings: SettingsPage { }
+            if Router.page == Page.wardrobe: WardrobePage { }
+            if Router.page == Page.donations: DonationsPage { }
+        }
+
+        PipLogDrawer {
+            width: 100%;
+            height: 100%;
+        }
+
+        TopChrome {
+            x: 0;
+            y: 0;
+            width: parent.width;
+        }
+
+        // account popover (click-outside closes)
+        if Shell.account-popover-open: Rectangle {
+            width: 100%;
+            height: 100%;
+            TouchArea {
+                clicked => { Shell.account-popover-open = false; }
+            }
+            AccountPopover {
+                x: parent.width - self.width - 16px;
+                y: Theme.topbar-height + 9px;
+            }
+        }
+
+        CommandPalette {
+            width: 100%;
+            height: 100%;
+        }
+
+        ToastHost {
+            width: 100%;
+            height: 100%;
+        }
+
+        if Session.show-gate || Session.just-authed: LoginGate {
+            width: 100%;
+            height: 100%;
+        }
+    }
+}

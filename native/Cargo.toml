@@ -1,0 +1,139 @@
+# Espectral Client — native (Rust) workspace.
+#
+# engine/  espectral-engine: the launcher engine as a library (port of src/engine/*.mjs)
+# app/     espectral-client: the native binary (Slint UI, see app/UI-PORTING.md)
+# skin3d/  espectral-skin3d: software 3D Minecraft skin renderer used by the UI
+#
+# Every third-party dependency is pinned HERE, once. Member crates reference
+# them with `dep = { workspace = true }` so the parallel porting worktrees can
+# never pull two versions of the same crate. If a port truly needs a new crate,
+# add it to [workspace.dependencies] in its own commit (see PORTING.md).
+
+[workspace]
+resolver = "2"
+members = ["engine", "app", "skin3d"]
+
+[workspace.package]
+# Mirrors package.json "version" (the JS engine reports it from /api/health).
+version = "1.6.2"
+edition = "2021"
+license = "GPL-3.0-only"
+rust-version = "1.80"
+repository = "https://github.com/espectral/espectral-client"
+
+[workspace.dependencies]
+espectral-engine = { path = "engine" }
+
+# async runtime + utilities
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "process", "signal"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+bytes = "1"
+
+# HTTP — rustls ONLY (never OpenSSL / native-tls)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "json", "stream", "http2", "charset"] }
+# Loopback listener for the two endpoints external processes still call:
+# the in-game mod bridge (POST /api/bridge/visible) and the Discord OAuth
+# redirect (GET /api/discord/callback). See PORTING.md.
+axum = { version = "0.7", default-features = false, features = ["tokio", "http1", "json", "query"] }
+
+# serde — preserve_order keeps JSON key order identical to the JS engine's
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+indexmap = { version = "2", features = ["serde"] }
+
+# errors / logging
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# archives / compression
+zip = { version = "2", default-features = false, features = ["deflate"] }
+flate2 = "1"
+tar = "0.4"
+
+# hashing / crypto / encoding
+sha1 = "0.10"
+sha2 = "0.10"
+md-5 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["pkcs8", "alloc"] }
+rand = "0.8"
+uuid = { version = "1", features = ["v4"] }
+
+# misc
+url = "2"
+regex = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+dirs = "5"
+
+# platform
+libc = "0.2"
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Pipes",
+  "Win32_System_ProcessStatus",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+# tests
+tempfile = "3"
+
+# ---- native UI (app/) -------------------------------------------------------
+# Slint is GPL-3.0 / royalty-free / commercial; this project is GPL-3.0-only.
+# winit backend with the femtovg (OpenGL) renderer, plus the software renderer
+# as a fallback (SLINT_BACKEND=winit-software) and for headless screenshots.
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "software-renderer-path", "software-renderer-systemfonts"] }
+slint-build = "=1.18.1"
+# Native file dialogs (xdg-desktop-portal on Linux, Win32 on Windows).
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
+# Open URLs / folders with the system handler.
+open = "5"
+# PNG decode (engine PNG bytes -> slint::Image) and encode (headless screenshots).
+png = "0.18"
+# Modrinth icon decode + downscale (library-mods): png/jpeg are already built for
+# Slint's own image loading; webp/gif cover the remaining cdn.modrinth.com formats.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+espectral-skin3d = { path = "skin3d" }
+
+# Disk budget: no debug info for third-party crates (Slint + winit + femtovg
+# are large), and a light optimization so the UI is usable in dev builds.
+[profile.dev.package."*"]
+debug = false
+opt-level = 1
+
+# The skin rasterizer runs per frame on the UI thread: optimize it even in dev
+# builds (unoptimized it is ~20x slower and makes the spinning viewer janky).
+[profile.dev.package.espectral-skin3d]
+opt-level = 3
+
+# The app crate's Slint-generated module (~60 MB of Rust) makes rustc peak at
+# ~12.7 GB with full debug info; line tables keep backtraces usable.
+[profile.dev.package.espectral-client]
+debug = "line-tables-only"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "symbols"
+
+# The app crate is mostly Slint-generated Rust (one very large module, ~2/3
+# of the binary's machine code). With 4 codegen units rustc's peak memory
+# exceeds 14 GB at opt-level 3; 16 units keep the build under that. opt-level
+# "s" roughly halves the generated code (property bindings / layout glue are
+# not hot; the skin rasterizer is its own crate and stays at opt-level 3).
+# `strip` must be repeated here: a per-package override of the root package
+# otherwise drops the profile-wide `strip` (the binary kept its 42 MB symtab).
+# panic = "abort" is NOT an option: the engine relies on unwinding
+# (catch_unwind in launch / aot / game_launch, tokio JoinError on panics).
+[profile.release.package.espectral-client]
+codegen-units = 16
+opt-level = "s"
+strip = "symbols"

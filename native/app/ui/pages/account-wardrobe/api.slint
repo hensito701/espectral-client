@@ -1,0 +1,204 @@
+// OWNER: account-wardrobe agent. The group's single bridge global — the only Slint global
+// of this group that Rust can see (app.slint re-exports it by name).
+// Rust side: native/app/src/pages/account_wardrobe.rs (+ account_wardrobe/*.rs).
+//
+// Pages: AccountPage (AccountVault.svelte), WardrobePage (Wardrobe.svelte),
+// AccountPopover (components/AccountPopover.svelte).
+
+import { AccountRow } from "../../state.slint";
+
+/// Skin gallery entry (engine types::SkinLibraryEntry).
+export struct VaultSkinEntry {
+    id: string,
+    name: string,
+    /// "classic" | "slim"
+    variant: string,
+}
+
+/// One cosmetic item chip of a slot (Wardrobe).
+export struct WardrobeItem {
+    id: string,
+    name-es: string,
+    name-en: string,
+    equipped: bool,
+    /// Equipping it would unequip an incompatible item (dashed chip).
+    conflict: bool,
+}
+
+/// One slot picker (Wardrobe).
+export struct WardrobeSlot {
+    slot: string,
+    label-es: string,
+    label-en: string,
+    /// "none" chip equipped (slot empty).
+    empty: bool,
+    items: [WardrobeItem],
+}
+
+/// One account of the Wardrobe picker (engine types::IdentityAccount + PublicAccount bits).
+export struct WardrobeAccount {
+    uuid: string,
+    username: string,
+    verified: bool,
+    supporter: bool,
+    mvp: bool,
+    offline: bool,
+    has-discord: bool,
+    discord-username: string,
+    has-discord-avatar: bool,
+    discord-avatar: image,
+    /// Formatted grant expiry per UI language ("" when none).
+    grant-exp-es: string,
+    grant-exp-en: string,
+    has-avatar: bool,
+    avatar: image,
+}
+
+export global AccountBridge {
+    // =====================================================================
+    // Account vault (#/account) — shared with the popover
+    // =====================================================================
+    /// Accounts sorted like the Svelte vault: active first, then last_used desc.
+    in property <[AccountRow]> accounts;
+    /// The active account (most recently used) — valid when has-active.
+    in property <AccountRow> active;
+    in property <bool> has-active;
+    /// First load in flight (no accounts yet).
+    in property <bool> loading;
+    /// Silent reload in flight (refresh button spinner).
+    in property <bool> refreshing;
+    callback refresh();
+    callback set-active(username: string);
+
+    // offline forge
+    in property <bool> offline-creating;
+    in property <string> offline-error;
+    /// Bumped after a successful create so the page clears its input.
+    in property <int> offline-created-serial;
+    callback create-offline(username: string);
+
+    // Microsoft device flow
+    in property <bool> ms-flow;
+    in property <bool> ms-polling;
+    in property <bool> ms-pending;
+    in property <string> ms-error;
+    in property <string> ms-user-code;
+    in property <string> ms-verification-uri;
+    in property <string> ms-verification-uri-complete;
+    callback start-ms();
+    callback cancel-ms();
+
+    // inline MSA sign-out
+    in-out property <string> confirming-logout;
+    in property <bool> logging-out;
+    callback logout-msa(username: string);
+
+    // avatar customization
+    in property <string> avatar-busy;
+    /// hue -1 = clear the custom color.
+    callback set-avatar-color(username: string, hue: int);
+    callback upload-avatar(username: string);
+    callback remove-avatar(username: string);
+
+    // advanced Azure client id
+    in property <string> client-id;
+    in property <bool> client-id-loading;
+    in property <bool> client-id-saving;
+    in property <string> client-id-error;
+    /// Bumped whenever Rust loaded/saved the id (the page copies client-id into its field).
+    in property <int> client-id-serial;
+    callback load-client-id();
+    callback save-client-id(value: string);
+
+    // ---- Skin Atelier ----
+    in property <bool> skin-loading;
+    in property <bool> skin-busy;
+    /// SkinInfo known for the active MSA account.
+    in property <bool> skin-info;
+    in property <bool> skin-has-skin;
+    in property <bool> skin-cape;
+    /// "classic" | "slim" (radio group).
+    in-out property <string> skin-variant: "classic";
+    /// A local file is staged in the viewer.
+    in property <bool> staged;
+    /// Local PNG path of the staged file (SkinView "file:" source).
+    in property <string> staged-path;
+    in-out property <string> staged-name;
+    in property <int> staged-serial;
+    in-out property <bool> confirming-skin-reset;
+    callback pick-skin-file();
+    callback clear-staged();
+    callback save-to-gallery(name: string);
+    callback reset-skin();
+    callback refresh-skin();
+
+    // gallery
+    in property <[VaultSkinEntry]> gallery;
+    in property <bool> gallery-loading;
+    in property <bool> importing-vanilla;
+    in-out property <string> preview-id;
+    in property <string> preview-name;
+    in property <string> preview-variant;
+    in property <string> applying-id;
+    in property <string> deleting-id;
+    in-out property <string> renaming-id;
+    in-out property <string> confirming-delete-id;
+    callback reload-gallery();
+    callback import-vanilla();
+    callback preview-entry(id: string);
+    callback apply-entry(id: string);
+    callback delete-entry(id: string);
+    callback rename-entry(id: string, name: string);
+    /// Page asks Rust to scroll the stage into view (set by Rust, read by the page).
+    in property <int> preview-serial;
+
+    // ---- Account popover ----
+    /// accounts minus the active one (quick-switch list).
+    in property <[AccountRow]> popover-others;
+    in property <bool> popover-creating;
+    in property <string> popover-error;
+    in property <int> popover-created-serial;
+    callback popover-create(username: string);
+    callback popover-switch(username: string);
+    /// Popover opened (reload accounts).
+    callback popover-opened();
+
+    // =====================================================================
+    // Wardrobe (#/armario)
+    // =====================================================================
+    in property <bool> w-loading: true;
+    in property <string> w-load-error;
+    in property <[WardrobeAccount]> w-accounts;
+    in property <int> w-selected: -1;
+    in property <bool> w-share;
+    in property <bool> w-emotes;
+    in property <[WardrobeSlot]> w-slots;
+    in property <[WardrobeItem]> w-emotes-catalog;
+    in property <[string]> w-hidden;
+    in property <string> w-hidden-error;
+    in property <int> w-hidden-serial;
+    in property <bool> w-saving;
+    in property <bool> w-verifying;
+    in property <bool> w-refreshing;
+    in property <bool> w-linking;
+    in property <bool> w-unlinking;
+    callback w-load();
+    callback w-select(index: int);
+    callback w-verify();
+    callback w-refresh-flags();
+    callback w-link();
+    callback w-cancel-link();
+    callback w-unlink();
+    callback w-toggle-share(on: bool);
+    callback w-toggle-emotes(on: bool);
+    callback w-equip(slot: string, item-id: string);
+    callback w-add-hidden(name: string);
+    callback w-remove-hidden(name: string);
+
+    /// First n characters (Slint strings have no substring()).
+    pure callback truncate(text: string, n: int) -> string;
+    /// String.trim().
+    pure callback trim(text: string) -> string;
+    /// "^[A-Za-z0-9_]{2,16}$" (offline forge / popover): implemented in Rust.
+    pure callback valid-offline-name(name: string) -> bool;
+}
