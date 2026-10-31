@@ -9,3 +9,7 @@ rust-version.workspace = true
 # OWNER: skin-renderer agent (see app/UI-PORTING.md). Keep it dependency-light:
 # it rasterizes into a plain RGBA buffer; the app wraps it into a slint::Image.
 [dependencies]
+
+[dev-dependencies]
+# golden-image tests + the example read / write PNGs
+png = { workspace = true }
