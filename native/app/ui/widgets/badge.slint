@@ -1,0 +1,115 @@
+// Badge — port of components/Badge.svelte; Kbd — the pixel-font key chips
+// (HotkeyLegend, palette footer, TopChrome "/" hint); GradientText — port of
+// components/GradientText.svelte.
+
+import { Theme } from "../theme.slint";
+
+/// Badge variants (CSS .badge--*). Loader variants: vanilla | fabric | neoforge | quilt.
+export enum BadgeVariant { neutral, ok, warn, err, info, accent, gold, purple, vanilla, fabric, neoforge, quilt }
+
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <BadgeVariant> variant: BadgeVariant.neutral;
+    /// Leading glowing dot.
+    in property <bool> dot: false;
+    /// Press Start 2P (CSS pixel / mono).
+    in property <bool> pixel: false;
+    /// md = 5px 12px / 14px; sm = 3px 8px / 12px.
+    in property <bool> large: false;
+
+    property <color> fg: variant == BadgeVariant.ok ? Theme.accent-green
+        : variant == BadgeVariant.warn ? Theme.accent-alt
+        : variant == BadgeVariant.err ? Theme.accent-red
+        : variant == BadgeVariant.info || variant == BadgeVariant.fabric ? Theme.accent-cyan
+        : variant == BadgeVariant.accent ? Theme.accent
+        : variant == BadgeVariant.gold ? Theme.accent-gold
+        : variant == BadgeVariant.purple || variant == BadgeVariant.quilt ? Theme.accent-purple
+        : variant == BadgeVariant.neoforge ? Theme.accent-alt
+        : variant == BadgeVariant.vanilla ? #ffffff
+        : Theme.muted;
+    property <color> base: variant == BadgeVariant.err ? #ef4444 : variant == BadgeVariant.info || variant == BadgeVariant.fabric ? #06b6d4 : variant == BadgeVariant.purple || variant == BadgeVariant.quilt ? #a855f7 : variant == BadgeVariant.neoforge ? #f97316 : fg;
+
+    height: row.preferred-height;
+    min-width: row.preferred-width;
+    preferred-width: row.preferred-width;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: Theme.radius-pill;
+    border-width: 1px;
+    background: variant == BadgeVariant.neutral ? Theme.card-bg-soft
+        : variant == BadgeVariant.vanilla ? Theme.loader-vanilla
+        : variant == BadgeVariant.accent ? Theme.accent.with-alpha(0.2)
+        : base.with-alpha(variant == BadgeVariant.gold || variant == BadgeVariant.purple || variant == BadgeVariant.fabric || variant == BadgeVariant.neoforge || variant == BadgeVariant.quilt ? 0.15 : 0.14);
+    border-color: variant == BadgeVariant.neutral ? Theme.glass-border
+        : variant == BadgeVariant.vanilla ? rgba(16, 185, 129, 0.35)
+        : variant == BadgeVariant.accent ? Theme.accent.with-alpha(0.45)
+        : base.with-alpha(0.35);
+    drop-shadow-color: variant == BadgeVariant.accent ? Theme.accent.with-alpha(0.15) : transparent;
+    drop-shadow-blur: 12px;
+
+    row := HorizontalLayout {
+        padding-left: large ? 12px : 8px;
+        padding-right: large ? 12px : 8px;
+        padding-top: large ? 5px : 3px;
+        padding-bottom: large ? 5px : 3px;
+        spacing: Theme.space-1;
+        alignment: center;
+        if root.dot: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: root.fg;
+                drop-shadow-color: root.fg;
+                drop-shadow-blur: 6px;
+            }
+        }
+        Text {
+            text: root.text;
+            color: root.fg;
+            font-size: root.pixel ? 9.9px : root.large ? Theme.text-sm : Theme.text-xs;
+            font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
+            font-weight: 600;
+            letter-spacing: root.pixel ? 0.6px : 0.3px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+/// <kbd class="font-pixel"> key chip.
+export component Kbd inherits Rectangle {
+    in property <string> text;
+    /// accent-tinted (TopChrome "/" , HotkeyLegend) vs neutral (palette footer).
+    in property <bool> accent: false;
+    in property <length> font-size: 9px;
+    height: label.preferred-height + 6px;
+    min-width: label.preferred-width + 10px;
+    preferred-width: label.preferred-width + 10px;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-xs;
+    background: accent ? Theme.accent.with-alpha(0.12) : Theme.surface-solid;
+    border-width: 1px;
+    border-color: accent ? Theme.accent.with-alpha(0.3) : Theme.border;
+    label := Text {
+        text: root.text;
+        font-family: Theme.font-pixel;
+        font-size: root.font-size;
+        color: root.accent ? Theme.accent : Theme.muted-strong;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+/// Gradient presets of GradientText.svelte.
+export enum GradientKind { emerald-gold, cyan-emerald, gold-amber, purple-pink, accent }
+
+/// Gradient-filled text. (The software renderer may fall back to a solid fill.)
+export component GradientText inherits Text {
+    in property <GradientKind> gradient: GradientKind.emerald-gold;
+    color: gradient == GradientKind.cyan-emerald ? @linear-gradient(135deg, Theme.accent-cyan 0%, Theme.accent-green 100%)
+        : gradient == GradientKind.gold-amber ? @linear-gradient(135deg, Theme.accent-gold 0%, Theme.accent-alt 100%)
+        : gradient == GradientKind.purple-pink ? @linear-gradient(135deg, Theme.accent-purple 0%, #ec4899 100%)
+        : gradient == GradientKind.accent ? @linear-gradient(135deg, Theme.accent 0%, Theme.accent-2 100%)
+        : @linear-gradient(135deg, Theme.accent-green 0%, Theme.accent-gold 100%);
+}
