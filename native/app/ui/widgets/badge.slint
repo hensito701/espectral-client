@@ -198,6 +198,10 @@ export component Wordmark inherits HorizontalLayout {
 /// Sticker badge: small pixel label on a flat colour with a hard shadow,
 /// tilted about -4°. Defaults to the site's green tag: #10B981 with dark ink
 /// (white on that green is too faint). One per section at most.
+///
+/// Below 16px the label is regular weight and the sticker is NOT rotated:
+/// at 8px the bold pixel font fills its own counters, and rotating 1-pixel
+/// strokes on the GPU renderer resamples them into a smudge.
 export component Sticker inherits Rectangle {
     in property <string> text;
     in property <color> fill: #10b981;
@@ -206,13 +210,14 @@ export component Sticker inherits Rectangle {
     in property <angle> tilt: -4deg;
     /// 2px ink outline (the site's version tag has none).
     in property <bool> outlined: true;
-    property <length> d: 3px;
-    width: label.preferred-width + 16px + d;
-    height: label.preferred-height + 8px + d;
+    property <bool> small: font-size < 16px;
+    property <length> d: small ? 2px : 3px;
+    width: label.preferred-width + (small ? 10px : 16px) + d;
+    height: label.preferred-height + (small ? 6px : 8px) + d;
     Rectangle {
         width: root.width;
         height: root.height;
-        transform-rotation: root.tilt;
+        transform-rotation: root.small ? 0deg : root.tilt;
         transform-origin: { x: self.width / 2, y: self.height / 2 };
         Rectangle { x: root.d; y: root.d; width: root.width - root.d; height: root.height - root.d; border-radius: 4px; background: Theme.brand-ink; }
         Rectangle {
@@ -226,7 +231,7 @@ export component Sticker inherits Rectangle {
                 text: root.text;
                 font-family: Theme.font-title;
                 font-size: root.font-size;
-                font-weight: 700;
+                font-weight: root.small ? 400 : 700;
                 color: root.ink;
                 horizontal-alignment: center;
                 vertical-alignment: center;

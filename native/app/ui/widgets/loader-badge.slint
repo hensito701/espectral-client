@@ -70,7 +70,7 @@ export component LoaderBadge inherits Rectangle {
                     text: root.display-name;
                     font-family: Theme.font-pixel;
                     font-size: root.fs;
-                    font-weight: 700;
+                    font-weight: root.fs < 16px ? 400 : 700;
                     letter-spacing: 0px;
                     color: #ffffff;
                     vertical-alignment: center;
