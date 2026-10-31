@@ -13,11 +13,13 @@
 //! | `content.rs`         | content          | routes/instances.mjs, mods, mrpack, import, servers, client, misc.mjs instance icon |
 //! | `accounts_skins.rs`  | accounts-skins   | routes/skins, cosmetics, backgrounds, misc.mjs accounts/avatars/MSA/skin |
 //! | `identity_discord.rs`| identity-discord | routes/identity.mjs, routes/discord.mjs |
+//! | `agent.rs`           | agent            | routes/agent.mjs (UI routes; the agent API + mod relay are HTTP, `loopback.rs`) |
 //!
 //! Each cluster file also owns its in-memory state struct (`*State`, held by
 //! `Engine`) and its `on_engine_start` / `on_engine_shutdown` hooks.
 
 pub mod accounts_skins;
+pub mod agent;
 pub mod content;
 pub mod core;
 pub mod game_launch;

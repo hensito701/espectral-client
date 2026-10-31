@@ -76,6 +76,9 @@ pub mod identity;
 pub mod loopback;
 pub mod presence;
 
+// ---- agent access ----------------------------------------------------------
+pub mod agent;
+
 pub use engine::{ActiveInstances, Engine, EngineOptions, VERSION};
 pub use error::{EngineError, EngineResult, ErrorEnvelope};
 pub use events::{EngineEvent, EventBus};
