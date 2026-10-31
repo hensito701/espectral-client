@@ -413,7 +413,7 @@ impl Engine {
         let inst =
             crate::resolver::load_instance_meta(self, name).map_err(|e| send_error(e, 404, "instance_not_found"))?;
         let note = match inst.loader {
-            Loader::Neoforge => Some("Conjunto de rendimiento solo disponible en Fabric".to_string()),
+            Loader::Neoforge | Loader::Forge => Some("Conjunto de rendimiento solo disponible en Fabric".to_string()),
             Loader::Vanilla => {
                 Some("vanilla instances use integrated no-fog/fullbright (Settings → Client)".to_string())
             }

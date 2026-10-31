@@ -91,6 +91,7 @@ fn hub_hue(s: &InstanceSummary) -> i32 {
         None => match s.loader {
             espectral_engine::types::Loader::Fabric => 195,
             espectral_engine::types::Loader::Neoforge => 25,
+            espectral_engine::types::Loader::Forge => 35,
             espectral_engine::types::Loader::Vanilla => 160,
         },
     }

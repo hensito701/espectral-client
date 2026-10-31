@@ -42,6 +42,7 @@ pub mod util;
 pub mod ziputil;
 
 // ---- game-resolve ----------------------------------------------------------
+pub mod forge;
 pub mod jvm;
 pub mod neoforge;
 pub mod resolver;

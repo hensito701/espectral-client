@@ -33,13 +33,15 @@ pub fn loader_str(l: Loader) -> &'static str {
         Loader::Vanilla => "vanilla",
         Loader::Fabric => "fabric",
         Loader::Neoforge => "neoforge",
+        Loader::Forge => "forge",
     }
 }
 
 pub fn parse_loader(s: &str) -> Loader {
     match s {
         "fabric" => Loader::Fabric,
-        "neoforge" | "forge" => Loader::Neoforge,
+        "neoforge" => Loader::Neoforge,
+        "forge" => Loader::Forge,
         _ => Loader::Vanilla,
     }
 }

@@ -96,6 +96,7 @@ pub enum Loader {
     Vanilla,
     Fabric,
     Neoforge,
+    Forge,
 }
 
 impl Loader {
@@ -104,6 +105,7 @@ impl Loader {
             Loader::Vanilla => "vanilla",
             Loader::Fabric => "fabric",
             Loader::Neoforge => "neoforge",
+            Loader::Forge => "forge",
         }
     }
     pub fn parse(s: &str) -> Option<Loader> {
@@ -111,6 +113,7 @@ impl Loader {
             "vanilla" => Some(Loader::Vanilla),
             "fabric" => Some(Loader::Fabric),
             "neoforge" => Some(Loader::Neoforge),
+            "forge" => Some(Loader::Forge),
             _ => None,
         }
     }

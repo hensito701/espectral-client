@@ -507,7 +507,9 @@ where
             }
         };
         set(&mut out, "id", merged.get("id").cloned());
-        for key in ["mainClass", "assetIndex", "javaVersion", "downloads"] {
+        // `minecraftArguments` (pre-1.13 string args): a legacy Forge profile
+        // REPLACES the vanilla string (it re-lists every flag + --tweakClass).
+        for key in ["mainClass", "assetIndex", "javaVersion", "downloads", "minecraftArguments", "logging"] {
             let v = pick(key);
             set(&mut out, key, v);
         }
@@ -645,10 +647,18 @@ pub async fn install_libraries(
             ProgressChannel::Mod,
             lib_event(&instance.name, file_name_of(&dest), if classifier.is_some() { "natives" } else { "library" }),
         );
+        // Legacy natives-only entries (LWJGL 2 `lwjgl-platform`, `jinput-platform`
+        // in <= 1.12.2) carry `downloads.classifiers` but no main artifact: the
+        // guessed Maven jar may not exist (jinput-platform-2.0.5.jar is a 404).
+        let natives_only = lib.get("natives").is_some()
+            && lib.get("downloads").is_some()
+            && lib.pointer("/downloads/artifact").is_none();
         if let Some(c) = classifier {
             natives.push(NativeJob { dest: dest.clone(), classifier: c, exclude: extract_exclude(lib) });
         } else {
-            classpath.push(dest.clone());
+            if !natives_only {
+                classpath.push(dest.clone());
+            }
             // Legacy schema (<= 1.16.x): `natives: { linux: "natives-linux" }`
             // + `downloads.classifiers[<os-classifier>]`.
             let os_class = lib.get("natives").and_then(|n| n.get(os)).and_then(Value::as_str);
@@ -673,6 +683,9 @@ pub async fn install_libraries(
                     jobs.push(nitem);
                 }
             }
+        }
+        if natives_only {
+            continue;
         }
         if seed
             && seed_from_fast_client(engine, &format!("libraries/{}", info.rel_path), info.sha1.as_deref(), &dest).await
