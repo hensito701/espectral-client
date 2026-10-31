@@ -436,6 +436,24 @@ public final class Compat {
                 ? minecraft.gameRenderer.mainRenderTarget() : null;
     }
 
+    /**
+     * True when the render path follows {@code Window.setWidth/setHeight} each
+     * frame (26.x: {@code GameRenderer.render} resizes the main target from the
+     * extracted window state), which agent custom-size captures rely on.
+     */
+    public static boolean supportsSizedCapture() {
+        return true;
+    }
+
+    /** F1 state: true when the HUD is hidden (26.x keeps it on {@code Gui.hud}). */
+    public static boolean hudHidden(Minecraft minecraft) {
+        return minecraft.gui.hud.isHidden();
+    }
+
+    public static void setHudHidden(Minecraft minecraft, boolean hidden) {
+        if (minecraft.gui.hud.isHidden() != hidden) minecraft.gui.hud.toggle();
+    }
+
     /** submitModel without a crumbling overlay (the overload set differs per version). */
     public static <S> void submitModel(net.minecraft.client.renderer.SubmitNodeCollector collector,
             net.minecraft.client.model.Model<? super S> model, S state, com.mojang.blaze3d.vertex.PoseStack pose,

@@ -25,6 +25,7 @@ public abstract class AgentFrameMixin {
     private void espectral$agentFrame(boolean tick, CallbackInfo ci) {
         if (es.spectral.menu.agent.AgentRuntime.enabled()) {
             es.spectral.menu.agent.AgentCapture.onFrameEnd((Minecraft) (Object) this);
+            es.spectral.menu.agent.AgentFrames.onFrameEnd();
         }
     }
 }
