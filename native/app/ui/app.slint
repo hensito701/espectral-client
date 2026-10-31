@@ -15,7 +15,8 @@ import "fonts/SpaceGrotesk-Regular.ttf";
 import "fonts/SpaceGrotesk-Medium.ttf";
 import "fonts/SpaceGrotesk-SemiBold.ttf";
 import "fonts/SpaceGrotesk-Bold.ttf";
-import "fonts/PressStart2P-Regular.ttf";
+import "fonts/MinecraftEspectral-Regular.ttf";
+import "fonts/MinecraftEspectral-Bold.ttf";
 import "fonts/JetBrainsMono-Regular.ttf";
 
 import { AmbientBackdrop } from "shell/backdrop.slint";
@@ -59,17 +60,6 @@ export component AppWindow inherits Window {
     default-font-family: Theme.font-body;
     default-font-size: Theme.text-md;
 
-    /// Pre-composed ambient orbs (src/backdrop.rs).
-    in property <image> backdrop-image;
-    /// Window size / scheme / accent / hue changed: Rust re-renders the backdrop.
-    callback backdrop-inputs-changed(width: length, height: length, dark: bool, accent: color, accent-2: color, gold: color, hue: int);
-    property <string> backdrop-key: self.width / 1px + "x" + self.height / 1px + (Theme.dark ? "d" : "l") + Theme.accent-id + Shell.ambient-hue;
-    changed backdrop-key => { root.refresh-backdrop(); }
-    /// Called by Rust once the handler is wired (init runs before that).
-    public function refresh-backdrop() {
-        root.backdrop-inputs-changed(root.width, root.height, Theme.dark, Theme.accent, Theme.accent-2, Theme.accent-gold, Shell.ambient-hue);
-    }
-
     forward-focus: keys;
 
     keys := FocusScope {
@@ -103,7 +93,6 @@ export component AppWindow inherits Window {
         AmbientBackdrop {
             width: 100%;
             height: 100%;
-            orbs: root.backdrop-image;
         }
 
         // ---- routed page viewport (below the top chrome) ----
