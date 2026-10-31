@@ -4,6 +4,23 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [Unreleased]
 
+### Added
+- **Forge instances** for Minecraft 1.8.9, 1.12.2, 1.21.x and 26.x: pick
+  *Forge* when creating an instance (the recommended Forge build is chosen
+  for you), import Forge modpacks, and search/install Forge mods.
+- **Minecraft 1.8.9**: vanilla and Forge 1.8.9 instances run on Java 8, with
+  the Espectral menu for 1.8.9 Forge: Espectral title screen and menu look,
+  the Suite (fullbright, no fog, low fire, clear water, 3D skin layers, HUD
+  overlays, chat and tab heads, zoom, macros) and agent access. Cosmetics,
+  emotes and recording on 1.8.9 come later.
+
+### Fixed
+- Creating a NeoForge instance from the wizard no longer fails with
+  "loader_version is required"; the newest stable NeoForge is picked.
+- NeoForge 21.1.265 and newer refused the bundled Espectral brand mod.
+- Old Minecraft versions (1.7–1.11) launch with Mojang's Log4Shell
+  protection.
+
 ## [1.7.0] - 2026-10-31
 
 ### Added
