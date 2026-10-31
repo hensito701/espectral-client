@@ -46,7 +46,8 @@
     "ContainerScreenAccess",
     "AgentInactivityMixin",
     "AgentThrottleMixin",
-    "AgentHiddenWindowMixin"
+    "AgentHiddenWindowMixin",
+    "AgentAudioLibraryMixin"
   ],
   "injectors": {
     "defaultRequire": 1
