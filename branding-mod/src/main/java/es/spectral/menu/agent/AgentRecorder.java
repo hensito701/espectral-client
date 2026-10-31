@@ -163,7 +163,7 @@ public final class AgentRecorder {
             session.audioNote = "none: disabled (audio:false)";
         }
         session.startNs = System.nanoTime();
-        if (session.audioOut != null) AgentAudio.attach(session.audioOut);
+        if (session.audioOut != null) session.audioSink = AgentAudio.attach(session.audioOut);
         active = session;
         finished = null;
 
@@ -249,7 +249,7 @@ public final class AgentRecorder {
         Session session = active;
         active = null;
         long stopNs = System.nanoTime();
-        long audioFrames = session.audioOut != null ? AgentAudio.detach() : 0L;
+        long audioFrames = AgentAudio.detach(session.audioSink);
         if (session.saved != null) {
             var window = minecraft.getWindow();
             window.setWidth(session.saved[0]);
@@ -382,6 +382,7 @@ public final class AgentRecorder {
         int[] saved;
         boolean hudWas;
         OutputStream audioOut;
+        AgentAudio.Sink audioSink;
         String audioNote;
         long startNs;
         long lastSlot = -1L;

@@ -33,6 +33,7 @@ public final class AgentTick {
         }
         AgentPause.onTick(minecraft);
         AgentInput.tick(minecraft, System.currentTimeMillis());
+        AgentReplay.onClientTick(minecraft);
         // Sampling the state here (not in the relay thread) keeps the client
         // data on the client thread; the relay only transports the snapshot.
         if (--sampleCountdown <= 0) {

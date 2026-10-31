@@ -54,7 +54,7 @@ public final class AgentShaders {
     }
 
     /** Applies the request; true when Iris was reloaded. Render thread. */
-    private static boolean applyNow(AgentArgs args) throws Exception {
+    static boolean applyNow(AgentArgs args) throws Exception {
         Class<?> iris = irisClass();
         Object config = iris.getMethod("getIrisConfig").invoke(null);
         boolean changed = false;
