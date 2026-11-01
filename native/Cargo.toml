@@ -17,7 +17,7 @@ members = ["engine", "app", "ui", "skin3d"]
 
 [workspace.package]
 # Mirrors package.json "version"; the in-app updater compares it with latest.json.
-version = "1.7.0"
+version = "1.7.1"
 edition = "2021"
 license = "GPL-3.0-only"
 rust-version = "1.80"
@@ -49,8 +49,8 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
-# archives / compression
-zip = { version = "2", default-features = false, features = ["deflate"] }
+# archives / compression (zip >= 9.0.1: RUSTSEC-2026-0367/0368/0369)
+zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
 flate2 = "1"
 tar = "0.4"
 

@@ -222,6 +222,26 @@ pub async fn engine_fetch(
         return Err(ShimError::new(0, "NO_TOKEN", message));
     };
 
+    // Prove the listener is this user's engine BEFORE the bearer leaves:
+    // another local user could be holding the port while the launcher is
+    // closed. Only a process that can read the agent-token file can answer.
+    let nonce = crate::proof::mint_nonce();
+    let proof_route = format!("/api/agent/proof?nonce={nonce}");
+    let check = HTTP.get(format!("{base}{proof_route}")).header("x-espectral-client", "1").timeout(timeout);
+    let reply = send(cfg, check, base, "GET", &proof_route, timeout).await?;
+    let presented = reply.get("proof").and_then(Value::as_str).unwrap_or("");
+    if !crate::proof::ct_eq(presented.as_bytes(), crate::proof::agent_proof(&token, &nonce).as_bytes()) {
+        return Err(ShimError::new(
+            0,
+            "ENGINE_IMPOSTOR",
+            format!(
+                "the program answering at {base} could not prove it is your Espectral Client (or it uses another \
+                 data folder / agent token), so the agent token was NOT sent. Close whatever is using that port, \
+                 start Espectral Client, and re-copy the MCP config from Settings → Agent access if needed."
+            ),
+        ));
+    }
+
     let mut req = HTTP
         .request(method.parse().unwrap_or(reqwest::Method::GET), format!("{base}{route}"))
         .header("x-espectral-client", "1")
@@ -230,6 +250,19 @@ pub async fn engine_fetch(
     if let Some(body) = body {
         req = req.header("Content-Type", "application/json").body(body.to_string());
     }
+    send(cfg, req, base, method, route, timeout).await
+}
+
+/// Send one request and lift the engine's `{error:{code,message}}` onto a
+/// [`ShimError`]; the parsed JSON body (null when empty) on success.
+async fn send(
+    cfg: &ShimConfig,
+    req: reqwest::RequestBuilder,
+    base: &str,
+    method: &str,
+    route: &str,
+    timeout: Duration,
+) -> Result<Value, ShimError> {
     let res = match req.send().await {
         Ok(res) => res,
         Err(e) => return Err(transport_error(&e, base, method, route, timeout)),

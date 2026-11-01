@@ -73,6 +73,43 @@ pub fn loader_offered(loader: Loader, mc: &str) -> bool {
     }
 }
 
+/// Loader builds become file names and URL path segments
+/// (`versions/<id>/<id>.json`, maven coordinates), and a pack can supply them:
+/// only plain ids pass (`11.15.1.2318`, `21.1.242`, `0.16.14`).
+pub fn is_safe_loader_version(v: &str) -> bool {
+    !v.is_empty()
+        && v.len() <= 64
+        && v.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric())
+        && v.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'+' | b'-'))
+        && !v.contains("..")
+}
+
+/// 400 BAD_LOADER_VERSION unless [`is_safe_loader_version`].
+pub fn validate_loader_version(v: &str) -> EngineResult<()> {
+    if is_safe_loader_version(v) {
+        Ok(())
+    } else {
+        Err(EngineError::bad_request("BAD_LOADER_VERSION", format!("invalid loader version '{v}'")))
+    }
+}
+
+/// Minecraft version ids also become path components (`versions/<id>/…`).
+/// Mojang ids are free-form (`1.21.5-rc1`, `25w14a`), so only what could
+/// leave the versions folder is refused: separators, drive colons, control
+/// characters and dot-only names. 400 BAD_VERSION.
+pub fn validate_mc_version(v: &str) -> EngineResult<()> {
+    let ok = !v.is_empty()
+        && v.len() <= 64
+        && v != "."
+        && !v.contains("..")
+        && !v.chars().any(|c| matches!(c, '/' | '\\' | ':') || c.is_control());
+    if ok {
+        Ok(())
+    } else {
+        Err(EngineError::bad_request("BAD_VERSION", format!("invalid Minecraft version '{v}'")))
+    }
+}
+
 fn invalid_name() -> EngineError {
     EngineError::conflict("INVALID_NAME", "instance name must match ^[A-Za-z0-9 ._-]{1,40}$")
 }
@@ -406,6 +443,7 @@ async fn auto_loader_version(
     requested: Option<String>,
 ) -> EngineResult<Option<String>> {
     if let Some(v) = requested.clone().filter(|s| !s.trim().is_empty()) {
+        validate_loader_version(&v)?;
         return Ok(Some(v));
     }
     match loader {
@@ -442,6 +480,7 @@ pub async fn create_instance(engine: &Engine, req: CreateInstanceRequest) -> Eng
     if req.version.is_empty() {
         return Err(EngineError::bad_request("VERSION_REQUIRED", "version is required"));
     }
+    validate_mc_version(&req.version)?;
     // Loader builds are auto-picked when the caller sends none (the wizard
     // never does): NeoForge -> newest stable for this Minecraft version,
     // Forge -> the promotions default build.
@@ -1038,6 +1077,37 @@ mod tests {
         assert_eq!(code(create_instance(&e, forge).await), (409, "FORGE_UNAVAILABLE".into()));
         create_instance(&e, req("dup")).await.unwrap();
         assert_eq!(code(create_instance(&e, req("dup")).await), (409, "ALREADY_EXISTS".into()));
+    }
+
+    #[tokio::test]
+    async fn create_refuses_path_like_versions_and_loader_builds() {
+        let (_d, e) = temp_engine();
+        quiet(&e);
+        let nf = CreateInstanceRequest {
+            loader: Some(Loader::Neoforge),
+            loader_version: Some("21.1.242/neoforge-21.1.242-installer.jar#/../../../config".into()),
+            ..req("nf-escape")
+        };
+        assert_eq!(code(create_instance(&e, nf).await), (400, "BAD_LOADER_VERSION".into()));
+        let mc = CreateInstanceRequest { version: "../../config".into(), ..req("mc-escape") };
+        assert_eq!(code(create_instance(&e, mc).await), (400, "BAD_VERSION".into()));
+        assert!(!e.paths().instance_dir("nf-escape").exists() && !e.paths().instance_dir("mc-escape").exists());
+    }
+
+    #[test]
+    fn loader_and_minecraft_version_rules() {
+        for ok in ["11.15.1.2318", "21.1.242", "0.16.14", "14.23.5.2859", "47.4.28-beta", "1.0+build.5"] {
+            assert!(is_safe_loader_version(ok), "{ok}");
+        }
+        for bad in ["", ".5", "a/b", "a\\b", "1..2", "1#x", "1:2", "-1", &"9".repeat(65)] {
+            assert!(!is_safe_loader_version(bad), "{bad}");
+        }
+        for ok in ["1.21.11", "26.3", "25w14a", "1.21.5-rc1", "1.8.9"] {
+            validate_mc_version(ok).unwrap();
+        }
+        for bad in ["", ".", "..", "1.8/../x", "C:x", "a\\b", "x\ny"] {
+            assert!(validate_mc_version(bad).is_err(), "{bad:?}");
+        }
     }
 
     #[tokio::test]

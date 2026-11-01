@@ -390,19 +390,20 @@ fn extract_blocking(archive: &Path, dest: &Path) -> EngineResult<()> {
         zip::ZipArchive::new(file).map_err(|e| EngineError::other(format!("ffmpeg extraction failed: {e}")))?;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| EngineError::other(format!("ffmpeg extraction failed: {e}")))?;
-        let name = entry.name().to_string();
+        let name = entry.name().map_err(|e| EngineError::other(format!("ffmpeg extraction failed: {e}")))?.to_string();
         if let Some(mode) = entry.unix_mode() {
             if (mode & 0o170000) == 0o120000 {
                 return Err(EngineError::other(format!("ffmpeg archive entry is a symlink: {name}")));
             }
         }
         let escapes = || EngineError::other(format!("ffmpeg archive entry escapes the install dir: {name}"));
-        if name.contains('\\') || name.split('/').any(|seg| seg == "..") {
+        // zip >= 9's `enclosed_name()` turns an absolute name into a relative
+        // one instead of refusing it; the install contract (yauzl-shaped)
+        // refuses absolute, drive-letter, `..` and backslash names outright.
+        let absolute = name.starts_with('/') || name.as_bytes().get(1) == Some(&b':');
+        if absolute || name.contains('\\') || name.split('/').any(|seg| seg == "..") {
             return Err(escapes());
         }
-        // `enclosed_name()` refuses absolute paths, drive letters and `..`
-        // segments (yauzl-shaped); the explicit checks above keep the exact
-        // JS message for the `..`/backslash cases.
         let Some(rel) = entry.enclosed_name() else {
             return Err(escapes());
         };

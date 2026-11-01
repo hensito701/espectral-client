@@ -30,6 +30,8 @@ use crate::error::{EngineError, EngineResult};
 use crate::identity;
 
 pub const REDIRECT_URI: &str = "http://127.0.0.1:4199/api/discord/callback";
+/// The port in [`REDIRECT_URI`] (registered with Discord).
+pub const REDIRECT_PORT: u16 = 4199;
 /// Public Discord application id of the Espectral identity app (the secret
 /// stays on espectral-id, which exchanges the code).
 pub const DEFAULT_DISCORD_CLIENT_ID: &str = "1454618588659843072";
@@ -123,6 +125,21 @@ fn random_state() -> String {
     let mut b = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut b);
     hex::encode(b)
+}
+
+/// Discord sends the authorization code to [`REDIRECT_URI`]. Unless THIS
+/// engine is listening there, whoever else holds the port (another local
+/// user, while the launcher could not bind it) would receive the code — so
+/// no flow starts (409 DISCORD_CALLBACK_UNAVAILABLE). Mock mode sends no
+/// real code and is exempt.
+pub fn require_callback_listener(engine: &Engine) -> EngineResult<()> {
+    if is_mock_mode(engine) || crate::loopback::bound_addr(engine).is_some_and(|a| a.port() == REDIRECT_PORT) {
+        return Ok(());
+    }
+    Err(EngineError::conflict(
+        "DISCORD_CALLBACK_UNAVAILABLE",
+        "Discord sign-in needs port 4199, but another program is using it. Close it and restart Espectral Client.",
+    ))
 }
 
 /// Discord authorization URL with a fresh random state. `link_uuid` (flat
@@ -228,6 +245,13 @@ pub async fn handle_callback(engine: &Engine, query: &HashMap<String, String>) -
                 return Err(EngineError::bad_request(
                     "INVALID_STATE",
                     "OAuth state was already used. Please try logging in again.",
+                ));
+            }
+            Some(e) if crate::platform::now_ms() - e.created_at > STATE_TTL_MS => {
+                // Expired states are refused here, not only when swept.
+                return Err(EngineError::bad_request(
+                    "INVALID_STATE",
+                    "OAuth state is invalid or expired. Please try logging in again.",
                 ));
             }
             Some(e) => {

@@ -13,7 +13,11 @@
 //! `tauri signer` / `scripts/sign-update.sh`; it is checked against [`PUBKEY`]
 //! (key id `B26697BC340F675C`, the same key as the Tauri config) over the
 //! downloaded bytes BEFORE anything touches disk. An unverified file is never
-//! written, let alone run.
+//! written, let alone run. The feed itself is not signed, so the version is
+//! taken from the signature's trusted (signed) comment — `file:<name>_<version>_…`
+//! — and must equal the advertised version and be newer than this build: a
+//! validly signed OLD package can never be installed as an "update".
+//! Feed and package sizes are capped while streaming.
 //!
 //! Install ([`install`], blocking):
 //! - Windows (NSIS): the setup.exe goes to a temp dir and runs with
@@ -52,6 +56,10 @@ pub const PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IE
 const CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 /// Download: header timeout and per-chunk stall timeout.
 const STALL_TIMEOUT: Duration = Duration::from_secs(120);
+/// Largest feed accepted (the real one is under 2 KB).
+const MAX_FEED_BYTES: u64 = 1024 * 1024;
+/// Largest package accepted (installers are ~20 MB).
+const MAX_PACKAGE_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Debian package name (`/var/lib/dpkg/info/<name>.list`).
 const DEB_PACKAGE: &str = "espectral-client";
@@ -153,6 +161,8 @@ pub struct Updater {
     pubkey: String,
     current: semver::Version,
     installer: Option<Installer>,
+    max_feed: u64,
+    max_package: u64,
 }
 
 impl Updater {
@@ -178,7 +188,17 @@ impl Updater {
             pubkey: pubkey.to_string(),
             current: parse_version(current_version)?,
             installer,
+            max_feed: MAX_FEED_BYTES,
+            max_package: MAX_PACKAGE_BYTES,
         })
+    }
+
+    /// Lower size caps (tests).
+    #[doc(hidden)]
+    pub fn with_limits(mut self, max_feed: u64, max_package: u64) -> Self {
+        self.max_feed = max_feed;
+        self.max_package = max_package;
+        self
     }
 
     pub fn installer(&self) -> Option<Installer> {
@@ -210,7 +230,9 @@ impl Updater {
         if !res.status().is_success() {
             return Err(EngineError::other(format!("update check failed: HTTP {}", res.status().as_u16())));
         }
-        let body = res.bytes().await.map_err(|e| EngineError::other(format!("update check failed: {e}")))?;
+        let body = read_capped(res, self.max_feed, CHECK_TIMEOUT, |_, _| {})
+            .await
+            .map_err(|e| EngineError::other(format!("update check failed: {e}")))?;
         self.parse_feed(&body)
     }
 
@@ -247,12 +269,12 @@ impl Updater {
         Ok(Some(Update { version: version.to_string(), notes: feed.notes, pub_date: feed.pub_date, url, signature }))
     }
 
-    /// Download the package and verify its signature. Returns the verified
-    /// bytes; `on_progress(received, total)` runs per chunk.
+    /// Download the package and verify its signature and signed version.
+    /// Returns the verified bytes; `on_progress(received, total)` runs per chunk.
     pub async fn download(
         &self,
         update: &Update,
-        mut on_progress: impl FnMut(u64, Option<u64>) + Send,
+        on_progress: impl FnMut(u64, Option<u64>) + Send,
     ) -> EngineResult<Vec<u8>> {
         let fail = |e: &dyn std::fmt::Display| EngineError::other(format!("update download failed: {e}"));
         let res = tokio::time::timeout(
@@ -265,22 +287,40 @@ impl Updater {
         if !res.status().is_success() {
             return Err(fail(&format!("HTTP {}", res.status().as_u16())));
         }
-        let total = res.content_length();
-        let mut buf = Vec::with_capacity(total.unwrap_or(0).min(512 * 1024 * 1024) as usize);
-        let mut stream = res.bytes_stream();
-        loop {
-            match tokio::time::timeout(STALL_TIMEOUT, stream.next()).await {
-                Err(_) => return Err(fail(&"stalled")),
-                Ok(None) => break,
-                Ok(Some(Err(e))) => return Err(fail(&e)),
-                Ok(Some(Ok(chunk))) => {
-                    buf.extend_from_slice(&chunk);
-                    on_progress(buf.len() as u64, total);
+        let buf = read_capped(res, self.max_package, STALL_TIMEOUT, on_progress).await.map_err(|e| fail(&e))?;
+        let comment = verify_signature(&buf, &update.signature, &self.pubkey)?;
+        check_signed_version(&comment, &update.version, &self.current)?;
+        Ok(buf)
+    }
+}
+
+/// Stream a response body, refusing it as soon as it is (or declares to be)
+/// larger than `max` bytes; `stall` bounds each chunk.
+async fn read_capped(
+    res: reqwest::Response,
+    max: u64,
+    stall: Duration,
+    mut on_progress: impl FnMut(u64, Option<u64>) + Send,
+) -> Result<Vec<u8>, String> {
+    let total = res.content_length();
+    if total.is_some_and(|t| t > max) {
+        return Err(format!("too large ({} bytes, limit {max})", total.unwrap_or_default()));
+    }
+    let mut buf = Vec::with_capacity(total.unwrap_or(0).min(max) as usize);
+    let mut stream = res.bytes_stream();
+    loop {
+        match tokio::time::timeout(stall, stream.next()).await {
+            Err(_) => return Err("stalled".into()),
+            Ok(None) => return Ok(buf),
+            Ok(Some(Err(e))) => return Err(e.to_string()),
+            Ok(Some(Ok(chunk))) => {
+                if buf.len() as u64 + chunk.len() as u64 > max {
+                    return Err(format!("too large (over the {max}-byte limit)"));
                 }
+                buf.extend_from_slice(&chunk);
+                on_progress(buf.len() as u64, total);
             }
         }
-        verify_signature(&buf, &update.signature, &self.pubkey)?;
-        Ok(buf)
     }
 }
 
@@ -289,10 +329,38 @@ fn parse_version(v: &str) -> EngineResult<semver::Version> {
         .map_err(|e| EngineError::other(format!("invalid version '{v}': {e}")))
 }
 
+/// The release version a trusted comment names: `timestamp:…\tfile:<name>_<version>_<rest>`
+/// (`espectral-client_1.7.0_amd64.deb`, `EspectralClient_1.7.0_x64-setup.exe`).
+fn signed_version(trusted_comment: &str) -> Option<semver::Version> {
+    let file = trusted_comment.split('\t').find_map(|f| f.trim().strip_prefix("file:"))?;
+    let mut parts = file.split('_');
+    parts.next()?;
+    let version = parts.next()?;
+    parts.next()?; // a suffix must follow: `_<version>_…`
+    parse_version(version).ok()
+}
+
+/// The signed package must be exactly the advertised version, and newer than
+/// the running one (the feed is unsigned: this is what stops a rollback).
+fn check_signed_version(trusted_comment: &str, advertised: &str, current: &semver::Version) -> EngineResult<()> {
+    let refuse = |why: String| Err(EngineError::other(format!("{why}; not installing it")));
+    let Some(signed) = signed_version(trusted_comment) else {
+        return refuse("the update's signature does not name a release version".into());
+    };
+    if Some(&signed) != parse_version(advertised).ok().as_ref() {
+        return refuse(format!("the update is signed as {signed} but offered as {advertised}"));
+    }
+    if signed <= *current {
+        return refuse(format!("the signed update {signed} is not newer than {current}"));
+    }
+    Ok(())
+}
+
 /// Verify `data` against a base64 minisign signature box and a base64 public
-/// key box (the Tauri `.sig` / `pubkey` encodings). Legacy (non-prehashed)
-/// signatures are accepted like the Tauri updater does.
-pub fn verify_signature(data: &[u8], signature_b64: &str, pubkey_b64: &str) -> EngineResult<()> {
+/// key box (the Tauri `.sig` / `pubkey` encodings) and return the verified
+/// trusted comment. Legacy (non-prehashed) signatures are accepted like the
+/// Tauri updater does.
+pub fn verify_signature(data: &[u8], signature_b64: &str, pubkey_b64: &str) -> EngineResult<String> {
     use base64::Engine as _;
     let decode = |what: &str, s: &str| -> EngineResult<String> {
         let bytes = base64::engine::general_purpose::STANDARD
@@ -305,7 +373,8 @@ pub fn verify_signature(data: &[u8], signature_b64: &str, pubkey_b64: &str) -> E
     let sig = minisign_verify::Signature::decode(&decode("signature", signature_b64)?)
         .map_err(|e| EngineError::other(format!("invalid update signature: {e}")))?;
     pk.verify(data, &sig, true)
-        .map_err(|e| EngineError::other(format!("the update's signature does not match ({e}); not installing it")))
+        .map_err(|e| EngineError::other(format!("the update's signature does not match ({e}); not installing it")))?;
+    Ok(sig.trusted_comment().to_string())
 }
 
 /// What the app must do once [`install`] returned.
@@ -421,13 +490,70 @@ mod tests {
         target().unwrap()
     }
 
+    const KEY_ID: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+
+    /// A throwaway key (fixed seed) and its Tauri-format public key box.
+    fn test_key() -> (ed25519_dalek::SigningKey, String) {
+        use base64::Engine as _;
+        let b64 = &base64::engine::general_purpose::STANDARD;
+        let sk = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        let mut pk = b"Ed".to_vec();
+        pk.extend_from_slice(&KEY_ID);
+        pk.extend_from_slice(sk.verifying_key().as_bytes());
+        (sk, b64.encode(format!("untrusted comment: minisign public key: test\n{}\n", b64.encode(pk))))
+    }
+
+    /// Legacy (`Ed`) minisign signature box over `data` with `comment` as the
+    /// trusted comment, base64-wrapped like a `.sig` file in the feed.
+    fn sign(sk: &ed25519_dalek::SigningKey, data: &[u8], comment: &str) -> String {
+        use base64::Engine as _;
+        use ed25519_dalek::Signer;
+        let b64 = &base64::engine::general_purpose::STANDARD;
+        let sig = sk.sign(data).to_bytes();
+        let mut bin1 = b"Ed".to_vec();
+        bin1.extend_from_slice(&KEY_ID);
+        bin1.extend_from_slice(&sig);
+        let mut global = sig.to_vec();
+        global.extend_from_slice(comment.as_bytes());
+        let global = sk.sign(&global).to_bytes();
+        b64.encode(format!(
+            "untrusted comment: signature from tauri secret key\n{}\ntrusted comment: {comment}\n{}\n",
+            b64.encode(bin1),
+            b64.encode(global)
+        ))
+    }
+
+    fn signed_updater(endpoint: &str, current: &str) -> (Updater, ed25519_dalek::SigningKey) {
+        let (sk, pubkey) = test_key();
+        (Updater::with(reqwest::Client::new(), endpoint, &pubkey, current, None).unwrap(), sk)
+    }
+
     #[test]
     fn signature_accepts_the_signed_bytes_only() {
-        verify_signature(TEST_PAYLOAD, TEST_SIG, TEST_PUBKEY).unwrap();
+        let comment = verify_signature(TEST_PAYLOAD, TEST_SIG, TEST_PUBKEY).unwrap();
+        assert_eq!(comment, "timestamp:1761900000\tfile:tv.bin");
         assert!(verify_signature(b"espectral-update-test-payloaD", TEST_SIG, TEST_PUBKEY).is_err());
         // right signature, wrong key (the production key)
         assert!(verify_signature(TEST_PAYLOAD, TEST_SIG, PUBKEY).is_err());
         assert!(verify_signature(TEST_PAYLOAD, "not base64!", TEST_PUBKEY).is_err());
+    }
+
+    #[test]
+    fn signed_version_comes_from_the_trusted_comment() {
+        let v = |c: &str| signed_version(c).map(|v| v.to_string());
+        // The real 1.7.0 comments.
+        assert_eq!(v("timestamp:1793489755\tfile:espectral-client_1.7.0_amd64.deb").as_deref(), Some("1.7.0"));
+        assert_eq!(v("timestamp:1793486975\tfile:EspectralClient_1.7.0_x64-setup.exe").as_deref(), Some("1.7.0"));
+        assert_eq!(v("file:EspectralClient_1.7.1-beta.1_x64-setup.exe").as_deref(), Some("1.7.1-beta.1"));
+        for bad in ["timestamp:1761900000\tfile:tv.bin", "file:x_1.7.0", "file:x_notaversion_y", "timestamp:1"] {
+            assert_eq!(v(bad), None, "{bad}");
+        }
+        let cur = semver::Version::new(1, 7, 0);
+        check_signed_version("file:x_1.7.1_y", "1.7.1", &cur).unwrap();
+        assert!(check_signed_version("file:x_1.7.1_y", "9.9.9", &cur).is_err(), "mismatch");
+        assert!(check_signed_version("file:x_1.7.0_y", "1.7.0", &cur).is_err(), "not newer");
+        assert!(check_signed_version("file:x_1.6.3_y", "1.6.3", &cur).is_err(), "rollback");
+        assert!(check_signed_version("file:tv.bin", "1.7.1", &cur).is_err(), "no version");
     }
 
     #[test]
@@ -481,6 +607,8 @@ mod tests {
 
     #[tokio::test]
     async fn check_then_download_verified_package() {
+        let (sk, _) = test_key();
+        let good = sign(&sk, TEST_PAYLOAD, "timestamp:1\tfile:espectral-client_1.7.1_amd64.deb");
         // package server, then a feed pointing at it
         let srv = MockServer::start(|req| match req.path.as_str() {
             "/pkg" => MockResponse::bytes(TEST_PAYLOAD.to_vec()),
@@ -489,16 +617,17 @@ mod tests {
         })
         .await;
         let pkg = srv.url("/pkg");
+        let sig = good.clone();
         let feed_srv = MockServer::start(move |_| {
             MockResponse::json(&json!({
                 "version": "1.7.1",
                 "notes": "fixes",
                 "pub_date": "2026-11-01T00:00:00Z",
-                "platforms": { target().unwrap(): { "url": pkg, "signature": TEST_SIG } }
+                "platforms": { target().unwrap(): { "url": pkg, "signature": sig } }
             }))
         })
         .await;
-        let u = updater(&feed_srv.url("/latest.json"), "1.7.0", None);
+        let (u, _) = signed_updater(&feed_srv.url("/latest.json"), "1.7.0");
         let up = u.check().await.unwrap().unwrap();
         assert_eq!(up.version, "1.7.1");
         let mut seen = vec![];
@@ -513,11 +642,56 @@ mod tests {
         assert!(u.download(&missing, |_, _| {}).await.unwrap_err().to_string().contains("404"));
 
         // up to date / 204 / server error
-        assert_eq!(updater(&feed_srv.url("/"), "1.7.1", None).check().await.unwrap(), None);
+        assert_eq!(signed_updater(&feed_srv.url("/"), "1.7.1").0.check().await.unwrap(), None);
         let none = MockServer::start(|_| MockResponse::status(204)).await;
         assert_eq!(updater(&none.url("/"), "1.7.0", None).check().await.unwrap(), None);
         let down = MockServer::start(|_| MockResponse::status(503)).await;
         assert!(updater(&down.url("/"), "1.7.0", None).check().await.is_err());
+    }
+
+    /// A feed that advertises 9.9.9 but serves a genuinely signed OLD package
+    /// (with its real signature) must not get it installed: the signed comment
+    /// names 1.7.0, which is neither the advertised version nor newer than 1.8.0.
+    #[tokio::test]
+    async fn validly_signed_old_package_is_refused_as_rollback() {
+        let (sk, _) = test_key();
+        let old_sig = sign(&sk, TEST_PAYLOAD, "timestamp:1\tfile:espectral-client_1.7.0_amd64.deb");
+        let srv = MockServer::start(|_| MockResponse::bytes(TEST_PAYLOAD.to_vec())).await;
+        let (u, _) = signed_updater("http://127.0.0.1:9/latest.json", "1.8.0");
+        let offered =
+            Update { version: "9.9.9".into(), notes: None, pub_date: None, url: srv.url("/p"), signature: old_sig };
+        let err = u.download(&offered, |_, _| {}).await.unwrap_err();
+        assert!(err.to_string().contains("signed as 1.7.0"), "{err}");
+        // The checked-in CLI signature names no version at all: refused too.
+        let u = updater("http://127.0.0.1:9/latest.json", "1.7.0", None);
+        let unnamed = Update {
+            version: "1.7.1".into(),
+            notes: None,
+            pub_date: None,
+            url: srv.url("/p"),
+            signature: TEST_SIG.into(),
+        };
+        assert!(u.download(&unnamed, |_, _| {}).await.unwrap_err().to_string().contains("release version"));
+    }
+
+    #[tokio::test]
+    async fn feed_and_package_sizes_are_capped() {
+        let (sk, _) = test_key();
+        let sig = sign(&sk, TEST_PAYLOAD, "timestamp:1\tfile:x_1.7.1_y");
+        let big_feed = json!({ "version": "1.7.1", "url": "u", "signature": "s", "notes": "x".repeat(200) });
+        let srv = MockServer::start(move |r| match r.path.as_str() {
+            "/feed" => MockResponse::json(&big_feed),
+            _ => MockResponse::bytes(TEST_PAYLOAD.to_vec()),
+        })
+        .await;
+        let (u, _) = signed_updater(&srv.url("/feed"), "1.7.0");
+        let u = u.with_limits(64, 16);
+        assert!(u.check().await.unwrap_err().to_string().contains("too large"));
+        let up = Update { version: "1.7.1".into(), notes: None, pub_date: None, url: srv.url("/p"), signature: sig };
+        let mut seen = 0;
+        let err = u.download(&up, |r, _| seen = r).await.unwrap_err();
+        assert!(err.to_string().contains("too large"), "{err}");
+        assert_eq!(seen, 0, "refused from Content-Length before buffering");
     }
 
     #[test]

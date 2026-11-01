@@ -329,6 +329,8 @@ fn loader_event(instance: Option<&str>, phase: &str, filename: &str) -> Progress
 /// Errors: 404 `neoforge_version_not_found`, 502 `NEOFORGE_PROFILE_MISSING`,
 /// `NEOFORGE_INSTALL_FAILED`, `NEOFORGE_ARTIFACTS_MISSING`, `NEOFORGE_JDK_REQUIRED`.
 pub async fn ensure_neoforge_loader(engine: &Engine, v: &str, instance: Option<&InstanceMeta>) -> EngineResult<Value> {
+    // The version becomes maven URL segments and `versions/` path components.
+    crate::instances::validate_loader_version(v)?;
     let _guard = engine.game_resolve_state().neoforge_locks.lock(&v.to_string()).await;
     ensure_inner(engine, v, instance).await
 }

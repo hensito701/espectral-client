@@ -1127,6 +1127,10 @@ pub async fn seed_instance(
     if instance.version.is_empty() {
         return Err(EngineError::other("instance.version is required"));
     }
+    crate::instances::validate_mc_version(&instance.version)?;
+    if let Some(lv) = instance.loader_version.as_deref().filter(|s| !s.is_empty()) {
+        crate::instances::validate_loader_version(lv)?;
+    }
     let version_json = get_version_json(engine, &instance.version).await?;
     let dir = engine.paths().instance_dir(&instance.name);
     for sub in ["mods", "natives", "logs", "saves", "config", "cache"] {
@@ -1243,6 +1247,10 @@ pub async fn install_instance(engine: &Engine, req: InstallInstanceRequest) -> E
                 crate::forge::SUPPORTED_MC_SUMMARY
             ),
         ));
+    }
+    crate::instances::validate_mc_version(&req.version)?;
+    if let Some(lv) = req.loader_version.as_deref().filter(|s| !s.is_empty()) {
+        crate::instances::validate_loader_version(lv)?;
     }
     let version_info = resolve_version(engine, &req.version).await?;
     if !version_info.supported {

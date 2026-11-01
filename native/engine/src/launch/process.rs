@@ -77,10 +77,17 @@ impl ProcessHandle {
 /// Line sink for the child's stdout/stderr (each call = one line, newline kept).
 pub type LineSink = Arc<dyn Fn(&str) + Send + Sync>;
 
-/// Build a command for `program` with the JS spawn options.
-fn base_command(program: &str, args: &[String], cwd: &Path) -> Command {
+/// Build a command for `program` with the JS spawn options. The bridge token
+/// goes in the environment (`ESPECTRAL_BRIDGE_TOKEN`): unlike the argv, other
+/// local users cannot read a process's environment. An inherited value is
+/// removed when this launch has none.
+fn base_command(program: &str, args: &[String], cwd: &Path, bridge_token: Option<&str>) -> Command {
     let mut cmd = Command::new(program);
     cmd.args(args).current_dir(cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    match bridge_token.filter(|t| !t.is_empty()) {
+        Some(t) => cmd.env(crate::proof::BRIDGE_TOKEN_ENV, t),
+        None => cmd.env_remove(crate::proof::BRIDGE_TOKEN_ENV),
+    };
     cmd
 }
 
@@ -94,26 +101,32 @@ fn base_command(program: &str, args: &[String], cwd: &Path) -> Command {
 /// from a kill-on-close job the launcher may run in. Non-detached children
 /// (the AOT trainer) are killed when their monitor is dropped (the JS trainer
 /// died with the launcher too).
-pub fn spawn_java(java_path: &str, argv: &[String], cwd: &Path, detached: bool) -> std::io::Result<Child> {
+pub fn spawn_java(
+    java_path: &str,
+    argv: &[String],
+    cwd: &Path,
+    detached: bool,
+    bridge_token: Option<&str>,
+) -> std::io::Result<Child> {
     let args = argv.get(1..).unwrap_or(&[]);
     #[cfg(windows)]
     {
         let flags =
             if detached { DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW } else { CREATE_NO_WINDOW };
         if detached {
-            let mut cmd = base_command(java_path, args, cwd);
+            let mut cmd = base_command(java_path, args, cwd, bridge_token);
             cmd.creation_flags(flags | CREATE_BREAKAWAY_FROM_JOB).kill_on_drop(false);
             if let Ok(child) = cmd.spawn() {
                 return Ok(child);
             }
         }
-        let mut cmd = base_command(java_path, args, cwd);
+        let mut cmd = base_command(java_path, args, cwd, bridge_token);
         cmd.creation_flags(flags).kill_on_drop(!detached);
         cmd.spawn()
     }
     #[cfg(unix)]
     {
-        let mut cmd = base_command(java_path, args, cwd);
+        let mut cmd = base_command(java_path, args, cwd, bridge_token);
         cmd.kill_on_drop(!detached);
         if detached {
             // SAFETY: setsid() is async-signal-safe and touches no Rust state.

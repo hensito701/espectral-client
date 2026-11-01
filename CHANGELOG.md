@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.7.1] - 2026-11-01
 
 ### Added
 - **Throwable menu logo.** Left- or right-click the Espectral logo on the main
@@ -11,6 +11,38 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   between menus (Multiplayer, Options, the Suite…). Joining a world or
   restarting the game puts it back. With reduced motion it only moves while you
   drag it. Fabric 1.21.11, 26.2 and 26.3.
+
+### Security
+- **A modpack can no longer write outside its own files.** A crafted Forge or
+  NeoForge version inside a `.mrpack` could overwrite or delete the
+  launcher's `config.json` (losing saved accounts). Loader and Minecraft
+  versions are now checked before they are used anywhere. Modpack file names
+  that Windows would read differently (`C:file`, `CON`, `INSTANCE.JSON`…)
+  are refused, and so are file names from Modrinth that are not plain names.
+- **Broken images and huge files no longer crash or fill the launcher.** A
+  tiny PNG declaring a gigantic size (for example a pack's `icon.png`) made
+  the launcher crash on every start; modpack archives, `servers.dat` files
+  and update downloads now have size limits.
+- **Your sign-in data is only readable by you.** `config.json`,
+  `identity.json`, the Minecraft token cache, running-game data and UI
+  settings are written owner-only, and the data folder is restricted to your
+  user (Linux). Signing out also removes the cached Minecraft token and the
+  Espectral identity session of that account. The identity session now
+  really expires when the server says it does.
+- **Updates can't be rolled back to an older version** (from this version
+  on). The installed version must match the version named in the update's
+  signature and be newer than yours.
+- **Other programs on your PC can't pretend to be the launcher.** The agent
+  MCP server checks the launcher's identity before sending its token; the
+  in-game mod signs its requests (its token is no longer on the game's
+  command line) and ignores answers that don't prove they come from the
+  launcher; Discord sign-in only starts when the launcher really owns its
+  callback port; a second launcher window can only hand over files with a
+  private token. A game that was already running when the launcher updated
+  keeps playing, but its cosmetics and agent access come back only after
+  you restart it.
+- **Agent access:** a server name that merely starts with `127.` is no
+  longer treated as your own PC (it could get keyboard/mouse control).
 
 ## [1.7.0] - 2026-11-01
 

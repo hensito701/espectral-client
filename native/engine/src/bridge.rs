@@ -3,12 +3,13 @@
 //!
 //! **Owner: identity-discord.** Status: PORTED.
 //!
-//! The launcher hands every launched game a random per-launch token via the
-//! JVM property `-Despectral.bridge.token` (url via `-Despectral.bridge.url`).
-//! The mod calls `POST http://127.0.0.1:<port>/api/bridge/visible` with
-//! headers `x-espectral-client: 1` + `x-espectral-bridge: <token>` and a
-//! `{uuids:[…]}` body — served by crate::loopback, which calls
-//! [`visible_for_token`].
+//! The launcher hands every launched game a random per-launch token through
+//! the `ESPECTRAL_BRIDGE_TOKEN` environment variable (url via
+//! `-Despectral.bridge.url`). The token never travels on the wire: the mod
+//! signs each `POST http://127.0.0.1:<port>/api/bridge/…` request and checks
+//! the engine's signed answer (crate::proof). `/api/bridge/visible` (body
+//! `{uuids:[…]}`) is served by crate::loopback, which calls [`visible`] for
+//! the launch [`authenticate_request`] found.
 //!
 //! Answers come from an in-memory cache ONLY — the request path never does
 //! network I/O. Uncached uuids are queued and resolved in the background by
@@ -29,7 +30,6 @@ use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult};
 use crate::identity::{self, normalize_uuid};
 
-pub const BRIDGE_HEADER: &str = "x-espectral-bridge";
 pub const CACHE_TTL_MS: u64 = 60_000;
 pub const NEGATIVE_TTL_MS: u64 = 60_000;
 pub const QUERY_BATCH: usize = 100;
@@ -152,6 +152,35 @@ pub fn authenticate(engine: &Engine, token: &str) -> Option<BridgeLaunch> {
     None
 }
 
+/// The launch whose token signed this bridge request: `id` selects it
+/// ([`crate::proof::bridge_id`]), the MAC over method, target, nonce and body
+/// proves possession of the token (constant-time compare). The token itself
+/// is never presented.
+pub fn authenticate_request(
+    engine: &Engine,
+    id: &str,
+    nonce: &str,
+    mac: &str,
+    method: &str,
+    target: &str,
+    body: &[u8],
+) -> Option<BridgeLaunch> {
+    if id.len() != 16 || !crate::proof::is_nonce(nonce) || mac.len() != 64 {
+        return None;
+    }
+    let candidates: Vec<BridgeLaunch> = lock(engine)
+        .launches
+        .values()
+        .filter(|l| !l.token.is_empty() && crate::proof::bridge_id(&l.token) == id)
+        .cloned()
+        .collect();
+    let mac = mac.to_ascii_lowercase();
+    candidates.into_iter().find(|l| {
+        let want = crate::proof::request_mac(&l.token, method, target, nonce, body);
+        ct_eq(want.as_bytes(), mac.as_bytes())
+    })
+}
+
 /// Test hook: direct cache injection.
 pub fn seed_cache(engine: &Engine, uuid: &str, entry: CacheEntry) {
     if let Some(flat) = normalize_uuid(uuid) {
@@ -172,7 +201,7 @@ pub fn reset(engine: &Engine) {
 /// [`visible`] for the owning launch.
 pub fn visible_for_token(engine: &Engine, token: &str, uuids: &[String]) -> EngineResult<BridgeVisibleReply> {
     let Some(owner) = authenticate(engine, token) else {
-        return Err(EngineError::api(403, "BRIDGE_AUTH", "missing or invalid x-espectral-bridge token"));
+        return Err(EngineError::api(403, "BRIDGE_AUTH", "unknown bridge token"));
     };
     Ok(visible(engine, &owner, uuids))
 }
