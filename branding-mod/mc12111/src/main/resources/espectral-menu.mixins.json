@@ -45,7 +45,9 @@
     "KeyboardHandlerInvoker",
     "MouseHandlerInvoker",
     "SliderValueAccess",
-    "ContainerScreenAccess"
+    "ContainerScreenAccess",
+    "AgentWindowSizeMixin",
+    "AgentInactivityMixin"
   ],
   "injectors": {
     "defaultRequire": 1

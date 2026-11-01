@@ -12,6 +12,11 @@ public final class AgentRuntime {
     private static final boolean ENABLED = "1".equals(System.getProperty("espectral.agent"));
     /** Hidden-window agent launch (window never shown; rendering continues). */
     private static final boolean HIDDEN = ENABLED && "1".equals(System.getProperty("espectral.agent.hidden"));
+    /**
+     * The agent launch asked for an exact window size ({@code --width/--height});
+     * the launcher passes {@code -Despectral.agent.window=WxH} next to them.
+     */
+    private static final boolean EXPLICIT_WINDOW = ENABLED && notEmpty(System.getProperty("espectral.agent.window"));
 
     /** Capture root, relative to the game directory (contract-mandated name). */
     public static final String CAPTURES_DIR = "espectral-captures";
@@ -22,10 +27,22 @@ public final class AgentRuntime {
         return ENABLED;
     }
 
-
     public static boolean hidden() {
         return HIDDEN;
     }
+
+    /**
+     * True when the agent asked for a window size: the player's
+     * {@code overrideWidth/overrideHeight} options must not replace it.
+     */
+    public static boolean explicitWindow() {
+        return EXPLICIT_WINDOW;
+    }
+
+    private static boolean notEmpty(String s) {
+        return s != null && !s.isEmpty();
+    }
+
     /** Bridge base URL ({@code …/api/bridge}) or null. */
     public static String bridgeUrl() {
         String url = System.getProperty("espectral.bridge.url");

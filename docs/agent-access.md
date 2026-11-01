@@ -49,7 +49,13 @@ Config). That installs Replay Mod (cinematic clips) and two shader packs:
   it again to resume. The agent cannot press F8 itself.
 - Held keys release themselves after 2 s, and on every screen or world change.
 - Agent launches never touch your Discord status, never pause when the window
-  loses focus, and can run with a hidden window.
+  loses focus (every version, 1.8.9 included), and can run with a hidden
+  window. A `window` size you ask for is the size you get, even if the
+  instance's `options.txt` carries an `overrideWidth/overrideHeight`; your
+  options file is not changed.
+- Replay Mod's "recover this replay?" prompts (left by a game that was killed
+  while recording) are skipped on agent launches without answering them: the
+  unfinished replays stay, and Replay Mod asks again on your next normal launch.
 
 ## What an agent can do
 
@@ -57,6 +63,7 @@ Config). That installs Replay Mod (cinematic clips) and two shader packs:
 |---|---|
 | `list_instances`, `launch`, `stop`, `state`, `logs`, `list_launches` | Start an instance (optionally straight into a world or server, at a window size, hidden), wait for the title screen or the world, read its log. |
 | `screen_tree`, `click`, `key`, `type` | Read any screen as data (including Espectral's title menu, Suite and cosmetics) and use it with real mouse/keyboard input. |
+| `player` | Where the player is: x/y/z, block, yaw, pitch, dimension and game mode (what F3 shows) — e.g. the centre for a `clip_render` orbit. Refused when the server hides coordinates (reduced debug info). |
 | `chat`, `command`, `disconnect` | Talk, run commands, leave the world. |
 | `screenshot` | PNG of exactly what is rendered, shaders included; any size up to 7680 px (e.g. 1080×1920 portrait, 4K) on 26.2/26.3, with or without HUD. |
 | `hud`, `shaders` | Hide the HUD; switch shader packs or turn shaders off. |

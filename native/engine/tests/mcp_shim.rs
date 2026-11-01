@@ -349,6 +349,7 @@ async fn initialize_tools_list_and_call_round_trip() {
         "logs",
         "screenshot",
         "screen_tree",
+        "player",
         "click",
         "key",
         "type",

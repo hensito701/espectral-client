@@ -381,8 +381,15 @@ events for `--wait` ms (default 1500) so engine calls land, renders one frame
 and exits. Options: `--theme`, `--lang`, `--accent`, `--size WxH`, `--wait`,
 `--scroll <px>` (PageScaffold pages), `--open palette|wizard|account|pip|gate`,
 `--query`, and scripted input run in order after half of `--wait`: `--click X,Y`
-(logical px), `--type <text>`, `--key Escape|Return|Tab|Space|Down|Up|Backspace`,
-`--nav <route>` (all repeatable). The headless pump draws a frame every 40 ms
+(logical px), `--click-text <label>` (centre of the visible element showing that
+text: exact accessible label first, else a case-insensitive substring, topmost
+wins; exit 3 when nothing matches), `--type <text>`,
+`--key Escape|Return|Tab|Space|Down|Up|Backspace`, `--nav <route>` (all
+repeatable). Screenshot mode starts no listener, so it runs next to a launcher
+or engine on port 4199. `node scripts/showcase-data.mjs <dir>` builds a clean
+data dir (one offline account, readable instances) for promo/README shots; point
+`ESPECTRAL_SHOT_DATA` (script) or `ESPECTRAL_DATA_DIR` (binary) at it. The
+headless pump draws a frame every 40 ms
 (like the real loop), so `if` subtrees, Timers and `--scroll` are alive before
 the PNG is taken; `--scroll` is clamped to the content (`--scroll 99999` = bottom).
 The software renderer paints gradient text with its first stop (the

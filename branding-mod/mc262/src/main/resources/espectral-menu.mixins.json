@@ -51,7 +51,8 @@
     "AgentInactivityMixin",
     "AgentThrottleMixin",
     "AgentHiddenWindowMixin",
-    "AgentAudioLibraryMixin"
+    "AgentAudioLibraryMixin",
+    "AgentWindowSizeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

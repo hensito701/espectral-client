@@ -66,6 +66,8 @@ public final class AgentTools {
         switch (name) {
             case "screen_tree":
                 return AgentScreens.tree(mc);
+            case "player":
+                return player(mc);
             case "click":
                 requireTier(mc, AgentTier.ACT, name);
                 return click(mc, args);
@@ -113,6 +115,52 @@ public final class AgentTools {
         if (tier == AgentTier.ACT && AgentPause.paused()) {
             throw new AgentException("PAUSED", "the agent is paused (F8); press F8 in the game to resume");
         }
+    }
+
+    /**
+     * Where the player is (same JSON as the Fabric mod): position, block,
+     * rotation, dimension and game mode. A server that turned on reduced debug
+     * info hides coordinates from F3, so this tool refuses them too.
+     */
+    private static JsonObject player(Minecraft mc) throws AgentException {
+        net.minecraft.client.entity.EntityPlayerSP player = mc.thePlayer;
+        if (player == null || mc.theWorld == null) {
+            throw new AgentException("NOT_IN_WORLD", "the player is not in a world");
+        }
+        if (player.hasReducedDebug()) {
+            throw new AgentException("REDUCED_DEBUG_INFO", "this server hides coordinates (reduced debug info)");
+        }
+        JsonObject json = new JsonObject();
+        json.addProperty("x", round(player.posX));
+        json.addProperty("y", round(player.posY));
+        json.addProperty("z", round(player.posZ));
+        net.minecraft.util.BlockPos block = new net.minecraft.util.BlockPos(player);
+        com.google.gson.JsonArray blockPos = new com.google.gson.JsonArray();
+        blockPos.add(new com.google.gson.JsonPrimitive(block.getX()));
+        blockPos.add(new com.google.gson.JsonPrimitive(block.getY()));
+        blockPos.add(new com.google.gson.JsonPrimitive(block.getZ()));
+        json.add("block", blockPos);
+        json.addProperty("yaw", round(net.minecraft.util.MathHelper.wrapAngleTo180_float(player.rotationYaw)));
+        json.addProperty("pitch", round(player.rotationPitch));
+        json.addProperty("dimension", dimensionId(player.worldObj.provider.getDimensionId()));
+        if (mc.playerController != null) {
+            json.addProperty("game_mode", mc.playerController.getCurrentGameType().getName());
+        }
+        return json;
+    }
+
+    /** Modern ids for the vanilla dimensions, so both mods answer alike. */
+    private static String dimensionId(int id) {
+        switch (id) {
+            case 0: return "minecraft:overworld";
+            case -1: return "minecraft:the_nether";
+            case 1: return "minecraft:the_end";
+            default: return "dim:" + id;
+        }
+    }
+
+    private static double round(double v) {
+        return Math.round(v * 1000.0) / 1000.0;
     }
 
     private static JsonObject hud(Minecraft mc, AgentArgs args) throws AgentException {

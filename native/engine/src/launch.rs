@@ -455,8 +455,13 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         if let Some(ff) = resolved.ffmpeg_path.as_ref().filter(|p| !p.as_os_str().is_empty()) {
             jvm.push(format!("-Despectral.ffmpeg={}", lossy(ff)));
         }
-        if window.as_ref().is_some_and(|w| w.hidden) {
-            jvm.push("-Despectral.agent.hidden=1".into());
+        if let Some(w) = &window {
+            // The mod lets this size win over the player's
+            // overrideWidth/overrideHeight options (agent launches only).
+            jvm.push(format!("-Despectral.agent.window={}x{}", w.width, w.height));
+            if w.hidden {
+                jvm.push("-Despectral.agent.hidden=1".into());
+            }
         }
     }
     if let Some(loader) = &resolved.loader {

@@ -88,9 +88,10 @@ pub fn tool_list() -> &'static [Value] {
 static TOOL_NAMES: LazyLock<Vec<&'static str>> =
     LazyLock::new(|| TOOLS.iter().filter_map(|t| t["name"].as_str()).collect());
 
-const MOD_TOOLS: [&str; 15] = [
+const MOD_TOOLS: [&str; 16] = [
     "screenshot",
     "screen_tree",
+    "player",
     "click",
     "key",
     "type",
