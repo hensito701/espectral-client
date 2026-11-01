@@ -5,7 +5,7 @@
     "description": "Espectral Client in-game menu, HUD and launcher bridge for Minecraft 1.8.9 (Forge).",
     "version": "${version}",
     "mcversion": "${mcversion}",
-    "url": "https://espectral.es",
+    "url": "https://espectral.uhce.top/client",
     "updateUrl": "",
     "authorList": ["Espectral"],
     "credits": "",

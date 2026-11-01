@@ -25,8 +25,8 @@
     },
     "1.8.9": {
       "filename": "espectral-menu-1.8.9-1.7.0.jar",
-      "sha1": "f3972cb60adf27849cada55cbc72f66f4392a230",
-      "size": 2493962,
+      "sha1": "c16e3a8db025d7490cf35a19146b301bc6132663",
+      "size": 2493980,
       "loaders": [
         "forge"
       ],
