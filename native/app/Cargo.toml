@@ -24,6 +24,7 @@ serde_json = { workspace = true }
 dirs = { workspace = true }
 # unstable-winit-030: OS file drag & drop (.mrpack) via WinitWindowAccessor (library-mods).
 slint = { workspace = true, features = ["unstable-winit-030"] }
+i-slint-core = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }
 png = { workspace = true }

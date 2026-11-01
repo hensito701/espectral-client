@@ -219,10 +219,21 @@ fn run_screenshot(ctx: &Ctx, ui: &AppWindow, s: screenshot::ShotArgs) {
         ui.global::<PaletteState>().invoke_query_edited(q.as_str().into());
     }
     for a in &s.actions {
-        if let screenshot::Action::Nav(route) = a {
-            router::navigate(ui, route);
-        }
-        screenshot::dispatch(a);
+        let action = match a {
+            screenshot::Action::Nav(route) => {
+                router::navigate(ui, route);
+                a.clone()
+            }
+            screenshot::Action::ClickText(text) => match screenshot::locate_text(ui, text) {
+                Some((x, y)) => screenshot::Action::Click(x, y),
+                None => {
+                    eprintln!("screenshot failed: --click-text {text:?} matches no visible element");
+                    std::process::exit(3);
+                }
+            },
+            other => other.clone(),
+        };
+        screenshot::dispatch(&action);
     }
     if s.scroll > 0.0 {
         shell.set_debug_scroll(s.scroll);

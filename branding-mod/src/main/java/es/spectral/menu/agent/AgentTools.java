@@ -100,6 +100,8 @@ public final class AgentTools {
                 throw new AgentException("FAILED", "screenshot must not run on the render thread");
             case "screen_tree":
                 return AgentScreens.tree(minecraft);
+            case "player":
+                return player(minecraft);
             case "click":
                 requireTier(minecraft, AgentTier.ACT, name);
                 return click(minecraft, args);
@@ -167,6 +169,44 @@ public final class AgentTools {
     // ------------------------------------------------------------------
     // Observe
     // ------------------------------------------------------------------
+
+    /**
+     * Where the player is: position, block, rotation, dimension and game mode
+     * (what F3 shows; the camera tools need a centre point). A server that
+     * turned on reduced debug info hides coordinates from F3, so this tool
+     * refuses them too.
+     */
+    private static JsonObject player(Minecraft minecraft) throws AgentException {
+        var player = minecraft.player;
+        if (player == null || minecraft.level == null) {
+            throw new AgentException("NOT_IN_WORLD", "the player is not in a world");
+        }
+        if (player.isReducedDebugInfo()) {
+            throw new AgentException("REDUCED_DEBUG_INFO",
+                    "this server hides coordinates (reduced debug info)");
+        }
+        JsonObject json = new JsonObject();
+        json.addProperty("x", round(player.getX()));
+        json.addProperty("y", round(player.getY()));
+        json.addProperty("z", round(player.getZ()));
+        var block = player.blockPosition();
+        com.google.gson.JsonArray blockPos = new com.google.gson.JsonArray();
+        blockPos.add(block.getX());
+        blockPos.add(block.getY());
+        blockPos.add(block.getZ());
+        json.add("block", blockPos);
+        json.addProperty("yaw", round(net.minecraft.util.Mth.wrapDegrees(player.getYRot())));
+        json.addProperty("pitch", round(player.getXRot()));
+        json.addProperty("dimension", player.level().dimension().identifier().toString());
+        if (minecraft.gameMode != null) {
+            json.addProperty("game_mode", minecraft.gameMode.getPlayerMode().getName());
+        }
+        return json;
+    }
+
+    private static double round(double v) {
+        return Math.round(v * 1000.0) / 1000.0;
+    }
 
     /**
      * Requests an end-of-frame grab without blocking the render thread: the

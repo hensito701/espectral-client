@@ -198,6 +198,23 @@
     }
   },
   {
+    "name": "player",
+    "description": "TIER observe. Where the player is: x/y/z, block [x,y,z], yaw, pitch, dimension and game_mode (what F3 shows). Use it to centre clip_render orbits or to check a teleport. NOT_IN_WORLD on menus; REDUCED_DEBUG_INFO when the server hides coordinates.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Launch key from `launch` / `list_launches`. It identifies ONE running game; a relaunch gets a new key."
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
     "name": "click",
     "description": "TIER act. Click a widget by id (from screen_tree) or by GUI-scaled x,y. Routed through the same mouse handler real input uses, so version-specific input bugs reproduce. Refused in the espectral context and while paused (F8).",
     "inputSchema": {

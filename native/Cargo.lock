@@ -1184,6 +1184,7 @@ dependencies = [
  "espectral-client-ui",
  "espectral-engine",
  "espectral-skin3d",
+ "i-slint-core",
  "image",
  "open",
  "png",

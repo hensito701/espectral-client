@@ -2,6 +2,32 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **Agent launches never pause when their window loses focus, on every
+  version.** Hidden 1.8.9 (and 1.21.11) agent windows kept opening the pause
+  menu, freezing what the agent was looking at or recording. Your own
+  *Pause on lost focus* option is not changed.
+- **An agent's window size is the size it gets.** A leftover
+  `overrideWidth/overrideHeight` in an instance's `options.txt` turned a
+  requested 1080×1920 portrait window into 1920×1080. Agent launches with a
+  window size now ignore it, without editing the file.
+- **Replay Mod's "recover this replay?" prompts no longer block agent
+  launches.** They are skipped without an answer: unfinished replays stay, and
+  Replay Mod asks again on your next normal launch.
+
+### Added
+- **`player` agent tool**: position, block, rotation, dimension and game mode
+  of the player (what F3 shows), on every version with the Espectral menu.
+  Refused when the server hides coordinates.
+- **Headless screenshots can click by text**: `--click-text "Siguiente"`
+  clicks the visible element showing that text, so scripted screenshots no
+  longer break when a layout moves.
+- **`scripts/showcase-data.mjs`** builds a clean launcher data folder (one
+  offline account, readable instance names) for promo videos and README
+  images, instead of shooting real data with test names and home-folder paths.
+
 ## [1.7.1] - 2026-11-01
 
 ### Added

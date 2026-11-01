@@ -25,6 +25,16 @@ public final class AgentRuntime {
         return "1".equals(prop("espectral.agent.hidden"));
     }
 
+    /**
+     * {@code -Despectral.agent.window=WxH}: the agent launch asked for an exact
+     * window size, so the player's {@code overrideWidth/overrideHeight}
+     * options must not replace it.
+     */
+    public static boolean explicitWindow() {
+        String size = prop("espectral.agent.window");
+        return enabled() && size != null && !size.isEmpty();
+    }
+
     /** {@code -Despectral.bridge.url}, e.g. http://127.0.0.1:1234/api/bridge. */
     public static String bridgeUrl() {
         String url = prop("espectral.bridge.url");

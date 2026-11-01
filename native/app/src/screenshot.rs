@@ -12,6 +12,9 @@
 //!          --open palette|wizard|account|pip|gate   (repeatable)
 //!          --query <text>   (palette query, with --open palette)
 //!          --click X,Y      (logical px; press + release, then pump 400 ms; repeatable)
+//!          --click-text <t> (click the centre of the visible element labelled <t>:
+//!                            exact label first, else a case-insensitive substring;
+//!                            the top-most match wins; fails if nothing matches)
 //!          --type <text>    (text into the focused input; repeatable)
 //!          --key <name>     (Escape|Return|Tab|Space|Down|Up; repeatable)
 //!          --nav <route>    (navigate again mid-run; repeatable)
@@ -43,10 +46,11 @@ pub struct ShotArgs {
     pub actions: Vec<Action>,
 }
 
-/// A scripted input event (`--click`, `--type`, `--key`, `--nav`).
+/// A scripted input event (`--click`, `--click-text`, `--type`, `--key`, `--nav`).
 #[derive(Debug, Clone)]
 pub enum Action {
     Click(f32, f32),
+    ClickText(String),
     Type(String),
     Key(String),
     Nav(String),
@@ -90,6 +94,7 @@ impl ShotArgs {
                         }
                     }
                 }
+                "--click-text" => s.actions.extend(v.map(Action::ClickText)),
                 "--type" => s.actions.extend(v.map(Action::Type)),
                 "--key" => s.actions.extend(v.map(Action::Key)),
                 "--nav" => s.actions.extend(v.map(Action::Nav)),
@@ -191,7 +196,62 @@ pub fn pump(dur: Duration) {
     }
 }
 
-/// Dispatch one scripted input action to the headless window.
+/// Centre (logical px) of the visible element whose accessible label is
+/// `text` — `Text` elements carry their text as label, so this finds buttons
+/// and tabs by what they say. Exact matches beat case-insensitive substring
+/// matches; among equals the last one in tree order (drawn on top, e.g. a
+/// dialog over the page) wins. Elements outside the window, empty, or fully
+/// transparent are skipped.
+pub fn locate_text(root: &impl slint::ComponentHandle, text: &str) -> Option<(f32, f32)> {
+    use i_slint_core::accessibility::AccessibleStringProperty;
+    use i_slint_core::item_tree::{ItemRc, ParentItemTraversalMode};
+    use i_slint_core::items::{ItemRef, Opacity};
+    use i_slint_core::window::WindowInner;
+    let window = root.window().size().to_logical(root.window().scale_factor());
+    let needle = text.to_lowercase();
+    let mut exact = None;
+    let mut partial = None;
+    let opacity = |item: &ItemRc| {
+        let mut value = 1.0;
+        let mut current = item.clone();
+        loop {
+            if let Some(o) = ItemRef::downcast_pin::<Opacity>(current.borrow()) {
+                value *= o.opacity();
+            }
+            match current.parent_item(ParentItemTraversalMode::StopAtPopups) {
+                Some(parent) => current = parent,
+                None => return value,
+            }
+        }
+    };
+    let tree = WindowInner::from_pub(root.window()).component();
+    ItemRc::new_root(tree).visit_descendants(|item| {
+        let Some(label) = item.accessible_string_property(AccessibleStringProperty::Label) else {
+            return std::ops::ControlFlow::<()>::Continue(());
+        };
+        let g = item.geometry();
+        let origin = item.map_to_window(g.origin);
+        let centre = (origin.x + g.size.width / 2.0, origin.y + g.size.height / 2.0);
+        let visible = g.size.width > 0.0
+            && g.size.height > 0.0
+            && item.is_visible()
+            && (0.0..window.width).contains(&centre.0)
+            && (0.0..window.height).contains(&centre.1)
+            && opacity(item) > 0.0;
+        if visible {
+            if label.as_str() == text {
+                exact = Some(centre);
+            } else if label.to_lowercase().contains(&needle) {
+                partial = Some(centre);
+            }
+        }
+        std::ops::ControlFlow::Continue(())
+    });
+    exact.or(partial)
+}
+
+/// Dispatch one scripted input action to the headless window
+/// (`ClickText` is resolved to a `Click` with [`locate_text`] by the caller).
 pub fn dispatch(action: &Action) {
     use slint::platform::{Key, PointerEventButton, WindowEvent};
     use slint::LogicalPosition;
@@ -227,7 +287,7 @@ pub fn dispatch(action: &Action) {
             w.dispatch_event(WindowEvent::KeyPressed { text: t.clone() });
             w.dispatch_event(WindowEvent::KeyReleased { text: t });
         }
-        Action::Nav(_) => {}
+        Action::Nav(_) | Action::ClickText(_) => {}
     }
     pump(Duration::from_millis(400));
 }

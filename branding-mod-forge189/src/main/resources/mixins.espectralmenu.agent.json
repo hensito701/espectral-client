@@ -7,7 +7,9 @@
   "client": [
     "GuiContainerAccessor",
     "GuiScreenInvoker",
-    "MinecraftKeyboardMixin"
+    "MinecraftKeyboardMixin",
+    "AgentInactivityMixin",
+    "AgentWindowMixin"
   ],
   "injectors": {
     "defaultRequire": 1

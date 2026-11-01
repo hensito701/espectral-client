@@ -98,6 +98,9 @@ tempfile = "3"
 # as a fallback (SLINT_BACKEND=winit-software) and for headless screenshots.
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "software-renderer-path", "software-renderer-systemfonts"] }
 slint-build = "=1.18.1"
+# Item-tree walk (accessible labels, geometry) for `--screenshot --click-text`;
+# pinned to slint's own core version. Works without Slint debug info.
+i-slint-core = { version = "=1.18.1", default-features = false }
 # Native file dialogs (xdg-desktop-portal on Linux, Win32 on Windows).
 rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 # Open URLs / folders with the system handler.

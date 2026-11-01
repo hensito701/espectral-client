@@ -81,6 +81,8 @@ fn agent_launch_adds_flags_ffmpeg_and_hidden() {
     assert!(argv.iter().any(|a| a == "-Despectral.agent=1"), "agent property present");
     assert!(argv.iter().any(|a| a == "-Despectral.ffmpeg=/usr/bin/ffmpeg"), "ffmpeg property present");
     assert!(argv.iter().any(|a| a == "-Despectral.agent.hidden=1"), "hidden property present");
+    // The mod lets this size beat the player's overrideWidth/overrideHeight.
+    assert!(argv.iter().any(|a| a == "-Despectral.agent.window=1080x1920"), "window property present");
     let tail = prog_tail(&argv, "net.minecraft.client.main.Main");
     assert_eq!(tail[tail.len() - 4..], ["--width", "1080", "--height", "1920"]);
 }
@@ -94,6 +96,7 @@ fn plain_launch_carries_no_agent_properties_and_keeps_its_argv() {
     for flag in ["-Despectral.agent=1", "-Despectral.agent.hidden=1"] {
         assert!(!argv.iter().any(|a| a == flag), "{flag} must be absent");
     }
+    assert!(!argv.iter().any(|a| a.starts_with("-Despectral.agent.window=")), "no agent window property");
     assert!(!argv.iter().any(|a| a.starts_with("-Despectral.ffmpeg=")), "no ffmpeg property");
     assert!(!argv.iter().any(|a| a == "--quickPlaySingleplayer"));
     // Byte-identical to the pre-agent argv: the fixed program list, unchanged.
