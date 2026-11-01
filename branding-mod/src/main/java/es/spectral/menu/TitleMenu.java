@@ -14,6 +14,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 import com.mojang.blaze3d.platform.InputConstants;
 
+import es.spectral.menu.ui.MenuBall;
 import es.spectral.menu.ui.MenuSkin;
 import es.spectral.menu.ui.SuiteTheme;
 
@@ -314,16 +315,26 @@ public final class TitleMenu {
                 argb(0.62f * a, 0x040507));
 
         // Logo group floats (4.8 s bob) and counter-parallaxes the background;
-        // both freeze under reduced motion.
+        // both freeze under reduced motion. Once knocked loose (MenuBall) the
+        // logo is drawn by the ball and only a dimmed halo marks its spot.
         float rise = (1f - easeOutCubic(a)) * 10f;
         float bob = reduced ? 0f : 2.2f * (float) Math.sin(t * (Math.PI * 2 / 4.8));
-        Compat.uiPush(gfx, -parX * 5f, -parY * 3.5f + bob + rise);
+        float offX = -parX * 5f;
+        float offY = -parY * 3.5f + bob + rise;
+        MenuBall ball = MenuBall.get();
+        boolean docked = ball.docked();
+        if (docked && a > 0.5f) {
+            ball.publishDock(host, cx + offX, cy + offY, logoSize / 2f);
+        }
+        Compat.uiPush(gfx, offX, offY);
         float pulse = reduced ? 0.5f : 0.5f + 0.5f * (float) Math.sin(t * (Math.PI * 2 / 5.5));
         int halo = (int) (logoSize * (0.95f + 0.07f * pulse));
         Compat.uiSprite(gfx, GLOW, cx - halo, cy - halo, halo * 2, halo * 2,
-                argb((0.38f + 0.22f * pulse) * a, accentRgb));
-        Compat.uiSprite(gfx, LOGO, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize,
-                argb(a, 0xFFFFFF));
+                argb((0.38f + 0.22f * pulse) * a * (docked ? 1f : 0.45f), accentRgb));
+        if (docked) {
+            Compat.uiSprite(gfx, LOGO, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize,
+                    argb(a, 0xFFFFFF));
+        }
         Compat.uiPop(gfx);
 
         // Wordmark: accent gradient, scaled, with the website's hard purple

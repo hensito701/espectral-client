@@ -336,6 +336,20 @@ public final class Compat {
         }
     }
 
+    /** Rotates the current pose by {@code radians} (clockwise on screen); use inside {@link #uiPush}. */
+    public static void uiRotate(Object gfx, float radians) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
+            graphics.pose().rotate(radians);
+        }
+    }
+
+    /** Starts a new GUI stratum: everything drawn after it lands above what came before, text included. */
+    public static void uiNextLayer(Object gfx) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
+            graphics.nextStratum();
+        }
+    }
+
     /** Pops the pose pushed by {@link #uiPush}. */
     public static void uiPop(Object gfx) {
         if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
