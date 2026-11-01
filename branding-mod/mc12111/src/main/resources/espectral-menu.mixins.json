@@ -35,6 +35,8 @@
     "PlayerTabOverlayBadgeMixin",
     "PlayerModelEmoteMixin",
     "EmoteWheelPaintMixin",
+    "MenuBallPaintMixin",
+    "MenuBallInputMixin",
     "CosmeticLayerMixin",
     "LivingEntityLayerAccess",
     "WingsLayerElytraMixin",

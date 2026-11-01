@@ -37,6 +37,7 @@ public abstract class MinecraftMixin {
         HudEngine.getInstance().onTick(minecraft);
         EmoteEngine.getInstance().onClientTick(minecraft);
         es.spectral.menu.ui.MenuSkin.onClientTick(minecraft);
+        es.spectral.menu.ui.MenuBall.get().onClientTick(minecraft);
         // Launcher PATCH writes the config file while the game runs; pick it
         // up live without hammering the disk. A reload right after our own
         // screen-save just re-reads identical content (harmless).

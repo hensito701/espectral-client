@@ -2,6 +2,16 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Throwable menu logo.** Left- or right-click the Espectral logo on the main
+  menu and it drops out of its spot. Drag it and throw it: it bounces off the
+  window edges and off menu buttons, and stays wherever you leave it as you move
+  between menus (Multiplayer, Options, the Suite…). Joining a world or
+  restarting the game puts it back. With reduced motion it only moves while you
+  drag it. Fabric 1.21.11, 26.2 and 26.3.
+
 ## [1.7.0] - 2026-11-01
 
 ### Added
