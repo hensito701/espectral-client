@@ -488,7 +488,11 @@ fn link_discord() {
         },
         |ui, e| {
             bridge(ui).set_w_linking(false);
-            save_error(&e);
+            if e.has_code("DISCORD_CALLBACK_UNAVAILABLE") {
+                toast::err(i18n::t("gate.callbackBusy"));
+            } else {
+                save_error(&e);
+            }
         },
     );
 }

@@ -286,17 +286,70 @@ pub fn java_bin_name() -> &'static str {
     }
 }
 
-/// Atomic JSON write used by every JS module (`.tmp` + rename, 2-space indent).
+/// Atomic JSON write used by every JS module (temp file + rename, 2-space
+/// indent). Owner-only like [`write_private`]: this writer persists the
+/// credential stores (config.json refresh tokens, identity.json, running games).
 pub fn write_json_atomic(path: &Path, value: &impl serde::Serialize) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
     let json = serde_json::to_string_pretty(value).map_err(std::io::Error::other)?;
-    std::fs::write(&tmp, json)?;
-    std::fs::rename(&tmp, path)
+    write_private(path, json.as_bytes())
+}
+
+/// Atomic owner-only write: a fresh, unpredictable temp file next to `path`
+/// (`create_new`, mode 0600 on Unix even under a permissive umask), then
+/// rename over the target, so a replaced file never keeps wider permissions.
+/// The temp file is removed when anything fails. Windows: the file inherits
+/// the data directory's ACL (per-user under `%LOCALAPPDATA%`).
+pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use rand::RngCore;
+    use std::io::Write;
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let mut suffix = [0u8; 8];
+    rand::thread_rng().fill_bytes(&mut suffix);
+    let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(format!(".{}.{}.tmp", std::process::id(), hex::encode(suffix)));
+    let tmp = parent.join(name);
+    let result = (|| -> std::io::Result<()> {
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&tmp)?;
+        f.write_all(bytes)?;
+        // Durable before the rename: after a power loss the target must be the
+        // old or the new contents, never an empty config.json/identity.json.
+        f.sync_all()?;
+        drop(f);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+        }
+        std::fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// Create `dir` and restrict it to its owner (0700 on Unix), so the credential
+/// files inside are not reachable by other local users whatever their own
+/// modes. A filesystem that cannot store modes (FAT/exFAT) only logs.
+/// Windows relies on `%LOCALAPPDATA%`'s per-user ACL.
+pub fn ensure_private_dir(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)) {
+            tracing::warn!("[paths] could not restrict {} to its owner: {e}", dir.display());
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -321,6 +374,30 @@ mod tests {
         let f = dir.path().join("sub").join("a.json");
         write_json_atomic(&f, &serde_json::json!({ "b": 1, "a": 2 })).unwrap();
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "{\n  \"b\": 1,\n  \"a\": 2\n}");
-        assert!(!dir.path().join("sub").join("a.json.tmp").exists());
+        assert_eq!(std::fs::read_dir(dir.path().join("sub")).unwrap().count(), 1, "no temp file left behind");
+    }
+
+    /// Credential stores must stay unreadable to other local users: a fresh
+    /// file is 0600, and replacing a 0644 file (or one a user chmodded) never
+    /// widens it again.
+    #[cfg(unix)]
+    #[test]
+    fn private_writes_and_dirs_are_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o755)).unwrap();
+        ensure_private_dir(&data).unwrap();
+        assert_eq!(mode(&data), 0o700);
+        let f = data.join("config.json");
+        std::fs::write(&f, "{}").unwrap();
+        std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_json_atomic(&f, &serde_json::json!({ "refresh_token": "x" })).unwrap();
+        assert_eq!(mode(&f), 0o600);
+        let raw = data.join("cache.bin");
+        write_private(&raw, b"secret").unwrap();
+        assert_eq!((mode(&raw), std::fs::read(&raw).unwrap()), (0o600, b"secret".to_vec()));
     }
 }

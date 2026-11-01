@@ -1,10 +1,10 @@
 //! Loopback HTTP listener (NEW — no JS module): the only HTTP the native
 //! engine still serves, because external processes call it:
 //!
-//! - `POST /api/bridge/visible` — the in-game Espectral mod (headers
-//!   `x-espectral-client: 1` and `x-espectral-bridge: <per-launch token>`,
-//!   body `{ uuids: [...] }`) -> [`crate::bridge::visible_for_token`]
-//!   (the same logic `Engine::bridge_visible` exposes);
+//! - `POST /api/bridge/visible` — the in-game Espectral mod (header
+//!   `x-espectral-client: 1` plus the signed-request headers of
+//!   [`crate::proof`], body `{ uuids: [...] }`) -> [`crate::bridge::visible`]
+//!   for the launch that signed it; the answer carries `x-espectral-proof`;
 //! - `GET /api/discord/callback` — Discord's OAuth redirect (registered as
 //!   `http://127.0.0.1:4199/api/discord/callback`) -> `Engine::discord_callback`,
 //!   answering the completion / error HTML from routes/discord.mjs;
@@ -22,8 +22,10 @@
 //!
 //! Agent routes answer 403 `AGENT_DISABLED` while `agent.enabled` is off
 //! (before any auth so a disabled engine never confirms a token), then 401
-//! `AGENT_AUTH` for a bad Bearer token. The relay authenticates with the
-//! per-launch bridge token in `x-espectral-bridge` instead.
+//! `AGENT_AUTH` for a bad Bearer token. `GET /api/agent/proof` lets the MCP
+//! shim check it is talking to this engine before it sends the token. The
+//! relay authenticates with a MAC made with the per-launch bridge token (never
+//! sent) and every authenticated relay answer is signed back (crate::proof).
 //!
 //! Not served here: the session cookie on the Discord callback (the native UI
 //! claims the session via `discord_claim`).
@@ -35,7 +37,7 @@ use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::{Query, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -45,6 +47,7 @@ use crate::agent;
 use crate::api::identity_discord::DiscordUser;
 use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult};
+use crate::proof;
 
 /// JS DEFAULT_PORT.
 pub const DEFAULT_PORT: u16 = 4199;
@@ -66,6 +69,13 @@ pub struct LoopbackState {
 /// The address the loopback listener is bound to, if running.
 pub fn bound_addr(engine: &Engine) -> Option<SocketAddr> {
     *engine.identity_discord_state().loopback.addr.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Test hook: record a listener address without binding (the Discord flow
+/// only starts when this engine owns the registered callback port).
+#[doc(hidden)]
+pub fn set_bound_addr_for_tests(engine: &Engine, addr: Option<SocketAddr>) {
+    *engine.identity_discord_state().loopback.addr.lock().unwrap_or_else(|p| p.into_inner()) = addr;
 }
 
 /// `http://127.0.0.1:<port>/api/bridge` — the value game-launch passes as
@@ -99,19 +109,28 @@ fn engine_error(e: &EngineError) -> Response {
     json_error(env.status, &env.code, &env.message)
 }
 
-async fn bridge_visible(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
-    if !host_ok(&headers) {
-        return json_error(403, "FORBIDDEN", "unexpected Host header");
+async fn bridge_visible(
+    State(engine): State<Engine>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Some(r) = guard(&headers, true) {
+        return r;
     }
-    if headers.get(CLIENT_HEADER).and_then(|v| v.to_str().ok()) != Some("1") {
-        return json_error(403, "FORBIDDEN", "missing x-espectral-client header");
-    }
+    let (owner, nonce) = match bridge_owner(&engine, &method, &uri, &headers, &body) {
+        Ok(o) => o,
+        Err(r) => return *r,
+    };
     let parsed: Value = if String::from_utf8_lossy(&body).trim().is_empty() {
         Value::Null
     } else {
         match serde_json::from_slice(&body) {
             Ok(v) => v,
-            Err(_) => return json_error(400, "BAD_JSON", "request body is not valid JSON"),
+            Err(_) => {
+                return prove(json_error(400, "BAD_JSON", "request body is not valid JSON"), &owner, &nonce).await
+            }
         }
     };
     // Non-strings keep their slot (the JS slices to 1000 before filtering).
@@ -120,11 +139,58 @@ async fn bridge_visible(State(engine): State<Engine>, headers: HeaderMap, body: 
         .and_then(Value::as_array)
         .map(|a| a.iter().map(|u| u.as_str().unwrap_or_default().to_string()).collect())
         .unwrap_or_default();
-    let token = headers.get(crate::bridge::BRIDGE_HEADER).and_then(|v| v.to_str().ok()).unwrap_or("");
-    match crate::bridge::visible_for_token(&engine, token, &uuids) {
-        Ok(reply) => axum::Json(reply).into_response(),
-        Err(e) => engine_error(&e),
+    let reply = axum::Json(crate::bridge::visible(&engine, &owner, &uuids)).into_response();
+    prove(reply, &owner, &nonce).await
+}
+
+/// The launch that signed this bridge request, and its nonce (403
+/// BRIDGE_AUTH otherwise). The token itself never travels (crate::proof).
+///
+/// A 1.7.0 mod (a game still running across the launcher update) sends only
+/// the plaintext `x-espectral-bridge` header. It gets 503 instead: its agent
+/// relay treated every answer below 500 as success and re-polled with no
+/// delay, so a 403 would spin it; on 5xx it backs off.
+fn bridge_owner(
+    engine: &Engine,
+    method: &Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<(crate::bridge::BridgeLaunch, String), Box<Response>> {
+    let h = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let nonce = h(proof::NONCE_HEADER);
+    let target = uri.path_and_query().map(|p| p.as_str()).unwrap_or_else(|| uri.path());
+    crate::bridge::authenticate_request(
+        engine,
+        h(proof::BRIDGE_ID_HEADER),
+        nonce,
+        h(proof::MAC_HEADER),
+        method.as_str(),
+        target,
+        body,
+    )
+    .map(|owner| (owner, nonce.to_string()))
+    .ok_or_else(|| {
+        if h(proof::BRIDGE_ID_HEADER).is_empty() && headers.contains_key(LEGACY_BRIDGE_HEADER) {
+            Box::new(json_error(503, "BRIDGE_OUTDATED", "this game's Espectral mod predates the launcher; restart the game"))
+        } else {
+            Box::new(json_error(403, "BRIDGE_AUTH", "missing or invalid bridge request signature"))
+        }
+    })
+}
+
+/// The 1.7.0 mod's plaintext token header (see [`bridge_owner`]).
+const LEGACY_BRIDGE_HEADER: &str = "x-espectral-bridge";
+
+/// Sign an authenticated bridge answer: `x-espectral-proof` over its exact
+/// body, so the mod can tell this engine from anything else on the port.
+async fn prove(resp: Response, owner: &crate::bridge::BridgeLaunch, nonce: &str) -> Response {
+    let (mut parts, body) = resp.into_parts();
+    let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
+    if let Ok(v) = HeaderValue::from_str(&proof::response_proof(&owner.token, nonce, &bytes)) {
+        parts.headers.insert(proof::PROOF_HEADER, v);
     }
+    Response::from_parts(parts, axum::body::Body::from(bytes))
 }
 
 /// HTML escape (routes/discord.mjs `esc`).
@@ -583,30 +649,57 @@ async fn agent_call(State(engine): State<Engine>, headers: HeaderMap, body: Byte
     }
 }
 
-/// The relay's bridge-owner check (403 BRIDGE_AUTH before the enabled gate).
-fn bridge_owner(engine: &Engine, headers: &HeaderMap) -> Result<crate::bridge::BridgeLaunch, Box<Response>> {
-    let token = headers.get(crate::bridge::BRIDGE_HEADER).and_then(|v| v.to_str().ok()).unwrap_or("");
-    crate::bridge::authenticate(engine, token)
-        .ok_or_else(|| Box::new(json_error(403, "BRIDGE_AUTH", "missing or invalid x-espectral-bridge token")))
-}
-
-async fn bridge_agent_poll(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
-    if let Some(r) = guard(&headers, true) {
+/// Agent-API peer proof for the MCP shim: `hmac(agent_token, "agent-proof\n" +
+/// nonce)`. Gated like every agent route (Host, enabled); needs no bearer —
+/// the shim calls it precisely so it never sends the bearer to an impostor.
+async fn agent_proof(
+    State(engine): State<Engine>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    if let Some(r) = guard(&headers, false) {
         return r;
     }
-    let owner = match bridge_owner(&engine, &headers) {
-        Ok(o) => o,
-        Err(r) => return *r,
-    };
     if let Err(e) = require_enabled(&engine) {
         return engine_error(&e);
     }
-    let parsed = match parse_body(&body) {
+    let nonce = query.get("nonce").map(String::as_str).unwrap_or("");
+    if !proof::is_nonce(nonce) {
+        return bad_request("nonce must be 32 lowercase hex characters");
+    }
+    let Some(token) = agent::read_token(engine.paths().data_dir()) else {
+        return json_error(401, "AGENT_AUTH", "no agent token exists yet");
+    };
+    axum::Json(json!({ "proof": proof::agent_proof(&token, nonce) })).into_response()
+}
+
+async fn bridge_agent_poll(
+    State(engine): State<Engine>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Some(r) = guard(&headers, true) {
+        return r;
+    }
+    let (owner, nonce) = match bridge_owner(&engine, &method, &uri, &headers, &body) {
+        Ok(o) => o,
+        Err(r) => return *r,
+    };
+    prove(relay_poll(&engine, &owner, &body).await, &owner, &nonce).await
+}
+
+async fn relay_poll(engine: &Engine, owner: &crate::bridge::BridgeLaunch, body: &Bytes) -> Response {
+    if let Err(e) = require_enabled(engine) {
+        return engine_error(&e);
+    }
+    let parsed = match parse_body(body) {
         Ok(v) => v,
         Err(r) => return *r,
     };
     let key = parsed.get("key").and_then(Value::as_str).filter(|k| !k.is_empty());
-    let entry = match agent::launch_for_bridge(engine.agent_state(), Some(&owner), key) {
+    let entry = match agent::launch_for_bridge(engine.agent_state(), Some(owner), key) {
         Ok(e) => e,
         Err(e) => return engine_error(&e),
     };
@@ -617,23 +710,33 @@ async fn bridge_agent_poll(State(engine): State<Engine>, headers: HeaderMap, bod
     axum::Json(json!({ "commands": commands, "policy": agent::policy(engine.config()) })).into_response()
 }
 
-async fn bridge_agent_result(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
+async fn bridge_agent_result(
+    State(engine): State<Engine>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
     if let Some(r) = guard(&headers, true) {
         return r;
     }
-    let owner = match bridge_owner(&engine, &headers) {
+    let (owner, nonce) = match bridge_owner(&engine, &method, &uri, &headers, &body) {
         Ok(o) => o,
         Err(r) => return *r,
     };
-    if let Err(e) = require_enabled(&engine) {
+    prove(relay_result(&engine, &owner, &body), &owner, &nonce).await
+}
+
+fn relay_result(engine: &Engine, owner: &crate::bridge::BridgeLaunch, body: &Bytes) -> Response {
+    if let Err(e) = require_enabled(engine) {
         return engine_error(&e);
     }
-    let parsed = match parse_body(&body) {
+    let parsed = match parse_body(body) {
         Ok(v) => v,
         Err(r) => return *r,
     };
     let key = parsed.get("key").and_then(Value::as_str).filter(|k| !k.is_empty());
-    let entry = match agent::launch_for_bridge(engine.agent_state(), Some(&owner), key) {
+    let entry = match agent::launch_for_bridge(engine.agent_state(), Some(owner), key) {
         Ok(e) => e,
         Err(e) => return engine_error(&e),
     };
@@ -651,23 +754,33 @@ async fn bridge_agent_result(State(engine): State<Engine>, headers: HeaderMap, b
     axum::Json(json!({ "ok": true, "accepted": accepted })).into_response()
 }
 
-async fn bridge_agent_state(State(engine): State<Engine>, headers: HeaderMap, body: Bytes) -> Response {
+async fn bridge_agent_state(
+    State(engine): State<Engine>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
     if let Some(r) = guard(&headers, true) {
         return r;
     }
-    let owner = match bridge_owner(&engine, &headers) {
+    let (owner, nonce) = match bridge_owner(&engine, &method, &uri, &headers, &body) {
         Ok(o) => o,
         Err(r) => return *r,
     };
-    if let Err(e) = require_enabled(&engine) {
+    prove(relay_state(&engine, &owner, &body), &owner, &nonce).await
+}
+
+fn relay_state(engine: &Engine, owner: &crate::bridge::BridgeLaunch, body: &Bytes) -> Response {
+    if let Err(e) = require_enabled(engine) {
         return engine_error(&e);
     }
-    let parsed = match parse_body(&body) {
+    let parsed = match parse_body(body) {
         Ok(v) => v,
         Err(r) => return *r,
     };
     let key = parsed.get("key").and_then(Value::as_str).filter(|k| !k.is_empty());
-    let entry = match agent::launch_for_bridge(engine.agent_state(), Some(&owner), key) {
+    let entry = match agent::launch_for_bridge(engine.agent_state(), Some(owner), key) {
         Ok(e) => e,
         Err(e) => return engine_error(&e),
     };
@@ -701,6 +814,7 @@ pub fn router(engine: Engine) -> Router {
         .route("/api/discord/callback", get(discord_callback))
         // routes/agent.mjs — agent API (Bearer token) + the mod relay
         // (per-launch bridge token).
+        .route("/api/agent/proof", get(agent_proof))
         .route("/api/agent/instances", get(agent_instances))
         .route("/api/agent/launches", get(agent_launches))
         .route("/api/agent/launch", post(agent_launch))
@@ -739,43 +853,67 @@ mod tests {
     use super::*;
     use crate::test_support::temp_engine;
 
-    async fn post(addr: SocketAddr, path: &str, headers: &[(&str, &str)], body: &str) -> (u16, Value) {
-        let mut req = no_proxy().post(format!("http://{addr}{path}")).body(body.to_string());
-        for (k, v) in headers {
-            req = req.header(*k, *v);
-        }
-        let res = req.send().await.unwrap();
-        let status = res.status().as_u16();
-        (status, res.json().await.unwrap_or(Value::Null))
-    }
-
     fn no_proxy() -> reqwest::Client {
         reqwest::Client::builder().no_proxy().build().unwrap()
     }
 
+    async fn post_raw(
+        addr: SocketAddr,
+        path: &str,
+        headers: &[(&str, String)],
+        body: &str,
+    ) -> (u16, Option<String>, Vec<u8>) {
+        let mut req = no_proxy().post(format!("http://{addr}{path}")).body(body.to_string());
+        for (k, v) in headers {
+            req = req.header(*k, v.as_str());
+        }
+        let res = req.send().await.unwrap();
+        let status = res.status().as_u16();
+        let proof = res.headers().get(proof::PROOF_HEADER).and_then(|v| v.to_str().ok()).map(str::to_string);
+        (status, proof, res.bytes().await.unwrap().to_vec())
+    }
+
+    fn code(body: &[u8]) -> Option<String> {
+        serde_json::from_slice::<Value>(body).ok()?["error"]["code"].as_str().map(str::to_string)
+    }
+
     #[tokio::test]
     async fn bridge_route_guards_and_answers() {
+        use crate::test_support::{bridge_headers, bridge_proof_ok};
         let (d, e) = temp_engine();
         let addr = start(&e, 0).await.unwrap();
         assert_eq!(bound_addr(&e), Some(addr));
         assert_eq!(bridge_url(&e), format!("http://127.0.0.1:{}/api/bridge", addr.port()));
+        let token = crate::bridge::mint_token();
+        crate::bridge::attach(&e, "inst", Some("11111111111111111111111111111111"), d.path().into(), &token);
+        let path = "/api/bridge/visible";
 
         // Missing x-espectral-client beats bridge auth.
-        let token = crate::bridge::mint_token();
-        let (s, j) = post(addr, "/api/bridge/visible", &[("x-espectral-bridge", &token)], "{}").await;
-        assert_eq!((s, j["error"]["code"].as_str()), (403, Some("FORBIDDEN")));
-        // Unknown token.
-        let (s, j) = post(addr, "/api/bridge/visible", &[("x-espectral-client", "1")], r#"{"uuids":[]}"#).await;
-        assert_eq!((s, j["error"]["code"].as_str()), (403, Some("BRIDGE_AUTH")));
-        // Bad JSON.
-        let (s, j) = post(addr, "/api/bridge/visible", &[("x-espectral-client", "1")], "{nope").await;
-        assert_eq!((s, j["error"]["code"].as_str()), (400, Some("BAD_JSON")));
+        let (mut h, _) = bridge_headers(&token, path, "{}");
+        h.retain(|(k, _)| *k != "x-espectral-client");
+        let (s, _, b) = post_raw(addr, path, &h, "{}").await;
+        assert_eq!((s, code(&b).as_deref()), (403, Some("FORBIDDEN")));
+        // The old bearer header (token on the wire) is not accepted any more;
+        // it gets 503 so a 1.7.0 agent relay backs off instead of spinning.
+        let bearer = [("x-espectral-client", "1".to_string()), ("x-espectral-bridge", token.clone())];
+        let (s, proof, b) = post_raw(addr, path, &bearer, "{}").await;
+        assert_eq!((s, code(&b).as_deref(), proof), (503, Some("BRIDGE_OUTDATED"), None));
+        // A signature over a different body (or by another token) is refused.
+        let (h, _) = bridge_headers(&token, path, r#"{"uuids":[]}"#);
+        let (s, _, b) = post_raw(addr, path, &h, r#"{"uuids":["x"]}"#).await;
+        assert_eq!((s, code(&b).as_deref()), (403, Some("BRIDGE_AUTH")));
+        let (h, _) = bridge_headers(&crate::bridge::mint_token(), path, "{}");
+        assert_eq!(post_raw(addr, path, &h, "{}").await.0, 403);
+        // Bad JSON from an authenticated mod: signed error answer.
+        let (h, nonce) = bridge_headers(&token, path, "{nope");
+        let (s, proof, b) = post_raw(addr, path, &h, "{nope").await;
+        assert_eq!((s, code(&b).as_deref()), (400, Some("BAD_JSON")));
+        assert!(bridge_proof_ok(&token, &nonce, proof.as_deref(), &b));
         // Foreign Host header (DNS rebinding).
-        let (s, j) =
-            post(addr, "/api/bridge/visible", &[("x-espectral-client", "1"), ("host", "evil.example")], "{}").await;
-        assert_eq!((s, j["error"]["code"].as_str()), (403, Some("FORBIDDEN")));
+        let (mut h, _) = bridge_headers(&token, path, "{}");
+        h.push(("host", "evil.example".into()));
+        assert_eq!(post_raw(addr, path, &h, "{}").await.0, 403);
 
-        crate::bridge::attach(&e, "inst", Some("11111111111111111111111111111111"), d.path().into(), &token);
         crate::bridge::seed_cache(
             &e,
             "22222222222222222222222222222222",
@@ -786,18 +924,17 @@ mod tests {
                 expires_at: crate::platform::now_ms() + 60_000,
             },
         );
-        let (s, j) = post(
-            addr,
-            "/api/bridge/visible",
-            &[("x-espectral-client", "1"), ("x-espectral-bridge", &token), ("content-type", "application/json")],
-            r#"{"uuids":["22222222222222222222222222222222", 5]}"#,
-        )
-        .await;
+        let body = r#"{"uuids":["22222222222222222222222222222222", 5]}"#;
+        let (h, nonce) = bridge_headers(&token, path, body);
+        let (s, proof, b) = post_raw(addr, path, &h, body).await;
         assert_eq!(s, 200);
         assert_eq!(
-            j,
+            serde_json::from_slice::<Value>(&b).unwrap(),
             json!({ "players": [{ "uuid": "22222222222222222222222222222222", "grant": "g", "loadout": null }] })
         );
+        // The answer is signed for this request's nonce and exact body.
+        assert!(bridge_proof_ok(&token, &nonce, proof.as_deref(), &b));
+        assert!(!bridge_proof_ok(&token, &proof::mint_nonce(), proof.as_deref(), &b));
         e.shutdown().await;
     }
 

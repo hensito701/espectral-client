@@ -16,6 +16,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import es.spectral.menu.BridgeAuth;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -28,7 +29,9 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
  *
  * <p>Java 8 port of {@code es.spectral.menu.agent.AgentRelay}: no
  * {@code java.net.http}, no records — {@link HttpURLConnection} and manual JSON
- * building. Same wire contract, same headers, same error codes.
+ * building. Same wire contract, same headers, same error codes: requests are
+ * signed with the bridge token (never sent) and only answers that prove they
+ * come from this launcher are acted on ({@link BridgeAuth}).
  */
 public final class AgentRelay {
 
@@ -46,14 +49,16 @@ public final class AgentRelay {
     private static volatile boolean stopping;
 
     private final String base;
-    private final String token;
+    private final BridgeAuth auth;
+    /** Logged once: an unproven answer means something else holds the port. */
+    private volatile boolean warnedUnproven;
 
     private volatile AgentState lastState;
     private volatile long lastStateAt;
 
     private AgentRelay(String base, String token) {
         this.base = base;
-        this.token = token;
+        this.auth = new BridgeAuth(token);
     }
 
     // ------------------------------------------------------------------
@@ -66,7 +71,7 @@ public final class AgentRelay {
         String base = AgentRuntime.bridgeUrl();
         String token = AgentRuntime.bridgeToken();
         if (base == null || token == null) {
-            LOGGER.warn("agent: relay disabled (missing -Despectral.bridge.url/token)");
+            LOGGER.warn("agent: relay disabled (missing -Despectral.bridge.url or {})", BridgeAuth.TOKEN_ENV);
             return;
         }
         AgentPolicy.noteServerFromArguments();
@@ -242,11 +247,16 @@ public final class AgentRelay {
     // HTTP (Java 8: HttpURLConnection)
     // ------------------------------------------------------------------
 
-    /** POSTs JSON and returns the parsed reply, or null on a non-200 answer. */
+    /**
+     * Signs and POSTs JSON; returns the parsed reply, or null on a non-200
+     * answer or one that does not prove it comes from this launcher.
+     */
     private JsonObject post(String path, JsonObject body, int readTimeoutMs) throws IOException {
         HttpURLConnection connection = null;
         try {
             URL url = new URL(base + path);
+            byte[] payload = body.toString().getBytes(Charset.forName("UTF-8"));
+            String nonce = BridgeAuth.newNonce();
             connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
             connection.setReadTimeout(readTimeoutMs);
@@ -256,8 +266,10 @@ public final class AgentRelay {
             connection.setRequestProperty("Accept", "application/json");
             // Contract headers, byte-for-byte the modern mod's.
             connection.setRequestProperty("x-espectral-client", "1");
-            connection.setRequestProperty("x-espectral-bridge", token);
-            byte[] payload = body.toString().getBytes(Charset.forName("UTF-8"));
+            connection.setRequestProperty(BridgeAuth.ID_HEADER, auth.id());
+            connection.setRequestProperty(BridgeAuth.NONCE_HEADER, nonce);
+            connection.setRequestProperty(BridgeAuth.MAC_HEADER,
+                    auth.requestMac("POST", BridgeAuth.target(url), nonce, payload));
             connection.setFixedLengthStreamingMode(payload.length);
             OutputStream out = connection.getOutputStream();
             try {
@@ -266,13 +278,21 @@ public final class AgentRelay {
                 out.close();
             }
             int status = connection.getResponseCode();
-            if (status != 200) {
-                LOGGER.debug("agent: {} answered {}", path, status);
-                drain(connection.getErrorStream());
+            byte[] raw = readBytes(status >= 400 ? connection.getErrorStream() : connection.getInputStream());
+            if (!auth.proofOk(nonce, raw, connection.getHeaderField(BridgeAuth.PROOF_HEADER))) {
+                if (!warnedUnproven) {
+                    warnedUnproven = true;
+                    LOGGER.warn("agent: ignoring an unproven bridge answer ({}) — is another program on the launcher port?",
+                            status);
+                }
                 return null;
             }
-            String text = read(connection.getInputStream());
-            if (text == null || text.isEmpty()) return null;
+            if (status != 200) {
+                LOGGER.debug("agent: {} answered {}", path, status);
+                return null;
+            }
+            String text = new String(raw, Charset.forName("UTF-8"));
+            if (text.isEmpty()) return null;
             JsonElement parsed = new JsonParser().parse(text);
             return parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
         } finally {
@@ -280,8 +300,8 @@ public final class AgentRelay {
         }
     }
 
-    private static String read(InputStream in) throws IOException {
-        if (in == null) return null;
+    private static byte[] readBytes(InputStream in) throws IOException {
+        if (in == null) return new byte[0];
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
         try {
@@ -292,15 +312,7 @@ public final class AgentRelay {
         } finally {
             in.close();
         }
-        return new String(out.toByteArray(), Charset.forName("UTF-8"));
-    }
-
-    private static void drain(InputStream in) {
-        try {
-            read(in);
-        } catch (IOException ignored) {
-            // error body is only useful for logs
-        }
+        return out.toByteArray();
     }
 
     private static String string(JsonObject json, String name) {

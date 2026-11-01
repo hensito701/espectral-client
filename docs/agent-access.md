@@ -36,9 +36,15 @@ Config). That installs Replay Mod (cinematic clips) and two shader packs:
 - **Never on Espectral's public servers.** Input, chat, commands and the
   cinematic camera are refused on `*.uhce.top` / `*.espectral.es` (also when
   joined by IP). Nothing — not even the allowlist — overrides it.
-- Input works only in singleplayer, the replay viewer, `localhost` and the
+- Input works only in singleplayer, the replay viewer, `localhost` (your own
+  PC's address — a server *named* `127.something` does not count) and the
   servers you add to **Allowed servers**. Screenshots and recordings (what you
   already see) work everywhere.
+- **The token never leaves your PC unchecked.** Before each call, the MCP
+  server asks the launcher to prove it knows the token; if something else is
+  listening on the launcher's port (for example while the launcher is
+  closed), the call fails with `ENGINE_IMPOSTOR` and the token is not sent.
+  The game and the launcher sign everything they exchange the same way.
 - **F8 pauses the agent** in-game (a small *AGENT PAUSED* chip appears); press
   it again to resume. The agent cannot press F8 itself.
 - Held keys release themselves after 2 s, and on every screen or world change.

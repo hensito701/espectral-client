@@ -25,6 +25,13 @@ const OTHER_TOKEN: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 type ReplyFn = Box<dyn Fn(&MockRequest) -> MockResponse + Send + Sync>;
 
+/// The stub engine owns TOKEN: it answers the shim's peer proof with it
+/// (`GET /api/agent/proof?nonce=…`), like the real engine does with its file.
+fn proof_reply(req: &MockRequest) -> Option<MockResponse> {
+    let nonce = req.path.strip_prefix("/api/agent/proof?nonce=")?;
+    Some(MockResponse::json(&json!({ "proof": espectral_engine::proof::agent_proof(TOKEN, nonce) })))
+}
+
 fn stub_reply(req: &MockRequest) -> MockResponse {
     let auth = req.header("authorization").unwrap_or_default();
     if auth != format!("Bearer {TOKEN}") {
@@ -68,6 +75,9 @@ impl Stub {
         let over: Arc<Mutex<Option<ReplyFn>>> = Arc::default();
         let o = over.clone();
         let server = MockServer::start(move |req: &MockRequest| {
+            if let Some(p) = proof_reply(req) {
+                return p;
+            }
             if let Some(f) = o.lock().unwrap().as_ref() {
                 return f(req);
             }
@@ -551,13 +561,14 @@ async fn token_is_re_read_per_call_so_rotation_takes_effect() {
     let res = call(&shim, 2, "list_instances", json!({}));
     assert_eq!(res["result"]["isError"], false);
 
-    // Rotate behind the shim's back: the next call must use the new token.
+    // Rotate behind the shim's back: the next call reads the new token. This
+    // engine still holds the old one, so it cannot prove itself for the new
+    // token and the shim refuses to send it.
     std::fs::write(mcp::token_path_for(dir.path()), format!("{OTHER_TOKEN}\n")).unwrap();
     let res = call(&shim, 3, "list_instances", json!({}));
     assert_eq!(res["result"]["isError"], true);
-    assert!(text_of(&res).contains("AGENT_AUTH"), "{}", text_of(&res));
-    let used = stub.seen().last().unwrap().header("authorization").unwrap();
-    assert_eq!(used, format!("Bearer {OTHER_TOKEN}"));
+    assert!(text_of(&res).contains("ENGINE_IMPOSTOR"), "{}", text_of(&res));
+    assert!(stub.seen().iter().all(|r| r.header("authorization").as_deref() != Some(&format!("Bearer {OTHER_TOKEN}"))));
 
     shim.close().unwrap();
 }
@@ -790,4 +801,21 @@ async fn fetch_deadlines_and_error_text() {
     assert_eq!(err.code, "AGENT_AUTH");
     assert!(!err.message.contains(TOKEN), "the token is never echoed back in an error message");
     assert!(err.message.contains("rotate"), "{}", err.message);
+}
+
+/// Another local user listening on the engine port (launcher closed) must
+/// never receive the agent bearer: it cannot answer the proof.
+#[tokio::test]
+async fn an_impostor_on_the_port_never_gets_the_token() {
+    let dir = token_dir(TOKEN);
+    let impostor =
+        MockServer::start(|_| MockResponse::json(&json!({ "proof": "0".repeat(64), "instances": [] }))).await;
+    let port: u16 = impostor.host().rsplit(':').next().unwrap().parse().unwrap();
+    let cfg = ShimConfig::new(format!("http://127.0.0.1:{port}"), dir.path());
+    let err = mcp::engine_fetch(&cfg, "GET", "/api/agent/instances", None, Duration::from_secs(5)).await.unwrap_err();
+    assert_eq!(err.code, "ENGINE_IMPOSTOR");
+    let seen = impostor.requests();
+    assert_eq!(seen.len(), 1, "only the proof request");
+    assert!(seen[0].path.starts_with("/api/agent/proof?nonce="));
+    assert!(seen.iter().all(|r| r.header("authorization").is_none()), "the bearer was never sent");
 }

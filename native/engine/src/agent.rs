@@ -701,7 +701,7 @@ pub fn launch_for_bridge(
     key: Option<&str>,
 ) -> EngineResult<Arc<AgentLaunch>> {
     let Some(bridge_entry) = bridge_entry else {
-        return Err(EngineError::api(403, "BRIDGE_AUTH", "missing or invalid x-espectral-bridge token"));
+        return Err(EngineError::api(403, "BRIDGE_AUTH", "missing or invalid bridge request signature"));
     };
     let key = key.filter(|k| !k.is_empty());
     let entry = match key {

@@ -10,9 +10,16 @@
 //! For bulk extraction (JDK archives, natives) the pinned `zip` crate is also
 //! available; this module exists for byte-for-byte behavioral parity where
 //! the JS used it.
+//!
+//! Archives are untrusted (`.mrpack` files): every read stops at a byte limit
+//! on the actual decompressed output ([`MAX_ENTRY_BYTES`] by default), never
+//! trusting the sizes the archive declares.
 
 use std::io::Read;
 use std::path::Path;
+
+/// Default ceiling for one decompressed entry read into memory.
+pub const MAX_ENTRY_BYTES: u64 = 256 * 1024 * 1024;
 
 const SIG_EOCD: u32 = 0x0605_4b50;
 const SIG_CENTRAL: u32 = 0x0201_4b50;
@@ -114,33 +121,90 @@ fn entry_payload<'a>(buf: &'a [u8], e: &Entry) -> Result<&'a [u8], ZipError> {
     Ok(&buf[start..end])
 }
 
-fn decompress(e: &Entry, data: &[u8]) -> Result<Vec<u8>, ZipError> {
+fn too_large(e: &Entry, max: u64) -> ZipError {
+    ZipError::Corrupt(format!("'{}' expands past the {max}-byte limit", e.name))
+}
+
+/// The entry's decompressed stream.
+fn entry_reader<'a>(e: &Entry, data: &'a [u8]) -> Result<Box<dyn Read + 'a>, ZipError> {
     match e.method {
-        0 => Ok(data.to_vec()),
-        8 => {
-            let mut out = Vec::new();
-            flate2::read::DeflateDecoder::new(data)
-                .read_to_end(&mut out)
-                .map_err(|err| ZipError::Corrupt(format!("bad deflate stream for '{}': {err}", e.name)))?;
-            Ok(out)
-        }
+        0 => Ok(Box::new(data)),
+        8 => Ok(Box::new(flate2::read::DeflateDecoder::new(data))),
         m => Err(ZipError::Unsupported(format!("compression method {m} for '{}'", e.name))),
     }
 }
 
-/// Read one entry as bytes; `Ok(None)` when the entry does not exist.
+fn decompress(e: &Entry, data: &[u8], max: u64) -> Result<Vec<u8>, ZipError> {
+    let mut out = Vec::new();
+    entry_reader(e, data)?
+        .take(max.saturating_add(1))
+        .read_to_end(&mut out)
+        .map_err(|err| ZipError::Corrupt(format!("bad deflate stream for '{}': {err}", e.name)))?;
+    if out.len() as u64 > max {
+        return Err(too_large(e, max));
+    }
+    Ok(out)
+}
+
+/// Read one entry as bytes (at most [`MAX_ENTRY_BYTES`]); `Ok(None)` when the
+/// entry does not exist.
 pub fn read_zip_entry(zip_path: &Path, entry_name: &str) -> Result<Option<Vec<u8>>, ZipError> {
+    read_zip_entry_capped(zip_path, entry_name, MAX_ENTRY_BYTES)
+}
+
+/// [`read_zip_entry`] with an explicit decompressed-size ceiling.
+pub fn read_zip_entry_capped(zip_path: &Path, entry_name: &str, max: u64) -> Result<Option<Vec<u8>>, ZipError> {
     let buf = std::fs::read(zip_path)?;
-    read_zip_entry_from(&buf, entry_name)
+    read_zip_entry_from_capped(&buf, entry_name, max)
 }
 
 /// [`read_zip_entry`] over an in-memory archive.
 pub fn read_zip_entry_from(buf: &[u8], entry_name: &str) -> Result<Option<Vec<u8>>, ZipError> {
+    read_zip_entry_from_capped(buf, entry_name, MAX_ENTRY_BYTES)
+}
+
+/// [`read_zip_entry_from`] with an explicit decompressed-size ceiling.
+pub fn read_zip_entry_from_capped(buf: &[u8], entry_name: &str, max: u64) -> Result<Option<Vec<u8>>, ZipError> {
     let entries = scan_central_directory(buf)?;
     match entries.iter().find(|e| e.name == entry_name) {
         None => Ok(None),
-        Some(e) => decompress(e, entry_payload(buf, e)?).map(Some),
+        Some(e) => decompress(e, entry_payload(buf, e)?, max).map(Some),
     }
+}
+
+/// Stream one entry of an in-memory archive into `dest` (a temp file next to
+/// it, renamed on success) without buffering it, stopping at `max` decompressed
+/// bytes. Returns the bytes written; `Ok(None)` when the entry does not exist.
+pub fn extract_zip_entry_from(buf: &[u8], entry_name: &str, dest: &Path, max: u64) -> Result<Option<u64>, ZipError> {
+    let entries = scan_central_directory(buf)?;
+    let Some(e) = entries.iter().find(|e| e.name == entry_name) else { return Ok(None) };
+    let mut reader = entry_reader(e, entry_payload(buf, e)?)?.take(max.saturating_add(1));
+    let parent = dest.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let mut tmp_name = dest.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    tmp_name.push(format!(".{}.part", std::process::id()));
+    let tmp = parent.join(tmp_name);
+    let result = (|| -> Result<u64, ZipError> {
+        let mut f = std::fs::File::create(&tmp)?;
+        let n = std::io::copy(&mut reader, &mut f)
+            .map_err(|err| ZipError::Corrupt(format!("bad deflate stream for '{}': {err}", e.name)))?;
+        drop(f);
+        if n > max {
+            return Err(too_large(e, max));
+        }
+        // Windows refuses to rename over a file another process holds open
+        // without FILE_SHARE_DELETE (a running game, an AV scan); writing in
+        // place, as before the size cap, still works there.
+        if std::fs::rename(&tmp, dest).is_err() {
+            std::fs::copy(&tmp, dest)?;
+            let _ = std::fs::remove_file(&tmp);
+        }
+        Ok(n)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result.map(Some)
 }
 
 /// Every entry name (files and directories), in central-directory order.
@@ -208,5 +272,35 @@ mod tests {
         assert!(err.to_string().contains("zip corrupt"), "{err}");
         let err = list_zip_entries(&dir.path().join("no-such.zip")).unwrap_err();
         assert!(matches!(err, ZipError::Io(ref e) if e.kind() == std::io::ErrorKind::NotFound));
+    }
+
+    fn deflated(name: &str, data: &[u8]) -> Vec<u8> {
+        use std::io::Write;
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        w.start_file(name, opts).unwrap();
+        w.write_all(data).unwrap();
+        w.finish().unwrap().into_inner()
+    }
+
+    /// A tiny archive expanding to many MB must stop at the ceiling, by the
+    /// bytes actually produced (the archive's own sizes are not trusted).
+    #[test]
+    fn decompression_stops_at_the_limit() {
+        let payload = vec![b' '; 2 * 1024 * 1024];
+        let zip = deflated("modrinth.index.json", &payload);
+        assert!(zip.len() < 64 * 1024, "{}", zip.len());
+        let err = read_zip_entry_from_capped(&zip, "modrinth.index.json", 1024 * 1024).unwrap_err();
+        assert!(err.to_string().contains("expands past"), "{err}");
+        assert_eq!(read_zip_entry_from_capped(&zip, "modrinth.index.json", 4 << 20).unwrap().unwrap().len(), 2 << 20);
+
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("sub").join("big.bin");
+        assert!(extract_zip_entry_from(&zip, "modrinth.index.json", &dest, 1024).is_err());
+        assert!(!dest.exists());
+        assert_eq!(std::fs::read_dir(dir.path().join("sub")).unwrap().count(), 0, "partial file removed");
+        assert_eq!(extract_zip_entry_from(&zip, "modrinth.index.json", &dest, 4 << 20).unwrap(), Some(2 << 20));
+        assert_eq!(std::fs::metadata(&dest).unwrap().len(), 2 << 20);
+        assert_eq!(extract_zip_entry_from(&zip, "missing", &dest, 10).unwrap(), None);
     }
 }

@@ -473,12 +473,13 @@ pub async fn train_instance(engine: &Engine, instance: &InstanceMeta, opts: Trai
     }
     progress(&key, "spawn", format!("train JVM ({}) -> {}", resolved.java.build, cache_file.display()));
     let argv = crate::launch::build_argv(engine, instance, &mut resolved);
-    let child = match process::spawn_java(&resolved.java.path, &argv, &game_dir, false) {
-        Ok(c) => c,
-        Err(e) => return done(train_payload(&name, key, false, Some(format!("spawn failed: {e}")))),
-    };
+    let child =
+        match process::spawn_java(&resolved.java.path, &argv, &game_dir, false, resolved.bridge_token.as_deref()) {
+            Ok(c) => c,
+            Err(e) => return done(train_payload(&name, key, false, Some(format!("spawn failed: {e}")))),
+        };
     let token = resolved.bridge_token.clone().unwrap_or_default();
-    // Register the trainer with the mod bridge (its argv carries a token) and
+    // Register the trainer with the mod bridge (its environment carries a token) and
     // detach it when the process ends.
     let _ = crate::presence::launch_started(
         engine,
@@ -1067,10 +1068,12 @@ mod tests {
         let meta: Value = serde_json::from_str(&std::fs::read_to_string(e.paths().aot_meta(&key)).unwrap()).unwrap();
         assert_eq!(meta["game_version"], "1.21.11");
         assert!(!is_cache_stale(&e, &key, &[jar]));
-        // argv carried the AOT output flag + the bridge token
+        // argv carried the AOT output flag; the bridge token went in the
+        // environment, never the argv (other users can read the argv).
         let args = std::fs::read_to_string(game_dir.join("args.txt")).unwrap();
         assert!(args.contains(&format!("-XX:AOTCacheOutput={}", e.paths().aot_cache_file(&key).display())));
-        assert!(args.contains(&format!("-Despectral.bridge.token={}", "d".repeat(64))));
+        assert!(!args.contains(&"d".repeat(64)));
+        assert_eq!(std::fs::read_to_string(game_dir.join("bridge-token.txt")).unwrap(), "d".repeat(64));
         let mut done = 0;
         while let Ok(ev) = rx.try_recv() {
             if ev.name() == "train-done" {

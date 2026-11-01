@@ -43,6 +43,29 @@ fn client() -> reqwest::Client {
     reqwest::Client::builder().no_proxy().build().unwrap()
 }
 
+/// A mod-relay request signed with `token` (crate::proof — the token itself is
+/// never sent). Every answer the engine authenticated must carry a valid
+/// `x-espectral-proof` for this request's nonce and exact body.
+async fn bridge_post(addr: SocketAddr, path: &str, token: &str, body: Value) -> (u16, Value) {
+    let text = body.to_string();
+    let (headers, nonce) = espectral_engine::test_support::bridge_headers(token, path, &text);
+    let mut req = client().post(format!("http://{addr}{path}")).header("content-type", "application/json").body(text);
+    for (k, v) in &headers {
+        req = req.header(*k, v.as_str());
+    }
+    let res = req.send().await.unwrap();
+    let status = res.status().as_u16();
+    let proof = res.headers().get("x-espectral-proof").and_then(|v| v.to_str().ok()).map(str::to_string);
+    let bytes = res.bytes().await.unwrap();
+    if status != 403 || proof.is_some() {
+        assert!(
+            espectral_engine::test_support::bridge_proof_ok(token, &nonce, proof.as_deref(), &bytes),
+            "{path} ({status}): an authenticated answer must be signed"
+        );
+    }
+    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
 /// `x-espectral-client: 1` — the CSRF header every non-GET needs (the MCP shim
 /// sends it too).
 const CSRF: (&str, &str) = ("x-espectral-client", "1");
@@ -155,12 +178,15 @@ async fn bridge_poll_refused_for_non_agent_and_bad_tokens() {
     // A bridge-authenticated launch that was never registered as an agent launch.
     let plain = bridge::mint_token();
     bridge::attach(&e, "plain-inst", Some("b".repeat(32).as_str()), e.paths().data_dir().to_path_buf(), &plain);
-    let (s, j) = post(addr, "/api/bridge/agent/poll", &[CSRF, ("x-espectral-bridge", &plain)], json!({})).await;
+    let (s, j) = bridge_post(addr, "/api/bridge/agent/poll", &plain, json!({})).await;
     assert_eq!((s, j["error"]["code"].as_str()), (409, Some("NOT_AGENT_LAUNCH")));
 
-    let (s, j) =
-        post(addr, "/api/bridge/agent/poll", &[CSRF, ("x-espectral-bridge", &"c".repeat(64))], json!({})).await;
+    let (s, j) = bridge_post(addr, "/api/bridge/agent/poll", &"c".repeat(64), json!({})).await;
     assert_eq!((s, j["error"]["code"].as_str()), (403, Some("BRIDGE_AUTH")));
+    // The pre-1.7.1 bearer header (token on the wire) is refused outright,
+    // with a 5xx so a running 1.7.0 relay backs off instead of re-polling.
+    let (s, j) = post(addr, "/api/bridge/agent/poll", &[CSRF, ("x-espectral-bridge", &plain)], json!({})).await;
+    assert_eq!((s, j["error"]["code"].as_str()), (503, Some("BRIDGE_OUTDATED")));
     e.shutdown().await;
 }
 
@@ -175,9 +201,7 @@ async fn relay_delivers_a_call_to_the_parked_poll_and_resolves_it() {
 
     // The mod parks a poll; the call arrives and is answered with the command.
     let mod_token = token.clone();
-    let poll = tokio::spawn(async move {
-        post(addr, "/api/bridge/agent/poll", &[CSRF, ("x-espectral-bridge", &mod_token)], json!({})).await
-    });
+    let poll = tokio::spawn(async move { bridge_post(addr, "/api/bridge/agent/poll", &mod_token, json!({})).await });
     tokio::time::sleep(Duration::from_millis(120)).await;
     let call = tokio::spawn(async move {
         post(addr, "/api/agent/call", &[CSRF, ("authorization", &api)], json!({ "key": key, "tool": "screen_tree" }))
@@ -198,10 +222,10 @@ async fn relay_delivers_a_call_to_the_parked_poll_and_resolves_it() {
     assert_eq!(j["policy"]["blocked_hosts"], json!(["uhce.top", "espectral.es"]));
     assert!(j["policy"]["allowed_servers"].is_array());
 
-    let (s, j) = post(
+    let (s, j) = bridge_post(
         addr,
         "/api/bridge/agent/result",
-        &[CSRF, ("x-espectral-bridge", &token)],
+        &token,
         json!({
             "id": command["id"],
             "ok": true,
@@ -228,9 +252,7 @@ async fn relay_error_result_becomes_the_call_error() {
     let token = attach_agent_launch(&e, key, "relay-err");
 
     let mod_token = token.clone();
-    let poll = tokio::spawn(async move {
-        post(addr, "/api/bridge/agent/poll", &[CSRF, ("x-espectral-bridge", &mod_token)], json!({})).await
-    });
+    let poll = tokio::spawn(async move { bridge_post(addr, "/api/bridge/agent/poll", &mod_token, json!({})).await });
     tokio::time::sleep(Duration::from_millis(120)).await;
     let call = tokio::spawn(async move {
         post(
@@ -242,10 +264,10 @@ async fn relay_error_result_becomes_the_call_error() {
         .await
     });
     let (_, j) = poll.await.unwrap();
-    post(
+    bridge_post(
         addr,
         "/api/bridge/agent/result",
-        &[CSRF, ("x-espectral-bridge", &token)],
+        &token,
         json!({
             "id": j["commands"][0]["id"],
             "ok": false,
@@ -317,10 +339,10 @@ async fn state_is_stored_per_launch_and_echoed_by_the_route() {
     assert_eq!(s, 200, "{j}");
     assert_eq!(j["state"], Value::Null, "no state before the first mod report");
 
-    let (s, _) = post(
+    let (s, _) = bridge_post(
         addr,
         "/api/bridge/agent/state",
-        &[CSRF, ("x-espectral-bridge", &token)],
+        &token,
         json!({
             "phase": "in_world", "screen": "GameScreen", "server": null, "world": "Mundo 1",
             "context": "singleplayer", "paused": false, "recording": true,
@@ -339,13 +361,7 @@ async fn state_is_stored_per_launch_and_echoed_by_the_route() {
 
     // The `agent-state` event carries the same view.
     let mut rx = e.subscribe();
-    post(
-        addr,
-        "/api/bridge/agent/state",
-        &[CSRF, ("x-espectral-bridge", &token)],
-        json!({ "phase": "paused", "paused": true }),
-    )
-    .await;
+    bridge_post(addr, "/api/bridge/agent/state", &token, json!({ "phase": "paused", "paused": true })).await;
     let ev = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let ev = rx.recv().await.unwrap();
@@ -373,7 +389,7 @@ async fn relay_goes_inert_when_agent_access_is_switched_off() {
     let token = attach_agent_launch(&e, "lgate", "gate-inst");
     agent::save_agent_config(e.config(), &agent::AgentAccessPatch { enabled: Some(false), allowed_servers: None });
 
-    let (s, j) = post(addr, "/api/bridge/agent/poll", &[CSRF, ("x-espectral-bridge", &token)], json!({})).await;
+    let (s, j) = bridge_post(addr, "/api/bridge/agent/poll", &token, json!({})).await;
     assert_eq!((s, j["error"]["code"].as_str()), (403, Some("AGENT_DISABLED")));
     e.shutdown().await;
 }
@@ -387,13 +403,7 @@ async fn relay_auth_refuses_a_foreign_launch_key() {
     attach_agent_launch(&e, "lvictim", "victim-inst");
 
     for route in ["/api/bridge/agent/poll", "/api/bridge/agent/result", "/api/bridge/agent/state"] {
-        let (s, j) = post(
-            addr,
-            route,
-            &[CSRF, ("x-espectral-bridge", &attacker)],
-            json!({ "key": "lvictim", "id": "c1", "ok": true }),
-        )
-        .await;
+        let (s, j) = bridge_post(addr, route, &attacker, json!({ "key": "lvictim", "id": "c1", "ok": true })).await;
         assert_eq!((s, j["error"]["code"].as_str()), (403, Some("BRIDGE_AUTH")), "{route} refuses a foreign key");
     }
     e.shutdown().await;

@@ -55,10 +55,9 @@ pub fn set(key: &str, value: Value) {
         } else {
             s.map.insert(key.to_string(), value);
         }
-        let text = serde_json::to_string_pretty(&Value::Object(s.map.clone())).unwrap_or_default();
-        let tmp = s.path.with_extension("json.tmp");
-        if std::fs::write(&tmp, text).is_ok() {
-            let _ = std::fs::rename(&tmp, &s.path);
+        // Holds the Discord session: owner-only atomic write.
+        if let Err(e) = espectral_engine::paths::write_json_atomic(&s.path, &Value::Object(s.map.clone())) {
+            tracing::warn!("[prefs] could not persist {}: {e}", s.path.display());
         }
     });
 }

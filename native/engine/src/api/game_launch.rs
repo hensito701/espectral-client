@@ -1365,6 +1365,7 @@ for a in "$@"; do
   case "$a" in -XX:AOTCacheOutput=*) out="${{a#-XX:AOTCacheOutput=}}";; esac
 done
 printf '%s\n' "$@" > args.txt
+printf '%s' "$ESPECTRAL_BRIDGE_TOKEN" > bridge-token.txt
 trap 'if [ -n "$out" ]; then printf aotcache > "$out"; fi; exit 0' TERM
 mkdir -p logs
 echo "[main/INFO]: Loading Minecraft 1.21.11"
@@ -1754,9 +1755,12 @@ mod tests {
         let stats = e.launch_stats(None).await.unwrap().launches;
         assert_eq!(stats[0].key, reply.key);
         assert!(stats[0].phases.as_ref().is_some_and(|p| p.contains_key("loading_mc")));
-        // argv: the game ran in its gameDir with the bridge token.
+        // argv: the game ran in its gameDir; the bridge token reached it
+        // through the environment only.
         let args = std::fs::read_to_string(e.paths().instance_dir("e2e").join("args.txt")).unwrap();
-        assert!(args.contains(&format!("-Despectral.bridge.token={}", "c".repeat(64))));
+        assert!(!args.contains(&"c".repeat(64)), "no token in the argv");
+        let env_token = std::fs::read_to_string(e.paths().instance_dir("e2e").join("bridge-token.txt")).unwrap();
+        assert_eq!(env_token, "c".repeat(64));
         assert!(!args.contains("fake-java"), "argv[0] is dropped");
     }
 

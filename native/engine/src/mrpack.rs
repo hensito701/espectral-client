@@ -65,6 +65,12 @@ impl MrpackIndex {
     }
 }
 
+/// Largest `modrinth.index.json` accepted (real ones are a few hundred KB).
+const MAX_INDEX_BYTES: u64 = 16 * 1024 * 1024;
+/// Largest single override file, and all overrides of one import together.
+const MAX_OVERRIDE_BYTES: u64 = 1024 * 1024 * 1024;
+const MAX_OVERRIDES_TOTAL: u64 = 8 * 1024 * 1024 * 1024;
+
 /// Parse modrinth.index.json inside a .mrpack zip (400 NOT_MRPACK, 502 BAD_MRPACK).
 pub fn parse_mrpack_index(zip_path: &Path) -> EngineResult<MrpackIndex> {
     let not_mrpack = || {
@@ -73,10 +79,14 @@ pub fn parse_mrpack_index(zip_path: &Path) -> EngineResult<MrpackIndex> {
             format!("'{}' no es un .mrpack válido (sin modrinth.index.json)", zip_path.display()),
         )
     };
-    let buf = crate::ziputil::read_zip_entry(zip_path, "modrinth.index.json").map_err(|_| not_mrpack())?;
-    let buf = buf.ok_or_else(not_mrpack)?;
     let bad =
         || EngineError::api(502, "BAD_MRPACK", format!("modrinth.index.json corrupto en '{}'", zip_path.display()));
+    let buf = match crate::ziputil::read_zip_entry_capped(zip_path, "modrinth.index.json", MAX_INDEX_BYTES) {
+        Ok(b) => b.ok_or_else(not_mrpack)?,
+        // Readable archive, but the index blows past the limit.
+        Err(crate::ziputil::ZipError::Corrupt(m)) if m.contains("expands past") => return Err(bad()),
+        Err(_) => return Err(not_mrpack()),
+    };
     match serde_json::from_slice::<Value>(&buf) {
         Ok(Value::Object(o)) => Ok(MrpackIndex::from_object(&o)),
         _ => Err(bad()),
@@ -86,7 +96,11 @@ pub fn parse_mrpack_index(zip_path: &Path) -> EngineResult<MrpackIndex> {
 /// Parse an unpacked pack folder's modrinth.index.json (502 BAD_MRPACK).
 pub fn parse_mrpack_index_from_dir(dir: &Path) -> EngineResult<MrpackIndex> {
     let bad = || EngineError::api(502, "BAD_MRPACK", format!("modrinth.index.json corrupto en '{}'", dir.display()));
-    let raw = std::fs::read(dir.join("modrinth.index.json")).map_err(|_| bad())?;
+    let file = dir.join("modrinth.index.json");
+    if std::fs::metadata(&file).map_err(|_| bad())?.len() > MAX_INDEX_BYTES {
+        return Err(bad());
+    }
+    let raw = std::fs::read(file).map_err(|_| bad())?;
     match serde_json::from_slice::<Value>(&raw) {
         Ok(Value::Object(o)) => Ok(MrpackIndex::from_object(&o)),
         _ => Err(bad()),
@@ -198,25 +212,84 @@ pub fn find_existing_pack_instance<'a>(
 // ---------------------------------------------------------------------------
 
 /// Join `rel` onto `base`, rejecting absolute paths (incl. drive letters),
-/// `..` segments and empty input (400 BAD_PATH). `\` is treated as `/`.
+/// `..` segments, empty input and any segment that is not a portable file
+/// name (400 BAD_PATH). `\` is treated as `/`. Every segment is checked: on
+/// Windows a later `C:x` segment would otherwise replace the whole base.
 pub fn safe_join(base: &Path, rel: &str) -> EngineResult<PathBuf> {
     if rel.is_empty() {
         return Err(bad_path("la ruta dentro del modpack está vacía"));
     }
     let norm = rel.replace('\\', "/");
-    let b = norm.as_bytes();
-    if norm.starts_with('/') || (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':') {
+    if norm.starts_with('/') {
         return Err(bad_path(format!("ruta absoluta no permitida dentro del modpack: '{rel}'")));
     }
-    let segments: Vec<&str> = norm.split('/').collect();
-    if segments.contains(&"..") {
-        return Err(bad_path(format!("la ruta '{rel}' se sale del directorio de la instancia")));
+    let segments: Vec<&str> = norm.split('/').filter(|s| !s.is_empty() && *s != ".").collect();
+    if segments.is_empty() {
+        return Err(bad_path("la ruta dentro del modpack está vacía"));
     }
     let mut out = base.to_path_buf();
-    for s in segments.into_iter().filter(|s| !s.is_empty() && *s != ".") {
+    for s in segments {
+        if s == ".." {
+            return Err(bad_path(format!("la ruta '{rel}' se sale del directorio de la instancia")));
+        }
+        if !is_portable_segment(s) {
+            return Err(bad_path(format!("nombre no permitido dentro del modpack: '{rel}'")));
+        }
         out.push(s);
     }
+    if !out.starts_with(base) {
+        return Err(bad_path(format!("la ruta '{rel}' se sale del directorio de la instancia")));
+    }
     Ok(out)
+}
+
+/// A file name every OS stores as-is: no drive/stream colon, no characters
+/// Windows forbids, no trailing dot/space (Windows strips them, aliasing
+/// another file), no device names (`CON`, `NUL`, `COM1`, `LPT¹`, `CONIN$`…).
+pub(crate) fn is_portable_segment(s: &str) -> bool {
+    if s.ends_with('.') || s.ends_with(' ') {
+        return false;
+    }
+    if s.chars().any(|c| c.is_control() || matches!(c, ':' | '<' | '>' | '"' | '|' | '?' | '*')) {
+        return false;
+    }
+    let stem = s.split('.').next().unwrap_or(s).trim_end().to_ascii_uppercase();
+    let numbered = |prefix: &str| {
+        stem.strip_prefix(prefix).is_some_and(|rest| {
+            let mut chars = rest.chars();
+            matches!((chars.next(), chars.next()), (Some('1'..='9' | '¹' | '²' | '³'), None))
+        })
+    };
+    let device =
+        matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$") || numbered("COM") || numbered("LPT");
+    !device
+}
+
+/// Launcher-owned files at the instance root a pack must never write.
+/// Compared case-insensitively: Windows and macOS file systems are, so
+/// `INSTANCE.JSON` is the same file as `instance.json` there. NTFS 8.3 short
+/// names (`INSTAN~1.JSO`) open the same files too, so any root-level name in
+/// that shape is refused.
+const RESERVED_INSTANCE_FILES: [&str; 3] = ["instance.json", "resolved.json", "fabric-profile.json"];
+
+fn is_reserved_instance_file(engine: &Engine, instance_name: &str, dest: &Path) -> bool {
+    let dir = engine.paths().instance_dir(instance_name);
+    dest.parent() == Some(dir.as_path())
+        && dest.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+            RESERVED_INSTANCE_FILES.iter().any(|r| r.eq_ignore_ascii_case(n)) || is_short_name_alias(n)
+        })
+}
+
+/// `BASE~N.EXT` (1–6 chars, `~`, digits, optional 1–3 char extension): the
+/// form Windows generates for 8.3 short names.
+fn is_short_name_alias(name: &str) -> bool {
+    let (base, ext) = name.split_once('.').unwrap_or((name, ""));
+    let Some((head, num)) = base.rsplit_once('~') else { return false };
+    (1..=6).contains(&head.len())
+        && !num.is_empty()
+        && num.bytes().all(|b| b.is_ascii_digit())
+        && ext.len() <= 3
+        && !ext.contains('.')
 }
 
 // ---------------------------------------------------------------------------
@@ -355,7 +428,6 @@ pub async fn install_mrpack_files(
 ) -> EngineResult<Vec<String>> {
     let total = files.len() as u64;
     let dest_base = crate::instances::effective_game_dir_by_name(engine, instance_name);
-    let json_path = engine.paths().instance_json(instance_name);
     let mut pending: Vec<Pending> = vec![];
     for (i, file) in files.iter().enumerate() {
         let filename = file.get("path").and_then(Value::as_str).unwrap_or("").to_string();
@@ -363,7 +435,7 @@ pub async fn install_mrpack_files(
             continue;
         }
         let dest = safe_join(&dest_base, &filename)?;
-        if dest == json_path {
+        if is_reserved_instance_file(engine, instance_name, &dest) {
             return Err(bad_path(format!("la ruta '{filename}' colisiona con la metadata de la instancia")));
         }
         if let Some(parent) = dest.parent() {
@@ -464,12 +536,11 @@ fn write_override_files(
     fail_message: &str,
 ) -> EngineResult<()> {
     let dest_base = crate::instances::effective_game_dir_by_name(engine, instance_name);
-    let json_path = engine.paths().instance_json(instance_name);
     let total = rels.len() as u64;
     let mut written = 0;
     for (index, rel) in rels.iter().enumerate() {
         let dest = safe_join(&dest_base, rel)?;
-        if dest == json_path {
+        if is_reserved_instance_file(engine, instance_name, &dest) {
             tracing::warn!("[mrpack] override '{rel}' collides with instance metadata; skipped");
             continue;
         }
@@ -497,18 +568,19 @@ pub fn extract_overrides(engine: &Engine, zip_path: &Path, instance_name: &str) 
             .filter(|r| !r.is_empty())
             .collect()
     };
+    // Streamed to disk entry by entry, each capped, and all of them together.
+    let mut budget = MAX_OVERRIDES_TOTAL;
     write_override_files(
         engine,
         instance_name,
         &entries,
         |rel, dest| {
-            let Some(data) = crate::ziputil::read_zip_entry_from(&buf, &format!("{OVERRIDES_PREFIX}{rel}"))? else {
+            let max = MAX_OVERRIDE_BYTES.min(budget);
+            let Some(n) = crate::ziputil::extract_zip_entry_from(&buf, &format!("{OVERRIDES_PREFIX}{rel}"), dest, max)?
+            else {
                 return Ok(false);
             };
-            if let Some(p) = dest.parent() {
-                std::fs::create_dir_all(p)?;
-            }
-            std::fs::write(dest, data)?;
+            budget -= n;
             Ok(true)
         },
         "no override could be extracted from the modpack",
@@ -758,6 +830,54 @@ mod tests {
         for bad in ["../evil", "a/../../b", "/abs", "C:/abs", "C:\\abs", "C:rel", "c:foo", "", ".."] {
             assert!(safe_join(base, bad).unwrap_err().has_code("BAD_PATH"), "should reject '{bad}'");
         }
+        // On Windows a later `C:x` segment replaced the whole instance path;
+        // device names, trailing dots/spaces and stream colons alias other files.
+        for bad in [
+            "mods/C:sentinel.txt",
+            "overrides/x/D:..\\y",
+            "mods/con.txt",
+            "mods\\COM1.log",
+            "NUL",
+            "a./b",
+            "mods/x ",
+            "mods/a?.jar",
+            "config/f.txt:stream",
+            "mods/COM¹",
+            "mods/lpt³.txt",
+            "overrides/CONOUT$",
+            "conin$.log",
+        ] {
+            assert!(safe_join(base, bad).unwrap_err().has_code("BAD_PATH"), "should reject '{bad}'");
+        }
+        for ok in ["mods/com10.txt", "mods/COM0.txt", "mods/console.txt", "config/CONFIG.toml", "./mods/x.jar", "mods//y.jar", "a.b/c.d"] {
+            assert!(safe_join(base, ok).unwrap().starts_with(base), "{ok}");
+        }
+    }
+
+    /// `INSTANCE.JSON` is the launcher's metadata file on Windows/macOS file
+    /// systems: a pack must not be able to replace it (it can set `game_dir`).
+    #[test]
+    fn overrides_never_replace_launcher_files_in_any_case() {
+        let (d, e) = temp_engine();
+        make_instance(&e, "meta");
+        let before = std::fs::read_to_string(e.paths().instance_json("meta")).unwrap();
+        let src = d.path().join("unpacked");
+        std::fs::create_dir_all(src.join("overrides")).unwrap();
+        for f in ["INSTANCE.JSON", "Resolved.json", "ok.txt"] {
+            std::fs::write(src.join("overrides").join(f), r#"{"game_dir":"/elsewhere"}"#).unwrap();
+        }
+        copy_overrides_from_dir(&e, &src, "meta").unwrap();
+        let dir = e.paths().instance_dir("meta");
+        assert!(dir.join("ok.txt").is_file());
+        assert!(!dir.join("INSTANCE.JSON").exists() && !dir.join("Resolved.json").exists());
+        assert_eq!(std::fs::read_to_string(e.paths().instance_json("meta")).unwrap(), before);
+        assert!(is_reserved_instance_file(&e, "meta", &dir.join("Instance.Json")));
+        assert!(!is_reserved_instance_file(&e, "meta", &dir.join("config").join("instance.json")));
+        assert!(is_reserved_instance_file(&e, "meta", &dir.join("INSTAN~1.JSO")));
+        assert!(is_reserved_instance_file(&e, "meta", &dir.join("FABRIC~12")));
+        assert!(!is_reserved_instance_file(&e, "meta", &dir.join("options.txt")));
+        assert!(!is_reserved_instance_file(&e, "meta", &dir.join("config").join("INSTAN~1.JSO")));
+        assert!(!is_reserved_instance_file(&e, "meta", &dir.join("mods~1.json")));
     }
 
     #[test]
