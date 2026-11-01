@@ -36,10 +36,11 @@ import net.minecraft.client.Minecraft;
  * threads only read volatile snapshots.
  *
  * <p>The bridge is active only when the launcher passed
- * {@code -Despectral.bridge.url} and {@code -Despectral.bridge.token}. The
- * client POSTs {@code {"uuids":[...]}} (32-hex lowercase) to
- * {@code <url>/visible} every 2 s while connected to a remote server, with
- * headers {@code x-espectral-client: 1} and {@code x-espectral-bridge: <token>}.
+ * {@code -Despectral.bridge.url} and the {@code ESPECTRAL_BRIDGE_TOKEN}
+ * environment variable. The client POSTs {@code {"uuids":[...]}} (32-hex
+ * lowercase) to {@code <url>/visible} every 2 s while connected to a remote
+ * server, signed with {@link es.spectral.menu.BridgeAuth} (the token is never
+ * sent; an answer without a valid launcher proof is ignored).
  * Each returned grant is verified locally (subject bound to the reported uuid);
  * {@code players} entries are presence regardless of grant validity, and
  * loadouts are filtered through flags + catalog + exclusivity before they ever
@@ -151,11 +152,11 @@ public final class CosmeticsService {
 
     private static void loop() {
         String bridgeUrl = System.getProperty("espectral.bridge.url");
-        String bridgeToken = System.getProperty("espectral.bridge.token");
+        String bridgeToken = es.spectral.menu.BridgeAuth.tokenFromEnv();
+        es.spectral.menu.BridgeAuth auth = bridgeToken != null ? new es.spectral.menu.BridgeAuth(bridgeToken) : null;
         HttpClient http = null;
 
-        if (bridgeUrl != null && !bridgeUrl.isEmpty()
-                && bridgeToken != null && !bridgeToken.isEmpty()) {
+        if (bridgeUrl != null && !bridgeUrl.isEmpty() && auth != null) {
             try {
                 http = HttpClient.newBuilder()
                         .connectTimeout(HTTP_TIMEOUT)
@@ -172,7 +173,7 @@ public final class CosmeticsService {
             try {
                 knownMtime = pollState(statePath, knownMtime);
                 if (http != null) {
-                    pollBridge(http, bridgeUrl, bridgeToken);
+                    pollBridge(http, bridgeUrl, auth);
                 }
             } catch (Throwable t) {
                 LOGGER.debug("cosmetics service tick failed: {}", t.toString());
@@ -251,7 +252,7 @@ public final class CosmeticsService {
     // Bridge
     // ------------------------------------------------------------------
 
-    private static void pollBridge(HttpClient http, String bridgeUrl, String bridgeToken) {
+    private static void pollBridge(HttpClient http, String bridgeUrl, es.spectral.menu.BridgeAuth auth) {
         Set<UUID> ids = pending;
         if (ids.isEmpty()) return;
         StringBuilder body = new StringBuilder(ids.size() * 40 + 16);
@@ -268,21 +269,32 @@ public final class CosmeticsService {
         }
         body.append("]}");
         try {
+            byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+            URI uri = URI.create(bridgeUrl + "/visible");
+            String nonce = es.spectral.menu.BridgeAuth.newNonce();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(bridgeUrl + "/visible"))
+                    .uri(uri)
                     .timeout(HTTP_TIMEOUT)
                     .header("content-type", "application/json")
                     .header("x-espectral-client", "1")
-                    .header("x-espectral-bridge", bridgeToken)
-                    .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
+                    .header(es.spectral.menu.BridgeAuth.ID_HEADER, auth.id())
+                    .header(es.spectral.menu.BridgeAuth.NONCE_HEADER, nonce)
+                    .header(es.spectral.menu.BridgeAuth.MAC_HEADER,
+                            auth.requestMac("POST", es.spectral.menu.BridgeAuth.target(uri), nonce, bytes))
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(bytes))
                     .build();
-            HttpResponse<String> response =
-                    http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            String proof = response.headers().firstValue(es.spectral.menu.BridgeAuth.PROOF_HEADER).orElse(null);
+            if (!auth.proofOk(nonce, response.body(), proof)) {
+                // Not provably this launcher (something else on the port): ignore.
+                LOGGER.debug("bridge /visible answer without a valid proof ({})", response.statusCode());
+                return;
+            }
             if (response.statusCode() != 200) {
                 LOGGER.debug("bridge /visible answered {}", response.statusCode());
                 return;
             }
-            applyBridgeResponse(subjects, response.body());
+            applyBridgeResponse(subjects, new String(response.body(), StandardCharsets.UTF_8));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {

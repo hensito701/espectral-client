@@ -12,6 +12,11 @@
 //! pinned by tests/nbt.test.mjs): strings whose declared length runs past EOF
 //! decode clamped; a compound may end at EOF without TAG_End; negative list
 //! counts decode as empty; TAG_Long values never count as "1" for flags.
+//!
+//! A pack can ship `servers.dat`, so declared sizes are untrusted: list and
+//! int-array counts must fit in the bytes that remain (each element's minimum
+//! encoded size), and nesting stops at [`MAX_DEPTH`] — a few bytes can no
+//! longer expand into millions of elements.
 
 use indexmap::IndexMap;
 
@@ -85,9 +90,25 @@ impl NbtValue {
     }
 }
 
+/// Deepest list/compound nesting accepted (Minecraft's own limit is 512).
+pub const MAX_DEPTH: usize = 64;
+
+/// Smallest possible encoding of one list element of type `ty`.
+fn min_size(ty: u8) -> usize {
+    match ty {
+        TAG_END | TAG_BYTE | TAG_COMPOUND => 1,
+        TAG_SHORT | TAG_STRING => 2,
+        TAG_INT | TAG_FLOAT | TAG_BYTE_ARRAY | TAG_INT_ARRAY => 4,
+        TAG_LONG | TAG_DOUBLE => 8,
+        TAG_LIST => 5,
+        _ => 1,
+    }
+}
+
 struct Reader<'a> {
     buf: &'a [u8],
     off: usize,
+    depth: usize,
 }
 
 impl<'a> Reader<'a> {
@@ -118,7 +139,20 @@ impl<'a> Reader<'a> {
         Ok(s)
     }
 
+    fn remaining(&self) -> usize {
+        self.buf.len().saturating_sub(self.off)
+    }
+
+    fn enter(&mut self) -> Result<(), NbtError> {
+        self.depth += 1;
+        if self.depth > MAX_DEPTH {
+            return Err(NbtError::Unsupported(format!("NBT nested deeper than {MAX_DEPTH} levels")));
+        }
+        Ok(())
+    }
+
     fn compound(&mut self) -> Result<IndexMap<String, NbtValue>, NbtError> {
+        self.enter()?;
         let mut out = IndexMap::new();
         while self.off < self.buf.len() {
             let ty = self.u8()?;
@@ -129,6 +163,7 @@ impl<'a> Reader<'a> {
             let v = self.value(ty)?;
             out.insert(name, v);
         }
+        self.depth -= 1;
         Ok(out)
     }
 
@@ -155,11 +190,16 @@ impl<'a> Reader<'a> {
             TAG_STRING => NbtValue::String(self.string()?),
             TAG_LIST => {
                 let elem = self.u8()?;
-                let count = self.i32()?;
-                let mut arr = Vec::new();
-                for _ in 0..count.max(0) {
+                let count = self.i32()?.max(0) as usize;
+                if count.saturating_mul(min_size(elem)) > self.remaining() {
+                    return Err(NbtError::OutOfRange);
+                }
+                self.enter()?;
+                let mut arr = Vec::with_capacity(count);
+                for _ in 0..count {
                     arr.push(self.value(elem)?);
                 }
+                self.depth -= 1;
                 NbtValue::List(arr)
             }
             TAG_COMPOUND => NbtValue::Compound(self.compound()?),
@@ -173,6 +213,9 @@ impl<'a> Reader<'a> {
             }
             TAG_INT_ARRAY => {
                 let n = self.i32()?.max(0);
+                if (n as usize).saturating_mul(4) > self.remaining() {
+                    return Err(NbtError::OutOfRange);
+                }
                 let mut v = Vec::with_capacity(n as usize);
                 for _ in 0..n {
                     v.push(self.i32()?);
@@ -197,7 +240,7 @@ pub fn parse_servers_dat(buf: &[u8]) -> Result<Vec<ServerEntry>, NbtError> {
         let seen = if buf.len() > offset { format!("0x{:x}", buf[offset]) } else { "end-of-buffer".into() };
         return Err(NbtError::NotServersDat(format!("not a servers.dat NBT payload (first byte {seen})")));
     }
-    let mut r = Reader { buf, off: offset + 1 };
+    let mut r = Reader { buf, off: offset + 1, depth: 0 };
     r.string()?; // root name ("" in servers.dat)
     let root = r.compound()?;
     let list = match root.get("servers") {
@@ -492,5 +535,36 @@ mod tests {
         ]
         .concat();
         assert_eq!(parse_servers_dat(&ints).unwrap(), vec![default_entry(), default_entry()]);
+    }
+
+    /// An 18-byte servers.dat declaring 256 (or a billion) compounds and
+    /// carrying none used to decode into that many rows; counts must fit the
+    /// bytes that are actually there.
+    #[test]
+    fn declared_counts_cannot_outgrow_the_payload() {
+        let header = hex::decode("0a0000090007736572766572730a00000100").unwrap();
+        assert_eq!(header.len(), 18);
+        assert_eq!(parse_servers_dat(&header), Err(NbtError::OutOfRange));
+        let mut huge = hex::decode("0a0000090007736572766572730a").unwrap();
+        huge.extend_from_slice(&i32::MAX.to_be_bytes());
+        assert_eq!(parse_servers_dat(&huge), Err(NbtError::OutOfRange));
+        let int_array =
+            [vec![TAG_COMPOUND], 0u16.to_be_bytes().to_vec(), vec![TAG_INT_ARRAY], nstr("a"), i32b(i32::MAX)].concat();
+        assert_eq!(parse_servers_dat(&int_array), Err(NbtError::OutOfRange));
+    }
+
+    #[test]
+    fn nesting_is_bounded() {
+        // root { x: [ [ [ … ] ] ] } nested well past MAX_DEPTH, each list empty-but-declared.
+        let mut buf = vec![TAG_COMPOUND, 0, 0, TAG_LIST];
+        buf.extend_from_slice(&nstr("x"));
+        for _ in 0..(MAX_DEPTH + 5) {
+            buf.push(TAG_LIST);
+            buf.extend_from_slice(&i32b(1));
+        }
+        buf.push(TAG_BYTE);
+        buf.extend_from_slice(&i32b(0));
+        let e = parse_servers_dat(&buf).unwrap_err().to_string();
+        assert!(e.contains("nested deeper"), "{e}");
     }
 }

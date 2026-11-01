@@ -158,6 +158,7 @@ pub async fn resolve_forge_version(engine: &Engine, mc: &str, requested: Option<
         ));
     }
     if let Some(b) = requested.map(str::trim).filter(|s| !s.is_empty()) {
+        crate::instances::validate_loader_version(b)?;
         return Ok(b.to_string());
     }
     default_forge_build(engine, mc).await?.ok_or_else(|| {
@@ -230,6 +231,8 @@ pub async fn ensure_forge_loader(engine: &Engine, mc: &str, build: &str) -> Engi
             format!("Forge is not available for Minecraft {mc} (supported: {SUPPORTED_MC_SUMMARY})"),
         ));
     }
+    // The build becomes maven URL segments and `versions/` path components.
+    crate::instances::validate_loader_version(build)?;
     if let Some(j) = read_forge_json(engine, mc, build) {
         return Ok(j);
     }
@@ -585,5 +588,30 @@ mod tests {
         let (_d, e) = temp_engine();
         let err = ensure_forge_loader(&e, "1.20.1", "47.4.28").await.unwrap_err();
         assert_eq!((err.status(), err.raw_code()), (409, Some("FORGE_UNAVAILABLE")));
+    }
+
+    /// A pack-supplied build that downloads the genuine installer (the rest is
+    /// a URL fragment) but walks out of `versions/` as a path must be refused
+    /// before any request or write: it used to overwrite `<data>/config.json`.
+    #[tokio::test]
+    async fn ensure_refuses_builds_that_escape_the_versions_folder() {
+        let (_d, e) = temp_engine();
+        let jar = legacy_installer(b"universal");
+        let srv = MockServer::start(move |_| MockResponse::bytes(jar.clone())).await;
+        endpoints(&e, &srv);
+        let config = e.paths().config_json();
+        std::fs::write(&config, r#"{"sentinel":true}"#).unwrap();
+        for build in [
+            "11.15.1.2318-1.8.9/forge-1.8.9-11.15.1.2318-1.8.9-installer.jar#/../../../config",
+            "../../config",
+            "11.15.1.2318#x",
+        ] {
+            let err = ensure_forge_loader(&e, "1.8.9", build).await.unwrap_err();
+            assert_eq!((err.status(), err.raw_code()), (400, Some("BAD_LOADER_VERSION")), "{build}");
+            let err = resolve_forge_version(&e, "1.8.9", Some(build)).await.unwrap_err();
+            assert_eq!(err.raw_code(), Some("BAD_LOADER_VERSION"), "{build}");
+        }
+        assert_eq!(srv.hits(), 0, "nothing downloaded");
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), r#"{"sentinel":true}"#);
     }
 }

@@ -79,7 +79,8 @@ loom {
                 property("espectral.bridge.url", project.property("bridgeUrl").toString())
             }
             if (project.hasProperty("bridgeToken")) {
-                property("espectral.bridge.token", project.property("bridgeToken").toString())
+                // The mod reads the token from the environment, never a -D property.
+                environmentVariable("ESPECTRAL_BRIDGE_TOKEN", project.property("bridgeToken").toString())
             }
         }
     }

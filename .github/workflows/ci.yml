@@ -37,6 +37,20 @@ jobs:
       - run: cargo test --workspace
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
+  audit:
+    name: Rust dependency advisories (cargo audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-audit --locked
+      # Fails on any RustSec vulnerability in Cargo.lock; "unmaintained"
+      # notices are reported as warnings only.
+      - run: cargo audit
+
   windows-cross:
     name: Rust (Windows cross-check)
     runs-on: ubuntu-latest

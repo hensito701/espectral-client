@@ -243,7 +243,11 @@ previews' longest side ≤ 1280 px).
 
 ### Bridge agent channel (mod → engine)
 
-Headers as today: `x-espectral-client: 1` + `x-espectral-bridge: <token>`.
+Headers: `x-espectral-client: 1` plus a signed request (`x-espectral-bridge-id`,
+`x-espectral-nonce`, `x-espectral-bridge-mac`); answers carry
+`x-espectral-proof`. The token itself is never sent and reaches the game via
+`ESPECTRAL_BRIDGE_TOKEN` (see `native/engine/src/proof.rs`; this replaced the
+original `x-espectral-bridge: <token>` header).
 Only launches started with `agent: true` are served (others → 409).
 
 - `POST /api/bridge/agent/poll` `{}` → long-poll ≤ 25 s →

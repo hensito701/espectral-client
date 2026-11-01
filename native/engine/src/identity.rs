@@ -159,15 +159,49 @@ pub fn token_for(engine: &Engine, uuid: &str) -> Option<String> {
     token_for_at(engine, uuid, crate::platform::now_ms())
 }
 
-/// [`token_for`] with an explicit "now" (ms epoch).
+/// [`token_for`] with an explicit "now" (ms epoch). A token without a
+/// readable expiry is treated as expired: a session must not outlive the
+/// service's own expiry just because the launcher could not parse it.
 pub fn token_for_at(engine: &Engine, uuid: &str, now_ms: i64) -> Option<String> {
     let entry = get_entry(engine, uuid)?;
     let token = entry.get("token").and_then(Value::as_str).filter(|t| !t.is_empty())?.to_string();
-    let exp = entry.get("token_expires_at").and_then(Value::as_str).and_then(parse_date_ms);
-    match exp {
-        Some(exp) if exp <= now_ms => None,
-        _ => Some(token),
-    }
+    let exp = entry.get("token_expires_at").and_then(Value::as_str).and_then(parse_date_ms)?;
+    (exp > now_ms).then_some(token)
+}
+
+/// The service's `expires_at` (Unix seconds — or ms — as a number, or an ISO
+/// string) as the ISO string `token_expires_at` stores; None when absent/invalid.
+fn expiry_iso(v: Option<&Value>) -> Option<String> {
+    let ms = match v? {
+        Value::Number(n) => {
+            let n = n.as_f64().filter(|n| n.is_finite() && *n > 0.0)?;
+            if n >= 1e12 {
+                n as i64
+            } else {
+                (n * 1000.0) as i64
+            }
+        }
+        Value::String(s) => parse_date_ms(s)?,
+        _ => return None,
+    };
+    chrono::DateTime::from_timestamp_millis(ms).map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+}
+
+/// Drop the stored service session of a uuid (logout): the bearer and its
+/// expiry, plus the flags/grant it vouched for. Linked Discord info stays
+/// (it is not a credential). No-op for an unknown uuid.
+pub fn forget_session(engine: &Engine, uuid: &str) {
+    let Some(flat) = normalize_uuid(uuid) else { return };
+    with_accounts(engine, |a| {
+        let Some(Value::Object(entry)) = a.get_mut(&flat) else { return };
+        let mut changed = false;
+        for k in ["token", "token_expires_at", "flags", "grant", "grant_exp"] {
+            changed |= entry.shift_remove(k).is_some();
+        }
+        if changed {
+            persist(engine, a);
+        }
+    });
 }
 
 /// identity.flagsFor result.
@@ -437,10 +471,7 @@ pub async fn verify_account_with_token(
     }
     let mut patch = Map::new();
     patch.insert("token".into(), json!(token));
-    patch.insert(
-        "token_expires_at".into(),
-        verified.get("expires_at").filter(|v| v.is_string()).cloned().unwrap_or(Value::Null),
-    );
+    patch.insert("token_expires_at".into(), expiry_iso(verified.get("expires_at")).map_or(Value::Null, Value::String));
     let entry = update_entry(engine, &flat, patch)?;
     // Grant straight away so the account starts out with live flags.
     if let Err(e) = refresh_grant(engine, &flat, 5000).await {
@@ -629,9 +660,10 @@ pub(crate) mod tests {
                         MockResponse::json(&json!({ "error": "Forbidden" })).with_status(403)
                     }
                 }
+                // The real service answers Unix seconds (services/espectral-id routes.py).
                 ("POST", "/v1/auth/verify") => MockResponse::json(&json!({
                     "token": "sess-token-1", "uuid": UUID, "name": "TestMsa",
-                    "expires_at": (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339(),
+                    "expires_at": chrono::Utc::now().timestamp() + 30 * 86400,
                 })),
                 ("GET", "/v1/grant") => {
                     if r.header("authorization").as_deref() == Some("Bearer sess-token-1") {
@@ -687,6 +719,43 @@ pub(crate) mod tests {
         // A fresh engine on the same dir reads it back (on-disk format).
         let e2 = crate::Engine::new(crate::test_support::test_options(d.path().to_path_buf())).unwrap();
         assert_eq!(token_for(&e2, UUID).as_deref(), Some("sess-token-1"));
+        // Numeric expiry is honoured: past the service's expiry there is no token.
+        let in_31_days = crate::platform::now_ms() + 31 * 86_400_000;
+        assert_eq!(token_for_at(&e2, UUID, in_31_days), None);
+    }
+
+    #[test]
+    fn expiry_shapes_and_missing_expiry() {
+        assert_eq!(expiry_iso(Some(&json!(1_800_000_000))).as_deref(), Some("2027-01-15T08:00:00.000Z"));
+        assert_eq!(expiry_iso(Some(&json!(1_800_000_000_000i64))).as_deref(), Some("2027-01-15T08:00:00.000Z"));
+        assert_eq!(expiry_iso(Some(&json!("2027-01-15T08:00:00Z"))).as_deref(), Some("2027-01-15T08:00:00.000Z"));
+        for bad in [json!(null), json!("soon"), json!(-5), json!({})] {
+            assert_eq!(expiry_iso(Some(&bad)), None, "{bad}");
+        }
+        let (_d, e) = temp_engine();
+        let mut patch = Map::new();
+        patch.insert("token".into(), json!("no-expiry"));
+        patch.insert("token_expires_at".into(), Value::Null);
+        update_entry(&e, UUID, patch).unwrap();
+        assert_eq!(token_for(&e, UUID), None, "an unknown expiry is not 'forever'");
+    }
+
+    #[test]
+    fn forget_session_drops_bearer_and_grant_only() {
+        let (_d, e) = temp_engine();
+        seed_token(&e, UUID, "bearer");
+        let mut patch = Map::new();
+        patch.insert("grant".into(), json!("g"));
+        patch.insert("discord".into(), json!({ "id": "1" }));
+        update_entry(&e, UUID, patch).unwrap();
+        forget_session(&e, UUID);
+        let entry = get_entry(&e, UUID).unwrap();
+        assert!(
+            entry.get("token").is_none() && entry.get("grant").is_none() && entry.get("token_expires_at").is_none()
+        );
+        assert_eq!(entry["discord"]["id"], "1");
+        let disk = std::fs::read_to_string(identity_path(&e)).unwrap();
+        assert!(!disk.contains("bearer"));
     }
 
     #[tokio::test]

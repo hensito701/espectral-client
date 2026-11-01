@@ -156,12 +156,23 @@ pub fn copy_text(text: &str) {
     tracing::warn!("no clipboard tool found");
 }
 
+/// Largest PNG side / pixel count decoded (8K agent screenshots fit: 7680×4320).
+/// The decoder's own memory limit does not cover the output buffer, so a tiny
+/// file declaring a huge image would otherwise allocate gigabytes and abort.
+const PNG_MAX_SIDE: u32 = 8192;
+const PNG_MAX_PIXELS: u64 = 36_000_000;
+
 /// Decode PNG bytes to an RGBA pixel buffer (Send: decode off the UI thread,
-/// then turn it into an Image on the UI thread with [`to_image`]).
+/// then turn it into an Image on the UI thread with [`to_image`]). None for
+/// invalid data and for images over [`PNG_MAX_SIDE`] / [`PNG_MAX_PIXELS`].
 pub fn decode_png(bytes: &[u8]) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::normalize_to_color8() | png::Transformations::ALPHA);
     let mut reader = decoder.read_info().ok()?;
+    let (w, h) = (reader.info().width, reader.info().height);
+    if w == 0 || h == 0 || w > PNG_MAX_SIDE || h > PNG_MAX_SIDE || u64::from(w) * u64::from(h) > PNG_MAX_PIXELS {
+        return None;
+    }
     let mut buf = vec![0; reader.output_buffer_size()?];
     let info = reader.next_frame(&mut buf).ok()?;
     let (w, h) = (info.width, info.height);
@@ -201,5 +212,44 @@ mod tests {
         assert_eq!(name_hue("x", 400), 40);
         // JS: let h=0; for (c of 'Steve') h=((h<<5)-h+c.charCodeAt(0))|0; Math.abs(h%360)
         assert_eq!(name_hue("Steve", -1), 99);
+    }
+
+    fn crc32(data: &[u8]) -> u32 {
+        let mut c = 0xffff_ffffu32;
+        for &b in data {
+            c ^= u32::from(b);
+            for _ in 0..8 {
+                c = if c & 1 != 0 { 0xedb8_8320 ^ (c >> 1) } else { c >> 1 };
+            }
+        }
+        !c
+    }
+
+    /// Header-only PNG: IHDR declaring `w`×`h` RGBA, an empty zlib IDAT, IEND.
+    fn png_header_only(w: u32, h: u32) -> Vec<u8> {
+        let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+        let mut chunk = |kind: &[u8; 4], data: &[u8]| {
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            let mut body = kind.to_vec();
+            body.extend_from_slice(data);
+            out.extend_from_slice(&body);
+            out.extend_from_slice(&crc32(&body).to_be_bytes());
+        };
+        let mut ihdr = w.to_be_bytes().to_vec();
+        ihdr.extend_from_slice(&h.to_be_bytes());
+        ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
+        chunk(b"IHDR", &ihdr);
+        chunk(b"IDAT", &[0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01]);
+        chunk(b"IEND", &[]);
+        out
+    }
+
+    /// A 65-byte file declaring 100000×100000 used to request a 40 GB buffer
+    /// and abort the launcher (a pack's icon.png is decoded on every start).
+    #[test]
+    fn huge_declared_png_is_refused_before_allocating() {
+        assert!(decode_png(&png_header_only(100_000, 100_000)).is_none());
+        assert!(decode_png(&png_header_only(16_384, 16_384)).is_none());
+        assert!(decode_png(&png_header_only(8192, 8192)).is_none(), "over the pixel budget");
     }
 }

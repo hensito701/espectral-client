@@ -32,6 +32,7 @@ pub mod nbt;
 pub mod onboarding;
 pub mod paths;
 pub mod platform;
+pub mod proof;
 pub mod rules;
 pub mod stats;
 #[doc(hidden)]

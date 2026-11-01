@@ -407,9 +407,12 @@ impl Engine {
     }
 
     /// POST /api/accounts/microsoft/logout `{ username }` -> `{ deleted }`.
+    /// Also drops the account's cached Minecraft token and identity session,
+    /// so a signed-out profile keeps no usable credential on disk.
     pub async fn msa_logout(&self, username: &str) -> EngineResult<DeletedReply> {
+        let uuid = crate::accounts::get_account(self, username).map(|a| a.uuid).unwrap_or_default();
         let r = crate::accounts::delete_msa_account(self, username)?;
-        crate::msauth::forget_memory_token(self, username);
+        crate::msauth::forget_account_credentials(self, username, &uuid);
         Ok(r)
     }
 
@@ -750,9 +753,21 @@ mod tests {
         let stored = crate::accounts::get_account(&e, "Online").unwrap();
         assert_eq!(crate::msauth::ensure_minecraft_token(&e, &stored).await.unwrap().unwrap().access_token, "MC-AT");
         assert_eq!(e.config().active_username().as_deref(), Some("Online"));
-        // logout removes the account
+        // A refreshed token on disk and a verified identity session...
+        let cache = json!({ stored.uuid.clone(): { "accessToken": "MC-AT", "expiresAt": 9e15 },
+                            stored.uuid.replace('-', ""): { "accessToken": "MC-AT", "expiresAt": 9e15 } });
+        std::fs::write(e.paths().mc_token_cache(), cache.to_string()).unwrap();
+        let mut session = serde_json::Map::new();
+        session.insert("token".into(), json!("ID-BEARER"));
+        session.insert("token_expires_at".into(), json!("2999-01-01T00:00:00.000Z"));
+        crate::identity::update_entry(&e, &stored.uuid, session).unwrap();
+        // ...are gone after logout, which removes the account.
         assert_eq!(e.msa_logout("Online").await.unwrap().deleted, "Online");
         assert_eq!(env(e.msa_logout("Online").await).0, 404);
+        let disk = std::fs::read_to_string(e.paths().mc_token_cache()).unwrap();
+        assert!(!disk.contains("MC-AT"), "{disk}");
+        assert_eq!(crate::identity::token_for(&e, &stored.uuid), None);
+        assert!(!std::fs::read_to_string(e.paths().data_dir().join("identity.json")).unwrap().contains("ID-BEARER"));
     }
 
     #[tokio::test]

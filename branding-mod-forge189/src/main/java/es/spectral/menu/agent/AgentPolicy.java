@@ -256,7 +256,10 @@ public final class AgentPolicy {
         if (ip != null && ips.contains(ip)) return Context.ESPECTRAL;
         if (host != null && ips.contains(normalizeIp(host))) return Context.ESPECTRAL;
 
-        if (isLoopback(host) || isLoopback(ip)) return Context.LOCALHOST;
+        // Loopback is decided by the live socket when there is one; a DNS
+        // name is never loopback by its text (127.attacker.example is public).
+        String liveIp = normalizeIp(remoteIp);
+        if (liveIp != null ? isLoopback(liveIp) : isLoopback(host)) return Context.LOCALHOST;
         if (host != null && isAllowlisted(host, portPart)) return Context.ALLOWLISTED;
         return Context.SERVER;
     }
@@ -336,15 +339,28 @@ public final class AgentPolicy {
         return v;
     }
 
-    private static boolean isLoopback(String host) {
+    /**
+     * {@code localhost}, {@code ::1} (either spelling) or a literal IPv4
+     * address in 127.0.0.0/8 (four decimal octets). Never a DNS name that only
+     * starts with {@code 127.}.
+     */
+    static boolean isLoopback(String host) {
         if (host == null) return false;
         String h = normalizeIp(host);
         if (h == null) return false;
-        if (h.equals("localhost") || h.equals("127.0.0.1") || h.equals("::1") || h.equals("0:0:0:0:0:0:0:1")) {
+        if (h.equals("localhost") || h.equals("::1") || h.equals("0:0:0:0:0:0:0:1")) {
             return true;
         }
-        // Any 127.0.0.0/8 address is loopback.
-        return h.startsWith("127.") && h.indexOf(':') < 0;
+        String[] parts = h.split("\\.", -1);
+        if (parts.length != 4) return false;
+        for (String part : parts) {
+            if (part.isEmpty() || part.length() > 3) return false;
+            for (int i = 0; i < part.length(); i++) {
+                if (part.charAt(i) < '0' || part.charAt(i) > '9') return false;
+            }
+            if (Integer.parseInt(part) > 255) return false;
+        }
+        return Integer.parseInt(parts[0]) == 127;
     }
 
     private static ServerData safeCurrentServer(Minecraft minecraft) {

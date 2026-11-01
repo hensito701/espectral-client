@@ -243,3 +243,22 @@ impl MockServer {
         self.requests.lock().unwrap().clone()
     }
 }
+
+/// Headers a mod sends for a signed bridge request (crate::proof): the
+/// client header, bridge id, a fresh nonce and the request MAC. Returns them
+/// with the nonce (to check the answer's proof with [`bridge_proof_ok`]).
+pub fn bridge_headers(token: &str, path: &str, body: &str) -> (Vec<(&'static str, String)>, String) {
+    let nonce = crate::proof::mint_nonce();
+    let headers = vec![
+        ("x-espectral-client", "1".to_string()),
+        (crate::proof::BRIDGE_ID_HEADER, crate::proof::bridge_id(token)),
+        (crate::proof::NONCE_HEADER, nonce.clone()),
+        (crate::proof::MAC_HEADER, crate::proof::request_mac(token, "POST", path, &nonce, body.as_bytes())),
+    ];
+    (headers, nonce)
+}
+
+/// True when `proof` (the `x-espectral-proof` header) signs `body` for `nonce`.
+pub fn bridge_proof_ok(token: &str, nonce: &str, proof: Option<&str>, body: &[u8]) -> bool {
+    proof.is_some_and(|p| p == crate::proof::response_proof(token, nonce, body))
+}

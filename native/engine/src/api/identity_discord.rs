@@ -205,6 +205,7 @@ impl Engine {
         if identity::token_for(self, &flat).is_none() {
             return Err(EngineError::conflict("NOT_VERIFIED", "verify this account before linking Discord"));
         }
+        discord_auth::require_callback_listener(self)?;
         let (url, state) = discord_auth::auth_start_url(self, Some(&flat));
         Ok(DiscordAuthStart { url, state })
     }
@@ -231,6 +232,7 @@ impl Engine {
 
     /// GET /api/discord/auth/start.
     pub async fn discord_auth_start(&self) -> EngineResult<DiscordAuthStart> {
+        discord_auth::require_callback_listener(self)?;
         let (url, state) = discord_auth::auth_start_url(self, None);
         Ok(DiscordAuthStart { url, state })
     }
@@ -318,6 +320,14 @@ mod tests {
         point_at(&e, &server);
         e.identity_discord_state().set_overrides(|o| o.discord_mock = Some(false));
         seed_token(&e, UUID, "tok");
+        // No listener of ours on the registered callback port: refused, so
+        // whoever holds 4199 can never receive the authorization code.
+        let busy = e.identity_discord_start(UUID).await.unwrap_err();
+        assert_eq!((busy.status(), busy.raw_code()), (409, Some("DISCORD_CALLBACK_UNAVAILABLE")));
+        assert_eq!(e.discord_auth_start().await.unwrap_err().raw_code(), Some("DISCORD_CALLBACK_UNAVAILABLE"));
+        crate::loopback::set_bound_addr_for_tests(&e, Some("127.0.0.1:4200".parse().unwrap()));
+        assert!(e.identity_discord_start(UUID).await.is_err(), "a different port is not the registered callback");
+        crate::loopback::set_bound_addr_for_tests(&e, Some("127.0.0.1:4199".parse().unwrap()));
         let r = e.identity_discord_start(UUID).await.unwrap();
         assert!(r.url.starts_with("https://discord.com/oauth2/authorize?"), "{}", r.url);
         let with_state = e.identity_discord_start_with_state(UUID).await.unwrap();

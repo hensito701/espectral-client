@@ -15,7 +15,8 @@
     "gate.logout": "Cerrar sesión de Discord",
     "gate.status.loading": "Verificando sesión...",
     "gate.badge": "DISCORD OAUTH",
-    "gate.supporterRegistry": "Registro de Donantes"
+    "gate.supporterRegistry": "Registro de Donantes",
+    "gate.callbackBusy": "El inicio de sesión con Discord necesita el puerto 4199, pero otro programa lo está usando. Ciérralo y reinicia Espectral Client."
   },
   "en": {
     "gate.title": "Espectral Identity",
@@ -33,6 +34,7 @@
     "gate.logout": "Sign out of Discord",
     "gate.status.loading": "Verifying session...",
     "gate.badge": "DISCORD OAUTH",
-    "gate.supporterRegistry": "Supporter Registry"
+    "gate.supporterRegistry": "Supporter Registry",
+    "gate.callbackBusy": "Discord sign-in needs port 4199, but another program is using it. Close it and restart Espectral Client."
   }
 }
