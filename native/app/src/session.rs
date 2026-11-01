@@ -186,7 +186,12 @@ fn login(ctx: &Ctx) {
         |ui, e| {
             let g = ui.global::<Session>();
             g.set_authenticating(false);
-            g.set_auth_error(SharedString::from(e.envelope().message));
+            let msg = if e.has_code("DISCORD_CALLBACK_UNAVAILABLE") {
+                crate::i18n::t("gate.callbackBusy")
+            } else {
+                e.envelope().message
+            };
+            g.set_auth_error(SharedString::from(msg));
         },
     );
 }

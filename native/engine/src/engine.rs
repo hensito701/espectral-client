@@ -117,7 +117,8 @@ impl Engine {
     /// Creates the data dir. Tests use this (see `test_support::temp_engine`).
     pub fn new(opts: EngineOptions) -> EngineResult<Engine> {
         let root = opts.data_dir.clone().unwrap_or_else(paths::resolve_data_dir);
-        std::fs::create_dir_all(&root)?;
+        // Owner-only: it holds refresh/identity/bridge tokens (0700 on Unix).
+        paths::ensure_private_dir(&root)?;
         let paths = Paths::new(root);
         let events = EventBus::new();
         let config = Arc::new(ConfigStore::new(&paths));

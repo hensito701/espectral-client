@@ -2,7 +2,8 @@ package es.spectral.menu.agent;
 
 /**
  * Agent-mode configuration, read from JVM properties exactly like the modern
- * mod ({@code -Despectral.agent=1 -Despectral.bridge.url=... -Despectral.bridge.token=...}).
+ * mod ({@code -Despectral.agent=1 -Despectral.bridge.url=...}); the bridge
+ * token comes from the {@code ESPECTRAL_BRIDGE_TOKEN} environment variable.
  *
  * <p>Java 8: no {@code System.getProperty(name, fallback)} sugar beyond the
  * plain overloads, and no {@code readAllBytes}/{@code String.isBlank}.
@@ -32,9 +33,9 @@ public final class AgentRuntime {
         return url;
     }
 
+    /** Per-launch bridge token (environment, never the command line) or null. */
     public static String bridgeToken() {
-        String token = prop("espectral.bridge.token");
-        return token == null || token.isEmpty() ? null : token;
+        return es.spectral.menu.BridgeAuth.tokenFromEnv();
     }
 
     private static String prop(String name) {

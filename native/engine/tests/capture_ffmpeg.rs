@@ -170,11 +170,24 @@ async fn extract_refuses_a_symlink_entry() {
 #[tokio::test]
 async fn extract_refuses_traversal_and_absolute_entry_paths() {
     let (d, _e) = temp_engine();
-    for (label, name) in [("dotdot", "../ffmpeg-escape.txt"), ("absolute", "/ffmpeg-escape.txt")] {
-        let archive = write_zip(d.path(), label, vec![entry("bin/ffmpeg.exe", b"MZ"), entry(name, b"pwned")]);
+    // The zip writer normalizes names, so hostile ones are patched into the
+    // archive bytes afterwards (names are not covered by the CRC).
+    for (label, placeholder, name) in [
+        ("dotdot", "XXXffmpeg-escape.txt", "../ffmpeg-escape.txt"),
+        ("absolute", "Xffmpeg-escape.txt", "/ffmpeg-escape.txt"),
+    ] {
+        let archive = write_zip(d.path(), label, vec![entry("bin/ffmpeg.exe", b"MZ"), entry(placeholder, b"pwned")]);
+        let mut bytes = std::fs::read(&archive).unwrap();
+        let (from, to) = (placeholder.as_bytes(), name.as_bytes());
+        let mut i = 0;
+        while let Some(at) = bytes[i..].windows(from.len()).position(|w| w == from) {
+            bytes[i + at..i + at + to.len()].copy_from_slice(to);
+            i += at + to.len();
+        }
+        std::fs::write(&archive, bytes).unwrap();
         let dest = d.path().join(format!("{label}-out"));
         let err = ffmpeg::extract_ffmpeg_archive(&archive, &dest).await.unwrap_err();
-        assert!(err.to_string().contains("escapes the install dir"), "{err}");
+        assert!(err.to_string().contains("escapes the install dir"), "{label}: {err}");
     }
     assert!(!d.path().join("ffmpeg-escape.txt").exists(), "nothing written outside the install dir");
 }

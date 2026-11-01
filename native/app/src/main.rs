@@ -141,7 +141,7 @@ fn main() {
 
     // .mrpack arguments of this (first) launch, and of later launches
     import_mrpacks(&ctx, args.iter().filter(|a| single_instance::is_mrpack_arg(a)).cloned().collect());
-    if let Some(g) = guard.as_ref().and_then(|g| g.listener.try_clone().ok()) {
+    if let Some(g) = guard.as_ref() {
         let c = ctx.clone();
         single_instance::serve(g, move |argv| {
             let mrpacks: Vec<String> = argv.into_iter().filter(|a| single_instance::is_mrpack_arg(a)).collect();

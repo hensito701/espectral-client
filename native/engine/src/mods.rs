@@ -814,7 +814,7 @@ async fn install_preset_inner(
     let mut installed = vec![];
     for (i, meta) in install_map.values().enumerate() {
         let file = primary_file(meta).ok_or_else(|| no_file_error(meta))?;
-        let fname = file_name(file);
+        let fname = safe_download_name(file)?;
         installed.push(fname.clone());
         items.push(
             DownloadItem::new(s(file, "url").unwrap_or_default(), mods_dir.join(&fname))
@@ -984,16 +984,32 @@ pub struct CaptureToolsOptions {
     pub replay_pin: Option<ReplayModPin>,
 }
 
-/// A pinned artifact is a plain basename — never a path that could leave the target dir.
+/// A pinned artifact is a plain basename — never a path that could leave the
+/// target dir (no separators, `..`, drive/stream colon, control characters,
+/// or a trailing dot/space Windows would strip).
 fn assert_safe_pinned_file_name<'a>(name: &'a str, label: &str) -> EngineResult<&'a str> {
     let bad = name.is_empty()
         || name.contains("..")
         || name.contains('/')
         || name.contains('\\')
+        || name.contains(':')
+        || name.starts_with('.')
+        || name.ends_with('.')
+        || name.ends_with(' ')
+        || name.chars().any(char::is_control)
         || Path::new(name).is_absolute();
     if bad {
         return Err(code_err(400, "invalid_filename", format!("{label} pins an unsafe filename: {name}")));
     }
+    Ok(name)
+}
+
+/// The download destination name a Modrinth version file names (400
+/// `invalid_filename` unless it is a plain basename): the API response is
+/// remote data and becomes a path under the mods dir.
+fn safe_download_name(f: &Value) -> EngineResult<String> {
+    let name = file_name(f);
+    assert_safe_pinned_file_name(&name, "Modrinth file")?;
     Ok(name)
 }
 
@@ -1683,7 +1699,7 @@ pub async fn install_modrinth_mod(
     let mut installed = vec![];
     for (i, (_, meta)) in plan.installs.iter().enumerate() {
         let file = primary_file(meta).ok_or_else(|| no_file_error(meta))?;
-        let fname = file_name(file);
+        let fname = safe_download_name(file)?;
         installed.push(fname.clone());
         items.push(
             DownloadItem::new(s(file, "url").unwrap_or_default(), mods_dir.join(&fname))
@@ -1890,7 +1906,7 @@ pub async fn apply_mods_plan(engine: &Engine, instance_name: &str, plan: &Value)
                         let vid = s(&entry, "version_id").unwrap_or_default();
                         let meta = version_meta(engine, &vid).await?;
                         let file = primary_file(&meta).ok_or_else(|| no_file_error(&meta))?;
-                        let fname = file_name(file);
+                        let fname = safe_download_name(file)?;
                         engine
                             .http()
                             .download_all(
@@ -2112,6 +2128,20 @@ mod tests {
         assert!(jar.starts_with("espectral-menu-26.3-"), "{jar}");
         assert_eq!(r.installed, vec![jar.clone()]);
         assert!(mods.join(&jar).exists());
+    }
+
+    /// Modrinth's `files[].filename` becomes `<mods>/<filename>`: a crafted or
+    /// compromised response must not reach `../instance.json` or another drive.
+    #[test]
+    fn download_names_must_be_plain_basenames() {
+        for bad in ["../instance.json", "a/b.jar", "a\\b.jar", "C:x.jar", "..", ".hidden.jar", "x.jar.", "", "x\n.jar"]
+        {
+            assert!(safe_download_name(&json!({ "filename": bad })).is_err(), "{bad:?}");
+        }
+        assert_eq!(
+            safe_download_name(&json!({ "filename": "sodium-fabric-0.8.7+mc1.21.jar" })).unwrap(),
+            "sodium-fabric-0.8.7+mc1.21.jar"
+        );
     }
 
     #[test]

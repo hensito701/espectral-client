@@ -33,9 +33,8 @@ public final class AgentRuntime {
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
-    /** Per-launch bridge token or null. */
+    /** Per-launch bridge token (environment, never the command line) or null. */
     public static String bridgeToken() {
-        String token = System.getProperty("espectral.bridge.token");
-        return token == null || token.isEmpty() ? null : token;
+        return es.spectral.menu.BridgeAuth.tokenFromEnv();
     }
 }

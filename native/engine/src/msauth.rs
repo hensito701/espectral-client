@@ -148,12 +148,9 @@ fn read_mc_token_cache(engine: &Engine) -> Map<String, Value> {
 }
 
 fn write_mc_token_cache(engine: &Engine, cache: &Map<String, Value>) {
-    let p = engine.paths().mc_token_cache();
-    if let Some(dir) = p.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    if let Ok(text) = serde_json::to_string_pretty(cache) {
-        let _ = std::fs::write(p, text); // best-effort
+    // Minecraft access tokens: owner-only, like every credential store.
+    if let Err(e) = crate::paths::write_json_atomic(&engine.paths().mc_token_cache(), cache) {
+        tracing::warn!("[msauth] could not persist mc-token-cache.json: {e}"); // best-effort
     }
 }
 
@@ -193,9 +190,25 @@ fn set_memory_token(engine: &Engine, username: &str, token: &McToken) {
         .insert(username.to_string(), token.clone());
 }
 
-/// Forget the in-memory token of an account (logout).
-pub fn forget_memory_token(engine: &Engine, username: &str) {
+/// Forget every credential the launcher keeps for a signed-out account: the
+/// in-memory Minecraft token, both `mc-token-cache.json` keys (dashed and
+/// dashless uuid) and its Espectral identity session.
+pub fn forget_account_credentials(engine: &Engine, username: &str, uuid: &str) {
     engine.accounts_skins_state().mc_tokens.lock().unwrap_or_else(|p| p.into_inner()).remove(username);
+    if !uuid.is_empty() {
+        let mut cache = read_mc_token_cache(engine);
+        let removed = cache.shift_remove(uuid).is_some() | cache.shift_remove(&uuid.replace('-', "")).is_some();
+        if removed {
+            write_mc_token_cache(engine, &cache);
+        }
+        crate::identity::forget_session(engine, uuid);
+    }
+}
+
+/// True while `account` is still stored: a refresh that finishes after a
+/// logout must not write its token back.
+fn still_signed_in(engine: &Engine, account: &Account) -> bool {
+    crate::accounts::get_account(engine, &account.username).is_some_and(|a| a.uuid == account.uuid)
 }
 
 /// Remember a fresh Minecraft token in memory (e.g. right after a device login).
@@ -694,6 +707,9 @@ pub async fn ensure_minecraft_token(engine: &Engine, account: &Account) -> Engin
             return Err(e);
         }
     };
+    if !still_signed_in(engine, account) {
+        return Err(EngineError::not_found("NOT_FOUND", format!("account '{}' was signed out", account.username)));
+    }
     set_memory_token(engine, &account.username, &fresh);
     set_cached_mc_token(engine, &account.uuid, &fresh);
     Ok(Some(fresh))

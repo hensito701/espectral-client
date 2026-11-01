@@ -441,11 +441,10 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         jvm.extend(boot_flags(engine, instance, Some(java_major)));
         jvm.extend(stack_flags(cfg!(windows)).iter().map(|s| s.to_string()));
     }
-    // Mod bridge: the in-game mod reports visible uuids over loopback.
+    // Mod bridge: the in-game mod reports visible uuids over loopback. Its
+    // token is NOT an argument (other users can read the argv): spawn_java
+    // passes it as ESPECTRAL_BRIDGE_TOKEN.
     jvm.push(format!("-Despectral.bridge.url={}", crate::loopback::bridge_url(engine)));
-    if let Some(t) = resolved.bridge_token.as_deref().filter(|t| !t.is_empty()) {
-        jvm.push(format!("-Despectral.bridge.token={t}"));
-    }
     // Agent mode. Inert unless the route tagged the launch `agent: true`; the
     // mod starts its relay thread only when it sees -Despectral.agent=1.
     if agent {
@@ -757,18 +756,11 @@ fn logging_config_arg(engine: &Engine, version_json: &Value) -> Option<String> {
 }
 
 fn redact_preview(argv: &[String], access_token: Option<&str>) -> Vec<String> {
-    argv.iter()
-        .map(|a| {
-            if Some(a.as_str()) == access_token || a.starts_with("-Despectral.bridge.token=") {
-                "<REDACTED>".to_string()
-            } else {
-                a.clone()
-            }
-        })
-        .collect()
+    argv.iter().map(|a| if Some(a.as_str()) == access_token { "<REDACTED>".to_string() } else { a.clone() }).collect()
 }
 
-/// Shell-ish one-line preview with the access + bridge tokens redacted.
+/// Shell-ish one-line preview with the access token redacted (the bridge
+/// token is never in the argv).
 pub fn format_command_preview(argv: &[String], access_token: Option<&str>) -> String {
     redact_preview(argv, access_token)
         .into_iter()
@@ -1017,6 +1009,7 @@ pub async fn resolve_launch(
         }
     };
     progress(&format!("[espectral] preparing {}…", instance.name));
+    crate::instances::validate_mc_version(&instance.version)?;
     phase("version");
     let mut version_json = crate::resolver::get_version_json(engine, &instance.version).await?;
     progress("[espectral] Minecraft version resolved");
@@ -1027,6 +1020,7 @@ pub async fn resolve_launch(
         let lv = instance.loader_version.clone().filter(|s| !s.is_empty()).ok_or_else(|| {
             EngineError::api(400, "LOADER_VERSION_REQUIRED", "loader_version es obligatorio para NeoForge")
         })?;
+        crate::instances::validate_loader_version(&lv)?;
         let nf_id = crate::neoforge::neoforge_version_id(&lv);
         let nf_json = match crate::resolver::read_local_version_json(engine, &nf_id) {
             None => {
@@ -1353,7 +1347,7 @@ pub fn launch_instance(
     std::fs::create_dir_all(game_dir.join("logs"))?;
     let log_file = game_dir.join("logs").join("latest.log");
 
-    let child = process::spawn_java(&resolved.java.path, &argv, &game_dir, true)?;
+    let child = process::spawn_java(&resolved.java.path, &argv, &game_dir, true, resolved.bridge_token.as_deref())?;
     if let Some(f) = &cb.on_spawned {
         f(crate::platform::now_ms());
     }
@@ -1749,16 +1743,16 @@ mod tests {
     }
 
     #[test]
-    fn preview_redacts_access_and_bridge_tokens() {
+    fn argv_never_carries_the_bridge_token_and_preview_redacts_access() {
         let (_d, e) = temp_engine();
         let mut r = make_resolved();
         r.account.access_token = "SECRETACCESSTOKEN".into();
         r.bridge_token = Some("a".repeat(64));
         let argv = build_argv(&e, &inst("t"), &mut r);
-        assert!(argv.contains(&format!("-Despectral.bridge.token={}", "a".repeat(64))));
+        assert!(!argv.iter().any(|a| a.contains(&"a".repeat(64))), "bridge token goes in the environment");
+        assert!(argv.iter().any(|a| a.starts_with("-Despectral.bridge.url=")));
         let preview = format_command_preview(&argv, Some("SECRETACCESSTOKEN"));
         assert!(!preview.contains("SECRETACCESSTOKEN"));
-        assert!(!preview.contains(&"a".repeat(64)));
         assert!(preview.contains("<REDACTED>"));
     }
 

@@ -16,6 +16,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import es.spectral.menu.BridgeAuth;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 
@@ -32,9 +33,11 @@ import net.minecraft.client.gui.screens.Screen;
  *       I/O, and results are posted from the poller thread too.</li>
  *   <li>Relay errors never crash the game: log + capped exponential backoff,
  *       retrying forever (the launcher may restart its engine under us).</li>
+ *   <li>Requests are signed with the bridge token (never sent) and an answer
+ *       is acted on only when it proves it comes from this launcher
+ *       ({@link BridgeAuth}): anything else listening on the port is ignored.</li>
  *   <li>State is reported on change and at least every 10 s (the engine's
  *       {@code wait_for} relies on it).</li>
- * </ul>
  */
 public final class AgentRelay {
 
@@ -55,18 +58,23 @@ public final class AgentRelay {
     private final String pollUrl;
     private final String resultUrl;
     private final String stateUrl;
-    private final String token;
+    private final BridgeAuth auth;
     private final HttpClient http;
+    /** Logged once: an unproven answer means something else holds the port. */
+    private volatile boolean warnedUnproven;
 
     /** Last state posted (change detection) and when. */
     private AgentState lastState;
     private long lastStateAt;
 
+    /** A proven bridge answer. */
+    private record Reply(int status, String body) {}
+
     private AgentRelay(String base, String token) {
         this.pollUrl = base + "/agent/poll";
         this.resultUrl = base + "/agent/result";
         this.stateUrl = base + "/agent/state";
-        this.token = token;
+        this.auth = new BridgeAuth(token);
         this.http = HttpClient.newBuilder()
                 .connectTimeout(CONNECT_TIMEOUT)
                 .version(HttpClient.Version.HTTP_1_1)
@@ -87,7 +95,7 @@ public final class AgentRelay {
         String base = AgentRuntime.bridgeUrl();
         String token = AgentRuntime.bridgeToken();
         if (base == null || token == null) {
-            LOGGER.warn("agent: relay disabled (missing -Despectral.bridge.url/token)");
+            LOGGER.warn("agent: relay disabled (missing -Despectral.bridge.url or {})", BridgeAuth.TOKEN_ENV);
             return;
         }
         AgentRelay relay = new AgentRelay(base, token);
@@ -169,22 +177,20 @@ public final class AgentRelay {
         Thread.sleep(ms);
     }
 
-    /** One poll round-trip; returns false when the engine was unreachable. */
+    /**
+     * One poll round-trip; false (back off) when the engine was unreachable,
+     * refused the poll, or could not prove it is this launcher.
+     */
     private boolean pollOnce() throws Exception {
-        JsonObject body = new JsonObject();
-        HttpRequest request = request(pollUrl)
-                .timeout(POLL_TIMEOUT)
-                .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
-                .build();
-        HttpResponse<String> response =
-                http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (response.statusCode() != 200) {
-            LOGGER.debug("agent: poll answered {}: {}", response.statusCode(), response.body());
-            // 409 = this launch is not an agent launch; retrying forever would
-            // just spam. The launcher relaunches with agent mode when needed.
-            return response.statusCode() < 500;
+        Reply reply = exchange(pollUrl, new JsonObject().toString(), POLL_TIMEOUT);
+        if (reply == null) return false;
+        if (reply.status() != 200) {
+            // 403 (access switched off) / 409 (not an agent launch) answer at
+            // once: back off instead of re-polling in a tight loop.
+            LOGGER.debug("agent: poll answered {}: {}", reply.status(), reply.body());
+            return false;
         }
-        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        JsonObject json = JsonParser.parseString(reply.body()).getAsJsonObject();
         JsonElement policy = json.get("policy");
         if (policy != null && policy.isJsonObject()) {
             AgentPolicy.apply(policy.getAsJsonObject());
@@ -262,14 +268,9 @@ public final class AgentRelay {
             body.add("error", error);
         }
         try {
-            HttpRequest request = request(resultUrl)
-                    .timeout(Duration.ofSeconds(5))
-                    .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
-                    .build();
-            HttpResponse<String> response =
-                    http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() != 200) {
-                LOGGER.debug("agent: result for {} answered {}", id, response.statusCode());
+            Reply reply = exchange(resultUrl, body.toString(), Duration.ofSeconds(5));
+            if (reply != null && reply.status() != 200) {
+                LOGGER.debug("agent: result for {} answered {}", id, reply.status());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -300,14 +301,9 @@ public final class AgentRelay {
         lastStateAt = System.currentTimeMillis();
         try {
             JsonObject body = state.toJson();
-            HttpRequest request = request(stateUrl)
-                    .timeout(Duration.ofSeconds(5))
-                    .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
-                    .build();
-            HttpResponse<String> response =
-                    http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() != 200) {
-                LOGGER.debug("agent: state answered {}", response.statusCode());
+            Reply reply = exchange(stateUrl, body.toString(), Duration.ofSeconds(5));
+            if (reply != null && reply.status() != 200) {
+                LOGGER.debug("agent: state answered {}", reply.status());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -320,12 +316,37 @@ public final class AgentRelay {
     // HTTP helpers
     // ------------------------------------------------------------------
 
-    private HttpRequest.Builder request(String url) {
-        return HttpRequest.newBuilder()
-                .uri(URI.create(url))
+    /**
+     * One signed POST. Returns null when the answer does not carry a valid
+     * proof for this request (another program on the port, or an engine that
+     * does not know this launch): such an answer is never acted on.
+     */
+    private Reply exchange(String url, String json, Duration timeout) throws Exception {
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        URI uri = URI.create(url);
+        String nonce = BridgeAuth.newNonce();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(uri)
+                .timeout(timeout)
                 .header("content-type", "application/json")
                 .header("x-espectral-client", "1")
-                .header("x-espectral-bridge", token);
+                .header(BridgeAuth.ID_HEADER, auth.id())
+                .header(BridgeAuth.NONCE_HEADER, nonce)
+                .header(BridgeAuth.MAC_HEADER, auth.requestMac("POST", BridgeAuth.target(uri), nonce, body))
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build();
+        HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        byte[] raw = response.body();
+        String proof = response.headers().firstValue(BridgeAuth.PROOF_HEADER).orElse(null);
+        if (!auth.proofOk(nonce, raw, proof)) {
+            if (!warnedUnproven) {
+                warnedUnproven = true;
+                LOGGER.warn("agent: ignoring an unproven bridge answer ({}) — is another program on the launcher port?",
+                        response.statusCode());
+            }
+            return null;
+        }
+        return new Reply(response.statusCode(), new String(raw, StandardCharsets.UTF_8));
     }
 
     private static String string(JsonObject json, String name) {
