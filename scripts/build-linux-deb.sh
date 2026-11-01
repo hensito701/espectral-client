@@ -122,14 +122,25 @@ find "$STAGE/usr/lib/Espectral Client/branding" -type f -exec chmod 0644 {} +
 install -m 0644 native/app/ui/assets/favicon.png "$STAGE/usr/share/icons/hicolor/32x32/apps/$PKG.png"
 install -m 0644 native/app/ui/assets/logo_circle.png "$STAGE/usr/share/icons/hicolor/256x256/apps/$PKG.png"
 
-install -m 0644 "native/packaging/linux/espectral-client.desktop" \
+# Text files go in with LF only, whatever the checkout's line endings: from a
+# Windows tree they are CRLF, and a `#!/bin/sh\r` maintainer script cannot be
+# executed, so dpkg leaves the package half-installed and apt refuses to do
+# anything until it is fixed by hand (1.7.0/1.7.1 shipped exactly that).
+install_lf() { # <mode> <src> <dest>
+  tr -d '\r' < "$2" > "$3"
+  chmod "$1" "$3"
+}
+install_lf 0644 native/packaging/linux/espectral-client.desktop \
   "$STAGE/usr/share/applications/Espectral Client.desktop"
-install -m 0644 native/packaging/linux/espectral-client-mime.xml \
+install_lf 0644 native/packaging/linux/espectral-client-mime.xml \
   "$STAGE/usr/share/mime/packages/$PKG.xml"
-install -m 0644 native/packaging/linux/copyright "$STAGE/usr/share/doc/$PKG/copyright"
+install_lf 0644 native/packaging/linux/copyright "$STAGE/usr/share/doc/$PKG/copyright"
 
-install -m 0755 native/packaging/linux/postinst "$STAGE/DEBIAN/postinst"
-install -m 0755 native/packaging/linux/postrm   "$STAGE/DEBIAN/postrm"
+install_lf 0755 native/packaging/linux/postinst "$STAGE/DEBIAN/postinst"
+install_lf 0755 native/packaging/linux/postrm   "$STAGE/DEBIAN/postrm"
+for s in postinst postrm; do
+  head -n1 "$STAGE/DEBIAN/$s" | grep -qx '#!/bin/sh' || { echo "ERROR: DEBIAN/$s has a bad shebang" >&2; exit 1; }
+done
 
 # ---- control ------------------------------------------------------------
 INSTALLED_KB=$(du -sk --exclude=DEBIAN "$STAGE" | cut -f1)

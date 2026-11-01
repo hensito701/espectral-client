@@ -17,7 +17,7 @@ members = ["engine", "app", "ui", "skin3d"]
 
 [workspace.package]
 # Mirrors package.json "version"; the in-app updater compares it with latest.json.
-version = "1.7.1"
+version = "1.7.2"
 edition = "2021"
 license = "GPL-3.0-only"
 rust-version = "1.80"

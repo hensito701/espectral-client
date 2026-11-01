@@ -2,6 +2,17 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.7.2] - 2026-11-01
+
+### Fixed
+- **Linux: updating to 1.7 broke the system's package manager.** The 1.7.0
+  and 1.7.1 `.deb` packages had Windows line endings in their install
+  scripts, so the system could not run them: Espectral Client was left
+  half-installed and the package manager refused to install, update or
+  remove anything (*"The package espectral-client needs to be reinstalled,
+  but I can't find an archive for it"*). 1.7.2 repairs it on install: update
+  from the launcher, or run `sudo dpkg -i espectral-client_1.7.2_amd64.deb`.
+
 ## [1.7.1] - 2026-11-01
 
 ### Added

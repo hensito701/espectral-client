@@ -17,6 +17,10 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.toml text eol=lf
+# Shipped verbatim inside the .deb: a CRLF checkout (Windows) turned
+# `#!/bin/sh` into `#!/bin/sh\r`, so dpkg could not run postinst/postrm and
+# left espectral-client half-installed (1.7.0/1.7.1).
+native/packaging/linux/* text eol=lf
 
 # Line-ending-sensitive artifacts
 *.jar binary
