@@ -6,7 +6,7 @@
 //! synchronously on every `set` (tiny file).
 //!
 //! Keys in use: "lang", "discord_session", "recent_commands", "hide_hotkeys",
-//! "pip_pinned".
+//! "pip_pinned", "renderer_fallback", "renderer_gl_pending" (renderer.rs).
 
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};

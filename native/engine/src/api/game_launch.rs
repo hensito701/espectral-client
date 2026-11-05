@@ -51,6 +51,8 @@ pub const RING_CAPACITY: usize = 2000;
 pub const BUFFER_TTL_MS: i64 = 10 * 60 * 1000;
 /// Max retained buffers (running ones are never evicted).
 pub const BUFFER_LRU_CAP: usize = 8;
+/// Lines of game output written to the launcher log when a game ends badly.
+const EXIT_LOG_TAIL: usize = 40;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
@@ -826,6 +828,14 @@ async fn run_launch(
                 ),
             };
             system_line(&engine, &key, &summary);
+            // The launcher log outlives this in-memory buffer: keep why the
+            // game ended there, with the end of its output when it crashed.
+            tracing::info!("[launch] {name}: {}", summary.trim_start_matches("[espectral] "));
+            if let Some(b) = buf.as_ref().filter(|_| x.error.is_some() || x.code != Some(0)) {
+                let skip = b.entries.len().saturating_sub(EXIT_LOG_TAIL);
+                let tail: Vec<&str> = b.entries.iter().skip(skip).map(|(_, line)| line.as_str()).collect();
+                tracing::warn!("[launch] {name}: last {} lines of game output:\n{}", tail.len(), tail.join("\n"));
+            }
             let inst_name = buf.as_ref().map_or(name.clone(), |b| b.instance.clone());
             engine.emit(EngineEvent::LaunchExit(LaunchExitEvent {
                 key: key.clone(),

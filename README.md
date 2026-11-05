@@ -85,7 +85,10 @@ cargo run --release -p espectral-client      # builds and starts the launcher
 | Rebuild + ship the mod jars | `npm run deploy:mod` |
 
 `ESPECTRAL_DATA_DIR` overrides the data directory, `SLINT_BACKEND=winit-software` falls back to the
-software renderer, and `SLINT_BACKEND=winit-femtovg` forces OpenGL.
+software renderer (the launcher also switches to it by itself on a PC where OpenGL fails), and
+`SLINT_BACKEND=winit-femtovg` forces OpenGL. The launcher logs to `<data>/logs/launcher.log`
+(`ESPECTRAL_LOG=debug` for more detail); on Windows the data directory is
+`%LOCALAPPDATA%\espectral-client`.
 
 ### Packaging
 

@@ -2,6 +2,36 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **The launcher opens instead of silently doing nothing.**
+  - Opening it again right after closing it (while the previous one was
+    still shutting down) did nothing; the new one now waits a moment and
+    opens.
+  - A launcher stuck in the background with no window swallowed every later
+    attempt to open it. Now you are asked whether to close the stuck one and
+    open a new one (a running Minecraft keeps running).
+  - Opening it while it is already open brings its window to the front, also
+    when it was minimized.
+  - On PCs whose graphics driver fails with OpenGL, the window never
+    appeared, appeared only some of the times, or the launcher closed by
+    itself. The launcher now notices it (also when the driver crashed it
+    before the window was drawn), switches that PC to software drawing and
+    reopens. After each update it tries OpenGL again.
+  - A crash of the launcher shows an error message with the location of the
+    log instead of closing without a word.
+- The Mods page no longer closes the launcher when a file in the mods folder
+  has an accented letter or emoji just before its last characters.
+
+### Added
+- **Launcher log:** `%LOCALAPPDATA%\espectral-client\logs\launcher.log`
+  (`~/.local/share/espectral-client/logs/` on Linux) records each start, the
+  renderer in use, why a window or start failed, and how each game ended —
+  with the last 40 lines of the game's output when Minecraft closes with an
+  error. Send it along with Minecraft's `logs/latest.log` and
+  `crash-reports/` when reporting a problem.
+
 ## [1.7.2] - 2026-11-01
 
 ### Fixed

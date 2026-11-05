@@ -34,18 +34,27 @@ AppWindow + globals  <── invoke_from_event_loop ──  Engine futures (ctx.
                                                      (batched EngineEvents)
 ```
 
-- **One process.** `main.rs`: single-instance lock → tokio runtime →
-  `Engine::start` (onboarding + cluster hooks, blocking before any window
-  exists) → `AppWindow::new()` → every module's `init` → `router::navigate("#/")`
-  → `ui.show()` (the window appears only once the engine is ready) →
-  `slint::run_event_loop()` → on close: `engine.shutdown()` (games keep running).
+- **One process.** `main.rs`: log file (`<data>/logs/launcher.log`, panics
+  included; `logging.rs`) → single-instance lock → renderer choice → tokio
+  runtime → `Engine::start` (onboarding + cluster hooks, blocking before any
+  window exists) → `AppWindow::new()` → every module's `init` →
+  `router::navigate("#/")` → `ui.show()` (the window appears only once the
+  engine is ready) → `slint::run_event_loop()` → on close: `engine.shutdown()`
+  (games keep running). A window that fails on OpenGL restarts the launcher on
+  the software renderer; a UI-thread panic ends in an error dialog naming the
+  log file.
   `--mcp` is dispatched before all of that: the binary becomes the stdio MCP
   server (`espectral_engine::mcp::run_stdio()`) and exits with its status.
 - **Single instance** (`single_instance.rs`): exclusive lock on
-  `<data>/ui.lock` + loopback port in `<data>/ui.port`. A second launch sends its
-  argv and exits; the first re-shows its window and imports `.mrpack` args
-  (`engine.import_mrpack`, outcome toasted from the `import-done` event).
-  `.mrpack` args of the first launch are imported too.
+  `<data>/ui.lock` + loopback port in `<data>/ui.port` (`<port> <token> <pid>`,
+  served from the moment the lock is taken). A second launch sends its argv
+  and waits for the answer: `ok` (the first one queued it while starting, or
+  raised its window and took the `.mrpack` args on the UI thread) → exit;
+  `closing` → keep trying the lock and become the first instance; no answer
+  for 10 s → "already open but not responding, close it?" dialog (kills that
+  pid after checking it is the launcher exe). `.mrpack` args are imported
+  with `engine.import_mrpack` (outcome toasted from the `import-done` event),
+  the first launch's own ones too.
 - **The UI thread never awaits.** Engine calls run on the runtime through
   [`Ctx`](src/bridge.rs); results come back with `slint::invoke_from_event_loop`
   through a `Weak<AppWindow>`.
@@ -53,8 +62,13 @@ AppWindow + globals  <── invoke_from_event_loop ──  Engine futures (ctx.
   game runs; servers poll 60 s only while Home/Servers is shown), no
   `animation-tick()` on anything visible while idle, static backdrop.
 - Renderers: `winit` backend with **femtovg** (OpenGL, default) and the
-  **software** renderer as fallback (`SLINT_BACKEND=winit-software`) and for
-  headless screenshots. Measured (release build, Xvfb, idle Home): software
+  **software** renderer as fallback and for headless screenshots
+  (`renderer.rs`). The launcher switches a PC to software by itself (per
+  launcher version, pref `renderer_fallback`) when the event loop fails on
+  OpenGL, or when an OpenGL start never drew its first frame (pref
+  `renderer_gl_pending` left behind by a driver crash/hang).
+  `SLINT_BACKEND=winit-software` forces it by hand. Measured (release build,
+  Xvfb, idle Home): software
   ≈ 48 MB PSS, femtovg on Mesa llvmpipe ≈ 162 MB PSS (most of it is llvmpipe;
   real GPU drivers are lighter). Idle CPU 0% in both (table in section 12).
 
