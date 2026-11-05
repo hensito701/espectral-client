@@ -60,3 +60,14 @@ pub fn fatal(title: &str, message: &str) {
         .set_buttons(rfd::MessageButtons::Ok)
         .show();
 }
+
+/// Blocking yes/no question (startup, before/without the event loop). True = yes.
+pub fn confirm(title: &str, message: &str) -> bool {
+    rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title(title)
+        .set_description(message)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::Yes
+}

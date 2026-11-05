@@ -324,10 +324,11 @@ pub fn display_name(filename: &str, slug: Option<&str>) -> String {
 }
 
 fn strip_jar(filename: &str) -> &str {
-    if filename.len() >= 4 && filename[filename.len() - 4..].eq_ignore_ascii_case(".jar") {
-        &filename[..filename.len() - 4]
-    } else {
-        filename
+    // `get`: the byte 4 from the end may sit inside a multi-byte character.
+    let cut = filename.len().saturating_sub(4);
+    match filename.get(cut..) {
+        Some(ext) if ext.eq_ignore_ascii_case(".jar") => &filename[..cut],
+        _ => filename,
     }
 }
 
@@ -403,7 +404,7 @@ fn mod_row(m: &ModEntry) -> ModRow {
         if !meta.is_empty() {
             meta.push(' ');
         }
-        meta.push_str(&format!("· {}", &sha[..sha.len().min(8)]));
+        meta.push_str(&format!("· {}", sha.get(..8).unwrap_or(sha)));
     }
     ModRow {
         filename: ss(&m.filename),
@@ -996,6 +997,10 @@ mod tests {
         assert_eq!(display_name("sodium-0.6.jar", Some("sodium")), "sodium-0.6");
         assert_eq!(display_name(".jar", Some("x")), "x");
         assert_eq!(display_name("A.JAR", None), "A");
+        // A multi-byte character across the 4th byte from the end used to panic.
+        assert_eq!(display_name("ñabc", None), "ñabc");
+        assert_eq!(display_name("😀a", None), "😀a");
+        assert_eq!(display_name("mod-ñ.jar", None), "mod-ñ");
     }
 
     #[test]
