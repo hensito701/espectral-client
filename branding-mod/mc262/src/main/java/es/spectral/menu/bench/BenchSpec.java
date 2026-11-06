@@ -14,7 +14,8 @@ import com.google.gson.JsonObject;
  * "scenes": [{"id": ..., "duration_s": 30, "steps": [...]}}}.
  * Step verbs: {@code {"tp": [x,y,z]}}, {@code {"look": [yaw,pitch]}},
  * {@code {"summon": {"entity": ..., "count": N, "pos": [x,y,z]}}},
- * {@code {"wait_s": N}}. Unknown verbs fail the parse so a typoed harness
+ * {@code {"cmd": "<server command>"}} (run once as the server, so use
+ * absolute coordinates), {@code {"wait_s": N}}. Unknown verbs fail the parse so a typoed harness
  * file never silently benchmarks the wrong scene.
  */
 public final class BenchSpec {
@@ -80,10 +81,11 @@ public final class BenchSpec {
     }
 
     public static final class Step {
-        public enum Kind { TP, LOOK, SUMMON, WAIT }
+        public enum Kind { TP, LOOK, SUMMON, CMD, WAIT }
 
         public final Kind kind;
         public final double[] vec;
+        /** Entity id (SUMMON) or the whole command line (CMD). */
         public final String entity;
         public final int count;
         public final double waitS;
@@ -112,6 +114,9 @@ public final class BenchSpec {
                 }
                 double[] pos = s.has("pos") ? vec(s.getAsJsonArray("pos"), 3, "summon.pos") : new double[] {0, 80, 0};
                 return new Step(Kind.SUMMON, pos, entity, count, 0);
+            }
+            if (o.has("cmd")) {
+                return new Step(Kind.CMD, null, o.get("cmd").getAsString(), 1, 0);
             }
             if (o.has("wait_s")) {
                 double waitS = o.get("wait_s").getAsDouble();

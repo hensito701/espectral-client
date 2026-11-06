@@ -166,13 +166,19 @@ pub fn stack_flags(windows: bool) -> &'static [&'static str] {
     }
 }
 
-/// Boot-time flags: `-XX:-UsePerfData`, `-Xverify:none` (JDK < 27 — a hard
-/// error from 27 on), and the opt-in C1-only `-XX:TieredStopAtLevel=1`
-/// (instance `fast_boot` wins, absent -> config `fast_boot === true`).
+/// Boot-time flags (build_argv adds them on JDK 8 and 21+): `-XX:-UsePerfData`,
+/// `-Xverify:none` (JDK < 27 — a hard error from 27 on), on JDK 8
+/// `-XX:MetaspaceSize=128M` (its ~21 MB default stops a Forge 1.8.9 boot for
+/// two full collections), and the opt-in C1-only `-XX:TieredStopAtLevel=1`
+/// (instance `fast_boot` wins, absent -> config `fast_boot === true`). Forge
+/// 1.8.9 measured −0.6 s to the main menu with the first three.
 pub fn boot_flags(engine: &Engine, instance: &InstanceMeta, java_major: Option<u32>) -> Vec<String> {
     let mut flags = vec!["-XX:-UsePerfData".to_string()];
     if java_major.map_or(true, |m| m < 27) {
         flags.push("-Xverify:none".into());
+    }
+    if java_major == Some(8) {
+        flags.push("-XX:MetaspaceSize=128M".into());
     }
     let fast = match instance.extra.get("fast_boot") {
         Some(Value::Bool(true)) => true,
@@ -437,8 +443,12 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     if let Some(a) = logging_config_arg(engine, &resolved.version.json) {
         jvm.push(a);
     }
-    if java_major >= 21 {
+    // Measured tiers only: JDK 21+ (Fabric/NeoForge/Forge 1.21+) and JDK 8
+    // (Forge 1.8.9/1.12.2); 16/17 keep the JVM defaults.
+    if java_major == 8 || java_major >= 21 {
         jvm.extend(boot_flags(engine, instance, Some(java_major)));
+    }
+    if java_major >= 21 {
         jvm.extend(stack_flags(cfg!(windows)).iter().map(|s| s.to_string()));
     }
     // Mod bridge: the in-game mod reports visible uuids over loopback. Its
@@ -1666,6 +1676,8 @@ mod tests {
         e.config().set("fast_boot", json!(false));
         // JDK 27 gate
         assert_eq!(boot_flags(&e, &inst("t"), Some(27)), ["-XX:-UsePerfData"]);
+        // JDK 8 (Forge 1.8.9/1.12.2): metaspace headroom on top.
+        assert_eq!(boot_flags(&e, &inst("t"), Some(8)), ["-XX:-UsePerfData", "-Xverify:none", "-XX:MetaspaceSize=128M"]);
         assert!(boot_flags(&e, &inst("t"), Some(26)).contains(&"-Xverify:none".to_string()));
         assert_eq!(boot_flags(&e, &on, Some(27)), ["-XX:-UsePerfData", "-XX:TieredStopAtLevel=1"]);
         assert!(boot_flags(&e, &inst("t"), None).contains(&"-Xverify:none".to_string()));
@@ -1678,12 +1690,20 @@ mod tests {
     }
 
     #[test]
-    fn boot_flags_ride_with_jdk21_fixed_set_only() {
+    fn boot_flags_reach_jdk8_and_jdk21_plus_only() {
         let (_d, e) = temp_engine();
         let argv = build_argv(&e, &inst("t"), &mut make_resolved());
         assert!(argv.contains(&"-XX:-UsePerfData".to_string()));
         assert!(argv.contains(&"-Xverify:none".to_string()));
         assert!(!argv.contains(&"-XX:TieredStopAtLevel=1".to_string()));
+        assert!(!argv.contains(&"-XX:MetaspaceSize=128M".to_string()));
+        let mut legacy = make_resolved();
+        legacy.java = java("/jdk8/bin/java.exe", 8, "1.8.0_504-b07");
+        let argv = build_argv(&e, &inst("t"), &mut legacy);
+        for flag in ["-XX:-UsePerfData", "-Xverify:none", "-XX:MetaspaceSize=128M"] {
+            assert!(argv.contains(&flag.to_string()), "{flag}");
+        }
+        assert!(!argv.contains(&"--add-opens".to_string()), "no JDK 9+ flags on 8");
         let mut old = make_resolved();
         old.java = java("/jdk17/bin/java.exe", 17, "17.0.12+7");
         let argv = build_argv(&e, &inst("t"), &mut old);

@@ -57,8 +57,10 @@ public final class Compat {
         if (font == null) return;
         int guiW = graphics.guiWidth();
         int guiH = graphics.guiHeight();
+        java.util.List<HudEngine.Block> blocks = HudEngine.getInstance().blocks(minecraft);
+        if (blocks.isEmpty()) return; // the default: every overlay off, no theme lookup per frame
         es.spectral.menu.HudTheme hudTheme = es.spectral.menu.HudTheme.current();
-        for (HudEngine.Block block : HudEngine.getInstance().blocks(minecraft)) {
+        for (HudEngine.Block block : blocks) {
             int w = blockWidth(font, block);
             int h = blockHeight(block);
             int[] pos = HudLayout.pos(block.id, guiW, guiH, w, h);

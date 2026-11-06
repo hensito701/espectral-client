@@ -26,6 +26,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 
 /**
  * Versioned config store for &lt;instanceDir&gt;/config/espectral-client.json (schema 2):
@@ -293,6 +294,33 @@ public final class ClientConfig {
         } catch (Exception e) {
             LOGGER.error("Failed to save config to {}: {}", path, e.getMessage());
         }
+    }
+
+    /**
+     * One-time game-setting defaults ({@code "applied_defaults"} ids): a
+     * default is applied once per game dir and marked here, so the player's
+     * later choice is never overwritten.
+     */
+    public synchronized boolean isDefaultApplied(String id) {
+        for (JsonElement el : appliedDefaults()) {
+            if (el.isJsonPrimitive() && id.equals(el.getAsString())) return true;
+        }
+        return false;
+    }
+
+    /** Records {@code id} as applied (persisted at once); no-op when already recorded. */
+    public synchronized void markDefaultApplied(String id) {
+        if (isDefaultApplied(id)) return;
+        JsonArray applied = appliedDefaults();
+        applied.add(new JsonPrimitive(id));
+        rawRoot.add("applied_defaults", applied);
+        save();
+    }
+
+    /** Gson 2.2.4 (1.8.9's) has no JsonArray#contains. */
+    private JsonArray appliedDefaults() {
+        return rawRoot.has("applied_defaults") && rawRoot.get("applied_defaults").isJsonArray()
+                ? rawRoot.getAsJsonArray("applied_defaults") : new JsonArray();
     }
 
     /** Master switch state. */
