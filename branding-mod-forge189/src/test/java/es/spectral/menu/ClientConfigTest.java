@@ -123,4 +123,18 @@ public class ClientConfigTest {
         config.load();
         assertEquals("cHola mundo", config.tagline());
     }
+
+    @Test
+    public void anAppliedDefaultStaysAppliedAcrossRestarts() throws Exception {
+        write("{\"schema\":2,\"applied_defaults\":[\"other\"]}");
+        ClientConfig config = ClientConfig.getInstance();
+        config.load();
+        assertTrue(config.isDefaultApplied("other"));
+        assertFalse(config.isDefaultApplied("vbo"));
+        config.markDefaultApplied("vbo");
+        config.markDefaultApplied("vbo");
+        config.load();
+        assertTrue("the mark survives a restart", config.isDefaultApplied("vbo"));
+        assertEquals(2, read().getAsJsonArray("applied_defaults").size());
+    }
 }

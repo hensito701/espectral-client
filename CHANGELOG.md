@@ -2,7 +2,22 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.7.4] - 2026-11-06
+
+### Improved
+- **Minecraft 1.8.9 runs faster.** Espectral now turns on *Use VBOs* (Video
+  Settings) once for each 1.8.9 instance. Vanilla 1.8.9 ships it off for
+  graphics drivers from 2015; on current PCs it draws the same picture
+  faster. On our test laptop (Ryzen 7 5825U, integrated graphics) that was
+  **about 25% more fps** looking over the landscape or at hidden mobs and
+  chests, and about 8% more in crowds of mobs, with better 1% lows. If you
+  switch it back off, Espectral leaves your choice alone.
+- **Minecraft 1.8.9 starts about half a second sooner** (−8% to the main
+  menu on the same laptop): Java 8 launches now get the startup settings the
+  newer versions already had, plus room for Forge's class data so it no
+  longer stops twice to clean memory while loading.
+- The in-game HUD does a little less work on every frame when no HUD
+  overlay (coordinates, FPS, armor…) is turned on (1.21.11, 26.2, 26.3).
 
 ### Fixed
 - **The launcher opens instead of silently doing nothing.**
@@ -23,6 +38,11 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
     log instead of closing without a word.
 - The Mods page no longer closes the launcher when a file in the mods folder
   has an accented letter or emoji just before its last characters.
+- **A custom Java for one instance stays with that instance.** Setting a Java
+  path on one instance quietly made it the launcher's Java for every
+  instance — even after removing it. Minecraft 26.x instances also lost their
+  startup cache that way, so they started about 2–3 seconds slower until it
+  was rebuilt.
 
 ### Added
 - **Launcher log:** `%LOCALAPPDATA%\espectral-client\logs\launcher.log`

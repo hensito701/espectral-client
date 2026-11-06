@@ -224,6 +224,31 @@ Static and shader hold a clean 60 fps; chunkload and entities sit at a locked 33
 
 **Engine fix found by the swarm.** Contract C gave non-active-account launches `nativesDir = profiles/<uuid>/natives`, but `installLibraries` only ever extracts to the instance natives dir — every such launch died on `liblwjgl.so`. Profile launches now share the instance natives dir (`launch.mjs`; test updated).
 
+### 1.7.4 pass: 26.3 default stack and Forge 1.8.9 (2026-11-06)
+
+**Method.** Same Fedora machine (Ryzen 7 5825U, Barcelo iGPU on radeonsi, Mesa 26.2.4), 1600×900 window, vsync off, `maxFps` 260. Instances built by the engine like a player's: `26.3` Fabric + the performance preset + espectral-menu (render distance 16, Fancy), and `1.8.9` Forge 11.15.1.2318 + espectral-menu on the bundled Temurin 8. The bench file now drives 1.8.9 too (`branding-mod-forge189/.../bench/BenchEngine.java`, same `espectral-bench.json` → `bench-metrics.jsonl` contract, steps `{"cmd": "<server command>"}` / `{"wait_s": N}`), and the 26.x bench gained the same `cmd` verb. Scenes after a 30 s warm-up: `vista` and `vista2` (two headings from y 140 over a seed-20260913 world), `entities` (60 cows in view), `hidden` (150 no-AI cows under a 20×5×20 chest slab — occlusion culling). Every comparison interleaves its arms run by run; boot is `menu_ms` (launch → `Sound engine started`), 1 discarded warm-up per round. This laptop throttles after an hour of back-to-back launches (26.3 per-scene averages drift ±15% between rounds), so only interleaved same-session pairs are compared.
+
+**Forge 1.8.9 — shipped.**
+
+| Change | Result |
+|---|---|
+| `useVbo` on (vanilla default off) | avg fps vista 166 → 206 (+24%), vista2 176 → 198 (+13%), entities 286 → 308 (+8%), hidden 165 → 206 (+25%); 1% lows +6–18%. Set once per game dir by `GameDefaults` (`applied_defaults` in `espectral-client.json`), so turning it off sticks. |
+| JDK 8 boot flags (`-XX:-UsePerfData -Xverify:none -XX:MetaspaceSize=128M`) | menu 6 257 → 5 730 ms (−527 ms, −8.4%, n = 9 each). The 21 MB default metaspace forced two `Metadata GC Threshold` full collections per boot. |
+| `-XX:+DisableExplicitGC` | no boot change (the five `System.gc()` calls are on world load/quit) — rejected |
+| G1 instead of the JDK 8 Parallel default | entities −17% avg fps — rejected |
+| EntityCulling 1.5.0 (tr7zw, only 1.8.9 build) | within noise in every scene, `hidden` included — rejected |
+
+**26.3 default stack — nothing to ship beyond a HUD early-out.** A JFR profile of the render thread puts espectral-menu at ≤1% of samples (the HUD overlay path resolved its theme every frame with every overlay off; now skipped). The rest is Sodium (`ClonedChunkSectionCache.cleanup`, region updates) and vanilla (`doAnimateTick` block lookups); GC is 12 young pauses of 5–10 ms in 110 s.
+
+| Candidate | Result |
+|---|---|
+| ImmediatelyFast 1.17.1 + EntityCulling 1.11.3 + BadOptimizations 2.4.1 | two interleaved 3×3 sessions: +12% vista/hidden in the first, −1…−10% in the second; boot 11 413 vs 11 442 ms — no reliable gain. Sodium already culls entities (`use_entity_culling`). Rejected. |
+| `-XX:+UseCompactObjectHeaders` | −2…−14% avg fps per scene (and it refuses the AOT cache) — rejected |
+| AOT cache vs none, FPS | mixed within noise (−25…+17% per scene) — no steady-state cost to act on |
+| Sodium 0.9.3-beta.1 | Iris 1.11.7 requires exactly 0.9.2 — not testable as a pin |
+
+**Launcher bug found by the harness.** A per-instance `jdk_path_override` was cached as the launcher-wide `config.jvm` (and from there into `runtimes/jdk-<tier>/info.json`): after one instance pointed at a JDK 8, every Java 8 launch kept using it even with the override removed, and the AOT key of every 26.x instance (derived from `config.jvm`'s build) changed, so their caches were "not found" — boot 9.0 → 11–12 s in this session. `jvm::get_jvm_info` no longer caches overrides.
+
 ### Product rules
 
 1. **Balanced means today's visual quality.** No silent reductions to render distance, particles, shaders, graphics, or texture quality.

@@ -168,6 +168,8 @@ public final class BenchEngine {
                 Screen screen = minecraft.gui != null ? minecraft.gui.screen() : null;
                 if (isTitle(screen)) {
                     enterAttempted = true;
+                    LOGGER.info("[espectral-bench] title screen at JVM uptime {} ms",
+                            ManagementFactory.getRuntimeMXBean().getUptime());
                     enterStartMs = nowMs;
                     attemptEnter(minecraft);
                 } else if (screen != null && minecraft.isGameLoadFinished()) {
@@ -294,18 +296,18 @@ public final class BenchEngine {
                     minecraft.player.setXRot((float) step.vec[1]);
                 }
             }
-            case SUMMON -> {
+            case SUMMON, CMD -> {
                 var server = minecraft.getSingleplayerServer();
                 if (server == null) {
-                    LOGGER.warn("[espectral-bench] summon skipped (no integrated server yet)");
+                    LOGGER.warn("[espectral-bench] {} skipped (no integrated server yet)", step.kind);
                     break;
                 }
                 var source = server.createCommandSourceStack()
                         .withPermission(PermissionSet.ALL_PERMISSIONS)
                         .withSuppressedOutput();
-                String pos = fmt(step.vec[0]) + " " + fmt(step.vec[1]) + " " + fmt(step.vec[2]);
+                String cmd = step.kind == BenchSpec.Step.Kind.CMD ? step.entity
+                        : "summon " + step.entity + " " + fmt(step.vec[0]) + " " + fmt(step.vec[1]) + " " + fmt(step.vec[2]);
                 for (int i = 0; i < step.count; i++) {
-                    String cmd = "summon " + step.entity + " " + pos;
                     server.execute(() -> {
                         try {
                             server.getCommands().performPrefixedCommand(source, cmd);

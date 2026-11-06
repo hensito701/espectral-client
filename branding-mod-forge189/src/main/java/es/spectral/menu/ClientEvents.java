@@ -19,6 +19,7 @@ import org.lwjgl.opengl.GL11;
 import es.spectral.menu.agent.AgentInput;
 import es.spectral.menu.agent.AgentJoin;
 import es.spectral.menu.agent.AgentPause;
+import es.spectral.menu.bench.BenchEngine;
 import es.spectral.menu.ui.EspectralTitleScreen;
 import es.spectral.menu.ui.SuiteConfirmScreen;
 import es.spectral.menu.ui.SuiteScreen;
@@ -63,6 +64,13 @@ public final class ClientEvents {
         AgentPause.onTick();
         AgentInput.onTick();
         AgentJoin.onTick(mc);
+        BenchEngine.onTick(mc);
+        GameDefaults.onTick(mc);
+    }
+
+    @SubscribeEvent
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) BenchEngine.onFrameEnd();
     }
 
     @SubscribeEvent

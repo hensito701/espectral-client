@@ -345,7 +345,10 @@ pub async fn discover_jvm(engine: &Engine) -> EngineResult<JavaRuntime> {
 }
 
 /// Cached-if-possible primary JVM; with `override_path` (per-instance JDK
-/// override) probe exactly that java — any parseable JDK, never falls through.
+/// override) probe exactly that java — any parseable JDK, never falls through,
+/// and never cached: it belongs to that one instance. Caching it as config.jvm
+/// made a JDK 8 override the launcher-wide JVM (every Java 8 tier launch kept
+/// it after the override was removed, and every AOT cache key changed).
 pub async fn get_jvm_info(engine: &Engine, override_path: Option<&str>) -> EngineResult<JavaRuntime> {
     if let Some(o) = override_path.filter(|s| !s.is_empty()) {
         let p = Path::new(o);
@@ -359,7 +362,7 @@ pub async fn get_jvm_info(engine: &Engine, override_path: Option<&str>) -> Engin
                 probe.error.as_deref().unwrap_or("undefined")
             )));
         }
-        return Ok(cache_jvm(engine, to_jvm_info(p, &probe, JvmSource::Path)));
+        return Ok(to_jvm_info(p, &probe, JvmSource::Path));
     }
     if let Some(c) = cached_jvm(engine) {
         return Ok(c);
@@ -526,6 +529,7 @@ mod tests {
         assert_eq!(info.source, JvmSource::Path);
         // memo reused (override path probes once)
         assert_eq!(e.game_resolve_state().probe_memo_size(), 1);
+        assert!(e.config().jvm().is_none(), "an instance override never becomes the launcher-wide JVM");
 
         // Legacy config.jvm record without major -> backfilled from version.
         e.config().set(

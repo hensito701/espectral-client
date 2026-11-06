@@ -28,6 +28,7 @@ public final class EspectralMenu {
         ClientConfig.setConfigDir(event.getModConfigurationDirectory());
         ClientConfig.getInstance().load();
         Keys.register();
+        es.spectral.menu.bench.BenchEngine.maybeArm(event.getModConfigurationDirectory().getParentFile());
     }
 
     @Mod.EventHandler
