@@ -26,5 +26,6 @@ public abstract class GuiHudMixin {
     )
     private void espectral$drawHudOverlays(GuiGraphics graphics, DeltaTracker deltaTracker, CallbackInfo ci) {
         Compat.drawHudOverlays(Minecraft.getInstance(), graphics);
+        Compat.drawMediaToast(Minecraft.getInstance(), graphics);
     }
 }

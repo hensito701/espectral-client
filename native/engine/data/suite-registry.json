@@ -168,6 +168,17 @@
       "description_es": "Atajos de teclado para chat y comandos."
     },
     {
+      "id": "mediaplayer",
+      "category": "controls",
+      "kind": "owned",
+      "default_enabled": true,
+      "state": { "volume": 0.7, "shuffle": false, "repeat": "off", "duckMusic": true, "toast": true },
+      "name_en": "Media Player",
+      "name_es": "Reproductor",
+      "description_en": "Your own MP3s with playlists — files come from the launcher's music folder.",
+      "description_es": "Tus propios MP3 con listas — los archivos salen de la carpeta music del launcher."
+    },
+    {
       "id": "cosmetics",
       "category": "cosmetics",
       "kind": "owned",

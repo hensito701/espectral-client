@@ -390,9 +390,33 @@ Slots: **Espalda** (one cloak *or* one pair of wings), **Cuello**, **Cabeza**, *
 
 Shoulder pets, walking companions, hats and particle auras are deliberately absent: plugins already reproduce them. A companion returns only if it is designed around client-only behaviour.
 
+### Ruta Espectral (MVP network perk, decided 2026-11-07)
+
+An opt-in, per-server relay for Minecraft traffic, for MVP and MVP+ only. It is not a VPN: only the
+game connection to the servers the player picks is relayed; the rest of the PC is untouched, and
+no driver or admin rights are involved.
+
+- **Relay:** `ruta.uhce.top` (OVM2, Oracle Ashburn, ports 25565 and 443), source and wire spec in
+  `services/ruta-relay/` (`PROTOCOL.md`). OVM2 was emptied for it: the Pterodactyl panel moved to
+  OVM3 the same day, and OVM2 keeps only the Galera arbitrator. Its public IP no longer appears in any
+  allowlist, and on the tailnet it can reach only the two Galera nodes on port 4567.
+- **Entitlement:** the relay verifies the player's existing espectral-id grant (same Ed25519 key and
+  claim rules as the mod) and requires the `mvp` flag; no new backend.
+- **Client:** a toggle in each multiplayer-list row, off by default, shown only to MVPs and never for
+  Espectral's own servers (routing them would put every MVP behind one IP for AuthMe limits and IP
+  bans). With it on, the status ping and the join both go through the relay, so the server never
+  sees the player's IP and the shown ping is the real routed ping. If the relay refuses or is down,
+  the connection fails with a message naming Ruta Espectral; it never silently goes direct.
+- **Honest pitch:** hides the home IP and gets past networks that block Minecraft's port. It is not a
+  lower-ping product from Spain: the relay is in the US, which suits US servers and adds latency to
+  European ones.
+- **Abuse limits:** IP-literal destinations only, no private, tailnet or metadata ranges, ports
+  1024–65535 minus database/remote-desktop ports, per-player concurrency, rate and daily byte quota,
+  per-IP and global caps. Logs keep one line per connection (no payload).
+
 ### Engineering rules (fixed)
 
-- Benefits are cosmetic-only. Fullbright, no-fog, macros, HUD data, themes, backgrounds and performance controls remain free.
+- Benefits are cosmetic-only, with one recorded exception: Ruta Espectral (above), a network-routing perk that changes nothing in gameplay. Fullbright, no-fog, macros, HUD data, themes, backgrounds, performance controls, the media player and the multiplayer ping/flag display remain free.
 - One equipped item per slot. Every cosmetic is individually toggleable and respects the Suite master.
 - Viewers can hide all cosmetics or hide a specific player.
 - Reduced motion replaces simulation and animation with a static pose; global particle caps apply to any particle use.

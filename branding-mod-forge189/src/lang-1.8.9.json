@@ -21,7 +21,9 @@
     "espectral.hud.armor.legs": "Grebas",
     "espectral.hud.armor.feet": "Botas",
     "espectral.agent.paused": "Agente en pausa (F8 para reanudar)",
-    "espectral.agent.resumed": "Agente reanudado"
+    "espectral.agent.resumed": "Agente reanudado",
+    "espectral.media.newlist": "Lista %s",
+    "espectral.media.toast.now": "Suena: %s"
   },
   "en": {
     "espectral.menu.mods": "Mods",
@@ -44,6 +46,8 @@
     "espectral.hud.armor.legs": "Leggings",
     "espectral.hud.armor.feet": "Boots",
     "espectral.agent.paused": "Agent paused (F8 to resume)",
-    "espectral.agent.resumed": "Agent resumed"
+    "espectral.agent.resumed": "Agent resumed",
+    "espectral.media.newlist": "Playlist %s",
+    "espectral.media.toast.now": "Playing: %s"
   }
 }

@@ -25,6 +25,15 @@ public final class EspectralClient implements ClientModInitializer {
     public static net.minecraft.client.KeyMapping EMOTE_KEY;
 
     /**
+     * Media Player transport keys. Vanilla leaves these three GLFW keys
+     * unbound in 1.21.11 and 26.x (P is Social Interactions, J advancements,
+     * commas/periods are free), so the defaults collide with nothing.
+     */
+    public static net.minecraft.client.KeyMapping MEDIA_PLAY_KEY;
+    public static net.minecraft.client.KeyMapping MEDIA_NEXT_KEY;
+    public static net.minecraft.client.KeyMapping MEDIA_PREV_KEY;
+
+    /**
      * Agent pause key (default F8): flips {@code paused} for the in-game relay,
      * after which every act-tier agent tool is refused. Registered only in
      * agent mode. A plain {@code KeyMapping} — the agent's injected keys go
@@ -44,6 +53,9 @@ public final class EspectralClient implements ClientModInitializer {
         CLIENT_KEY = new net.minecraft.client.KeyMapping("key.espectral.client", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_RSHIFT, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
         ZOOM_KEY = new net.minecraft.client.KeyMapping("key.espectral.zoom", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_Z, net.minecraft.client.KeyMapping.Category.GAMEPLAY);
         EMOTE_KEY = new net.minecraft.client.KeyMapping("key.espectral.emotes", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_B, ESPECTRAL_CATEGORY);
+        MEDIA_PLAY_KEY = new net.minecraft.client.KeyMapping("key.espectral.media.play", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_K, ESPECTRAL_CATEGORY);
+        MEDIA_NEXT_KEY = new net.minecraft.client.KeyMapping("key.espectral.media.next", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_PERIOD, ESPECTRAL_CATEGORY);
+        MEDIA_PREV_KEY = new net.minecraft.client.KeyMapping("key.espectral.media.prev", Keys.keyboard(), com.mojang.blaze3d.platform.InputConstants.KEY_COMMA, ESPECTRAL_CATEGORY);
         if (es.spectral.menu.agent.AgentRuntime.enabled()) {
             AGENT_PAUSE_KEY = new net.minecraft.client.KeyMapping("key.espectral.agent.pause", Keys.keyboard(),
                     com.mojang.blaze3d.platform.InputConstants.KEY_F8, ESPECTRAL_CATEGORY);
@@ -52,6 +64,7 @@ public final class EspectralClient implements ClientModInitializer {
         if (version == null) version = "dev";
         LOGGER.info("Initializing Espectral Client mod (v{})", version);
         ClientConfig.getInstance().load();
+        es.spectral.menu.ruta.RutaRouteIcon.install();
     }
 
     /**
@@ -62,7 +75,7 @@ public final class EspectralClient implements ClientModInitializer {
      */
     public static void ensureClientKeyRegistered() {
         if (clientKeyRegistered || CLIENT_KEY == null || ZOOM_KEY == null
-                || EMOTE_KEY == null) return;
+                || EMOTE_KEY == null || MEDIA_PLAY_KEY == null) return;
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.options == null) return;
         net.minecraft.client.KeyMapping[] all = allKeys();
@@ -100,8 +113,14 @@ public final class EspectralClient implements ClientModInitializer {
 
     /** Every binding this mod owns (the agent pause key exists only in agent mode). */
     private static net.minecraft.client.KeyMapping[] allKeys() {
-        return AGENT_PAUSE_KEY == null
-                ? new net.minecraft.client.KeyMapping[] {CLIENT_KEY, ZOOM_KEY, EMOTE_KEY}
-                : new net.minecraft.client.KeyMapping[] {CLIENT_KEY, ZOOM_KEY, EMOTE_KEY, AGENT_PAUSE_KEY};
+        java.util.List<net.minecraft.client.KeyMapping> keys = new java.util.ArrayList<>();
+        keys.add(CLIENT_KEY);
+        keys.add(ZOOM_KEY);
+        keys.add(EMOTE_KEY);
+        if (MEDIA_PLAY_KEY != null) keys.add(MEDIA_PLAY_KEY);
+        if (MEDIA_NEXT_KEY != null) keys.add(MEDIA_NEXT_KEY);
+        if (MEDIA_PREV_KEY != null) keys.add(MEDIA_PREV_KEY);
+        if (AGENT_PAUSE_KEY != null) keys.add(AGENT_PAUSE_KEY);
+        return keys.toArray(new net.minecraft.client.KeyMapping[0]);
     }
 }

@@ -52,6 +52,7 @@ pub mod runtimes;
 // ---- game-launch -----------------------------------------------------------
 pub mod aot;
 pub mod game_sessions;
+pub mod geoip;
 pub mod launch;
 pub mod version_change;
 

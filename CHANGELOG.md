@@ -2,6 +2,53 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Media Player (Espectral Suite → Reproductor / Media Player).** Play your
+  own MP3s in game, from one folder shared by every instance
+  (`%LOCALAPPDATA%\espectral-client\music`, created for you; on Linux
+  `~/.local/share/espectral-client/music`). The Suite row has a gear button that
+  opens the library, playlists (create/rename/delete/add/remove/reorder), a
+  play/pause/previous/next transport, shuffle, repeat (off/all/one), a volume
+  slider independent of the game's, a now-playing line with elapsed/total time,
+  a Refresh button and Open folder. Keys: **K** play/pause, **.** next, **,**
+  previous (all free in vanilla; rebind them in Controls → Espectral). A short
+  "♪ now playing" toast appears on track change, and the game's own music is
+  muted while yours plays (both toggleable in the screen). Playback streams
+  from disk with a fixed ~1.7 MB buffer, so a 10-minute track costs the same
+  memory as a 10-second one, and it keeps playing across F3+T and audio-device
+  changes. MP3 decoding by [JavaMP3](https://github.com/delthas/javamp3) (MIT).
+  No music is bundled or downloaded: only what you put in the folder is played.
+- The Suite's settings button is now a crisp pixel-art gear sprite instead of a
+  font glyph that rendered as an empty box on some systems (all variants, all
+  sub-screens).
+- **Ruta Espectral (MVP and MVP+).** A new icon in each multiplayer server row
+  (left of the flag, shown only to MVPs and never on Espectral's own servers)
+  routes that one server through Espectral's relay `ruta.uhce.top`, so the
+  server never sees your IP and networks that block Minecraft's port can still
+  connect. It is off by default and remembered per server; with it on, both the
+  server-list ping and the join go through the relay, so the ping you see is the
+  real one. If the relay refuses or is unreachable you get a message naming Ruta
+  Espectral; the game never silently connects directly instead. It is not a
+  VPN: only that game connection is relayed. The relay is in the US, so it can
+  add latency to European servers. The relay itself lives in
+  `services/ruta-relay/` (static Rust binary, `PROTOCOL.md`, hardened systemd
+  unit); it accepts only the same signed MVP grants as the mod, only public
+  addresses, and has per-player and global limits.
+- **Ping in numbers and country flags in the server list.** Each multiplayer
+  row now shows its ping as a number (`38 ms`, green under 80 ms, yellow under
+  150 ms, red above) and, left of it, the server's country flag (16×11). Hover
+  the flag for the country name in your language and the DB-IP credit; LAN,
+  private and unresolved addresses show neither. The flag uses the address
+  vanilla already resolved for its ping, so the list never waits on DNS.
+- **Country data for the server list.** At start, and only once a month, the
+  launcher downloads the free DB-IP country database in the background and
+  keeps a ~25 MB file in `cache/geoip/`. It never delays a launch: if the
+  download fails the launcher simply carries on without it, and the game is
+  told where the file is only when it is complete and readable. IP
+  geolocation by DB-IP (<https://db-ip.com>), used under CC BY 4.0.
+
 ## [1.7.4] - 2026-11-06
 
 ### Improved

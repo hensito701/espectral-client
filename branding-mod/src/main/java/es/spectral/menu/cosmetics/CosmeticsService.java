@@ -57,9 +57,15 @@ public final class CosmeticsService {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(2);
 
     /** Snapshot of the launcher-written state file. */
-    public record Own(UUID uuid, GrantVerifier.Grant grant, boolean share,
+    public record Own(UUID uuid, GrantVerifier.Grant grant, String grantJws, boolean share,
             Loadout loadout, Set<String> hiddenPlayers, boolean emotes) {
-        static final Own EMPTY = new Own(null, null, false, Loadout.EMPTY, Set.of(), false);
+        static final Own EMPTY =
+                new Own(null, null, null, false, Loadout.EMPTY, Set.of(), false);
+    }
+
+    /** Idempotent: makes sure the state-file/bridge daemon is running. */
+    public static void ensureStarted() {
+        ensureWorker();
     }
 
     /** Verified presence for one visible peer. */
@@ -218,8 +224,13 @@ public final class CosmeticsService {
                 uuid = uuidFromHex(root.get("uuid").getAsString());
             }
             GrantVerifier.Grant grant = null;
+            String grantJws = null;
             if (uuid != null && root.has("grant") && root.get("grant").isJsonPrimitive()) {
-                grant = GrantVerifier.verify(root.get("grant").getAsString(), uuid);
+                String raw = root.get("grant").getAsString();
+                grant = GrantVerifier.verify(raw, uuid);
+                // The relay handshake needs the token verbatim, so keep it only
+                // once it verified: a bad grant is never sent anywhere.
+                if (grant != null) grantJws = raw;
             }
             boolean share = root.has("share") && root.get("share").isJsonPrimitive()
                     && root.get("share").getAsBoolean();
@@ -241,7 +252,7 @@ public final class CosmeticsService {
             }
             boolean emotes = !root.has("emotes")
                     || (root.get("emotes").isJsonPrimitive() && root.get("emotes").getAsBoolean());
-            return new Own(uuid, grant, share, loadout, hidden, emotes);
+            return new Own(uuid, grant, grantJws, share, loadout, hidden, emotes);
         } catch (Exception e) {
             LOGGER.debug("cosmetics state parse failed: {}", e.getMessage());
             return Own.EMPTY;

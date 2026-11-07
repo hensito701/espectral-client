@@ -6,11 +6,16 @@
   "refmap": "mixins.espectralmenu.refmap.json",
   "client": [
     "EntityRendererFeatureMixin",
+    "GuiConnectingRutaMixin",
+    "GuiMultiplayerRutaAccessor",
     "GuiNewChatMixin",
     "GuiPlayerTabOverlayMixin",
     "ItemRendererMixin",
     "NetHandlerPlayClientBrandMixin",
+    "NetworkManagerRutaMixin",
+    "OldServerPingerMixin",
     "RenderPlayerMixin",
+    "ServerListEntryNormalMixin",
     "ThreadDownloadImageDataAccessor"
   ],
   "injectors": {

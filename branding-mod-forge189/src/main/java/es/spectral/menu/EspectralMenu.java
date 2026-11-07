@@ -27,6 +27,8 @@ public final class EspectralMenu {
     public void preInit(FMLPreInitializationEvent event) {
         ClientConfig.setConfigDir(event.getModConfigurationDirectory());
         ClientConfig.getInstance().load();
+        es.spectral.menu.ruta.RutaGrants.setConfigDir(event.getModConfigurationDirectory());
+        es.spectral.menu.ruta.RutaGrants.refresh();
         Keys.register();
         es.spectral.menu.bench.BenchEngine.maybeArm(event.getModConfigurationDirectory().getParentFile());
     }
@@ -38,6 +40,7 @@ public final class EspectralMenu {
         ClientEvents events = new ClientEvents();
         MinecraftForge.EVENT_BUS.register(events);
         Skin3d.register();
+        es.spectral.menu.ruta.RutaIcon.install();
         MinecraftForge.EVENT_BUS.register(new AgentRelay.TickHook());
         AgentRelay.start();
     }

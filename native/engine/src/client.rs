@@ -649,7 +649,7 @@ mod tests {
             assert_eq!(item.kind, "owned");
             assert!(item.category.is_some(), "{} has a category", item.id);
         }
-        assert_eq!(reg.len(), 16);
+        assert_eq!(reg.len(), 17);
         let mut cats: Vec<&str> = reg.iter().filter_map(|r| r.category.as_deref()).collect();
         cats.sort();
         cats.dedup();
@@ -666,7 +666,7 @@ mod tests {
         let doc = &suite_registry().doc;
         assert_eq!(doc["schema"], 2);
         assert_eq!(doc["suite"]["default_enabled"], true);
-        assert_eq!(doc["features"].as_array().unwrap().len(), 16);
+        assert_eq!(doc["features"].as_array().unwrap().len(), 17);
         assert_eq!(doc["categories"].as_array().unwrap().len(), 5);
         for f in doc["features"].as_array().unwrap() {
             for k in ["name_en", "name_es", "description_en", "description_es"] {
@@ -997,7 +997,7 @@ mod tests {
         .unwrap();
         let info = get_client_info(&e, "fab").await.unwrap();
         assert!(info.supported);
-        assert_eq!(info.registry.len(), 16);
+        assert_eq!(info.registry.len(), 17);
         assert_eq!(info.errors, None);
         // Custom game_dir: the config follows the effective game dir.
         let gd = e.paths().data_dir().join("elsewhere");

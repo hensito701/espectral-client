@@ -1,0 +1,45 @@
+[package]
+name = "ruta-relay"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Ruta Espectral — MVP-only Minecraft TCP relay (ERT1)"
+license = "AGPL-3.0-or-later"
+publish = false
+
+# Standalone: not a member of the launcher's native/ cargo workspace.
+[workspace]
+
+[lib]
+name = "ruta_relay"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ruta-relay"
+path = "src/main.rs"
+
+[features]
+# Compile-time seam for the loopback smoke run: lets `ruta-relay` accept a
+# throwaway Ed25519 key instead of the pinned one. NEVER enable this for a
+# deployed build — the release binary below is built without it.
+test-key = []
+
+[dependencies]
+base64 = { version = "0.22", default-features = false, features = ["std"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+serde_json = "1"
+tokio = { version = "1", default-features = false, features = [
+    "rt-multi-thread",
+    "net",
+    "io-util",
+    "time",
+    "macros",
+] }
+
+# Small, self-contained static binary (see README for the musl build line).
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

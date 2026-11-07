@@ -20,6 +20,8 @@ import es.spectral.menu.agent.AgentInput;
 import es.spectral.menu.agent.AgentJoin;
 import es.spectral.menu.agent.AgentPause;
 import es.spectral.menu.bench.BenchEngine;
+import es.spectral.menu.media.MediaPlayer;
+import es.spectral.menu.media.MediaToast;
 import es.spectral.menu.ui.EspectralTitleScreen;
 import es.spectral.menu.ui.SuiteConfirmScreen;
 import es.spectral.menu.ui.SuiteScreen;
@@ -29,7 +31,7 @@ import es.spectral.menu.ui.SuiteScreen;
  * FML buses by {@link EspectralMenu}):
  * <ul>
  *   <li>client tick: live config reload (every second), zoom, macros, the
- *       Right Shift Suite shortcut, menu-art release, agent pause/input
+ *       Right Shift Suite shortcut, media player, menu-art release, agent pause/input
  *       leases and the agent world join;</li>
  *   <li>title screen swap ({@code GuiMainMenu} → {@link EspectralTitleScreen})
  *       and the pause-menu "Espectral Client…" / "♥ Support" row;</li>
@@ -57,6 +59,7 @@ public final class ClientEvents {
         }
         ZoomEngine.onTick(mc);
         MacroEngine.onTick(mc);
+        tickMedia(mc);
         if (Keys.CLIENT != null && Keys.CLIENT.isPressed() && mc.currentScreen == null) {
             mc.displayGuiScreen(new SuiteScreen(null));
         }
@@ -71,6 +74,35 @@ public final class ClientEvents {
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase == TickEvent.Phase.END) BenchEngine.onFrameEnd();
+    }
+
+    /**
+     * Media Player: runs only while its feature is on. The media keys are drained every tick so presses never
+     * queue up, and they act only with no screen open. Playback keeps running behind menus.
+     */
+    private static void tickMedia(Minecraft mc) {
+        boolean play = Keys.MEDIA_PLAY != null && Keys.MEDIA_PLAY.isPressed();
+        boolean next = Keys.MEDIA_NEXT != null && Keys.MEDIA_NEXT.isPressed();
+        boolean prev = Keys.MEDIA_PREV != null && Keys.MEDIA_PREV.isPressed();
+        MediaPlayer media = MediaPlayer.get();
+        if (!ClientConfig.getInstance().isFeatureEnabled(MediaPlayer.FEATURE_ID)) {
+            if (media.isPlaying()) {
+                media.stop();
+            }
+            return;
+        }
+        if (mc.currentScreen == null) {
+            if (play) {
+                media.togglePlayPause();
+            }
+            if (next) {
+                media.next();
+            }
+            if (prev) {
+                media.previous();
+            }
+        }
+        media.onClientTick(mc);
     }
 
     @SubscribeEvent
@@ -107,6 +139,9 @@ public final class ClientEvents {
         if (event.type == RenderGameOverlayEvent.ElementType.ALL) {
             HudEngine.draw(Minecraft.getMinecraft(), event.resolution);
             AgentPause.drawBanner(Minecraft.getMinecraft(), event.resolution.getScaledWidth());
+            if (ClientConfig.getInstance().isFeatureEnabled(MediaPlayer.FEATURE_ID)) {
+                MediaToast.render();
+            }
         }
     }
 
