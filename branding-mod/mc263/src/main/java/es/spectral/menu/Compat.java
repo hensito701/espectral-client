@@ -384,12 +384,15 @@ public final class Compat {
         }
     }
 
-    /** Queues a vanilla tooltip for this frame at the mouse position. */
+    /**
+     * Queues a vanilla tooltip for this frame at the mouse position. Split
+     * through the font so {@code \n} starts a new line and long text wraps.
+     */
     public static void uiTooltip(Object gfx, net.minecraft.client.gui.Font font,
             net.minecraft.network.chat.Component text, int mouseX, int mouseY) {
         if (gfx instanceof net.minecraft.client.gui.GuiGraphicsExtractor extractor && font != null
                 && text != null) {
-            extractor.setTooltipForNextFrame(font, text, mouseX, mouseY);
+            extractor.setTooltipForNextFrame(font.split(text, 220), mouseX, mouseY);
         }
     }
 

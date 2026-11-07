@@ -49,8 +49,11 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
     private int lastPages = 1;
 
     private final List<Button> rowButtons = new ArrayList<>();
+    private final List<Button> addButtons = new ArrayList<>();
     private final List<MediaTrack> rowTracks = new ArrayList<>();
     private final List<Button> playlistButtons = new ArrayList<>();
+    /** Up/down/remove buttons of the playlist detail rows, three per row. */
+    private final List<Button> rowControls = new ArrayList<>();
     private StringWidget emptyLabel;
     private StringWidget headerLabel;
     private StringWidget nowPlayingLabel;
@@ -69,7 +72,10 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
     private String pendingAddTrack;
     private String draftName;
     private EditBox nameBox;
-    private boolean refreshQueued;
+    /** Set by the library scan thread when a scan finishes; consumed on tick. */
+    private volatile boolean refreshQueued;
+    private Button playButton;
+    private String playKeyShown;
 
     public SuiteMediaScreen(Screen parent) {
         super(Component.translatable("espectral.media.title"));
@@ -83,8 +89,11 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
         player.reloadSettings();
         this.clearWidgets();
         this.rowButtons.clear();
+        this.addButtons.clear();
         this.rowTracks.clear();
         this.playlistButtons.clear();
+        this.rowControls.clear();
+        this.playKeyShown = null;
 
         int innerX = SuiteTheme.panelX(this.width) + SuiteTheme.MARGIN;
         int innerW = SuiteTheme.panelWidth(this.width) - 2 * SuiteTheme.MARGIN;
@@ -122,7 +131,7 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
         int ctlW = (innerW - 3 * SuiteTheme.GAP) / 4;
         this.addRenderableWidget(Button.builder(Component.translatable("espectral.media.prev"),
                 b -> MediaPlayer.get().previous()).bounds(innerX, y, ctlW, BUTTON_H).build());
-        this.addRenderableWidget(Button.builder(Component.translatable("espectral.media.play"),
+        this.playButton = this.addRenderableWidget(Button.builder(Component.translatable(playLabelKey()),
                 b -> MediaPlayer.get().togglePlayPause())
                 .bounds(innerX + ctlW + SuiteTheme.GAP, y, ctlW, BUTTON_H).build());
         this.addRenderableWidget(Button.builder(Component.translatable("espectral.media.next"),
@@ -158,8 +167,8 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
                         (innerW - 2 * SuiteTheme.GAP) / 3, BUTTON_H).build());
         this.addRenderableWidget(Button.builder(
                 Component.translatable("espectral.media.refresh"), b -> {
-                    this.refreshQueued = true;
-                    MediaPlayer.get().refreshLibrary(() -> this.refreshQueued = false);
+                    MediaPlayer.get().refreshLibrary(() -> this.refreshQueued = true);
+                    this.refresh();
                 }).bounds(innerX + 2 * ((innerW - 2 * SuiteTheme.GAP) / 3 + SuiteTheme.GAP), y,
                         (innerW - 2 * SuiteTheme.GAP) / 3, BUTTON_H).build());
         y += BUTTON_H + 2;
@@ -173,7 +182,7 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
         this.refresh();
         if (!MediaPlayer.get().library().isScanning()
                 && MediaPlayer.get().library().tracks().isEmpty()) {
-            MediaPlayer.get().refreshLibrary(() -> this.refreshQueued = false);
+            MediaPlayer.get().refreshLibrary(() -> this.refreshQueued = true);
         }
     }
 
@@ -191,7 +200,7 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
             this.addRenderableWidget(row);
             // "+": pick a playlist for this track (no separate playlist editor
             // entry point per track, so this is how playlists get filled).
-            this.addRenderableWidget(Button.builder(Component.literal("+"), b -> {
+            Button add = Button.builder(Component.literal("+"), b -> {
                 if (slot < this.rowTracks.size()) {
                     this.pendingAddTrack = this.rowTracks.get(slot).id();
                     this.tab = Tab.PLAYLISTS;
@@ -200,7 +209,9 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
                     this.rebuildWidgets();
                 }
             }).bounds(innerX + innerW - ROW_H + 2, rowsTop + i * ROW_H, ROW_H - 2, ROW_H - 2)
-                    .tooltip(Tooltip.create(Component.translatable("espectral.media.addto"))).build());
+                    .tooltip(Tooltip.create(Component.translatable("espectral.media.addto"))).build();
+            this.addButtons.add(add);
+            this.addRenderableWidget(add);
         }
         this.emptyLabel = new StringWidget(innerX, rowsTop + 2, innerW, 12,
                 Component.empty(), this.font);
@@ -269,20 +280,20 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
             this.addRenderableWidget(row);
             final int index = this.page * detailRows + slot;
             int bx = innerX + innerW - 54;
-            this.addRenderableWidget(Button.builder(Component.literal("\u25B2"),
-                    b -> MediaPlayer.get().moveInPlaylist(playlist.id(), index, -1))
-                    .bounds(bx, tracksTop + i * ROW_H, 18, ROW_H - 2).build());
-            this.addRenderableWidget(Button.builder(Component.literal("\u25BC"),
-                    b -> MediaPlayer.get().moveInPlaylist(playlist.id(), index, 1))
-                    .bounds(bx + 18, tracksTop + i * ROW_H, 18, ROW_H - 2).build());
-            this.addRenderableWidget(Button.builder(Component.literal("\u2715"),
+            this.rowControls.add(this.addRenderableWidget(Button.builder(Component.literal("\u25B2"),
+                    b -> { MediaPlayer.get().moveInPlaylist(playlist.id(), index, -1); this.refresh(); })
+                    .bounds(bx, tracksTop + i * ROW_H, 18, ROW_H - 2).build()));
+            this.rowControls.add(this.addRenderableWidget(Button.builder(Component.literal("\u25BC"),
+                    b -> { MediaPlayer.get().moveInPlaylist(playlist.id(), index, 1); this.refresh(); })
+                    .bounds(bx + 18, tracksTop + i * ROW_H, 18, ROW_H - 2).build()));
+            this.rowControls.add(this.addRenderableWidget(Button.builder(Component.literal("\u2715"),
                     b -> {
                         if (index < playlist.tracks().size()) {
                             MediaPlayer.get().removeFromPlaylist(playlist.id(),
                                     playlist.tracks().get(index));
                         }
                         this.rebuildWidgets();
-                    }).bounds(bx + 36, tracksTop + i * ROW_H, 18, ROW_H - 2).build());
+                    }).bounds(bx + 36, tracksTop + i * ROW_H, 18, ROW_H - 2).build()));
         }
         this.emptyLabel = new StringWidget(innerX, tracksTop + 2, innerW, 12,
                 Component.translatable("espectral.media.playlist.empty"), this.font);
@@ -350,7 +361,13 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
                                 MediaPlayer.get().createPlaylist(
                                         Component.translatable("espectral.media.newlist",
                                                 MediaPlayer.get().playlists().size() + 1).getString());
-                        if (created != null) {
+                        if (created != null && this.pendingAddTrack != null) {
+                            // Pick mode: the new playlist starts with the picked track.
+                            MediaPlayer.get().addToPlaylist(created.id(), this.pendingAddTrack);
+                            this.pendingAddTrack = null;
+                            this.tab = Tab.LIBRARY;
+                            this.page = 0;
+                        } else if (created != null) {
                             this.selectedPlaylist = created.id();
                             this.draftName = created.name();
                         }
@@ -366,8 +383,9 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
                     }
                 })
                 .bounds(innerX + bw + SuiteTheme.GAP, footerY, bw, BUTTON_H).build());
-        this.addRenderableWidget(Button.builder(Component.translatable("espectral.media.credits"),
-                b -> { }).bounds(innerX + 2 * (bw + SuiteTheme.GAP), footerY, bw, BUTTON_H).build());
+        this.addRenderableWidget(Button.builder(Component.translatable("espectral.media.credits.button"),
+                b -> { }).bounds(innerX + 2 * (bw + SuiteTheme.GAP), footerY, bw, BUTTON_H)
+                .tooltip(Tooltip.create(Component.translatable("espectral.media.credits"))).build());
     }
 
     private List<String> allIds() {
@@ -390,11 +408,23 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
     public void tick() {
         super.tick();
         if (this.refreshQueued) {
+            // Set by the library scan thread when it finishes; repaint once here.
+            this.refreshQueued = false;
             this.refresh();
         }
         if (this.nowPlayingLabel != null) {
             this.nowPlayingLabel.setMessage(nowPlayingLine());
         }
+        String playKey = playLabelKey();
+        if (this.playButton != null && !playKey.equals(this.playKeyShown)) {
+            this.playKeyShown = playKey;
+            this.playButton.setMessage(Component.translatable(playKey));
+        }
+    }
+
+    private static String playLabelKey() {
+        MediaPlayer player = MediaPlayer.get();
+        return player.isPlaying() && !player.isPaused() ? "espectral.media.pause" : "espectral.media.play";
     }
 
     private MutableComponent nowPlayingLine() {
@@ -428,13 +458,15 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
             }
             for (int i = 0; i < this.rowButtons.size(); i++) {
                 Button button = this.rowButtons.get(i);
-                if (i < this.rowTracks.size()) {
+                boolean filled = i < this.rowTracks.size();
+                if (filled) {
                     MediaTrack track = this.rowTracks.get(i);
                     button.setMessage(Component.literal(track.displayName()));
                     button.setTooltip(Tooltip.create(Component.literal(track.id())));
-                    button.visible = true;
-                } else {
-                    button.visible = false;
+                }
+                button.visible = filled;
+                if (i < this.addButtons.size()) {
+                    this.addButtons.get(i).visible = filled;
                 }
             }
             this.emptyLabel.visible = tracks.isEmpty();
@@ -451,8 +483,9 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
                     int index = this.page * this.pageSize + i;
                     if (index < all.size()) {
                         MediaPlayer.Playlist entry = all.get(index);
-                        button.setMessage(Component.translatable("espectral.media.playlist.tracks",
-                                entry.name(), entry.tracks().size()));
+                        button.setMessage(Component.literal(entry.name() + " - ")
+                                .append(Component.translatable("espectral.media.playlist.tracks",
+                                        entry.tracks().size())));
                         button.visible = true;
                     } else {
                         button.visible = false;
@@ -471,13 +504,15 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
                 for (int i = 0; i < rows; i++) {
                     Button button = this.playlistButtons.get(i);
                     int index = this.page * rows + i;
-                    if (index < ids.size()) {
+                    boolean filled = index < ids.size();
+                    if (filled) {
                         MediaTrack track = player.library().byId(ids.get(index));
                         button.setMessage(Component.literal(track != null
                                 ? track.displayName() : ids.get(index) + " \u26A0"));
-                        button.visible = true;
-                    } else {
-                        button.visible = false;
+                    }
+                    button.visible = filled;
+                    for (int c = i * 3; c < i * 3 + 3 && c < this.rowControls.size(); c++) {
+                        this.rowControls.get(c).visible = filled;
                     }
                 }
                 if (this.emptyLabel != null) {

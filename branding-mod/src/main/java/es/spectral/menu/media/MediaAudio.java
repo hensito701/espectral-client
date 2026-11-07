@@ -87,7 +87,7 @@ public final class MediaAudio {
                         synchronized (MediaAudio.this) {
                             if (state != STATE_REQUESTED || created == null) {
                                 if (created != null) {
-                                    created.release();
+                                    stopHandle(created);
                                 }
                                 return;
                             }
@@ -160,11 +160,23 @@ public final class MediaAudio {
         this.state = STATE_IDLE;
         this.appliedVolume = -1.0F;
         if (current != null) {
-            try {
-                current.release();
-            } catch (Throwable e) {
-                LOGGER.debug("Channel release failed: {}", e.toString());
+            stopHandle(current);
+        }
+    }
+
+    /**
+     * Stops a channel on the sound thread and lets vanilla release it. Calling
+     * {@code ChannelHandle.release()} directly would null its channel while the
+     * handle stays in {@code ChannelAccess}'s set, and vanilla's stream tick then
+     * throws a NullPointerException on every tick for it.
+     */
+    private static void stopHandle(ChannelAccess.ChannelHandle handle) {
+        try {
+            if (!handle.isStopped()) {
+                handle.execute(com.mojang.blaze3d.audio.Channel::stop);
             }
+        } catch (Throwable e) {
+            LOGGER.debug("Channel stop failed: {}", e.toString());
         }
     }
 
@@ -200,14 +212,9 @@ public final class MediaAudio {
         }
         ChannelAccess.ChannelHandle current = this.handle;
         if (current == null || current.isStopped()) {
-            // F3+T / device change / shutdown destroyed the pool: rebuild.
-            if (current != null) {
-                try {
-                    current.release();
-                } catch (Throwable ignored) {
-                    // already gone
-                }
-            }
+            // F3+T / device change / shutdown, or the stream ran dry and vanilla
+            // released the handle itself: rebuild. Never release() here, vanilla
+            // already did.
             this.handle = null;
             this.state = STATE_REQUESTED;
             this.appliedVolume = -1.0F;

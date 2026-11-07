@@ -341,6 +341,7 @@
   "espectral.media.add": "Añadir",
   "espectral.media.addto": "Añadir a lista",
   "espectral.media.credits": "Reproductor MP3: JavaMP3 (MIT) de delthas.",
+  "espectral.media.credits.button": "Créditos",
   "espectral.media.delete": "Borrar lista",
   "espectral.media.delete.confirm": "Borrar",
   "espectral.media.delete.message": "Se eliminará «%s». Las canciones del disco no se tocan.",

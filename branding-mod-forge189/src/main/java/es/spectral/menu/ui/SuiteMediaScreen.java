@@ -480,7 +480,16 @@ public class SuiteMediaScreen extends GuiScreen {
 
     private void createPlaylist() {
         Playlist created = player.createPlaylist(Lang.tr("espectral.media.newlist", player.playlists().size() + 1));
-        if (created != null && pendingAddTrack == null) {
+        if (created == null) {
+            return;
+        }
+        if (pendingAddTrack != null) {
+            // Pick mode: the new playlist starts with the picked track.
+            player.addToPlaylist(created.id(), pendingAddTrack);
+            pendingAddTrack = null;
+            tab = Tab.LIBRARY;
+            page = 0;
+        } else {
             openPlaylist(created);
         }
     }

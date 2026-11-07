@@ -341,6 +341,7 @@
   "espectral.media.add": "Add",
   "espectral.media.addto": "Add to playlist",
   "espectral.media.credits": "MP3 player: JavaMP3 (MIT) by delthas.",
+  "espectral.media.credits.button": "Credits",
   "espectral.media.delete": "Delete playlist",
   "espectral.media.delete.confirm": "Delete",
   "espectral.media.delete.message": "\"%s\" will be removed. The songs on disk are not touched.",
