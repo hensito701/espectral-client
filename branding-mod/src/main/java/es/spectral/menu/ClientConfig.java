@@ -8,9 +8,11 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -294,6 +296,7 @@ public final class ClientConfig {
                 this.macros.clear();
                 this.macros.addAll(parsedMacros);
                 this.cosmeticsState = readCosmeticsState();
+                readRutaServers();
             }
         } catch (Exception e) {
             LOGGER.warn("Failed to parse config {}: {}; preserving memory state", path, e.getMessage());
@@ -616,6 +619,216 @@ public final class ClientConfig {
 
     public synchronized List<MacroConfig> getMacros() {
         return Collections.unmodifiableList(new ArrayList<>(macros));
+    }
+
+    // --- media player (features.mediaplayer, no schema bump) ---------------
+    // Same contract as the cosmetics toggles: everything lives inside the
+    // feature's raw object, so the schema stays 2 and the launcher's
+    // `coerce_feature_entry` merge keeps these keys (unknown keys are kept).
+
+    /** Upper bound for playlists (keeps the file and the screen bounded). */
+    public static final int MAX_PLAYLISTS = 40;
+    public static final int MAX_PLAYLIST_NAME = 40;
+    public static final int MAX_PLAYLIST_TRACKS = 500;
+
+    /**
+     * The feature's raw JSON object, or {@code null} when that feature is not
+     * in the registry. Read-only view: mutating it bypasses {@link #save()}.
+     */
+    public synchronized JsonObject featureRaw(String id) {
+        FeatureConfig config = features.get(id);
+        return config == null ? null : config.rawObject;
+    }
+
+    /** Persists one primitive inside {@code features.<id>} and saves immediately. */
+    public synchronized void setFeatureFlag(String id, String key, boolean value) {
+        JsonObject obj = mutableFeature(id);
+        obj.addProperty(key, value);
+        save();
+    }
+
+    // --- Ruta Espectral (features.ruta.servers, no schema bump) -------------
+    // Same contract as the media player keys: the routed server list lives
+    // inside the feature's raw object, so schema stays 2 and the launcher's
+    // coerce_feature_entry merge keeps it.
+
+    /** Feature id owning the routed-server list. */
+    public static final String RUTA_FEATURE = "ruta";
+    /** Raw-object key holding the normalized routed server keys. */
+    public static final String RUTA_SERVERS_KEY = "servers";
+    /** Upper bound on remembered servers (file stays small). */
+    public static final int MAX_RUTA_SERVERS = 512;
+
+    /**
+     * Normalized keys of the servers routed through the relay. Volatile so the
+     * render thread's per-frame toggle read costs one field load.
+     */
+    private volatile Set<String> rutaServers = Set.of();
+
+    /** Copy of the routed-server keys (never null, unmodifiable). */
+    public Set<String> rutaServers() {
+        return rutaServers;
+    }
+
+    /** True when the normalized {@code key} is routed. */
+    public boolean isRutaRouted(String key) {
+        return key != null && rutaServers.contains(key);
+    }
+
+    /**
+     * Adds or removes one normalized key in {@code features.ruta.servers} and
+     * persists immediately. Returns true when the set changed.
+     */
+    public synchronized boolean setRutaRouted(String key, boolean routed) {
+        if (key == null || key.isEmpty()) return false;
+        Set<String> next = new LinkedHashSet<>(rutaServers);
+        boolean changed = routed ? next.add(key) : next.remove(key);
+        if (!changed) return false;
+        if (next.size() > MAX_RUTA_SERVERS) return false;
+        JsonObject obj = mutableFeature(RUTA_FEATURE);
+        JsonArray array = new JsonArray();
+        for (String value : next) {
+            array.add(value);
+        }
+        obj.add(RUTA_SERVERS_KEY, array);
+        this.rutaServers = Collections.unmodifiableSet(next);
+        save();
+        return true;
+    }
+
+    /**
+     * Rebuilds {@link #rutaServers} from the current feature raw objects.
+     * Unknown/garbage entries are skipped (the file is shared with the
+     * launcher), duplicates collapse by their normalized form.
+     */
+    private void readRutaServers() {
+        Set<String> out = new LinkedHashSet<>();
+        JsonObject obj = featureRaw(RUTA_FEATURE);
+        if (obj != null && obj.has(RUTA_SERVERS_KEY) && obj.get(RUTA_SERVERS_KEY).isJsonArray()) {
+            for (JsonElement element : obj.getAsJsonArray(RUTA_SERVERS_KEY)) {
+                if (!element.isJsonPrimitive()) continue;
+                String normalized =
+                        es.spectral.menu.ruta.RutaProtocol.normalize(element.getAsString());
+                if (normalized != null && es.spectral.menu.ruta.RutaProtocol.isEligible(normalized)) {
+                    out.add(normalized);
+                }
+            }
+        }
+        this.rutaServers = Collections.unmodifiableSet(out);
+    }
+
+    /** Numeric variant of {@link #setFeatureFlag(String, String, boolean)}. */
+    public synchronized void setFeatureFlag(String id, String key, double value) {
+        JsonObject obj = mutableFeature(id);
+        obj.addProperty(key, value);
+        save();
+    }
+
+    /** String variant of {@link #setFeatureFlag(String, String, boolean)}. */
+    public synchronized void setFeatureFlag(String id, String key, String value) {
+        JsonObject obj = mutableFeature(id);
+        obj.addProperty(key, value);
+        save();
+    }
+
+    private JsonObject mutableFeature(String id) {
+        FeatureConfig config = features.get(id);
+        if (config == null) {
+            config = new FeatureConfig(defaultFeatureEnabled(id), null);
+            features.put(id, config);
+        }
+        return config.rawObject;
+    }
+
+    /**
+     * Playlists stored in {@code features.mediaplayer.playlists}. Malformed
+     * entries are skipped instead of failing the whole load: the file is
+     * shared with the launcher and must stay robust.
+     */
+    public synchronized List<es.spectral.menu.media.MediaPlayer.Playlist> getPlaylists(String id) {
+        List<es.spectral.menu.media.MediaPlayer.Playlist> out = new ArrayList<>();
+        JsonObject obj = featureRaw(id);
+        if (obj == null || !obj.has("playlists") || !obj.get("playlists").isJsonArray()) {
+            return out;
+        }
+        for (JsonElement element : obj.getAsJsonArray("playlists")) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject entry = element.getAsJsonObject();
+            String playlistId = entry.has("id") ? entry.get("id").getAsString() : "";
+            String name = entry.has("name") ? entry.get("name").getAsString() : "";
+            if (playlistId.isEmpty()) {
+                continue;
+            }
+            List<String> tracks = new ArrayList<>();
+            if (entry.has("tracks") && entry.get("tracks").isJsonArray()) {
+                for (JsonElement track : entry.getAsJsonArray("tracks")) {
+                    if (track.isJsonPrimitive()) {
+                        tracks.add(track.getAsString());
+                    }
+                }
+            }
+            out.add(new es.spectral.menu.media.MediaPlayer.Playlist(
+                    playlistId, clamp(name, MAX_PLAYLIST_NAME), List.copyOf(tracks)));
+        }
+        return out;
+    }
+
+    /** Writes the playlist list back into the feature object and saves. */
+    public synchronized void setPlaylists(String id,
+            List<es.spectral.menu.media.MediaPlayer.Playlist> playlists) {
+        JsonObject obj = mutableFeature(id);
+        JsonArray array = new JsonArray();
+        for (es.spectral.menu.media.MediaPlayer.Playlist playlist : playlists) {
+            JsonObject entry = new JsonObject();
+            entry.addProperty("id", playlist.id());
+            entry.addProperty("name", clamp(playlist.name(), MAX_PLAYLIST_NAME));
+            JsonArray tracks = new JsonArray();
+            int count = 0;
+            for (String track : playlist.tracks()) {
+                if (count++ >= MAX_PLAYLIST_TRACKS) {
+                    break;
+                }
+                tracks.add(track);
+            }
+            entry.add("tracks", tracks);
+            array.add(entry);
+        }
+        obj.add("playlists", array);
+        save();
+    }
+
+    /**
+     * Unique playlist id from a display name: ASCII word chars, numeric suffix
+     * on collision, always non-empty and stable in the file.
+     */
+    public synchronized String newPlaylistId(String seed) {
+        String base = seed == null ? "" : seed.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9_-]", "-")
+                .replaceAll("^-+|-+$", "");
+        if (base.isEmpty()) base = "lista";
+        if (base.length() > 24) base = base.substring(0, 24);
+        String candidate = base;
+        int n = 2;
+        while (playlistIdTaken(candidate)) {
+            candidate = base + "-" + n++;
+        }
+        return candidate;
+    }
+
+    private boolean playlistIdTaken(String id) {
+        JsonObject obj = featureRaw(es.spectral.menu.media.MediaPlayer.FEATURE_ID);
+        if (obj == null || !obj.has("playlists") || !obj.get("playlists").isJsonArray()) {
+            return false;
+        }
+        for (JsonElement element : obj.getAsJsonArray("playlists")) {
+            if (element.isJsonObject() && element.getAsJsonObject().has("id")
+                    && id.equals(element.getAsJsonObject().get("id").getAsString())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // --- cosmetics viewer state -------------------------------------------

@@ -25,6 +25,8 @@
     "ButtonSkinMixin",
     "SliderSkinMixin",
     "ListSkinMixin",
+    "ServerListFlagsMixin",
+    "ServerNameResolverMixin",
     "LivingEntityRendererAccessor",
     "LivingEntityRendererMixin",
     "AvatarRendererMixin",
@@ -45,7 +47,13 @@
     "KeyboardHandlerInvoker",
     "MouseHandlerInvoker",
     "SliderValueAccess",
-    "ContainerScreenAccess"
+    "ContainerScreenAccess",
+    "SoundEngineAccessor",
+    "SuiteGearPaintMixin",
+    "SoundManagerAccessor",
+    "RutaConnectionMixin",
+    "RutaPingMixin",
+    "RutaServerDataMixin"
   ],
   "injectors": {
     "defaultRequire": 1

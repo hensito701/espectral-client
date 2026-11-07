@@ -85,6 +85,11 @@ public class SuiteScreen extends Screen {
         return parent;
     }
 
+    /** Per-row settings buttons, for the gear-sprite overlay painter. */
+    public java.util.List<Button> gearButtons() {
+        return this.rowConfigs;
+    }
+
     @Override
     protected void init() {
         super.init();
@@ -168,7 +173,7 @@ public class SuiteScreen extends Screen {
                     Component.empty(), this.font);
             this.rowLabels.add(label);
             this.addRenderableWidget(label);
-            Button gear = Button.builder(Component.literal("\u2699"), b -> this.openConfig(slot))
+            Button gear = Button.builder(Component.empty(), b -> this.openConfig(slot))
                     .bounds(innerX + innerW - SuiteTheme.TOGGLE_W - SuiteTheme.CONFIG_W
                             - SuiteTheme.GAP, rowY, SuiteTheme.CONFIG_W, SuiteTheme.FOOTER_H)
                     .tooltip(Tooltip.create(Component.translatable("espectral.suite.config")))
@@ -326,9 +331,10 @@ public class SuiteScreen extends Screen {
         }
     }
 
-    /** Features whose row carries a "⚙" button opening a settings sub-screen. */
+    /** Features whose row carries a gear button opening a settings sub-screen. */
     private static boolean hasConfigScreen(String featureId) {
-        return "cosmetics".equals(featureId) || "macros".equals(featureId);
+        return "cosmetics".equals(featureId) || "macros".equals(featureId)
+                || "mediaplayer".equals(featureId);
     }
 
     /**
@@ -344,6 +350,7 @@ public class SuiteScreen extends Screen {
         switch (id) {
             case "cosmetics" -> Compat.open(minecraft, new SuiteCosmeticsScreen(this));
             case "macros" -> Compat.open(minecraft, new SuiteMacrosScreen(this));
+            case "mediaplayer" -> Compat.open(minecraft, new SuiteMediaScreen(this));
             default -> { }
         }
     }

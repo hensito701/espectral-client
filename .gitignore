@@ -40,6 +40,7 @@ logs/
 !assets/site/logo_circle.png
 !assets/site/apple-touch-icon.png
 !branding-mod/src/main/resources/assets/espectral-menu/textures/gui/sprites/*.png
+!branding-mod/src/main/resources/assets/espectral-menu/textures/gui/sprites/flags/*.png
 !branding-mod/src/main/resources/assets/espectral-menu/textures/cosmetics/*.png
 !branding-mod/src/main/resources/assets/espectral-menu/textures/font/*.png
 !native/app/ui/assets/*.png
@@ -62,6 +63,9 @@ deploy/
 services/*
 !services/espectral-id/
 !services/espectral-id/deploy/
+!services/ruta-relay/
+!services/ruta-relay/deploy/
+services/ruta-relay/target/
 docs/HANDOVER-*.md
 docs/PROGRESS-*.md
 docs/PHASE-*.md

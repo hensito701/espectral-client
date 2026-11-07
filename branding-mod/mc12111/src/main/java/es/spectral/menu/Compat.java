@@ -48,6 +48,13 @@ public final class Compat {
      * top-left, potion column top-right. White text with shadow. Skips when
      * there is no player/world or the vanilla HUD is hidden (F1).
      */
+    /** Now-playing toast for the Media Player (drawn over the HUD, top-left). */
+    public static void drawMediaToast(Minecraft minecraft, net.minecraft.client.gui.GuiGraphics graphics) {
+        if (minecraft == null || graphics == null) return;
+        if (minecraft.player == null || minecraft.level == null) return;
+        es.spectral.menu.media.MediaToast.render(graphics, minecraft);
+    }
+
     public static void drawHudOverlays(Minecraft minecraft,
             net.minecraft.client.gui.GuiGraphics graphics) {
         if (minecraft == null || graphics == null) return;

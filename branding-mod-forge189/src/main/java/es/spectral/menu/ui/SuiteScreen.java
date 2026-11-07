@@ -12,6 +12,7 @@ import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.ResourceLocation;
 
 import es.spectral.menu.ClientConfig;
 import es.spectral.menu.FeatureRegistry;
@@ -21,8 +22,8 @@ import es.spectral.menu.agent.AgentLabeled;
 /**
  * The Suite control panel (1.8.9 port of the Fabric lanes' screen): header
  * with the {@code suite.enabled} master chip, live search, category tabs,
- * paginated feature rows with explicit enabled/disabled words and the "⚙"
- * settings button for Macros, and a Move HUD / Reset / Support / Done footer.
+ * paginated feature rows with explicit enabled/disabled words and a gear
+ * button for Macros and the Media Player, and a Move HUD / Reset / Support / Done footer.
  * Only features the 1.8.9 port implements are listed
  * ({@link FeatureRegistry#available}). Toggles persist immediately; Esc and
  * Done return to the parent screen.
@@ -40,6 +41,8 @@ public class SuiteScreen extends GuiScreen implements AgentLabeled {
     private static final int ID_CATEGORY = 100;
     private static final int ID_TOGGLE = 200;
     private static final int ID_CONFIG = 300;
+    private static final ResourceLocation GEAR = new ResourceLocation("espectralmenu", "textures/gui/gear.png");
+    private static final int GEAR_SIZE = 12;
 
     private final GuiScreen parent;
     private String search = "";
@@ -117,7 +120,7 @@ public class SuiteScreen extends GuiScreen implements AgentLabeled {
             int rowY = rowsTop + i * SuiteTheme.ROW_H;
             SuiteButton gear = new SuiteButton(ID_CONFIG + i,
                     innerX + innerW - SuiteTheme.TOGGLE_W - SuiteTheme.CONFIG_W - SuiteTheme.GAP, rowY,
-                    SuiteTheme.CONFIG_W, SuiteTheme.FOOTER_H, "\u2699");
+                    SuiteTheme.CONFIG_W, SuiteTheme.FOOTER_H, "");
             gear.tooltip = Lang.tr("espectral.suite.config");
             configs.add(gear);
             buttonList.add(gear);
@@ -166,7 +169,7 @@ public class SuiteScreen extends GuiScreen implements AgentLabeled {
                 toggle.visible = true;
                 toggle.displayString = Lang.tr(on ? "espectral.suite.state.on" : "espectral.suite.state.off");
                 toggle.tooltip = Lang.tr(FeatureRegistry.descriptionKey(f.id));
-                gear.visible = "macros".equals(f.id);
+                gear.visible = hasGearButton(f.id);
             } else {
                 toggle.visible = false;
                 gear.visible = false;
@@ -201,6 +204,11 @@ public class SuiteScreen extends GuiScreen implements AgentLabeled {
         return Normalizer.normalize(lower, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
     }
 
+    /** Features whose row carries a gear button that opens a settings screen. */
+    private static boolean hasGearButton(String featureId) {
+        return "macros".equals(featureId) || "mediaplayer".equals(featureId);
+    }
+
     @Override
     protected void actionPerformed(GuiButton button) {
         ClientConfig config = ClientConfig.getInstance();
@@ -224,8 +232,11 @@ public class SuiteScreen extends GuiScreen implements AgentLabeled {
             close();
             return;
         } else if (id >= ID_CONFIG && id - ID_CONFIG < slots.size()) {
-            if ("macros".equals(slots.get(id - ID_CONFIG).id)) {
+            String featureId = slots.get(id - ID_CONFIG).id;
+            if ("macros".equals(featureId)) {
                 mc.displayGuiScreen(new SuiteMacrosScreen(this));
+            } else if ("mediaplayer".equals(featureId)) {
+                mc.displayGuiScreen(new SuiteMediaScreen(this));
             }
             return;
         } else if (id >= ID_TOGGLE && id - ID_TOGGLE < slots.size()) {
@@ -317,6 +328,16 @@ public class SuiteScreen extends GuiScreen implements AgentLabeled {
                     prev.yPosition + 6, SuiteTheme.TEXT_DIM, false);
         }
         super.drawScreen(mouseX, mouseY, partialTicks);
+        for (SuiteButton gear : configs) {
+            if (!gear.visible) {
+                continue;
+            }
+            boolean hot = mouseX >= gear.xPosition && mouseX < gear.xPosition + gear.width
+                    && mouseY >= gear.yPosition && mouseY < gear.yPosition + gear.height;
+            float gx = gear.xPosition + (gear.width - GEAR_SIZE) / 2f;
+            float gy = gear.yPosition + (gear.height - GEAR_SIZE) / 2f;
+            Gfx.sprite(GEAR, gx, gy, GEAR_SIZE, GEAR_SIZE, hot ? SuiteTheme.accentBright() : SuiteTheme.TEXT_DIM);
+        }
         SuiteButton.drawTooltips(buttonList, mouseX, mouseY, width, height);
     }
 

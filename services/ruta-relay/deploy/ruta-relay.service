@@ -1,0 +1,58 @@
+[Unit]
+Description=Ruta Espectral TCP relay (ERT1, MVP-only Minecraft routing)
+Documentation=https://github.com/hensito701/espectral-client/blob/main/services/ruta-relay/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+# Never fight garbd (Galera arbitrator) for the box: the relay is the least
+# important workload on OVM2.
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+Type=simple
+DynamicUser=yes
+SyslogIdentifier=ruta-relay
+ExecStart=/usr/local/bin/ruta-relay --listen 0.0.0.0:25565 --listen 0.0.0.0:443
+Restart=always
+RestartSec=2
+
+# --- privilege confinement -------------------------------------------------
+NoNewPrivileges=yes
+# Empty except CAP_NET_BIND_SERVICE, needed only because 443 is < 1024.
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# --- filesystem: the relay reads and writes nothing ------------------------
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+UMask=0077
+
+# --- resources: 1/8 OCPU, ~950 MB box shared with garbd and tailscale ------
+MemoryMax=128M
+MemoryHigh=96M
+TasksMax=256
+# 400 sessions x (client fd + upstream fd) = 800, plus listeners and stdio.
+LimitNOFILE=8192
+OOMScoreAdjust=200
+
+[Install]
+WantedBy=multi-user.target

@@ -176,6 +176,7 @@ impl Engine {
         hook!("accounts-skins", api::accounts_skins::on_engine_start(self));
         hook!("identity-discord", api::identity_discord::on_engine_start(self));
         hook!("game-launch", api::game_launch::on_engine_start(self));
+        hook!("geoip", crate::geoip::on_engine_start(self));
     }
 
     /// Graceful shutdown: cluster hooks (Discord IPC close, …) then cancel

@@ -12,6 +12,7 @@ import es.spectral.menu.EspectralClient;
 import es.spectral.menu.EmoteEngine;
 import es.spectral.menu.HudEngine;
 import es.spectral.menu.MacroEngine;
+import es.spectral.menu.media.MediaPlayer;
 import es.spectral.menu.SkinModelCache;
 import es.spectral.menu.SuiteShortcut;
 import es.spectral.menu.ZoomEngine;
@@ -38,11 +39,29 @@ public abstract class MinecraftMixin {
         EmoteEngine.getInstance().onClientTick(minecraft);
         es.spectral.menu.ui.MenuSkin.onClientTick(minecraft);
         es.spectral.menu.ui.MenuBall.get().onClientTick(minecraft);
+        MediaPlayer.get().onClientTick(minecraft);
+        espectral$pollMediaKeys();
         // Launcher PATCH writes the config file while the game runs; pick it
         // up live without hammering the disk. A reload right after our own
         // screen-save just re-reads identical content (harmless).
         if ((espectral$tickCount++ % 20) == 0) {
             ClientConfig.getInstance().maybeReload();
+        }
+    }
+
+    /** Transport keys: polled here so they work in every screen and in game. */
+    private void espectral$pollMediaKeys() {
+        if (EspectralClient.MEDIA_PLAY_KEY == null) {
+            return;
+        }
+        while (EspectralClient.MEDIA_PLAY_KEY.consumeClick()) {
+            MediaPlayer.get().togglePlayPause();
+        }
+        while (EspectralClient.MEDIA_NEXT_KEY.consumeClick()) {
+            MediaPlayer.get().next();
+        }
+        while (EspectralClient.MEDIA_PREV_KEY.consumeClick()) {
+            MediaPlayer.get().previous();
         }
     }
 

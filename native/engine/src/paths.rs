@@ -201,6 +201,18 @@ impl Paths {
     pub fn neoforge_installer(&self, version: &str) -> PathBuf {
         self.cache_dir().join("neoforge").join(format!("neoforge-{version}-installer.jar"))
     }
+    /// `<data>/cache/geoip` (geoip.rs: DB-IP country table for the server list)
+    pub fn geoip_dir(&self) -> PathBuf {
+        self.cache_dir().join("geoip")
+    }
+    /// `<data>/cache/geoip/countries-<YYYY-MM>.bin`
+    pub fn geoip_table(&self, month: &str) -> PathBuf {
+        self.geoip_dir().join(format!("countries-{month}.bin"))
+    }
+    /// `<data>/cache/geoip/meta.json` (which table is current)
+    pub fn geoip_meta(&self) -> PathBuf {
+        self.geoip_dir().join("meta.json")
+    }
 
     // ---- per-user stores -------------------------------------------------
     /// `<data>/avatars` (account avatars `<uuid>.png`)
@@ -362,6 +374,9 @@ mod tests {
         assert_eq!(p.config_json(), PathBuf::from("/d/config.json"));
         assert_eq!(p.client_jar("1.21.11"), PathBuf::from("/d/versions/1.21.11/1.21.11.jar"));
         assert_eq!(p.aot_cache_file("k"), PathBuf::from("/d/cache/aot/k/game.aot"));
+        assert_eq!(p.geoip_dir(), PathBuf::from("/d/cache/geoip"));
+        assert_eq!(p.geoip_table("2026-11"), PathBuf::from("/d/cache/geoip/countries-2026-11.bin"));
+        assert_eq!(p.geoip_meta(), PathBuf::from("/d/cache/geoip/meta.json"));
         assert_eq!(p.instance_json("A b"), PathBuf::from("/d/instances/A b/instance.json"));
         assert_eq!(p.instance_fingerprint("x"), PathBuf::from("/d/instances/x/resolved.json"));
         assert_eq!(p.runtime_info(21), PathBuf::from("/d/runtimes/jdk-21/info.json"));

@@ -49,6 +49,13 @@ public final class Compat {
      * top-right. White text with shadow. Skips when there is no player/world
      * or the vanilla HUD is hidden (F1).
      */
+    /** Now-playing toast for the Media Player (drawn over the HUD, top-left). */
+    public static void drawMediaToast(Minecraft minecraft, net.minecraft.client.gui.GuiGraphicsExtractor extractor) {
+        if (minecraft == null || extractor == null) return;
+        if (minecraft.player == null || minecraft.level == null) return;
+        es.spectral.menu.media.MediaToast.render(extractor, minecraft);
+    }
+
     public static void drawHudOverlays(Minecraft minecraft,
             net.minecraft.client.gui.GuiGraphicsExtractor extractor) {
         if (minecraft == null || extractor == null) return;

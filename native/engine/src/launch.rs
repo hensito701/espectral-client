@@ -370,7 +370,8 @@ pub async fn resolve_account(engine: &Engine, target: Option<&Account>) -> (Laun
 // argv
 // ---------------------------------------------------------------------------
 
-/// Pure argv assembly — no I/O. Pushes AOT/memory warnings into
+/// Pure argv assembly — no I/O beyond the one stat+header read that decides
+/// whether `-Despectral.geoip` is advertised. Pushes AOT/memory warnings into
 /// `resolved.warnings` (like the JS, which mutated `resolved.warnings`).
 pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut ResolvedLaunch) -> Vec<String> {
     let java_major = java_major_of(&resolved.java);
@@ -440,6 +441,14 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         jvm.extend(FIXED_JVM_ARGS.iter().map(|s| s.to_string()));
     }
     jvm.push(format!("-Djava.library.path={natives}"));
+    // Media Player: one music folder shared by every instance (the launcher's
+    // data dir, not the instance gameDir), created here so the mod only ever
+    // reads it. The mod falls back to <gameDir>/music when absent.
+    let music = engine.paths().data_dir().join("music");
+    if let Err(e) = std::fs::create_dir_all(&music) {
+        tracing::warn!("could not create music folder {}: {e}", music.display());
+    }
+    jvm.push(format!("-Despectral.music.dir={}", lossy(&music)));
     if let Some(a) = logging_config_arg(engine, &resolved.version.json) {
         jvm.push(a);
     }
@@ -455,6 +464,14 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     // token is NOT an argument (other users can read the argv): spawn_java
     // passes it as ESPECTRAL_BRIDGE_TOKEN.
     jvm.push(format!("-Despectral.bridge.url={}", crate::loopback::bridge_url(engine)));
+    // Country table the server list reads (flags). Only a table that passes
+    // the header/size check is advertised: a missing or half-written one
+    // means the mod shows no flags, never a crash. The game's working
+    // directory is the instance dir, so the path is always absolute.
+    if let Some(table) = crate::geoip::table_path(engine.paths()) {
+        let table = std::path::absolute(&table).unwrap_or(table);
+        jvm.push(format!("-Despectral.geoip={}", lossy(&table)));
+    }
     // Agent mode. Inert unless the route tagged the launch `agent: true`; the
     // mod starts its relay thread only when it sees -Despectral.agent=1.
     if agent {
@@ -1774,6 +1791,29 @@ mod tests {
         let preview = format_command_preview(&argv, Some("SECRETACCESSTOKEN"));
         assert!(!preview.contains("SECRETACCESSTOKEN"));
         assert!(preview.contains("<REDACTED>"));
+    }
+
+    #[test]
+    fn geoip_property_is_added_only_for_a_valid_table() {
+        let (_d, e) = temp_engine();
+        let has = |argv: &[String]| argv.iter().any(|a| a.starts_with("-Despectral.geoip="));
+        // Nothing downloaded yet: no property, the mod simply shows no flag.
+        assert!(!has(&build_argv(&e, &inst("t"), &mut make_resolved())));
+        let table = crate::geoip::encode(&crate::geoip::parse_csv("8.8.8.0,8.8.8.255,US\n")).unwrap();
+        let file = e.paths().geoip_table("2026-11");
+        crate::paths::write_private(&file, &table).unwrap();
+        // A table without meta.json is not trusted either.
+        assert!(!has(&build_argv(&e, &inst("t"), &mut make_resolved())));
+        crate::paths::write_json_atomic(
+            &e.paths().geoip_meta(),
+            &json!({ "month": "2026-11", "file": "countries-2026-11.bin" }),
+        )
+        .unwrap();
+        let argv = build_argv(&e, &inst("t"), &mut make_resolved());
+        let expected = format!("-Despectral.geoip={}", std::path::absolute(&file).unwrap().display());
+        let prop = argv.iter().position(|a| *a == expected).unwrap();
+        assert!(prop < argv.iter().position(|a| a == "-cp").unwrap(), "property before -cp");
+        assert!(std::path::Path::new(&expected["-Despectral.geoip=".len()..]).is_absolute());
     }
 
     #[test]

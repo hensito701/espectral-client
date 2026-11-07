@@ -81,7 +81,7 @@ cargo run --release -p espectral-client      # builds and starts the launcher
 | JS tests (config/accounts + Suite registry) | `node --test tests/*.test.mjs` |
 | Client mod (Java 21) | `cd branding-mod && ./gradlew build` |
 | Brand companion, NeoForge (Java 21) | `cd branding-mod-nf && ./gradlew build` |
-| Espectral Menu, Forge 1.8.9 (Gradle on JDK 21, Java 8 toolchain) | `cd branding-mod-forge189 && ./gradlew build -Porg.gradle.java.installations.paths=<jdk8>` |
+| Espectral Menu, Forge 1.8.9 (Gradle must run on JDK 17-21, Java 8 toolchain) | `cd branding-mod-forge189 && JAVA_HOME=<jdk-17-to-21> ./gradlew build -Porg.gradle.java.installations.paths=<jdk8>`. Windows, verified: `cmd.exe /c "set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot&& gradlew.bat build -Porg.gradle.java.installations.paths=<jdk8>"` |
 | Rebuild + ship the mod jars | `npm run deploy:mod` |
 
 `ESPECTRAL_DATA_DIR` overrides the data directory, `SLINT_BACKEND=winit-software` falls back to the

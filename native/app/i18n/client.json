@@ -95,7 +95,9 @@
     "client.resetCancel": "Cancelar",
     "client.resetDone": "Funciones restablecidas a sus valores predeterminados.",
     "client.suppressed": "suprimida por la Suite",
-    "client.resultsCount": "{shown} de {total}"
+    "client.resultsCount": "{shown} de {total}",
+    "client.feat.mediaplayer.name": "Reproductor",
+    "client.feat.mediaplayer.desc": "Tus propios MP3 con listas — los archivos salen de la carpeta music del launcher."
   },
   "en": {
     "client.title": "Espectral Suite",
@@ -193,6 +195,8 @@
     "client.resetCancel": "Cancel",
     "client.resetDone": "Features reset to their defaults.",
     "client.suppressed": "suppressed by the Suite",
-    "client.resultsCount": "{shown} of {total}"
+    "client.resultsCount": "{shown} of {total}",
+    "client.feat.mediaplayer.name": "Media Player",
+    "client.feat.mediaplayer.desc": "Your own MP3s with playlists — files come from the launcher's music folder."
   }
 }
