@@ -63,17 +63,19 @@ duration, result code. Never payload bytes. No other persistence.
 - With the toggle ON, BOTH the server-list status ping and the actual join go through the relay
   (so the server never sees the player's IP, and the displayed ping is the real routed ping).
   No direct ping is made for routed servers.
-- Espectral's own servers (`*.uhce.top`, `*.espectral.es`) are never routed (toggle hidden there):
-  routing them would break AuthMe per-IP limits / AdvancedBan IP bans for every MVP.
+- Espectral's own servers (`*.uhce.top`, `*.espectral.es`) are routable like any
+  public host, and the toggle is shown there too. Their PROXY-aware fronts get the
+  player's real address in a PROXY protocol v2 header (note 5), so AuthMe per-IP
+  limits and AdvancedBan IP bans keep seeing each player.
 
 ---
 
 ## Relay implementation notes
 
-*Appended by `services/ruta-relay`. Everything above is the shared spec,
-unchanged; this block only records the four details the spec leaves open and
-how the relay reads them. The client implementation is not affected by any of
-it.*
+*Appended by `services/ruta-relay`. Everything above is the shared spec, except
+the Espectral-hosts rule on lines 66-67 (amended 2026-11-07). This block records
+the five details the spec leaves open and how the relay reads them. The client
+implementation is not affected by any of it.*
 
 1. **NAT64.** The IPv6 deny list contains `64:ff9b::/96`, and the same
    paragraph says `::ffff:a.b.c.d` / NAT64 forms are checked against the IPv4
@@ -92,3 +94,14 @@ it.*
    directions combined. Each 16 KiB chunk is charged before it is forwarded and
    a chunk that does not fit is not forwarded at all, so a session stops exactly
    at the budget instead of overshooting it.
+5. **Upstream PROXY v2 header.** A destination listed with `--proxy-v2 <IP:PORT>`
+   (or `RUTA_PROXY_V2`, comma-separated; the command line wins) gets a PROXY
+   protocol v2 header right after the upstream connect, before the first
+   Minecraft byte. It carries the player's real source address and the
+   destination: the TCP-over-IPv4 form when both ends are IPv4, otherwise the
+   TCP-over-IPv6 form with IPv4 ends written as IPv4-mapped addresses. The
+   header is the relay's own bytes, so it is not charged to the quota and is
+   not counted in the logged `up` bytes. Unlisted destinations get no header.
+   Only list PROXY-aware fronts: a plain server reads the header as Minecraft
+   traffic and drops the connection. If the write fails, the client gets the
+   same `ERR connect` as an unreachable upstream.

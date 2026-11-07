@@ -6,6 +6,8 @@ import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 
+import es.spectral.menu.media.MediaHudCard;
+
 /**
  * Shared logic for the drag-to-move HUD overlay editor: block geometry,
  * hit-testing and drag state. Rendering and the version-specific mouse
@@ -63,6 +65,8 @@ public final class HudEditLogic {
             case "healthstatus": return "Salud";
             case "armorstatus": return "Armadura";
             case "potionstatus": return "Pociones";
+            case "mediahud":
+                return net.minecraft.network.chat.Component.translatable("espectral.media.nowplaying").getString();
             default: return id;
         }
     }
@@ -103,6 +107,17 @@ public final class HudEditLogic {
         // Live content keyed by id, when a world is loaded.
         List<HudEngine.Block> live = HudEngine.getInstance().blocks(minecraft);
         for (String id : HudLayout.OVERLAY_IDS) {
+            if (MediaHudCard.FEATURE_ID.equals(id)) {
+                // Text-less card: its box is the fixed card size, not row-measured.
+                EditBlock card = new EditBlock(id, labelOf(id), List.of());
+                card.w = MediaHudCard.WIDTH;
+                card.h = MediaHudCard.HEIGHT;
+                int[] cardPos = HudLayout.pos(id, guiW, guiH, card.w, card.h);
+                card.x = cardPos[0];
+                card.y = cardPos[1];
+                blocks.add(card);
+                continue;
+            }
             List<HudEngine.Row> rows = null;
             for (HudEngine.Block b : live) {
                 if (b.id.equals(id)) { rows = b.rows; break; }

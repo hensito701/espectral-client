@@ -64,7 +64,6 @@ public final class EspectralClient implements ClientModInitializer {
         if (version == null) version = "dev";
         LOGGER.info("Initializing Espectral Client mod (v{})", version);
         ClientConfig.getInstance().load();
-        es.spectral.menu.ruta.RutaRouteIcon.install();
     }
 
     /**

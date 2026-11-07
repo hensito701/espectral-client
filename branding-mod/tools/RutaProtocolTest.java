@@ -52,10 +52,11 @@ public final class RutaProtocolTest {
         ok(RutaProtocol.isEligible("play.example.com:25566"), "public host+port eligible");
         ok(RutaProtocol.isEligible("8.8.8.8"), "public ipv4 eligible");
         ok(RutaProtocol.isEligible("2001:4860:4860::8888"), "public ipv6 eligible");
-        no(RutaProtocol.isEligible("uhce.top"), "own apex domain");
-        no(RutaProtocol.isEligible("mc.uhce.top"), "own subdomain");
-        no(RutaProtocol.isEligible("espectral.es"), "own apex 2");
-        no(RutaProtocol.isEligible("srv.espectral.es"), "own subdomain 2");
+        ok(RutaProtocol.isEligible("uhce.top"), "own apex domain eligible");
+        ok(RutaProtocol.isEligible("mc.uhce.top"), "own subdomain eligible");
+        ok(RutaProtocol.isEligible("24h.uhce.top:25568"), "own host with port eligible");
+        ok(RutaProtocol.isEligible("espectral.es"), "legacy apex eligible");
+        ok(RutaProtocol.isEligible("srv.espectral.es"), "legacy subdomain eligible");
         no(RutaProtocol.isEligible("localhost"), "localhost");
         no(RutaProtocol.isEligible("mc.localhost"), "*.localhost");
         no(RutaProtocol.isEligible("foo.local"), "*.local");

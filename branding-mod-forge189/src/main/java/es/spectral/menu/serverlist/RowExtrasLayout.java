@@ -8,10 +8,6 @@ package es.spectral.menu.serverlist;
  * {@link #hit(int, int)} answers what the cursor is over. Kept free of any
  * Minecraft type so the geometry can be unit tested on plain ints, and sized
  * once (array of {@link #SLOT_COUNT}) so drawing a row allocates nothing.
- *
- * <p>Slot 2 ({@link #SLOT_ROUTE}) is reserved: nothing places it today, and the
- * later Ruta Espectral route icon only needs to call {@code place(SLOT_ROUTE, …)}
- * — the hit test and the tooltip plumbing already cover it.
  */
 public final class RowExtrasLayout {
 
@@ -19,12 +15,10 @@ public final class RowExtrasLayout {
     public static final int SLOT_PING = 0;
     /** 16×11 country flag. */
     public static final int SLOT_FLAG = 1;
-    /** Reserved for the Ruta Espectral route icon. */
-    public static final int SLOT_ROUTE = 2;
     /** Spare slot, unused by the design. */
-    public static final int SLOT_EXTRA = 3;
+    public static final int SLOT_EXTRA = 2;
     /** Size of the fixed slot table. */
-    public static final int SLOT_COUNT = 4;
+    public static final int SLOT_COUNT = 3;
 
     private final int[] x = new int[SLOT_COUNT];
     private final int[] y = new int[SLOT_COUNT];

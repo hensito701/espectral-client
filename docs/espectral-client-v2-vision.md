@@ -402,11 +402,16 @@ no driver or admin rights are involved.
   allowlist, and on the tailnet it can reach only the two Galera nodes on port 4567.
 - **Entitlement:** the relay verifies the player's existing espectral-id grant (same Ed25519 key and
   claim rules as the mod) and requires the `mvp` flag; no new backend.
-- **Client:** a toggle in each multiplayer-list row, off by default, shown only to MVPs and never for
-  Espectral's own servers (routing them would put every MVP behind one IP for AuthMe limits and IP
-  bans). With it on, the status ping and the join both go through the relay, so the server never
-  sees the player's IP and the shown ping is the real routed ping. If the relay refuses or is down,
-  the connection fails with a message naming Ruta Espectral; it never silently goes direct.
+- **Client:** a toggle in each multiplayer-list row, off by default, shown only to MVPs.
+  *Amended 2026-11-07:* it is now shown on Espectral's own servers too. It was hidden
+  there because routing them put every MVP behind one relay IP for AuthMe limits and
+  IP bans. The relay now sends the player's real address in a PROXY protocol v2
+  header to the PROXY-aware fronts (`--proxy-v2`), so those limits and bans keep
+  seeing each player. With the toggle on, the status ping and the join both go
+  through the relay, and the shown ping is the real routed ping. A server without a
+  PROXY-aware front sees only the relay's address. If the relay refuses or is down,
+  the connection fails with a message naming Ruta Espectral; it never silently goes
+  direct.
 - **Honest pitch:** hides the home IP and gets past networks that block Minecraft's port. It is not a
   lower-ping product from Spain: the relay is in the US, which suits US servers and adds latency to
   European ones.

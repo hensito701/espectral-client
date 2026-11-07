@@ -20,7 +20,7 @@ public final class HudLayout {
 
     /** Overlay ids in draw order (top-left stack first, then the right column). */
     public static final List<String> OVERLAY_IDS =
-            List.of("fpsping", "coords", "healthstatus", "armorstatus", "potionstatus");
+            List.of("fpsping", "coords", "healthstatus", "armorstatus", "potionstatus", "mediahud");
 
     /** Box padding (px) around the text lines inside an overlay block. */
     public static final int PAD = 3;
@@ -46,7 +46,7 @@ public final class HudLayout {
     /**
      * Vertical offset for the default top-left stack so the blocks don't
      * overlap: each earlier enabled block shifts the next one down. Order is
-     * fixed (fpsping, coords, healthstatus, armorstatus) regardless of which
+     * fixed (fpsping, coords, healthstatus, armorstatus, mediahud) regardless of which
      * are enabled — keeps anchors stable as features toggle.
      */
     private static int stackOffset(String id) {
@@ -54,6 +54,7 @@ public final class HudLayout {
             case "coords": return 14;
             case "healthstatus": return 28;
             case "armorstatus": return 42;
+            case "mediahud": return 128; // below the full left stack (4 armor rows end near y=124)
             default: return 0; // fpsping
         }
     }

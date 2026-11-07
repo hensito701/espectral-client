@@ -5,12 +5,10 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.multiplayer.ServerSelectionList;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.multiplayer.ServerData;
 
 import es.spectral.menu.geoip.RowExtras;
@@ -53,24 +51,5 @@ public abstract class ServerListFlagsMixin {
         RowExtras.render(gfx, minecraft.font, espectral$rowExtras, data,
                 self.getContentX(), self.getContentY(), self.getContentRight(),
                 mouseX, mouseY);
-    }
-
-    /**
-     * Gives the reserved route-icon slot first refusal on a click. Nothing is
-     * installed by default ({@code ROUTE_ICON == null}), so the row behaves
-     * exactly as vanilla until the Ruta Espectral feature plugs in.
-     */
-    @Inject(
-            method = "mouseClicked(Lnet/minecraft/client/input/MouseButtonEvent;Z)Z",
-            at = @At("HEAD"),
-            cancellable = true
-    )
-    private void espectral$clickRowExtras(MouseButtonEvent event, boolean doubleClick,
-            CallbackInfoReturnable<Boolean> cir) {
-        ServerSelectionList.OnlineServerEntry self = (ServerSelectionList.OnlineServerEntry) (Object) this;
-        if (event != null && RowExtras.click(self.getServerData(), espectral$rowExtras,
-                event.x(), event.y(), event.button())) {
-            cir.setReturnValue(true);
-        }
     }
 }

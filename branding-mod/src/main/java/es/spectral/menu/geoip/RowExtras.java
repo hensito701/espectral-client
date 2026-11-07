@@ -12,8 +12,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 /**
- * Extras drawn on a multiplayer server row: the ping in milliseconds, the
- * country flag, and the reserved slot for the Ruta Espectral route icon.
+ * Extras drawn on a multiplayer server row: the ping in milliseconds and the
+ * country flag. The Ruta Espectral toggle is not a row extra any more; it is a
+ * button column beside the server list (see {@code ruta.RutaRouteIcon}).
  *
  * <p>Everything is drawn through {@link Compat}'s {@code ui*} primitives with an
  * opaque graphics object, so this shared class never names a version-specific
@@ -27,7 +28,6 @@ import net.minecraft.resources.Identifier;
  * pingRight   = statusX - 4                   // our ping text ends here
  * pingLeft    = pingRight - pingWidth         // drawn at y = contentY + 1
  * flagX       = pingLeft - 3 - 16             // 16x11 at y = contentY - 1
- * routeX      = (flag or ping) - 3 - routeWidth  // slot 2, y = contentY - 1
  * </pre>
  * The flag sits 1 px above the text baseline row, which centres its 11 px
  * height on the 9 px glyph line. Nothing is drawn when the numbers would
@@ -64,8 +64,6 @@ public final class RowExtras {
     private static final int PING_GAP = 4;
     /** Row content starts after the 32 px server icon. */
     private static final int ICON_BAND = 32;
-    /** Widest route icon the layout will place. */
-    private static final int ROUTE_MAX_W = 24;
 
     private static final int GREEN = 0xFF55FF55;
     private static final int YELLOW = 0xFFFFFF55;
@@ -82,41 +80,6 @@ public final class RowExtras {
     /** server ip string → country code; {@code ""} means "looked up, none". */
     private static final ConcurrentHashMap<String, String> COUNTRY = new ConcurrentHashMap<>();
     private static final int COUNTRY_CACHE_MAX = 2048;
-
-    /**
-     * Hook for the Ruta Espectral route icon (slot
-     * {@link RowExtrasLayout#ROUTE}). {@code null} — the default — draws
-     * nothing and leaves the row exactly as shipped. The follow-up installs its
-     * implementation here once; the row mixins already dispatch paint, tooltip
-     * and click into it, so no further mixin is needed.
-     */
-    public static volatile RouteIcon ROUTE_ICON;
-
-    /**
-     * What the route icon needs from a row. {@code hostKey} is the normalized
-     * {@code "<host>:<port>"} of the entry, so an implementation can key its own
-     * per-server state on it.
-     */
-    public interface RouteIcon {
-
-        /**
-         * Width in GUI pixels for this server (clamped to 0..24), or 0 to hide
-         * the slot for this row.
-         */
-        int width(ServerData data);
-
-        /** Draws the icon inside the given rectangle (height is {@link #SLOT_H}). */
-        void paint(Object gfx, ServerData data, int x, int y, int w, int h);
-
-        /** Tooltip while the pointer is over the icon, or {@code null} for none. */
-        Component tooltip(ServerData data);
-
-        /**
-         * Click on the icon. Return {@code true} when handled — the row then
-         * neither joins nor swaps.
-         */
-        boolean click(ServerData data, double mouseX, double mouseY, int button);
-    }
 
     private RowExtras() {}
 
@@ -170,47 +133,13 @@ public final class RowExtras {
             if (sprite != null && flagX > contentX + ICON_BAND) {
                 Compat.uiSprite(gfx, sprite, flagX, contentY - 1, FLAG_W, FLAG_H, 0xFFFFFFFF);
                 layout.place(RowExtrasLayout.FLAG, flagX, contentY - 1, FLAG_W, FLAG_H);
-                anchorLeft = flagX;
             }
         }
 
-        // ── Route icon (reserved slot 2, driven by ROUTE_ICON) ─────────────
-        RouteIcon route = ROUTE_ICON;
-        if (route != null) {
-            int w = clamp(route.width(data), 0, ROUTE_MAX_W);
-            int routeX = anchorLeft - GAP - w;
-            if (w > 0 && routeX > contentX + ICON_BAND) {
-                route.paint(gfx, data, routeX, contentY - 1, w, SLOT_H);
-                layout.place(RowExtrasLayout.ROUTE, routeX, contentY - 1, w, SLOT_H);
-            }
-        }
-
-        // ── Tooltips (explicit hit tests, like the vanilla row) ────────────
-        int slot = layout.hit(mouseX, mouseY);
-        if (slot == RowExtrasLayout.FLAG && country != null) {
+        // ── Flag tooltip (explicit hit test, like the vanilla row) ─────────
+        if (country != null && layout.hit(mouseX, mouseY) == RowExtrasLayout.FLAG) {
             Compat.uiTooltip(gfx, font, flagTooltip(country), mouseX, mouseY);
-        } else if (slot == RowExtrasLayout.ROUTE && route != null) {
-            Component tip = route.tooltip(data);
-            if (tip != null) {
-                Compat.uiTooltip(gfx, font, tip, mouseX, mouseY);
-            }
         }
-    }
-
-    /**
-     * Dispatches a click to whatever occupies the extras slots. Returns
-     * {@code true} when consumed — the caller then skips vanilla's join/swap.
-     */
-    public static boolean click(ServerData data, RowExtrasLayout layout,
-            double mouseX, double mouseY, int button) {
-        if (layout == null || data == null) {
-            return false;
-        }
-        if (layout.hit((int) mouseX, (int) mouseY) != RowExtrasLayout.ROUTE) {
-            return false;
-        }
-        RouteIcon route = ROUTE_ICON;
-        return route != null && route.click(data, mouseX, mouseY, button);
     }
 
     // ── Pieces ─────────────────────────────────────────────────────────────
@@ -293,9 +222,5 @@ public final class RowExtras {
         }
         COUNTRY.put(serverIp, country == null ? "" : country);
         return country;
-    }
-
-    private static int clamp(int value, int min, int max) {
-        return value < min ? min : Math.min(value, max);
     }
 }

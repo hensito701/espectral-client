@@ -145,10 +145,10 @@ public final class Ruta {
     }
 
     /**
-     * False for Espectral's own servers, LAN/loopback names and
-     * loopback/private/link-local/CGNAT/benchmark IP literals: routing those
-     * would break AuthMe per-IP limits and AdvancedBan IP bans, or cannot work
-     * at all.
+     * False for LAN/loopback names and for loopback/private/link-local/CGNAT/
+     * benchmark IP literals: the relay refuses those destinations anyway.
+     * Espectral's own servers are eligible; the relay forwards the player's
+     * real IP to them in a PROXY protocol v2 header.
      */
     public static boolean isEligible(String serverAddress) {
         return RutaProtocol.isEligible(serverAddress);

@@ -4,8 +4,11 @@
 //! a single `ExecStart=` line. Precedence: command line, then environment,
 //! then the documented default. No config file is read or written.
 
+use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::time::Duration;
+
+use crate::proxy_v2;
 
 /// Default listen address, per `PROTOCOL.md`.
 pub const DEFAULT_LISTEN: &str = "0.0.0.0:25565";
@@ -34,6 +37,10 @@ pub struct Config {
     pub workers: usize,
     /// Test-only: allows 127/8 and ::1 destinations. Never set in production.
     pub allow_loopback_destinations: bool,
+    /// Upstreams that expect a PROXY protocol v2 header (`--proxy-v2`), in
+    /// canonical form. List only PROXY-aware fronts: any other server would read
+    /// the header as Minecraft traffic and drop the connection.
+    pub proxy_v2: BTreeSet<SocketAddr>,
 }
 
 impl Default for Config {
@@ -50,6 +57,7 @@ impl Default for Config {
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
             workers: DEFAULT_WORKERS,
             allow_loopback_destinations: false,
+            proxy_v2: BTreeSet::new(),
         }
     }
 }
@@ -70,6 +78,8 @@ Usage: ruta-relay [OPTIONS]
 Options (env fallback in brackets, command line wins):
   --listen <IP:PORT>            Repeatable. [RUTA_LISTEN, comma-separated]
                                 Default 0.0.0.0:25565
+  --proxy-v2 <IP:PORT>          Repeatable. Upstream with a PROXY v2 front: the player's
+                                real address is sent first. [RUTA_PROXY_V2, comma-separated]
   --per-sub-concurrency <N>     Concurrent connections per grant sub. [RUTA_PER_SUB_CONCURRENCY] (4)
   --per-sub-rate <N>            New connections per minute per sub. [RUTA_PER_SUB_RATE_PER_MIN] (30)
   --per-sub-daily-bytes <SIZE>  Daily byte budget per sub, UTC day. [RUTA_PER_SUB_DAILY_BYTES] (8GiB)
@@ -98,6 +108,8 @@ where
     let mut listen: Vec<String> = Vec::new();
     let mut cfg = Config::default();
     let mut listen_set = false;
+    let mut proxy_names: Vec<String> = Vec::new();
+    let mut proxy_set = false;
     // Fields given explicitly on the command line; the environment may only
     // fill in the rest.
     let mut set: std::collections::HashSet<&'static str> = std::collections::HashSet::new();
@@ -124,6 +136,13 @@ where
                 listen_set = true;
                 for part in v.split([',', ' ']).filter(|s| !s.is_empty()) {
                     listen.push(part.to_owned());
+                }
+            }
+            "--proxy-v2" => {
+                let v = value("--proxy-v2")?;
+                proxy_set = true;
+                for part in v.split([',', ' ']).filter(|s| !s.is_empty()) {
+                    proxy_names.push(part.to_owned());
                 }
             }
             "--per-sub-concurrency" => {
@@ -189,6 +208,13 @@ where
             }
         }
     }
+    if !proxy_set {
+        if let Some(env_proxy) = env("RUTA_PROXY_V2").filter(|s| !s.trim().is_empty()) {
+            for part in env_proxy.split([',', ' ']).filter(|s| !s.is_empty()) {
+                proxy_names.push(part.to_owned());
+            }
+        }
+    }
 
     macro_rules! env_or {
         ($var:literal, $field:ident, $parse:ident) => {
@@ -234,6 +260,20 @@ where
     // A hostname would need DNS; anything that is not IP:PORT was rejected
     // above, so the listener never resolves a name.
     cfg.listen = addrs;
+
+    // Canonical form, so `[::ffff:a.b.c.d]:p` and `a.b.c.d:p` are one upstream.
+    // Port 0 is never a real upstream.
+    for name in proxy_names {
+        let parsed: SocketAddr = match name.parse::<SocketAddr>() {
+            Ok(addr) if addr.port() != 0 => addr,
+            _ => {
+                return Err(format!(
+                    "--proxy-v2 {name:?}: expected IP:PORT (e.g. <nvh1-ip>:25564)"
+                ))
+            }
+        };
+        cfg.proxy_v2.insert(proxy_v2::canonical(parsed));
+    }
 
     validate(&cfg)?;
     Ok(Command::Run(cfg))
@@ -459,5 +499,50 @@ mod tests {
             .allow_loopback_destinations
         );
         assert!(parse_args(&["--allow-loopback-destinations=maybe"], &[]).is_err());
+    }
+
+    fn addr(s: &str) -> SocketAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn proxy_v2_destinations_are_repeatable_canonical_and_env_fallback() {
+        assert!(cfg(&[], &[]).proxy_v2.is_empty());
+
+        let c = cfg(
+            &[
+                "--proxy-v2",
+                "<nvh1-ip>:25564",
+                "--proxy-v2=<nvh1-ip>:25568,<nvh1-ip>:25564",
+            ],
+            &[],
+        );
+        assert_eq!(
+            c.proxy_v2,
+            BTreeSet::from([addr("<nvh1-ip>:25564"), addr("<nvh1-ip>:25568")])
+        );
+
+        // IPv4-mapped IPv6 is stored as plain IPv4, so the lookup matches the
+        // address the relay actually dials.
+        let c = cfg(&["--proxy-v2", "[::ffff:<nvh1-ip>]:25564"], &[]);
+        assert_eq!(c.proxy_v2, BTreeSet::from([addr("<nvh1-ip>:25564")]));
+
+        let c = cfg(&[], &[("RUTA_PROXY_V2", "<nvh1-ip>:25564, <nvh1-ip>:25568")]);
+        assert_eq!(c.proxy_v2.len(), 2);
+
+        // Command line wins over the environment.
+        let c = cfg(
+            &["--proxy-v2", "<nvh1-ip>:25568"],
+            &[("RUTA_PROXY_V2", "<nvh1-ip>:25564")],
+        );
+        assert_eq!(c.proxy_v2, BTreeSet::from([addr("<nvh1-ip>:25568")]));
+    }
+
+    #[test]
+    fn rejects_malformed_or_port_zero_proxy_v2() {
+        assert!(parse_args(&["--proxy-v2", "example.com:25564"], &[]).is_err());
+        assert!(parse_args(&["--proxy-v2", "<nvh1-ip>"], &[]).is_err());
+        assert!(parse_args(&["--proxy-v2", "<nvh1-ip>:0"], &[]).is_err());
+        assert!(parse_args(&[], &[("RUTA_PROXY_V2", "<nvh1-ip>:0")]).is_err());
     }
 }

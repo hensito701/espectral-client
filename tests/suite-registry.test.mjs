@@ -26,12 +26,12 @@ const clientI18n = JSON.parse(
   fs.readFileSync(path.join(repoRoot, 'native/app/i18n/client.json'), 'utf8'),
 );
 
-test('registry shape: 17 features, 5 categories, schema 2, suite on by default', () => {
+test('registry shape: 18 features, 5 categories, schema 2, suite on by default', () => {
   assert.equal(doc.schema, 2);
   assert.equal(doc.suite?.default_enabled, true);
-  assert.equal(doc.features.length, 17);
+  assert.equal(doc.features.length, 18);
   assert.equal(doc.categories.length, 5);
-  assert.equal(new Set(doc.features.map((f) => f.id)).size, 17);
+  assert.equal(new Set(doc.features.map((f) => f.id)).size, 18);
   for (const f of doc.features) {
     assert.ok(typeof f.name_en === 'string' && typeof f.name_es === 'string', `${f.id} both names`);
     assert.ok(

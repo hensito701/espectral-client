@@ -20,22 +20,29 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   memory as a 10-second one, and it keeps playing across F3+T and audio-device
   changes. MP3 decoding by [JavaMP3](https://github.com/delthas/javamp3) (MIT).
   No music is bundled or downloaded: only what you put in the folder is played.
+- **Now-playing HUD card.** While a track is loaded, a small card shows the
+  Espectral logo, the title and artist, play/pause/previous/next marks and a
+  progress bar with elapsed and total time. Move it in the HUD editor like the
+  other overlays, or switch it off in the Suite (Media HUD).
 - The Suite's settings button is now a crisp pixel-art gear sprite instead of a
   font glyph that rendered as an empty box on some systems (all variants, all
   sub-screens).
-- **Ruta Espectral (MVP and MVP+).** A new icon in each multiplayer server row
-  (left of the flag, shown only to MVPs and never on Espectral's own servers)
-  routes that one server through Espectral's relay `ruta.uhce.top`, so the
-  server never sees your IP and networks that block Minecraft's port can still
-  connect. It is off by default and remembered per server; with it on, both the
-  server-list ping and the join go through the relay, so the ping you see is the
-  real one. If the relay refuses or is unreachable you get a message naming Ruta
-  Espectral; the game never silently connects directly instead. It is not a
-  VPN: only that game connection is relayed. The relay is in the US, so it can
-  add latency to European servers. The relay itself lives in
-  `services/ruta-relay/` (static Rust binary, `PROTOCOL.md`, hardened systemd
-  unit); it accepts only the same signed MVP grants as the mod, only public
-  addresses, and has per-player and global limits.
+- **Ruta Espectral (MVP and MVP+).** A route button to the right of each
+  multiplayer server row (shown only to MVPs) sends that one server through
+  Espectral's relay `ruta.uhce.top`. Use it to get around a bad route between
+  your internet provider and a server (Espectral's own servers included), or to
+  hide your IP from other servers; networks that block Minecraft's port can
+  still connect. Espectral's servers still see your real IP through the relay,
+  so bans and account limits work as usual. It is off by default and
+  remembered per server; with it on, both the server-list ping and the join go
+  through the relay, so the ping you see is the real one. If the relay refuses
+  or is unreachable you get a message naming Ruta Espectral; the game never
+  silently connects directly instead. It is not a VPN: only that game
+  connection is relayed. The relay is in the US, so it can add latency to
+  European servers. The relay itself lives in `services/ruta-relay/` (static
+  Rust binary, `PROTOCOL.md`, hardened systemd unit); it accepts only the same
+  signed MVP grants as the mod, only public addresses, and has per-player and
+  global limits.
 - **Ping in numbers and country flags in the server list.** Each multiplayer
   row now shows its ping as a number (`38 ms`, green under 80 ms, yellow under
   150 ms, red above) and, left of it, the server's country flag (16×11). Hover

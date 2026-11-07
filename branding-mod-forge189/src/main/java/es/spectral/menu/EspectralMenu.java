@@ -40,7 +40,6 @@ public final class EspectralMenu {
         ClientEvents events = new ClientEvents();
         MinecraftForge.EVENT_BUS.register(events);
         Skin3d.register();
-        es.spectral.menu.ruta.RutaIcon.install();
         MinecraftForge.EVENT_BUS.register(new AgentRelay.TickHook());
         AgentRelay.start();
     }

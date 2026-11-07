@@ -2,17 +2,17 @@ package es.spectral.menu.geoip;
 
 /**
  * Per-entry hit rectangles for the extras drawn on the multiplayer server row
- * (ping number, country flag, and the reserved route-icon slot).
+ * (ping number and country flag).
  *
  * <p>One instance lives on each {@code OnlineServerEntry} (a {@code @Unique}
  * field in the lane mixin) and is reused every frame: {@link #reset()} clears
  * the frame's slots, {@link #place(int, int, int, int, int)} records the
  * rectangles the renderer actually drew, and {@link #hit(int, int)} answers
- * which one the mouse is over. No allocation happens per frame — the four
+ * which one the mouse is over. No allocation happens per frame — the three
  * slots are fixed int arrays.
  *
- * <p>Slot ids are stable on purpose: the follow-up Ruta Espectral route icon
- * plugs into {@link #ROUTE} without touching the renderer or the layout.
+ * <p>The Ruta Espectral toggle is not a row slot any more: it is a button
+ * column beside the server list, so it has no entry here.
  */
 public final class RowExtrasLayout {
 
@@ -20,12 +20,10 @@ public final class RowExtrasLayout {
     public static final int PING = 0;
     /** 16x11 country flag. */
     public static final int FLAG = 1;
-    /** Reserved: Ruta Espectral route icon ({@link RowExtras#ROUTE_ICON}). */
-    public static final int ROUTE = 2;
     /** Free for later use (e.g. a sponge/whitelist badge). */
-    public static final int SPARE = 3;
+    public static final int SPARE = 2;
 
-    private static final int SLOTS = 4;
+    private static final int SLOTS = 3;
 
     private final int[] slotX = new int[SLOTS];
     private final int[] slotY = new int[SLOTS];

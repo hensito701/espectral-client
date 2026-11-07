@@ -1,9 +1,10 @@
 //! End-to-end tests: a real relay listener on loopback, a real echo upstream
-//! and real sockets. Covers OK + byte round-trip, every `ERR` path, and the
-//! per-sub concurrency limit.
+//! and real sockets. Covers OK + byte round-trip, every `ERR` path, the
+//! per-sub concurrency limit, and the PROXY v2 header for listed upstreams.
 
 mod common;
 
+use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -496,4 +497,90 @@ async fn daily_quota_stops_the_session() {
     let mut sink = Vec::new();
     let _ = tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut sink)).await;
     assert!(sink.len() < 4096, "quota did not cut the stream");
+}
+
+/// Hand-built PROXY v2 IPv4 header, written out byte by byte rather than via
+/// `proxy_v2::encode`, so this end-to-end check does not share its encoder.
+fn expected_v4_header(src: SocketAddr, dst: SocketAddr) -> Vec<u8> {
+    let (SocketAddr::V4(s), SocketAddr::V4(d)) = (src, dst) else {
+        panic!("test addresses are IPv4");
+    };
+    let mut h = vec![
+        0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A, 0x21, 0x11,
+        0x00, 0x0C,
+    ];
+    h.extend_from_slice(&s.ip().octets());
+    h.extend_from_slice(&d.ip().octets());
+    h.extend_from_slice(&s.port().to_be_bytes());
+    h.extend_from_slice(&d.port().to_be_bytes());
+    h
+}
+
+/// Starts an upstream that records the first `n` bytes it receives. Returns
+/// its address and a handle that resolves to those bytes.
+async fn capture_upstream(n: usize) -> (SocketAddr, tokio::task::JoinHandle<Vec<u8>>) {
+    let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let task = tokio::spawn(async move {
+        let (mut s, _) = l.accept().await.unwrap();
+        let mut got = vec![0u8; n];
+        s.read_exact(&mut got).await.unwrap();
+        got
+    });
+    (addr, task)
+}
+
+#[tokio::test]
+async fn proxy_v2_header_precedes_payload_for_listed_upstream() {
+    let payload: &[u8] = &[0x10, 0x00, 0x2f, 0xff, b'h', b'i', 0x00];
+    // A 28-byte IPv4 PROXY v2 header (12 signature + 4 fixed + 12 addresses).
+    let (upstream, captured) = capture_upstream(28 + payload.len()).await;
+    let cfg = Config {
+        proxy_v2: BTreeSet::from([upstream]),
+        ..test_config()
+    };
+    let relay = start_relay(cfg).await;
+    let grant = mint(&GrantSpec::mvp(&sub(1), common::now()));
+
+    let mut s = connect(relay).await;
+    let src = s.local_addr().unwrap();
+    let line = format!("ERT1 {grant} {} {}\n", upstream.ip(), upstream.port());
+    s.write_all(line.as_bytes()).await.unwrap();
+    assert_eq!(read_line(&mut s).await, "OK");
+    s.write_all(payload).await.unwrap();
+
+    let got = tokio::time::timeout(Duration::from_secs(5), captured)
+        .await
+        .expect("capture timed out")
+        .unwrap();
+    let header = expected_v4_header(src, upstream);
+    assert_eq!(&got[..header.len()], &header[..]);
+    assert_eq!(&got[header.len()..], payload);
+    drop(s);
+}
+
+#[tokio::test]
+async fn no_proxy_header_for_upstreams_not_listed() {
+    let payload: &[u8] = b"not a PROXY front";
+    let (upstream, captured) = capture_upstream(payload.len()).await;
+    let cfg = Config {
+        // Listed, but it is not the upstream above, which is a plain server.
+        proxy_v2: BTreeSet::from(["127.0.0.2:25564".parse::<SocketAddr>().unwrap()]),
+        ..test_config()
+    };
+    let relay = start_relay(cfg).await;
+    let grant = mint(&GrantSpec::mvp(&sub(1), common::now()));
+
+    let mut s = connect(relay).await;
+    let line = format!("ERT1 {grant} {} {}\n", upstream.ip(), upstream.port());
+    s.write_all(line.as_bytes()).await.unwrap();
+    assert_eq!(read_line(&mut s).await, "OK");
+    s.write_all(payload).await.unwrap();
+
+    let got = tokio::time::timeout(Duration::from_secs(5), captured)
+        .await
+        .expect("capture timed out")
+        .unwrap();
+    assert_eq!(got, payload);
+    drop(s);
 }

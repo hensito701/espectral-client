@@ -15,8 +15,7 @@ import es.spectral.menu.geoip.GeoIp;
 import es.spectral.menu.ui.Gfx;
 
 /**
- * Ping number, country flag and the reserved route-icon slot for one
- * multiplayer server row (1.8.9).
+ * Ping number and country flag for one multiplayer server row (1.8.9).
  *
  * <p>Vanilla draws the 10×8 status bars at {@code rowX + listWidth - 15} and
  * right-aligns the player count ({@code "1/100"}) so its right edge is
@@ -25,14 +24,13 @@ import es.spectral.menu.ui.Gfx;
  * and the layout mirrors the Fabric lanes:
  *
  * <pre>
- *   [bars 10×8] | 2 | 1/100 | 4 | 38 ms | 3 | flag 16×11 | 3 | route icon
+ *   [bars 10×8] | 2 | 1/100 | 4 | 38 ms | 3 | flag 16×11
  * </pre>
  *
  * <p>Ping text is right-aligned at {@code countLeft - 4} on the name baseline
  * ({@code rowY + 1}); the flag sits at {@code rowY}, its 11 px vertically
- * centred on the 9 px line; the route icon continues left of the flag. Nothing
- * is drawn that would overlap the 32 px server icon, so narrow rows simply get
- * fewer extras.
+ * centred on the 9 px line. Nothing is drawn that would overlap the 32 px server
+ * icon, so narrow rows simply get fewer extras.
  *
  * <p>A row that has not been pinged yet, whose ping failed, or that is out of
  * date (vanilla already prints "Client/Server out of date!" there) draws no
@@ -74,8 +72,6 @@ public final class RowExtras {
     public static final int PING_GAP = 4;
     /** Row content starts after the 32 px server icon. */
     public static final int ICON_BAND = 32;
-    /** Widest route icon the layout will place. */
-    public static final int ROUTE_MAX_W = 24;
 
     /** Nether/End-free 1.8.9 network protocol; any other version is "out of date". */
     public static final int PROTOCOL = 47;
@@ -90,45 +86,13 @@ public final class RowExtras {
     /** Codes probed once and found absent. */
     private static final Set<String> MISSING_FLAGS = ConcurrentHashMap.newKeySet();
 
-    /**
-     * Hook for the Ruta Espectral route icon (slot
-     * {@link RowExtrasLayout#SLOT_ROUTE}). {@code null} — the default — draws
-     * nothing and leaves the row exactly as shipped. The follow-up installs its
-     * implementation here once; the row mixin already dispatches paint, tooltip
-     * and click into it, so no further mixin is needed.
-     */
-    public static volatile RouteIcon ROUTE_ICON;
-
-    /**
-     * What the route icon needs from a row. {@code serverIp} is
-     * {@code ServerData.serverIP} verbatim, so an implementation can key its
-     * per-server state on it.
-     */
-    public interface RouteIcon {
-
-        /** Width in GUI pixels for this server (clamped to 0..24), or 0 to hide the slot. */
-        int width(String serverIp);
-
-        /** Draws the icon inside the given rectangle (height is {@link #SLOT_H}). */
-        void paint(String serverIp, int x, int y, int w, int h);
-
-        /** Tooltip while the pointer is over the icon, or {@code null} for none. */
-        String tooltip(String serverIp);
-
-        /**
-         * Click on the icon. Return {@code true} when handled — the row then
-         * does not join the server.
-         */
-        boolean click(String serverIp, int mouseX, int mouseY, int button);
-    }
-
     private RowExtras() {}
 
     // ── Rendering ──────────────────────────────────────────────────────────
 
     /**
-     * Draws the ping number and flag for one row, places the route icon and
-     * registers every rectangle in {@code layout}. Called from the row mixin at
+     * Draws the ping number and flag for one row and registers every rectangle in
+     * {@code layout}. Called from the row mixin at
      * the tail of the vanilla render, so it paints above the row's own text.
      *
      * @param populationInfo vanilla's {@code ServerData.populationInfo}
@@ -168,18 +132,6 @@ public final class RowExtras {
             if (sprite != null && flagX > rowX + ICON_BAND) {
                 Gfx.sprite(sprite, flagX, rowY, FLAG_W, FLAG_H, 0xFFFFFFFF);
                 layout.place(RowExtrasLayout.SLOT_FLAG, flagX, rowY, FLAG_W, FLAG_H);
-                anchorLeft = flagX;
-            }
-        }
-
-        // ── Route icon (reserved slot 2, driven by ROUTE_ICON) ─────────────
-        RouteIcon route = ROUTE_ICON;
-        if (route != null) {
-            int width = clamp(route.width(serverIp), 0, ROUTE_MAX_W);
-            int routeX = anchorLeft - GAP - width;
-            if (width > 0 && routeX > rowX + ICON_BAND) {
-                route.paint(serverIp, routeX, rowY, width, SLOT_H);
-                layout.place(RowExtrasLayout.SLOT_ROUTE, routeX, rowY, width, SLOT_H);
             }
         }
 
@@ -188,22 +140,7 @@ public final class RowExtras {
         if (slot == RowExtrasLayout.SLOT_FLAG && country != null) {
             return countryTooltip(country);
         }
-        if (slot == RowExtrasLayout.SLOT_ROUTE && route != null) {
-            return route.tooltip(serverIp);
-        }
         return null;
-    }
-
-    /**
-     * Dispatches a click to whatever occupies the extras slots. Returns
-     * {@code true} when consumed — the caller then skips vanilla's join.
-     */
-    public static boolean click(RowExtrasLayout layout, String serverIp,
-            int mouseX, int mouseY, int button) {
-        if (layout == null || serverIp == null) return false;
-        if (layout.hit(mouseX, mouseY) != RowExtrasLayout.SLOT_ROUTE) return false;
-        RouteIcon route = ROUTE_ICON;
-        return route != null && route.click(serverIp, mouseX, mouseY, button);
     }
 
     // ── Pieces ─────────────────────────────────────────────────────────────
@@ -253,9 +190,5 @@ public final class RowExtras {
         }
         FLAGS.put(code, texture);
         return texture;
-    }
-
-    private static int clamp(int value, int min, int max) {
-        return value < min ? min : Math.min(value, max);
     }
 }

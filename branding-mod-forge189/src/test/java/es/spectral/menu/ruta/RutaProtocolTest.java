@@ -68,11 +68,16 @@ public class RutaProtocolTest {
     }
 
     @Test
-    public void espectralAndLocalServersAreNeverRouted() {
-        assertFalse(RutaProtocol.isEligible("uhce.top"));
-        assertFalse(RutaProtocol.isEligible("play.uhce.top"));
-        assertFalse(RutaProtocol.isEligible("espectral.es"));
-        assertFalse(RutaProtocol.isEligible("mc.espectral.es"));
+    public void espectralServersAreEligibleLikeAnyPublicHost() {
+        assertTrue(RutaProtocol.isEligible("uhce.top"));
+        assertTrue(RutaProtocol.isEligible("play.uhce.top"));
+        assertTrue(RutaProtocol.isEligible("espectral.es"));
+        assertTrue(RutaProtocol.isEligible("mc.espectral.es"));
+        assertTrue(RutaProtocol.isEligible("24h.uhce.top:25568"));
+    }
+
+    @Test
+    public void localServersAreNeverRouted() {
         assertFalse(RutaProtocol.isEligible("localhost"));
         assertFalse(RutaProtocol.isEligible("printer.local"));
         assertFalse(RutaProtocol.isEligible("lan"));

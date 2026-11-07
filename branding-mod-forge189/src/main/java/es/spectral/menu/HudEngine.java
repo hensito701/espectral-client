@@ -17,6 +17,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.potion.Potion;
 import net.minecraft.potion.PotionEffect;
 
+import es.spectral.menu.media.MediaHudCard;
 import es.spectral.menu.ui.Gfx;
 
 /**
@@ -173,6 +174,8 @@ public final class HudEngine {
                 || mc.currentScreen instanceof es.spectral.menu.ui.HudEditScreen) {
             return;
         }
+        // The now-playing card gates itself (its own toggles and a loaded track).
+        MediaHudCard.draw(res);
         List<Block> blocks = blocks(mc);
         if (blocks.isEmpty()) return;
         FontRenderer font = mc.fontRendererObj;

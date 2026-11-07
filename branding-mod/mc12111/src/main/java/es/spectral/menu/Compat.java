@@ -55,6 +55,18 @@ public final class Compat {
         es.spectral.menu.media.MediaToast.render(graphics, minecraft);
     }
 
+    /**
+     * Now-playing card: the Media Player's track as a movable HUD block, placed by
+     * {@link es.spectral.menu.HudLayout} like the text blocks. Hidden with the
+     * vanilla HUD (F1), mirroring {@link #drawHudOverlays}.
+     */
+    public static void drawMediaHud(Minecraft minecraft, net.minecraft.client.gui.GuiGraphics graphics) {
+        if (minecraft == null || graphics == null) return;
+        if (minecraft.player == null || minecraft.level == null) return;
+        if (minecraft.options.hideGui) return;
+        es.spectral.menu.media.MediaHudCard.draw(graphics, minecraft, graphics.guiWidth(), graphics.guiHeight());
+    }
+
     public static void drawHudOverlays(Minecraft minecraft,
             net.minecraft.client.gui.GuiGraphics graphics) {
         if (minecraft == null || graphics == null) return;
@@ -206,6 +218,25 @@ public final class Compat {
     public static void uiFill(Object gfx, int x1, int y1, int x2, int y2, int argb) {
         if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
             graphics.fill(x1, y1, x2, y2, argb);
+        }
+    }
+
+    /**
+     * Suite painter primitive: clips everything drawn before the matching
+     * {@link #uiScissorEnd} to a rectangle. The server-list button column uses it
+     * so buttons scrolled past the list edge do not paint over the header or
+     * footer. Scissors nest, so every call needs exactly one end call.
+     */
+    public static void uiScissor(Object gfx, int x1, int y1, int x2, int y2) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
+            graphics.enableScissor(x1, y1, x2, y2);
+        }
+    }
+
+    /** Suite painter primitive: ends the scissor opened by {@link #uiScissor}. */
+    public static void uiScissorEnd(Object gfx) {
+        if (gfx instanceof net.minecraft.client.gui.GuiGraphics graphics) {
+            graphics.disableScissor();
         }
     }
 

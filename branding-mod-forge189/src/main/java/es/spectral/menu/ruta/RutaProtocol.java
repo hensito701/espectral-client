@@ -178,9 +178,11 @@ public final class RutaProtocol {
     }
 
     /**
-     * False for Espectral's own servers (routing them would break AuthMe
-     * per-IP limits and AdvancedBan IP bans), for LAN/loopback names and for
-     * private/loopback/link-local/CGNAT/benchmark IP literals.
+     * False for LAN/loopback names and for private/loopback/link-local/CGNAT/
+     * benchmark IP literals. Espectral's own servers are eligible like any
+     * public host: the relay sends the player's real IP to them in a PROXY
+     * protocol v2 header, so AuthMe per-IP limits and AdvancedBan IP bans keep
+     * working.
      */
     public static boolean isEligible(String serverAddress) {
         String key = normalize(serverAddress);
@@ -192,8 +194,6 @@ public final class RutaProtocol {
                 || host.equals("lan") || host.endsWith(".lan")) {
             return false;
         }
-        if (host.equals("uhce.top") || host.endsWith(".uhce.top")) return false;
-        if (host.equals("espectral.es") || host.endsWith(".espectral.es")) return false;
         if (host.indexOf(':') >= 0) return eligibleV6(host);
         if (isIpv4(host)) return eligibleV4(host);
         return true;

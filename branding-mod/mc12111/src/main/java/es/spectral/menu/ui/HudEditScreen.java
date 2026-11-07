@@ -81,6 +81,9 @@ public class HudEditScreen extends Screen {
                         hudTheme.text, hudTheme.shadow);
                 rowTop += rowH;
             }
+            if (es.spectral.menu.media.MediaHudCard.FEATURE_ID.equals(b.id)) {
+                es.spectral.menu.media.MediaHudCard.drawContents(graphics, this.minecraft, b.x, b.y);
+            }
             // Feature label above the box.
             graphics.drawString(this.font, b.label, b.x, b.y - 10, hudTheme.label, false);
         }

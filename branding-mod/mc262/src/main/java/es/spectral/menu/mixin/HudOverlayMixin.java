@@ -30,5 +30,6 @@ public abstract class HudOverlayMixin {
             CallbackInfo ci) {
         Compat.drawHudOverlays(Minecraft.getInstance(), extractor);
         Compat.drawMediaToast(Minecraft.getInstance(), extractor);
+        Compat.drawMediaHud(Minecraft.getInstance(), extractor);
     }
 }

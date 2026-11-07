@@ -18,6 +18,7 @@ use crate::dest;
 use crate::grant::Verifier;
 use crate::limits::{Limits, Reject, Slot};
 use crate::proto;
+use crate::proxy_v2;
 use crate::util::{fmt_rfc3339, now_unix};
 use crate::Code;
 
@@ -213,6 +214,17 @@ impl Server {
             _ => return self.fail(&mut client, log, src, Code::Connect).await,
         };
         let _ = upstream.set_nodelay(true);
+
+        // 5b. A destination behind a PROXY-aware front (`--proxy-v2`) needs the
+        // player's real address before any Minecraft byte, or its per-IP limits
+        // and bans would see the relay. The header is the relay's own bytes, so
+        // it is neither charged to the quota nor counted in the log.
+        if self.cfg.proxy_v2.contains(&proxy_v2::canonical(req.dest)) {
+            let header = proxy_v2::encode(peer, req.dest);
+            if upstream.write_all(&header).await.is_err() {
+                return self.fail(&mut client, log, src, Code::Connect).await;
+            }
+        }
 
         // 6. Charge bytes the client pipelined right behind the header before
         // promising `OK` — a client that already overran its quota must get

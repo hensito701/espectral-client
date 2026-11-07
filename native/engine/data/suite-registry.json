@@ -145,6 +145,17 @@
       "description_es": "Muestra la cabeza de cada jugador en el tabulador, incluso en servidores sin modo online."
     },
     {
+      "id": "mediahud",
+      "category": "hud",
+      "kind": "owned",
+      "default_enabled": true,
+      "state": {},
+      "name_en": "Media HUD card",
+      "name_es": "Tarjeta de reproducción en HUD",
+      "description_en": "Shows the song playing in the Espectral Media Player as a movable card in the HUD.",
+      "description_es": "Muestra la canción que suena en el Reproductor Espectral como una tarjeta movible en el HUD."
+    },
+    {
       "id": "zoom",
       "category": "controls",
       "kind": "owned",

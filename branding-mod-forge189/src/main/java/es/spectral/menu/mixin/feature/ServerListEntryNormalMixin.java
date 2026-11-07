@@ -6,12 +6,12 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import net.minecraft.client.gui.GuiMultiplayer;
 import net.minecraft.client.gui.ServerListEntryNormal;
 import net.minecraft.client.multiplayer.ServerData;
 
+import es.spectral.menu.ruta.RutaIcon;
 import es.spectral.menu.serverlist.RowExtras;
 import es.spectral.menu.serverlist.RowExtrasLayout;
 
@@ -24,9 +24,10 @@ import es.spectral.menu.serverlist.RowExtrasLayout;
  * vanilla's tooltip ({@code owner.setHoveringText} is the same call vanilla
  * makes there). Geometry, colours and the flag tooltip live in {@link RowExtras}.
  *
- * <p>{@code mousePressed} gives the reserved route-icon slot first refusal on a
- * click; nothing is installed by default, so the row behaves exactly as vanilla
- * until the Ruta Espectral feature plugs in.
+ * <p>The Ruta Espectral button column is painted from {@code drawEntry} via
+ * {@link es.spectral.menu.ruta.RutaIcon}. Its clicks are taken on the screen by
+ * {@code GuiMultiplayerRouteColumnMixin}, since a row never receives a click
+ * outside its own x-range.
  */
 @Mixin(ServerListEntryNormal.class)
 public abstract class ServerListEntryNormalMixin {
@@ -48,16 +49,9 @@ public abstract class ServerListEntryNormalMixin {
         if (tooltip != null) {
             owner.setHoveringText(tooltip);
         }
-    }
-
-    @Inject(method = "mousePressed", at = @At("HEAD"), cancellable = true)
-    private void espectral$clickRowExtras(int slotIndex, int mouseX, int mouseY, int mouseButton,
-            int relativeX, int relativeY, CallbackInfoReturnable<Boolean> cir) {
-        // Args 2/3 are the absolute cursor position; the relative pair is only
-        // convenient for the vanilla 32 px icon/swap band.
-        if (server == null) return;
-        if (RowExtras.click(espectral$layout, server.serverIP, mouseX, mouseY, mouseButton)) {
-            cir.setReturnValue(Boolean.TRUE);
+        String routeTip = RutaIcon.paintColumn(server, x, y, listWidth, mouseX, mouseY);
+        if (routeTip != null) {
+            owner.setHoveringText(routeTip);
         }
     }
 }

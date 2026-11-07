@@ -19,6 +19,7 @@ import es.spectral.menu.HudIcon;
 import es.spectral.menu.HudLayout;
 import es.spectral.menu.HudTheme;
 import es.spectral.menu.Lang;
+import es.spectral.menu.media.MediaHudCard;
 
 /**
  * Drag-to-move editor for the HUD overlay blocks (same behaviour as the
@@ -71,6 +72,17 @@ public class HudEditScreen extends GuiScreen {
         blocks.clear();
         List<HudEngine.Block> live = HudEngine.blocks(mc);
         for (String id : HudLayout.OVERLAY_IDS) {
+            if (MediaHudCard.FEATURE_ID.equals(id)) {
+                // Text-less card: its box is the fixed card size, not row-measured.
+                EditBlock card = new EditBlock(id, Collections.<HudEngine.Row>emptyList());
+                card.w = MediaHudCard.WIDTH;
+                card.h = MediaHudCard.HEIGHT;
+                int[] cardPos = HudLayout.pos(id, width, height, card.w, card.h);
+                card.x = cardPos[0];
+                card.y = cardPos[1];
+                blocks.add(card);
+                continue;
+            }
             List<HudEngine.Row> rows = null;
             for (HudEngine.Block b : live) {
                 if (b.id.equals(id)) rows = b.rows;
@@ -171,6 +183,7 @@ public class HudEditScreen extends GuiScreen {
         HudTheme theme = HudTheme.current();
         for (EditBlock b : blocks) {
             HudEngine.drawBlock(mc, theme, b.rows, b.x, b.y, b.w, b.h);
+            if (MediaHudCard.FEATURE_ID.equals(b.id)) MediaHudCard.drawContents(b.x, b.y);
             boolean hot = b == dragging || (dragging == null && b.contains(mouseX, mouseY));
             Gfx.outline(b.x - 1, b.y - 1, b.w + 2, b.h + 2, hot ? theme.outlineHot : theme.outlineIdle);
         }

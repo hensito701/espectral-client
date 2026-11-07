@@ -11,6 +11,8 @@
     "SliderSkinMixin",
     "ListSkinMixin",
     "ServerListFlagsMixin",
+    "ServerListRutaColumnMixin",
+    "ServerListRutaClickMixin",
     "ServerNameResolverMixin",
     "PauseScreenInitMixin",
     "ClientBrandMixin",

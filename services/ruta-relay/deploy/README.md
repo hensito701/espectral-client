@@ -42,14 +42,15 @@ Release profile: `opt-level=z`, `lto`, `codegen-units=1`, `panic=abort`,
 ## Test + smoke
 
 ```bash
-~/.cargo/bin/cargo test --offline           # 51 unit + 16 end-to-end
+~/.cargo/bin/cargo test --offline           # 58 unit + 18 end-to-end
 ```
 
 The end-to-end suite boots a real relay on 127.0.0.1 with the test-key seam
 (`Server::new_with_verifier`) and a real echo upstream; it covers `OK` plus
 byte round-trip (including a 100 KB burst and pipelined handshake bytes),
 `proto/auth/expired/notmvp/dest/connect/limit/busy`, the 10 s header deadline,
-the 300 s idle deadline, the daily quota and all three concurrency caps.
+the 300 s idle deadline, the daily quota, all three concurrency caps and the PROXY
+v2 header (sent only to listed upstreams).
 
 For a manual smoke run, build with `--features test-key` (never deployed) and
 point the relay at a loopback echo server:
@@ -72,6 +73,7 @@ read from a file.
 | Flag | Env | Default |
 |---|---|---|
 | `--listen <IP:PORT>` (repeatable, or comma-separated) | `RUTA_LISTEN` | `0.0.0.0:25565` |
+| `--proxy-v2 <IP:PORT>` (repeatable, or comma-separated; a PROXY-aware upstream) | `RUTA_PROXY_V2` | none |
 | `--per-sub-concurrency <N>` | `RUTA_PER_SUB_CONCURRENCY` | 4 |
 | `--per-sub-rate <N>` (new connections/minute) | `RUTA_PER_SUB_RATE_PER_MIN` | 30 |
 | `--per-sub-daily-bytes <SIZE>` (`8GiB`, `8g`, plain bytes) | `RUTA_PER_SUB_DAILY_BYTES` | 8 GiB, UTC day |
@@ -104,6 +106,30 @@ per direction, idle tracking (300 s) and byte counting. Order of checks
 (what `ERR` you get when several apply): `proto` → `auth` → `expired` →
 `notmvp` → `dest` → `limit` → `connect`; `busy` (global cap) and `limit`
 (per-source-IP cap) are decided at accept, before the header is read.
+
+For a destination listed in `--proxy-v2`, the relay also writes a PROXY protocol
+v2 header with the player's real address, right after connecting and before the
+first Minecraft byte. See the next section.
+
+## PROXY v2 fronts
+
+The MAIN and Meetups servers sit behind a HAProxy front on NVH1 (`<nvh1-ip>`,
+ports 25564 and 25568). That front reads the player's real address from a PROXY
+protocol v2 header, which keeps AuthMe per-IP limits and AdvancedBan IP bans
+working for routed players. The relay writes the header for each `--proxy-v2`
+destination and for no other.
+
+Only list a destination that runs a PROXY-aware front. A plain server reads the
+header as Minecraft traffic and drops the connection, so a wrong entry breaks
+routing to that server.
+
+Deploy order matters. Make the front accept the header from the relay before
+the relay starts sending it. Direct, non-routed players also connect to those
+ports with no header, so accept the header only from the relay's egress
+address, not on every connection. On HAProxy 2.x that is roughly
+`tcp-request connection expect-proxy layer4 if { src <relay egress IP> }`; check
+the rule against the installed version. Confirm the egress IP the front sees
+(expected to be OVM2's `<ovm2-ip>`) before enabling the flags.
 
 ## Log format
 

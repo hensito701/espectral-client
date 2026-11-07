@@ -14,6 +14,7 @@ pub mod dest;
 pub mod grant;
 pub mod limits;
 pub mod proto;
+pub mod proxy_v2;
 pub mod server;
 pub mod util;
 

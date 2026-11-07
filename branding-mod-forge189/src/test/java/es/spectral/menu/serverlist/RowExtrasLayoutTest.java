@@ -39,20 +39,6 @@ public class RowExtrasLayoutTest {
     }
 
     @Test
-    public void routeSlotIsReservedAndIndependent() {
-        RowExtrasLayout layout = new RowExtrasLayout();
-        layout.place(RowExtrasLayout.SLOT_PING, 100, 4, 30, RowExtras.SLOT_H);
-        layout.place(RowExtrasLayout.SLOT_ROUTE, 51, 4, 16, RowExtras.SLOT_H);
-
-        assertEquals(RowExtrasLayout.SLOT_ROUTE, layout.hit(52, 5));
-        assertEquals(RowExtrasLayout.SLOT_PING, layout.hit(101, 5));
-
-        layout.reset();
-        assertFalse("nothing installs a route icon yet",
-                layout.isPlaced(RowExtrasLayout.SLOT_ROUTE));
-    }
-
-    @Test
     public void zeroSizedPlacementsDoNotRegister() {
         RowExtrasLayout layout = new RowExtrasLayout();
         layout.place(RowExtrasLayout.SLOT_EXTRA, 10, 10, 0, 11);
