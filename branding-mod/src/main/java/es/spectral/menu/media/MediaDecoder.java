@@ -52,7 +52,7 @@ final class MediaDecoder {
         Sound sound;
         try {
             InputStream in = new java.io.BufferedInputStream(Files.newInputStream(path), 32 * 1024);
-            sound = new Sound(in);
+            sound = new Sound(Mp3Header.skipId3v2(in));
         } catch (Throwable e) {
             this.error = e.toString();
             LOGGER.warn("Cannot open {}: {}", path.getFileName(), e.toString());

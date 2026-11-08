@@ -116,34 +116,53 @@ public final class Mp3Header {
     }
 
     /**
+     * Skips a leading ID3v2 tag and returns {@code in}, now at the audio data.
+     * The MPEG decoder knows no tags and syncs on the first 0xFFF it meets, so
+     * cover art inside the tag decodes as a bogus frame and the file fails to
+     * open. {@code in} must support mark/reset.
+     */
+    public static InputStream skipId3v2(InputStream in) throws IOException {
+        in.mark(10);
+        byte[] head = new byte[10];
+        int got = 0;
+        while (got < head.length) {
+            int n = in.read(head, got, head.length - got);
+            if (n < 0) {
+                break;
+            }
+            got += n;
+        }
+        if (got < head.length || head[0] != 'I' || head[1] != 'D' || head[2] != '3') {
+            in.reset();
+            return in;
+        }
+        long left = (((head[6] & 0x7F) << 21) | ((head[7] & 0x7F) << 14)
+                | ((head[8] & 0x7F) << 7) | (head[9] & 0x7F))
+                + ((head[5] & 0x10) != 0 ? 10 : 0); // footer flag
+        while (left > 0) {
+            long n = in.skip(left);
+            if (n <= 0) {
+                if (in.read() < 0) {
+                    throw new EOFException();
+                }
+                n = 1;
+            }
+            left -= n;
+        }
+        return in;
+    }
+
+    /**
      * Exact length by walking MPEG frame headers; {@code -1} when the file does
      * not look like an MPEG audio stream.
      */
     public static long durationMs(Path path) {
         try (InputStream in = Files.newInputStream(path)) {
             java.io.BufferedInputStream buf = new java.io.BufferedInputStream(in, 64 * 1024);
+            Mp3Header.skipId3v2(buf);
             int b0 = buf.read();
             int b1 = buf.read();
             int b2 = buf.read();
-            if (b0 == 'I' && b1 == 'D' && b2 == '3') {
-                byte[] rest = readFully(buf, 7);
-                if (rest == null) {
-                    return -1L;
-                }
-                int size = ((rest[3] & 0x7F) << 21) | ((rest[4] & 0x7F) << 14)
-                        | ((rest[5] & 0x7F) << 7) | (rest[6] & 0x7F);
-                long skipped = 0;
-                while (skipped < size) {
-                    long n = buf.skip(size - skipped);
-                    if (n <= 0) {
-                        return -1L;
-                    }
-                    skipped += n;
-                }
-                b0 = buf.read();
-                b1 = buf.read();
-                b2 = buf.read();
-            }
             long totalFrames = 0L;
             double seconds = 0.0;
             int header = (b0 << 16) | (b1 << 8) | b2;

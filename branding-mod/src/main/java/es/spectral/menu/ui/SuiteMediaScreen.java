@@ -47,6 +47,8 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
     private int page;
     private int pageSize = 4;
     private int lastPages = 1;
+    /** Width the now-playing line must fit (the panel's inner width). */
+    private int nowPlayingW;
 
     private final List<Button> rowButtons = new ArrayList<>();
     private final List<Button> addButtons = new ArrayList<>();
@@ -124,6 +126,7 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
         int rowsBottom = footerY - SuiteTheme.GAP - SuiteTheme.PAGER_H - 2;
 
         // Now-playing line + settings row live above the list on both tabs.
+        this.nowPlayingW = innerW;
         this.nowPlayingLabel = new StringWidget(innerX, y, innerW, 12, Component.empty(), this.font);
         this.addRenderableWidget(this.nowPlayingLabel);
         y += 12;
@@ -427,6 +430,7 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
         return player.isPlaying() && !player.isPaused() ? "espectral.media.pause" : "espectral.media.play";
     }
 
+    /** "Now playing: <name>  (m:ss / m:ss)", the name trimmed so the clock stays inside the panel. */
     private MutableComponent nowPlayingLine() {
         MediaPlayer player = MediaPlayer.get();
         MediaTrack track = player.current();
@@ -435,8 +439,14 @@ public class SuiteMediaScreen extends Screen implements SuiteSheet {
         }
         String clock = MediaToast.clock(player.elapsedMs()) + " / "
                 + (track.durationMs() > 0 ? MediaToast.clock(track.durationMs()) : "--:--");
-        return Component.translatable("espectral.media.nowplaying")
-                .append(Component.literal(": " + track.displayName() + "  (" + clock + ")"));
+        String head = Component.translatable("espectral.media.nowplaying").getString() + ": ";
+        String tail = "  (" + clock + ")";
+        String name = track.displayName();
+        int room = this.nowPlayingW - this.font.width(head) - this.font.width(tail);
+        if (this.font.width(name) > room) {
+            name = this.font.plainSubstrByWidth(name, Math.max(0, room - this.font.width("..."))) + "...";
+        }
+        return Component.literal(head + name + tail);
     }
 
     /** Repaints messages in place; adds and removes nothing. */

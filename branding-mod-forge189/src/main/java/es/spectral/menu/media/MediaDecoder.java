@@ -82,7 +82,7 @@ final class MediaDecoder {
         byte[] chunk = new byte[16 * 1024];
         try (InputStream raw = Files.newInputStream(path);
                 InputStream in = new BufferedInputStream(raw, 32 * 1024);
-                Sound sound = new Sound(in)) {
+                Sound sound = new Sound(Mp3Header.skipId3v2(in))) {
             format = sound.getAudioFormat();
             while (running) {
                 if (ring.awaitRoom(250) <= 0) {

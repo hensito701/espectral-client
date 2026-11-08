@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.8.0] - 2026-11-08
 
 ### Added
 - **Media Player (Espectral Suite → Reproductor / Media Player).** Play your
@@ -18,8 +18,11 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   muted while yours plays (both toggleable in the screen). Playback streams
   from disk with a fixed ~1.7 MB buffer, so a 10-minute track costs the same
   memory as a 10-second one, and it keeps playing across F3+T and audio-device
-  changes. MP3 decoding by [JavaMP3](https://github.com/delthas/javamp3) (MIT).
-  No music is bundled or downloaded: only what you put in the folder is played.
+  changes. MP3 decoding by [JavaMP3](https://github.com/delthas/javamp3) (MIT);
+  files with embedded cover art or other ID3v2 tags (what YouTube downloaders
+  write) play too, and a long title is trimmed so the now-playing line stays
+  inside the panel. No music is bundled or downloaded: only what you put in the
+  folder is played.
 - **Now-playing HUD card.** While a track is loaded, a small card shows the
   Espectral logo, the title and artist, play/pause/previous/next marks and a
   progress bar with elapsed and total time. Move it in the HUD editor like the
@@ -39,10 +42,8 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   or is unreachable you get a message naming Ruta Espectral; the game never
   silently connects directly instead. It is not a VPN: only that game
   connection is relayed. The relay is in the US, so it can add latency to
-  European servers. The relay itself lives in `services/ruta-relay/` (static
-  Rust binary, `PROTOCOL.md`, hardened systemd unit); it accepts only the same
-  signed MVP grants as the mod, only public addresses, and has per-player and
-  global limits.
+  European servers. It only accepts active MVP passes and public servers, and
+  has fair-use limits.
 - **Ping in numbers and country flags in the server list.** Each multiplayer
   row now shows its ping as a number (`38 ms`, green under 80 ms, yellow under
   150 ms, red above) and, left of it, the server's country flag (16×11). Hover
