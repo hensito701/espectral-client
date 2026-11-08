@@ -157,7 +157,8 @@ pub fn effective_memory_mb(requested_mb: i64, total_bytes: u64) -> i64 {
 /// launch.mjs `stackFlags` (upstream 67614f8): on Windows commit every Java
 /// thread's stack up front. A lost guard page on a worker thread crashed
 /// 26.3 silently (0xC0000005, no hs_err); pre-touching makes it harmless.
-/// About 1 MB RAM per thread. Diagnostic-gated on JDK 21-25.
+/// About 1 MB RAM per thread. Diagnostic-gated on JDK 21-25. The flag Mojang
+/// ships for that crash, `-XX:StackShadowPages=32`, comes from [`vanilla_vm_flags`].
 pub fn stack_flags(windows: bool) -> &'static [&'static str] {
     if windows {
         &["-XX:+UnlockDiagnosticVMOptions", "-XX:+AlwaysPreTouchStacks"]
@@ -220,6 +221,44 @@ fn expand_with(args: &[Value], env: &RuleEnv<'_>) -> Vec<String> {
 /// entries kept when the os/arch rules allow).
 pub fn expand_jvm_args(args: &[Value], os: &str, arch: &str) -> Vec<String> {
     expand_with(args, &RuleEnv { os, arch, features: None })
+}
+
+/// The VM options of vanilla's `arguments.jvm` template (rules evaluated): `-X…`
+/// flags and the module/access options (`--add-exports X`, `--add-opens X`,
+/// `--enable-native-access=…`, `--sun-misc-unsafe-memory-access=…`). The
+/// `-D` properties and `-cp` are left out: the launcher sets its own natives
+/// path and classpath. Mojang ships flags the game needs to stay alive here —
+/// 26.3 requires `-XX:StackShadowPages=32` (LWJGL/SDL native upcalls overrun the
+/// default shadow zone and kill the JVM in jvm.dll during resource reloads, e.g.
+/// a server resource pack on join). Options already in `present` are skipped.
+pub fn vanilla_vm_flags(version_json: &Value, os: &str, arch: &str, present: &[String]) -> Vec<String> {
+    let Some(template) = version_json.pointer("/arguments/jvm").and_then(Value::as_array) else {
+        return vec![];
+    };
+    let has_pair = |list: &[String], opt: &str, val: &str| list.windows(2).any(|w| w[0] == opt && w[1] == val);
+    let args = expand_jvm_args(template, os, arch);
+    let mut out: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        if matches!(a.as_str(), "--add-exports" | "--add-opens") {
+            if let Some(v) = args.get(i + 1) {
+                if !has_pair(present, a, v) && !has_pair(&out, a, v) {
+                    out.extend([a.clone(), v.clone()]);
+                }
+            }
+            i += 2;
+            continue;
+        }
+        let vm_option = a.starts_with("-X")
+            || a.starts_with("--enable-native-access=")
+            || a.starts_with("--sun-misc-unsafe-memory-access=");
+        if vm_option && !a.contains("${") && !present.contains(a) && !out.contains(a) {
+            out.push(a.clone());
+        }
+        i += 1;
+    }
+    out
 }
 
 /// Same as [`expand_jvm_args`] but evaluates feature rules (game template).
@@ -459,6 +498,16 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     }
     if java_major >= 21 {
         jvm.extend(stack_flags(cfg!(windows)).iter().map(|s| s.to_string()));
+    }
+    // Vanilla and Fabric launches build their own argv, so they would lose the
+    // VM options Mojang ships in the version JSON. NeoForge/Forge profiles merge
+    // that template already (their loader jvm_args below).
+    let merged_profile =
+        resolved.loader.as_ref().is_some_and(|l| matches!(l.kind.as_deref(), Some("neoforge" | "forge")));
+    if !merged_profile {
+        let flags =
+            vanilla_vm_flags(&resolved.version.json, crate::platform::os_name(), crate::platform::node_arch(), &jvm);
+        jvm.extend(flags);
     }
     // Mod bridge: the in-game mod reports visible uuids over loopback. Its
     // token is NOT an argument (other users can read the argv): spawn_java
@@ -2229,6 +2278,60 @@ mod tests {
         let natives = lossy(&r.natives_dir);
         assert_eq!(lib_paths, [&format!("-Djava.library.path={natives}")]);
         assert!(argv.contains(&format!("-Djna.tmpdir={natives}/jna")), "{argv:?}");
+    }
+
+    #[test]
+    fn vanilla_vm_flags_reach_fabric_and_vanilla_launches() {
+        // 26.3 dies in jvm.dll on resource reloads without -XX:StackShadowPages=32,
+        // which only vanilla's version JSON carries.
+        let (_d, e) = temp_engine();
+        let template = json!({ "arguments": { "jvm": [
+            { "rules": [{ "action": "allow", "os": { "arch": "x86" } }], "value": "-Xss1M" },
+            "-XX:StackShadowPages=32",
+            "--enable-native-access=ALL-UNNAMED",
+            "--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED",
+            "--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED",
+            "-Djava.library.path=${natives_directory}/java",
+            "-Dminecraft.launcher.brand=${launcher_name}",
+            "-cp", "${classpath}"
+        ]}});
+        let i = InstanceMeta { name: "f263".into(), version: "26.3".into(), ..Default::default() };
+        for fabric in [false, true] {
+            let mut r = make_resolved();
+            r.version.json = template.clone();
+            if fabric {
+                r.loader = Some(LoaderLaunch {
+                    main_class: "net.fabricmc.loader.impl.launch.knot.KnotClient".into(),
+                    jvm_args: vec![],
+                    game_args: vec![],
+                    kind: None,
+                });
+            }
+            let argv = build_argv(&e, &i, &mut r);
+            let count = |s: &str| argv.iter().filter(|a| *a == s).count();
+            assert_eq!(count("-XX:StackShadowPages=32"), 1, "{argv:?}");
+            assert_eq!(count("-Xss1M"), 0, "x86-only rule");
+            assert!(argv.windows(2).any(|w| w == ["--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED"]));
+            assert_eq!(
+                argv.windows(2).filter(|w| *w == ["--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED"]).count(),
+                1
+            );
+            assert_eq!(count("--enable-native-access=ALL-UNNAMED"), 1);
+            assert_eq!(count("-cp"), 1);
+            assert!(!argv.iter().any(|a| a.starts_with("-Dminecraft.launcher.brand=")));
+            assert_eq!(argv.iter().filter(|a| a.starts_with("-Djava.library.path=")).count(), 1);
+        }
+        // NeoForge/Forge merged the template into their own jvm_args: not added twice.
+        let mut r = make_resolved();
+        r.version.json = template;
+        r.loader = Some(LoaderLaunch {
+            main_class: "net.minecraftforge.bootstrap.ForgeBootstrap".into(),
+            jvm_args: vec![json!("-XX:StackShadowPages=32")],
+            game_args: vec![],
+            kind: Some("forge".into()),
+        });
+        let argv = build_argv(&e, &i, &mut r);
+        assert_eq!(argv.iter().filter(|a| *a == "-XX:StackShadowPages=32").count(), 1, "{argv:?}");
     }
 
     #[test]

@@ -2,6 +2,18 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **26.3 crashing when joining big servers (MCC Island, CubeCraft…).** Vanilla
+  and Fabric launches now pass the JVM options Mojang ships in the version
+  JSON, most importantly `-XX:StackShadowPages=32`. Without it, Minecraft 26.3
+  on Windows could die inside `jvm.dll` (`EXCEPTION_ACCESS_VIOLATION`, often
+  "thread … also had an error") during a resource reload — a server resource
+  pack on join, F3+T, or changing packs. Espectral's own servers send no pack,
+  so they seemed unaffected. NeoForge/Forge already got these options from
+  their merged profile.
+
 ## [1.8.0] - 2026-11-08
 
 ### Added
