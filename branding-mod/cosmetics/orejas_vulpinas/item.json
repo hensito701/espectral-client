@@ -1,0 +1,64 @@
+{
+  "id": "orejas_vulpinas",
+  "kind": "model",
+  "slot": "cabeza",
+  "requires": "mvp",
+  "order": 10,
+  "name": {
+    "es": "Orejas Vulpinas",
+    "en": "Vulpine Ears"
+  },
+  "render": "cutout",
+  "hide_with": "hat",
+  "head_clearance_px": 5,
+  "motion": {
+    "right_ear": [
+      {
+        "type": "react",
+        "rate": 0.18,
+        "sneak": {
+          "x": -27.502,
+          "y": 0,
+          "z": -16.5012
+        }
+      },
+      {
+        "type": "head_turn",
+        "axis": "x",
+        "gain": -0.077,
+        "max": 15.1261,
+        "decay": 0.7
+      },
+      {
+        "type": "land",
+        "axis": "x",
+        "impulse": 20.0535,
+        "decay": 0.82
+      }
+    ],
+    "left_ear": [
+      {
+        "type": "react",
+        "rate": 0.18,
+        "sneak": {
+          "x": -27.502,
+          "y": 0,
+          "z": 16.5012
+        }
+      },
+      {
+        "type": "head_turn",
+        "axis": "x",
+        "gain": -0.1225,
+        "max": 24.0642,
+        "decay": 0.7
+      },
+      {
+        "type": "land",
+        "axis": "x",
+        "impulse": 20.0535,
+        "decay": 0.82
+      }
+    ]
+  }
+}

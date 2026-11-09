@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "slots": ["espalda", "cuello", "cabeza", "elitros"],
+  "exclusive": [],
+  "emotes": [
+    { "id": "saludo", "requires": "mvp", "name": { "es": "Saludo", "en": "Wave" } },
+    { "id": "reverencia", "requires": "mvp", "name": { "es": "Reverencia", "en": "Bow" } },
+    { "id": "aplauso", "requires": "mvp", "name": { "es": "Aplauso", "en": "Clap" } },
+    { "id": "sentarse", "requires": "mvp", "name": { "es": "Sentarse", "en": "Sit" } },
+    { "id": "invocacion", "requires": "mvp", "name": { "es": "Invocación", "en": "Invocation" } }
+  ]
+}

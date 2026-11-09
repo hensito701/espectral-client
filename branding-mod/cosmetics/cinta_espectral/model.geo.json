@@ -1,0 +1,75 @@
+{
+  "format_version": "1.12.0",
+  "minecraft:geometry": [
+    {
+      "description": {
+        "identifier": "geometry.espectral.cinta_espectral",
+        "texture_width": 64,
+        "texture_height": 32
+      },
+      "bones": [
+        { "name": "head", "pivot": [0, 24, 0] },
+        {
+          "name": "band",
+          "parent": "head",
+          "pivot": [0, 24, 0],
+          "cubes": [
+            { "origin": [-4, 28.5, -4], "size": [8, 2, 8], "inflate": 0.6, "uv": [0, 0] }
+          ]
+        },
+        {
+          "name": "emblem",
+          "parent": "head",
+          "pivot": [0, 24, 0],
+          "cubes": [
+            { "origin": [-1.5, 28, -5.5], "size": [3, 3, 1], "uv": [32, 0] }
+          ]
+        },
+        {
+          "name": "knot",
+          "parent": "head",
+          "pivot": [0, 24, 0],
+          "cubes": [
+            { "origin": [-1, 28.5, 4], "size": [2, 2, 2], "uv": [40, 0] }
+          ]
+        },
+        {
+          "name": "tail_right_upper",
+          "parent": "head",
+          "pivot": [-1.5, 29, 5],
+          "rotation": [0, 0, 10],
+          "cubes": [
+            { "origin": [-2, 25, 4.5], "size": [1, 4, 1], "uv": [48, 0] }
+          ]
+        },
+        {
+          "name": "tail_right_lower",
+          "parent": "tail_right_upper",
+          "pivot": [-1.5, 25, 5],
+          "rotation": [0, 0, 3],
+          "cubes": [
+            { "origin": [-2, 21, 4.5], "size": [1, 4, 1], "uv": [52, 0] }
+          ]
+        },
+        {
+          "name": "tail_left_upper",
+          "parent": "head",
+          "pivot": [1.5, 29, 5],
+          "rotation": [0, 0, -10],
+          "cubes": [
+            { "origin": [1, 25, 4.5], "size": [1, 4, 1], "uv": [56, 0] }
+          ]
+        },
+        {
+          "name": "tail_left_lower",
+          "parent": "tail_left_upper",
+          "pivot": [1.5, 25, 5],
+          "rotation": [0, 0, -3],
+          "cubes": [
+            { "origin": [1, 21, 4.5], "size": [1, 4, 1], "uv": [60, 0] }
+          ]
+        }
+      ]
+    }
+  ]
+}

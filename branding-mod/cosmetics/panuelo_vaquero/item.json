@@ -1,0 +1,22 @@
+{
+  "id": "panuelo_vaquero",
+  "kind": "model",
+  "slot": "cuello",
+  "requires": "mvp",
+  "order": 10,
+  "name": { "es": "Pañuelo Vaquero", "en": "Cowboy Neckerchief" },
+  "render": "cutout",
+  "hide_with": "none",
+  "motion": {
+    "triangle": [
+      { "type": "swing", "axis": "x", "rest": 0, "min": -16, "max": 2,
+        "stiffness": 0.16, "damping": 0.84, "drag": 10, "fall": 5, "turn": 0.5, "sway": 2 },
+      { "type": "react", "rate": 0.12,
+        "sneak": { "x": 2, "y": 0, "z": 0 },
+        "sprint": { "x": -7, "y": 0, "z": 0 },
+        "airborne": { "x": -9, "y": 0, "z": 0 },
+        "glide": { "x": -6, "y": 0, "z": 0 },
+        "swim": { "x": -4, "y": 0, "z": 0 } }
+    ]
+  }
+}

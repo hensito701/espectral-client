@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "id": "alas_eco",
+  "render": "translucent",
+  "hide_with": "cape",
+  "texture": {
+    "width": 64,
+    "height": 32
+  },
+  "parts": [
+    {
+      "part": "body",
+      "bones": [
+        {
+          "name": "right_wing",
+          "pivot": [
+            -3.0,
+            -3.0,
+            2.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cubes": [
+            {
+              "from": [
+                -8.0,
+                0.0,
+                -1.5
+              ],
+              "size": [
+                7.0,
+                17.0,
+                2.0
+              ],
+              "uv": [
+                0.0,
+                0.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": [
+            {
+              "type": "flap",
+              "axis": "y",
+              "closed": 69.5571,
+              "open": -8.5944,
+              "beat": 12.6051,
+              "beat_speed": 0.55
+            }
+          ]
+        },
+        {
+          "name": "left_wing",
+          "pivot": [
+            3.0,
+            -3.0,
+            2.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cubes": [
+            {
+              "from": [
+                1.0,
+                0.0,
+                -1.5
+              ],
+              "size": [
+                7.0,
+                17.0,
+                2.0
+              ],
+              "uv": [
+                22.0,
+                0.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": [
+            {
+              "type": "flap",
+              "axis": "y",
+              "closed": -69.5571,
+              "open": 8.5944,
+              "beat": -12.6051,
+              "beat_speed": 0.55
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

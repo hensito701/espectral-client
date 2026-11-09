@@ -10,44 +10,52 @@ import net.minecraft.resources.Identifier;
  * types used to draw them. Everything here is vanilla {@link RenderTypes} (no
  * custom pipelines) so Sodium/Iris paths stay untouched; the files load lazily
  * through {@code TextureManager.getTexture} on first bind.
+ *
+ * <p>Model items bind {@code <id>.png} through {@link #texture(String)};
+ * elytra skins keep their per-frame files because entity textures cannot
+ * animate through {@code .mcmeta}.
  */
 public final class CosmeticTextures {
 
-    private static final String NS = "espectral-menu";
-
-    public static final Identifier MANTLE = tex("manto_espectral");
-    public static final Identifier REVENANT = tex("capucha_errante");
-    public static final Identifier REVENANT_HOOD = tex("capucha_errante_hood");
-    public static final Identifier TATTERS = tex("jirones_ceniza");
-    public static final Identifier WINGS = tex("alas_eco");
-    public static final Identifier SCARF = tex("bufanda_llama_alma");
-    public static final Identifier SCARF_TAIL = tex("bufanda_llama_alma_tail");
-    public static final Identifier EARS = tex("orejas_vulpinas");
-    public static final Identifier CAT_EARS = tex("orejas_felinas");
+    public static final String NAMESPACE = "espectral-menu";
 
     public static final Identifier ELYTRA_VIDRIERA = tex("elitros_vidriera");
-    /** Animated skins: {@link #FRAME_COUNT} files per skin. */
+    /** Animated skins: {@link #FRAME_COUNT} files each, resolved once so the render path allocates nothing. */
+    public static final Identifier[] ELYTRA_NEBULOSA = frames("elitros_nebulosa");
+    public static final Identifier[] ELYTRA_CENIZA = frames("elitros_ceniza");
+    /** Frames per animated skin. */
     public static final int FRAME_COUNT = 8;
     /** Ticks per animation frame (5 fps — visible but cheap). */
     public static final int FRAME_TICKS = 4;
 
-    private static Identifier tex(String name) {
-        return Identifier.fromNamespaceAndPath(NS, "textures/cosmetics/" + name + ".png");
-    }
-
     private CosmeticTextures() {}
 
-    /** Frame id for an animated elytra skin ({@code <base>_N.png}). */
-    public static Identifier elytraFrame(String base, int frame) {
-        return tex(base + "_" + frame);
+    /** Bundled texture of a model item ({@code textures/cosmetics/<id>.png}). */
+    public static Identifier texture(String id) {
+        return tex(id);
     }
 
-    /** Translucent, double-sided (cloth, wings). */
+    private static Identifier tex(String name) {
+        return Identifier.fromNamespaceAndPath(NAMESPACE, "textures/cosmetics/" + name + ".png");
+    }
+
+    private static Identifier[] frames(String base) {
+        Identifier[] out = new Identifier[FRAME_COUNT];
+        for (int i = 0; i < FRAME_COUNT; i++) out[i] = tex(base + "_" + i);
+        return out;
+    }
+
+    /** Frame of an animated skin for a client tick. */
+    public static Identifier animatedFrame(Identifier[] frames, int tick, boolean reducedMotion) {
+        return frames[frameAt(tick, reducedMotion)];
+    }
+
+    /** Translucent, double-sided (wings). */
     public static RenderType cloth(Identifier id) {
         return RenderTypes.entityTranslucent(id, false);
     }
 
-    /** Cutout boxes (ears, hood, scarf band, wrap bands). */
+    /** Cutout boxes (bandanas, ears, collars). */
     public static RenderType cutout(Identifier id) {
         return RenderTypes.entityCutout(id);
     }

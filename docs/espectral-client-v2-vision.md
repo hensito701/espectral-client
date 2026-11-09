@@ -341,9 +341,9 @@ Turning the suite on restores every previous granular choice exactly. This behav
 
 ### Objective
 
-Give every Espectral user a client worth personalizing, mark who plays on Espectral, and let supporters wear cosmetics that **only a client can render** — without creating gameplay advantage or duplicating what the server plugins already sell.
+Give every Espectral user a client worth personalizing, mark who plays on Espectral, and let supporters wear cosmetics — without creating gameplay advantage or duplicating what the server plugins already sell. (Scope widened 2026-11-09: items are no longer required to be ones *only a client can render*; see the decisions below.)
 
-### Decisions (2026-09-27)
+### Decisions (2026-09-27, amendments marked)
 
 - **Free for everyone:** menu background packs, client colour themes, HUD themes, and the ⚛ Espectral badge.
 - **One supporter mark, no client tier badges.** Ranks are already shown in-game by LuckPerms prefixes (documented format `✦ [VIP]`…`✦ [MVP+]`), so the client adds only a ★ next to the ⚛ for any donor role (VIP, VIP+, MVP, MVP+): `⚛★`.
@@ -351,7 +351,7 @@ Give every Espectral user a client worth personalizing, mark who plays on Espect
 - **The Discord role is the source of truth** for both the ★ and the MVP line. Staff grant the roles by hand; no purchase path assigns them automatically.
 - **Emotes stay local.** Only the wearer sees their own emotes (for example in third person); there is no trigger channel and no peer sync (decided 2026-09-28).
 - **Cloaks, never capes.** No write to the vanilla cape layer, no Mojang cape URL, no elytra recolour from a cape texture; an owned Mojang cape can always be shown instead.
-- **Client-exclusive only.** A supporter cosmetic ships only if a Paper plugin with a resource pack, display entities, or ModelEngine-style rigs cannot reproduce it convincingly. Static hats, masks, ears, backpacks, static wings, shoulder pets, particle auras and trails, and nametag, tab or chat icons are all plugin-replicable and are excluded. The qualifying properties are cloth or spring physics, geometry bound to the player's bones at render time, posing the real player model, first-person rendering of your own cosmetic, per-player elytra textures, and per-viewer control.
+- **Widened on 2026-11-09 (was: client-exclusive only).** A supporter cosmetic no longer has to be something only a client can render. Items a Paper plugin with a resource pack, display entities or ModelEngine-style rigs could also draw — hats, bandanas, masks, neckerchiefs, ears, static wings — are allowed, because they are cheap to author and they wear well; the bandanas are the first set. The limit that stays is the next bullet: nothing may duplicate a perk the Espectral server itself sells. The originally qualifying properties (cloth or spring physics, geometry bound to the player's bones at render time, posing the real player model, first-person rendering of your own cosmetic, per-player elytra textures, per-viewer control) are still the things a plugin cannot do, so they remain the bar for *motion*, not for a hat-shaped item existing.
 - **Never duplicate server perks.** The server already sells kill particles, kill sounds, walk trails, baby-mob hats, lobby fly, nicknames, join messages, shield patterns, armor trims and death-message tags (`espectral_core` `donations/*`). The client line must not overlap them.
 - **Rejected:** crosshair packs, victory screen, launcher profile banner, early access, monthly drops, creator codes, second-nametag or title cosmetics, and client tier badges.
 
@@ -372,23 +372,26 @@ All three store their choice under `features.<id>.<key>` in `espectral-client.js
 - Both glyphs ship as a mod bitmap font (`espectral-menu:badge`) at Mojangles metrics. Vanilla's default font has neither ⚛ nor ★ (⚛ would fall back to 16 px Unifont; ★ drew a missing-glyph box until it moved into the badge font); U+FE0E renders as a visible "VS15" box and is never emitted.
 - Being peer-visible, the badge needs the presence path (Phase 3) even though it is free. Only other Espectral clients see it.
 
-### MVP supporter line (launch draft)
+### MVP supporter line (launch draft, revised 2026-11-09)
 
-Slots: **Espalda** (one cloak *or* one pair of wings), **Cuello**, **Cabeza**, **Élitros**, **Gestos**. Scarf and cloak are mutually exclusive. The **Brazos** slot and its only item, *Vendas Rúnicas*, were **withdrawn on 2026-10-25** after playtest (the wraps read as clutter over the arms and the hair-thin first-person ends clipped the hand); stored loadouts that still name the slot lose the entry on the next sanitize.
+Slots: **Espalda** (one pair of wings), **Cuello** (one neckerchief), **Cabeza** (one head item), **Élitros**, **Gestos**. One item per slot; with the cloth items retired there are no exclusivity rules left (`catalog.base.json` → `exclusive: []`). The **Brazos** slot and its only item, *Vendas Rúnicas*, were **withdrawn on 2026-10-25** after playtest (the wraps read as clutter over the arms and the hair-thin first-person ends clipped the hand); stored loadouts that still name the slot lose the entry on the next sanitize.
 
-| Item (ES / EN) | Slot | What makes it client-only |
+| Item (ES / EN) | Slot | Notes |
 |---|---|---|
-| Manto Espectral / Spectral Mantle | Espalda | One-shoulder mantle, gold clasp at the collarbone, cloth simulation; hem fades into gold mist (static fade under reduced motion). |
-| Capucha Errante / Revenant Hood | Espalda | Hooded cloak with forked, tattered tails and gold piping; the hood follows head yaw and pitch, and the tails are simulated. |
-| Jirones de Ceniza / Ashen Tatters | Espalda | Three long ribbon tails with spring physics, dark smoke with a gold inner edge. |
 | Alas de Eco / Echo Wings | Espalda | Translucent wings folded at rest that open while falling or jumping, tuck while sneaking, and beat while sprinting, all driven by the render-time pose. |
-| Bufanda Llama de Alma / Soulfire Scarf | Cuello | Neck scarf with two simulated tails; the gold flame edge flickers only while moving. |
-| Orejas Vulpinas / Vulpine Ears | Cabeza | Tapered fox ears (orange-red, cream inner, dark tips) that twitch on head turns, flop on landing and flatten while sneaking; static ears are plugin-replicable, the reactions are not. |
+| Orejas Vulpinas / Vulpine Ears | Cabeza | Tapered fox ears (orange-red, cream inner, dark tips) that twitch on head turns, flop on landing and flatten while sneaking. |
 | Orejas Felinas / Cat Ears | Cabeza | Shorter, rounder cat ears (near-black fur, pink inner) that flick on head turns, sweep back while sprinting and flatten further than the fox pair while sneaking. |
+| Pañuelo Rojo / Red Bandana | Cabeza | Bandana wrapped around the head with a short knotted tail at the back; hugs the skull inside the vanilla hat-layer allowance, so it reads as cloth on the head, not a box floating above it. |
+| Pañuelo Pirata / Pirate Bandana | Cabeza | The same cap with the knot and tail at the side and a darker, worn palette. |
+| Cinta Espectral / Spectral Headband | Cabeza | Thin gold-edged headband; the only head item that leaves the top of the head uncovered. |
+| Pañuelo Vaquero / Cowboy Neckerchief | Cuello | Neckerchief knotted at the throat with a single hanging front panel that swings like the vanilla cape. |
+| Pañuelo de Forajido / Outlaw Mask | Cuello | Bandana pulled up over the lower face, one panel front and one short tail at the back of the neck. |
 | Élitros: Vidriera, Nebulosa, Ceniza / Elytra skins | Élitros | Per-player elytra textures (Nebulosa animated); a vanilla server can only retexture the elytra for everyone. |
 | Gestos / Emotes | Gestos | Pose the real player model. Local-only: the wearer sees them, peers never do. |
 
-Shoulder pets, walking companions, hats and particle auras are deliberately absent: plugins already reproduce them. A companion returns only if it is designed around client-only behaviour.
+**Retired 2026-11-09:** *Manto Espectral*, *Capucha Errante*, *Jirones de Ceniza* and *Bufanda Llama de Alma* — the smooth cloth-sim items rejected on 2026-10-25 — are deleted from the code, textures, catalog and tests together with the cloth simulation, its torso collider and the `exclusive` rule they needed. They are not coming back as designed; a cloak returns only as a box-built, panel-hinged item in the data pipeline.
+
+A hat-shaped item is no longer excluded by principle (see the widened decision above); it is still excluded if the server already sells it — the server sells baby-mob hats, kill particles, kill sounds and walk trails, so those stay out. Shoulder pets, walking companions and particle auras stay out too: the server already reproduces them, and a companion returns only if it is designed around client-only behaviour.
 
 ### Ruta Espectral (MVP network perk, decided 2026-11-07)
 
@@ -425,8 +428,8 @@ no driver or admin rights are involved.
 - One equipped item per slot. Every cosmetic is individually toggleable and respects the Suite master.
 - Viewers can hide all cosmetics or hide a specific player.
 - Reduced motion replaces simulation and animation with a static pose; global particle caps apply to any particle use.
-- Physics and animation run only for the nearest eight visible wearers within 24 blocks; the rest render a static pose.
-- Every item has a fixed footprint cap: nothing above the head top, wider than the shoulders plus one block, or lower than the knees, and no transparency below a minimum opacity. **Single recorded exception:** the two ear items (`orejas_vulpinas`, `orejas_felinas`) may rise up to 5 px (0.31 block) above the head top — no taller than vanilla's own extra-ears model — because an ear that stays under the skull silhouette reads as a flat box instead of an ear. The ears add no collision, stay inside the width cap, and never render above that bound at any reachable reaction angle.
+- Physics and animation run only for the nearest eight visible wearers within 24 blocks; the rest render a static pose (the motion drivers in `docs/cosmetics-pipeline.md`).
+- Every item has a fixed footprint cap, enforced by the build (`--check`, rule 4): at most **0.6 px above the head top** — the thickness of vanilla's own hat layer, so a head-hugging bandana is legal — wider than the shoulders plus one block (|x| ≤ 12.5) or lower than the knees, and no transparency below a minimum opacity (alpha 0 or ≥ 200). Checked at rest and at every reachable extreme of each motion driver. **Recorded exception:** the two ear items (`orejas_vulpinas`, `orejas_felinas`) may rise up to 5 px (0.31 block) above the head top — no taller than vanilla's own extra-ears model — because an ear that stays under the skull silhouette reads as a flat box instead of an ear. The ears add no collision, stay inside the width cap, and never render above that bound at any reachable reaction angle.
 - Nothing renders when the wearer is invisible to the viewer (Invisibility, spectator) or when vanilla would hide the wearer's cape layer.
 - Reactions use only publicly visible pose state: sneak, sprint, fall, swim, glide and idle. They never react to health, damage, inventory or other state that would leak information.
 - Cosmetics never alter hitboxes, imitate armor, mob silhouettes, the Glowing outline or other status effects, occlude opponents, or add a second nametag or title text.
@@ -464,32 +467,35 @@ Start with batched HTTPS polling. Do not add WebSockets, P2P, custom Minecraft p
 
 1. Free local personalization: background packs, themes, HUD themes.
 2. Signed catalog, role fixtures, UUID proof, and the entitlement contract.
-3. Own-player elytra skins and cloaks from valid grants.
+3. Own-player elytra skins from valid grants (cloaks return only as data-pipeline items).
 4. Presence, bridge, and the ⚛/★ badge on nametags and the tab list.
-5. Peer-visible cloaks, wings, scarf and ears.
+5. Peer-visible wings, ears and bandanas.
 6. Local-only emotes for MVP.
 
-### Playtest status (2026-10-25, owner, 1.3.15 on 26.2)
+### Playtest status (2026-10-25, owner, 1.3.15 on 26.2 — updated 2026-11-09)
 
 | Item | Verdict |
 |---|---|
 | Élitros (Vidriera / Nebulosa / Ceniza) | ✅ approved |
 | Orejas Felinas | ✅ approved |
-| Manto Espectral | ❌ rejected as designed: the smooth cloth-sim sheet reads as non-Minecraft, unlike the box-built ears. Redesign per the direction below. |
-| Bufanda Llama de Alma | ❌ same verdict; redesign per the direction below. |
-| Capucha Errante, Jirones de Ceniza, Alas de Eco | ⚠️ not approved; built on the same smooth cloth stack, so expect the same verdict |
-| Orejas Vulpinas | ⚠️ rebuilt in 1.3.15, not re-approved |
+| Alas de Eco | ⚠️ not approved as built (smooth cloth stack); now rendered from data — needs a fresh playtest |
+| Orejas Vulpinas | ⚠️ rebuilt in 1.3.15, not re-approved; now rendered from data — needs a fresh playtest |
+| Pañuelo Rojo, Pañuelo Pirata, Cinta Espectral (cabeza) | ⏳ pending — first items authored in the data pipeline |
+| Pañuelo Vaquero, Pañuelo de Forajido (cuello) | ⏳ pending — first items authored in the data pipeline |
+| Manto Espectral | 🚫 **retired 2026-11-09** (rejected 2026-10-25 as non-Minecraft; deleted with the cloth simulation) |
+| Bufanda Llama de Alma | 🚫 **retired 2026-11-09** (same verdict; deleted with the cloth simulation) |
+| Capucha Errante, Jirones de Ceniza | 🚫 **retired 2026-11-09** (never approved; built on the retired cloth stack) |
 | Vendas Rúnicas | withdrawn 2026-10-25 |
 | Emotes (B) | ⚠️ reworked in 1.3.15 with pose-geometry tests; not yet re-playtested |
 
-**Design direction (owner, 2026-10-25): cosmetics must look like Minecraft.** The approved items (elytra, cat ears) are built from boxes and pixel textures at the player model's 1 px scale; the smooth cloth sheet is not. Cloaks, scarves and other fabric items get redesigned the same way:
+**Design direction (owner, 2026-10-25): cosmetics must look like Minecraft.** The approved items (elytra, cat ears) are built from boxes and pixel textures at the player model's 1 px scale; the smooth cloth sheet is not. 2026-11-09: rather than redesign the four rejected cloth items, the owner retired them and moved authoring to a data pipeline built on this same direction:
 
-- Geometry is cuboids on the 16 px-per-block grid, like vanilla's cape (one 10×16×1 panel) and the ears, with no smooth, subdivided cloth surfaces.
+- Geometry is cuboids on the 16 px-per-block grid, like vanilla's cape (one 10×16×1 panel) and the ears, with no smooth, subdivided cloth surfaces. A head-hugging item may reach 0.6 px above the head top (the thickness of vanilla's hat layer).
 - Textures are flat pixel art at model resolution (one texel per model pixel), with no painted gradients or fine shading.
-- Motion is rigid: whole panels or a short chain of 2–3 box segments hinged at their edges and swinging like the vanilla cape and elytra, never a deforming mesh. The cloth sim and its torso collider can retire with the smooth items.
-- A scarf is a box wrapped around the neck plus one or two hanging box-segment tails; a cloak is one or two panels hinged at the shoulders.
+- Motion is rigid: whole panels or a short chain of 2–3 box segments hinged at their edges and swinging like the vanilla cape and elytra, never a deforming mesh. The cloth sim and its torso collider **retired on 2026-11-09** together with the four smooth items.
+- A scarf is a box wrapped around the neck plus one or two hanging box-segment tails; a cloak is one or two panels hinged at the shoulders. Cloaks and scarves return only as data-pipeline items satisfying the bullets above.
 
-All cosmetic geometry and textures are procedural and first-party: boxes/quads in `CosmeticModels`/`CosmeticGeo` and textures from `scripts/generate_cosmetic_textures.py`. No third-party assets.
+All cosmetic geometry and textures are now authored as data in `branding-mod/cosmetics/` — Blockbench-compatible Bedrock geometry, pixel-art textures (or a text pixel-art source) and declarative per-bone motion — and compiled by `scripts/cosmetics/build.py`; see [cosmetics-pipeline.md](cosmetics-pipeline.md). The first artist is an LLM (deepseek-v4.1-flash) working in that format. No third-party assets.
 
 ### Acceptance gate
 
@@ -503,7 +509,7 @@ All cosmetic geometry and textures are procedural and first-party: boxes/quads i
 - A healthy-service loadout becomes visible to an eligible viewer within a target p95 of five seconds.
 - Backend failure never blocks game launch or the render/game thread.
 - An invisible or spectating wearer renders no cosmetic on any viewer.
-- The initial eight-player cloak scene (simulation on) stays inside the global boot/frame regression envelope.
+- The initial eight-player cosmetics scene (eight wearers, wings + ears + bandanas, motion drivers on) stays inside the global boot/frame regression envelope.
 
 ## Workstream 5: Trust and signed telemetry
 
@@ -626,7 +632,7 @@ This release remains useful without a backend.
 - Deploy account linking and backend Discord-role resolution.
 - Add signed entitlement/catalog issuance, cache, expiry, and revocation.
 - Build launcher equip controls.
-- Render own-player elytra skins and cloaks only from valid grants.
+- Render own-player elytra skins and model items only from valid grants.
 - Keep telemetry local.
 
 ### Phase 3: Peer expression
@@ -636,7 +642,7 @@ This release remains useful without a backend.
 - Poll presence only for vanilla-visible UUIDs.
 - Verify viewer-side grants and content-addressed assets.
 - Add global and per-player hide controls.
-- Add the ⚛/★ badge first, then peer-visible cloaks, wings, scarf and ears, after the frame-time, shader, accessibility, and abuse gates. Emotes stay local-only.
+- Add the ⚛/★ badge first, then peer-visible wings, ears and bandanas, after the frame-time, shader, accessibility, and abuse gates. Emotes stay local-only.
 
 ### Phase 4: Learning and stable operations
 
@@ -661,7 +667,7 @@ V2 stable requires all of the following:
 - Vanilla packet capture contains no Espectral custom gameplay payload.
 - Backend, DNS, signature, or cache failure never blocks launch or gameplay.
 - Zero-equipped cosmetics pass the global frame and boot regression envelope.
-- The initial eight-player cloak scene (simulation on) adds no more than 5% to p99 frame time and performs no network or decode work on the render thread.
+- The initial eight-player cosmetics scene (motion drivers on) adds no more than 5% to p99 frame time and performs no network or decode work on the render thread.
 - Role removal, expiry, wrong UUID/audience, replay, and signing-key rotation are exercised.
 - Signed install, updater, and rollback paths pass on Windows and Fedora.
 - Beta soak and kill-switch drills complete before stable promotion.

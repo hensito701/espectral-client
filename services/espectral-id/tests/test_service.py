@@ -165,8 +165,8 @@ def test_presence_roundtrip_and_drop(client, monkeypatch):
 
     # supporter but NOT mvp: mvp items dropped, unknown items dropped
     r = client.put("/v1/presence", headers=hdr, json={"loadout": {
-        "espalda": "manto_espectral",
-        "cuello": "bufanda_llama_alma",
+        "espalda": "alas_eco",
+        "cuello": "panuelo_vaquero",
         "cabeza": "not_a_item",
     }})
     assert r.status_code == 200
@@ -187,7 +187,7 @@ def test_presence_roundtrip_and_drop(client, monkeypatch):
     assert q2.json()["players"] == []
 
 
-def test_presence_exclusivity(client, monkeypatch):
+def test_presence_full_loadout_roundtrip(client, monkeypatch):
     token, uuid = _verified_token(client, monkeypatch, roles=["1190433806499446895"])
     async def fake_exchange(http, code, ruri, cid, secret):
         return {"discord": {"id": "333", "username": "u", "avatar": None}}
@@ -196,11 +196,36 @@ def test_presence_exclusivity(client, monkeypatch):
                 headers={"Authorization": f"Bearer {token}"},
                 json={"code": "x", "redirect_uri": "cb"})
     hdr = {"Authorization": f"Bearer {token}"}
+    # Every slot takes one item and a full loadout keeps all four: with no
+    # exclusivity rules left (the cloth items retired 2026-11-09), nothing can
+    # conflict.
     r = client.put("/v1/presence", headers=hdr, json={"loadout": {
-        "espalda": "manto_espectral",      # cloak
-        "cuello": "bufanda_llama_alma",    # scarf — exclusive with cloak
+        "espalda": "alas_eco",
+        "cuello": "panuelo_forajido",
+        "cabeza": "bandana_pirata",
+        "elitros": "elitros_ceniza",
     }})
-    assert r.json()["loadout"]["espalda"] == "manto_espectral"
+    assert r.status_code == 200
+    assert r.json()["loadout"] == {
+        "espalda": "alas_eco", "cuello": "panuelo_forajido",
+        "cabeza": "bandana_pirata", "elitros": "elitros_ceniza"}
+
+
+def test_presence_wrong_slot_dropped(client, monkeypatch):
+    token, uuid = _verified_token(client, monkeypatch, roles=["1190433806499446895"])
+    async def fake_exchange(http, code, ruri, cid, secret):
+        return {"discord": {"id": "444", "username": "u", "avatar": None}}
+    monkeypatch.setattr(external, "discord_exchange_code", fake_exchange)
+    client.post("/v1/discord/link",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"code": "x", "redirect_uri": "cb"})
+    hdr = {"Authorization": f"Bearer {token}"}
+    r = client.put("/v1/presence", headers=hdr, json={"loadout": {
+        "espalda": "alas_eco",
+        "cuello": "bandana_roja",   # a cabeza item in the cuello slot
+    }})
+    assert r.status_code == 200
+    assert r.json()["loadout"]["espalda"] == "alas_eco"
     assert r.json()["loadout"]["cuello"] is None
 
 

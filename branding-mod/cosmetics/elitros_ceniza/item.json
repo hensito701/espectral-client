@@ -1,0 +1,12 @@
+{
+  "id": "elitros_ceniza",
+  "kind": "elytra",
+  "slot": "elitros",
+  "requires": "mvp",
+  "order": 30,
+  "name": {
+    "es": "Élitros Ceniza",
+    "en": "Ashen Elytra"
+  },
+  "frames": 8
+}

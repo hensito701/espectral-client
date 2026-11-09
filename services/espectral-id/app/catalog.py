@@ -29,15 +29,16 @@ def item_map(catalog: dict | None = None) -> dict[str, dict]:
 def exclusivity_map(catalog: dict | None = None) -> dict[tuple[str, str], set[str]]:
     """Map (slot, forbidden_item_id) -> set of slots it conflicts with.
 
-    Catalog shape: [["cuello", ["manto_espectral","capucha_errante",...]]]
-    meaning: an item in slot "cuello" may not be equipped together with any of
-    the listed espalda items.
+    Catalog shape: [["cuello", ["<espalda item id>", ...]]] meaning: an item in
+    slot "cuello" may not be equipped together with any of the listed espalda
+    items. The rule list is currently empty (the cloth items that needed it
+    were retired on 2026-11-09); the mechanism stays for future items.
     """
     catalog = catalog or load_catalog()
     out: dict[tuple[str, str], set[str]] = {}
+    items = item_map(catalog)
     for slot, forbidden_ids in catalog.get("exclusive", []):
         for item_id in forbidden_ids:
-            items = item_map(catalog)
             other = items.get(item_id)
             if not other:
                 continue

@@ -1,0 +1,21 @@
+{
+  "id": "bandana_pirata",
+  "kind": "model",
+  "slot": "cabeza",
+  "requires": "mvp",
+  "order": 40,
+  "name": { "es": "Pañuelo Pirata", "en": "Pirate Bandana" },
+  "render": "cutout",
+  "hide_with": "hat",
+  "head_clearance_px": 0.6,
+  "motion": {
+    "tail_right": [
+      { "type": "swing", "axis": "x", "rest": 10, "min": -5, "max": 60,
+        "stiffness": 0.16, "damping": 0.84, "drag": 55, "fall": 30, "turn": 0.5, "sway": 2 }
+    ],
+    "tail_left": [
+      { "type": "swing", "axis": "x", "rest": 10, "min": -3, "max": 58,
+        "stiffness": 0.19, "damping": 0.82, "drag": 48, "fall": 27, "turn": 0.45, "sway": 2.5 }
+    ]
+  }
+}

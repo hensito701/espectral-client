@@ -136,6 +136,8 @@ same Apps & Features entry, same update feed and signature format.
 - **`native/skin3d/`** (`espectral-skin3d`) — software rasterizer for the 3D skin previews, so no
   GPU-specific code is needed for them.
 - **`branding-mod/`** — shared Java source with per-version overlays behind a compatibility shim.
+  Supporter cosmetics are data there (`branding-mod/cosmetics/`, built by
+  `npm run cosmetics:build`); see [docs/cosmetics-pipeline.md](docs/cosmetics-pipeline.md).
 - **`branding-mod-nf/`** — brand-only NeoForge companion (MC 1.21.1): same handshake contract, no menu.
 - **`branding-mod-forge189/`** — the Espectral Menu ported to Forge 1.8.9 (Espectral Suite features,
   agent relay; cosmetics, emotes and recording come later).

@@ -1,0 +1,62 @@
+{
+  "id": "orejas_felinas",
+  "kind": "model",
+  "slot": "cabeza",
+  "requires": "mvp",
+  "order": 20,
+  "name": {
+    "es": "Orejas Felinas",
+    "en": "Cat Ears"
+  },
+  "render": "cutout",
+  "hide_with": "hat",
+  "head_clearance_px": 5,
+  "motion": {
+    "right_ear": [
+      {
+        "type": "react",
+        "rate": 0.18,
+        "sneak": {
+          "x": -35.5234,
+          "y": 0,
+          "z": -21.314
+        },
+        "sprint": {
+          "x": -12.6051,
+          "y": 0,
+          "z": 0
+        }
+      },
+      {
+        "type": "head_turn",
+        "axis": "x",
+        "gain": -0.03465,
+        "max": 10.0841,
+        "decay": 0.7
+      }
+    ],
+    "left_ear": [
+      {
+        "type": "react",
+        "rate": 0.18,
+        "sneak": {
+          "x": -35.5234,
+          "y": 0,
+          "z": 21.314
+        },
+        "sprint": {
+          "x": -12.6051,
+          "y": 0,
+          "z": 0
+        }
+      },
+      {
+        "type": "head_turn",
+        "axis": "x",
+        "gain": -0.042525,
+        "max": 12.3759,
+        "decay": 0.7
+      }
+    ]
+  }
+}

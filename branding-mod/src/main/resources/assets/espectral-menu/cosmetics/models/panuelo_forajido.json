@@ -1,0 +1,270 @@
+{
+  "schema": 1,
+  "id": "panuelo_forajido",
+  "render": "cutout",
+  "hide_with": "none",
+  "texture": {
+    "width": 64,
+    "height": 32
+  },
+  "parts": [
+    {
+      "part": "head",
+      "bones": [
+        {
+          "name": "mask",
+          "pivot": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cubes": [
+            {
+              "from": [
+                -4.0,
+                -2.4,
+                -4.0
+              ],
+              "size": [
+                8.0,
+                3.0,
+                8.0
+              ],
+              "uv": [
+                0.0,
+                0.0
+              ],
+              "inflate": 0.6,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": []
+        },
+        {
+          "name": "mask_flap",
+          "pivot": [
+            0.0,
+            0.0,
+            -4.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cubes": [
+            {
+              "from": [
+                -3.0,
+                0.0,
+                -0.2
+              ],
+              "size": [
+                6.0,
+                1.0,
+                1.0
+              ],
+              "uv": [
+                0.0,
+                12.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            },
+            {
+              "from": [
+                -2.0,
+                1.0,
+                -0.2
+              ],
+              "size": [
+                4.0,
+                1.0,
+                1.0
+              ],
+              "uv": [
+                16.0,
+                12.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            },
+            {
+              "from": [
+                -1.0,
+                2.0,
+                -0.2
+              ],
+              "size": [
+                2.0,
+                1.0,
+                1.0
+              ],
+              "uv": [
+                28.0,
+                12.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": [
+            {
+              "type": "swing",
+              "axis": "x",
+              "rest": 0,
+              "min": -25,
+              "max": 8,
+              "stiffness": 0.12,
+              "damping": 0.88,
+              "drag": 22,
+              "fall": 12,
+              "turn": 0.2,
+              "sway": 1.5
+            }
+          ]
+        },
+        {
+          "name": "knot",
+          "pivot": [
+            0.0,
+            -1.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cubes": [
+            {
+              "from": [
+                -1.0,
+                -2.0,
+                -0.5
+              ],
+              "size": [
+                2.0,
+                2.0,
+                1.0
+              ],
+              "uv": [
+                36.0,
+                12.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": []
+        },
+        {
+          "name": "tail_right",
+          "pivot": [
+            -1.5,
+            -1.0,
+            6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -0.122173
+          ],
+          "cubes": [
+            {
+              "from": [
+                -0.5,
+                0.0,
+                -0.5
+              ],
+              "size": [
+                1.0,
+                3.0,
+                1.0
+              ],
+              "uv": [
+                44.0,
+                12.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": [
+            {
+              "type": "swing",
+              "axis": "x",
+              "rest": 10,
+              "min": -5,
+              "max": 70,
+              "stiffness": 0.16,
+              "damping": 0.84,
+              "drag": 55,
+              "fall": 30,
+              "turn": 0.5,
+              "sway": 2
+            }
+          ]
+        },
+        {
+          "name": "tail_left",
+          "pivot": [
+            1.5,
+            -1.0,
+            6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.122173
+          ],
+          "cubes": [
+            {
+              "from": [
+                -0.5,
+                0.0,
+                -0.5
+              ],
+              "size": [
+                1.0,
+                3.0,
+                1.0
+              ],
+              "uv": [
+                50.0,
+                12.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": [
+            {
+              "type": "swing",
+              "axis": "x",
+              "rest": 8,
+              "min": -5,
+              "max": 70,
+              "stiffness": 0.18,
+              "damping": 0.82,
+              "drag": 48,
+              "fall": 26,
+              "turn": 0.44,
+              "sway": 2.5
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

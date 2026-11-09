@@ -1,0 +1,12 @@
+{
+  "id": "elitros_vidriera",
+  "kind": "elytra",
+  "slot": "elitros",
+  "requires": "mvp",
+  "order": 10,
+  "name": {
+    "es": "Élitros Vidriera",
+    "en": "Stained-Glass Elytra"
+  },
+  "frames": 1
+}

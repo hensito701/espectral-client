@@ -1,0 +1,184 @@
+{
+  "schema": 1,
+  "id": "panuelo_vaquero",
+  "render": "cutout",
+  "hide_with": "none",
+  "texture": {
+    "width": 64,
+    "height": 32
+  },
+  "parts": [
+    {
+      "part": "body",
+      "bones": [
+        {
+          "name": "collar",
+          "pivot": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cubes": [
+            {
+              "from": [
+                -4.5,
+                0.0,
+                -2.5
+              ],
+              "size": [
+                9.0,
+                2.0,
+                5.0
+              ],
+              "uv": [
+                0.0,
+                0.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            },
+            {
+              "from": [
+                -1.0,
+                0.0,
+                2.5
+              ],
+              "size": [
+                2.0,
+                2.0,
+                1.0
+              ],
+              "uv": [
+                0.0,
+                8.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": []
+        },
+        {
+          "name": "triangle",
+          "pivot": [
+            0.0,
+            2.0,
+            -2.1
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cubes": [
+            {
+              "from": [
+                -3.0,
+                0.0,
+                -0.5
+              ],
+              "size": [
+                6.0,
+                2.0,
+                1.0
+              ],
+              "uv": [
+                30.0,
+                0.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            },
+            {
+              "from": [
+                -2.0,
+                2.0,
+                -0.5
+              ],
+              "size": [
+                4.0,
+                1.0,
+                1.0
+              ],
+              "uv": [
+                30.0,
+                4.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            },
+            {
+              "from": [
+                -1.0,
+                3.0,
+                -0.5
+              ],
+              "size": [
+                2.0,
+                1.0,
+                1.0
+              ],
+              "uv": [
+                30.0,
+                7.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": [
+            {
+              "type": "swing",
+              "axis": "x",
+              "rest": 0,
+              "min": -16,
+              "max": 2,
+              "stiffness": 0.16,
+              "damping": 0.84,
+              "drag": 10,
+              "fall": 5,
+              "turn": 0.5,
+              "sway": 2
+            },
+            {
+              "type": "react",
+              "rate": 0.12,
+              "sneak": {
+                "x": 2,
+                "y": 0,
+                "z": 0
+              },
+              "sprint": {
+                "x": -7,
+                "y": 0,
+                "z": 0
+              },
+              "airborne": {
+                "x": -9,
+                "y": 0,
+                "z": 0
+              },
+              "glide": {
+                "x": -6,
+                "y": 0,
+                "z": 0
+              },
+              "swim": {
+                "x": -4,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -26,7 +26,7 @@
 //! write_cosmetics_file, share_enabled.
 
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use indexmap::{IndexMap, IndexSet};
 use serde_json::{json, Map, Value};
@@ -49,15 +49,21 @@ pub struct Catalog {
     pub items: IndexMap<String, CosmeticItem>,
 }
 
-/// The catalog (single source: `native/engine/data/cosmetics-catalog.json`).
-pub fn catalog() -> &'static Catalog {
-    static C: OnceLock<Catalog> = OnceLock::new();
-    C.get_or_init(|| {
-        let doc: CosmeticsCatalog = serde_json::from_str(CATALOG_JSON).expect("cosmetics-catalog.json is valid");
+impl Catalog {
+    fn from_doc(doc: CosmeticsCatalog) -> Self {
         let slots = doc.slots.iter().cloned().collect();
         let items = doc.items.iter().map(|i| (i.id.clone(), i.clone())).collect();
         Catalog { doc, slots, items }
-    })
+    }
+}
+
+/// The catalog (single source: `native/engine/data/cosmetics-catalog.json`).
+pub fn catalog() -> &'static Catalog {
+    static C: LazyLock<Catalog> = LazyLock::new(|| {
+        let doc: CosmeticsCatalog = serde_json::from_str(CATALOG_JSON).expect("cosmetics-catalog.json is valid");
+        Catalog::from_doc(doc)
+    });
+    &C
 }
 
 pub fn cosmetics_path(engine: &Engine) -> PathBuf {
@@ -147,7 +153,15 @@ fn bad_loadout(msg: impl Into<String>) -> EngineError {
 /// WRONG_SLOT, FLAG_REQUIRED, EXCLUSIVE_CONFLICT). Returns the normalized
 /// loadout (input order, then the missing slots as null).
 pub fn validate_loadout(loadout: &Value, flags: &[String]) -> EngineResult<IndexMap<String, Option<String>>> {
-    let cat = catalog();
+    validate_loadout_in(catalog(), loadout, flags)
+}
+
+/// [`validate_loadout`] against an explicit catalog (tests feed a synthetic one).
+fn validate_loadout_in(
+    cat: &Catalog,
+    loadout: &Value,
+    flags: &[String],
+) -> EngineResult<IndexMap<String, Option<String>>> {
     let Value::Object(input) = loadout else {
         return Err(bad_loadout("loadout must be an object {slot: itemId|null}"));
     };
@@ -202,7 +216,15 @@ pub fn sanitize_loadout(
     loadout: &IndexMap<String, Option<String>>,
     flags: &[String],
 ) -> IndexMap<String, Option<String>> {
-    let cat = catalog();
+    sanitize_loadout_in(catalog(), loadout, flags)
+}
+
+/// [`sanitize_loadout`] against an explicit catalog (tests feed a synthetic one).
+fn sanitize_loadout_in(
+    cat: &Catalog,
+    loadout: &IndexMap<String, Option<String>>,
+    flags: &[String],
+) -> IndexMap<String, Option<String>> {
     let mut granted: IndexMap<String, Option<String>> = cat.slots.iter().map(|s| (s.clone(), None)).collect();
     for (slot, id) in loadout {
         let Some(id) = id else { continue };
@@ -461,26 +483,75 @@ mod tests {
         r.unwrap_err().envelope().code
     }
 
+    /// A minimal catalog for the rules the real catalog no longer exercises
+    /// (its `exclusive` list is empty since the cloth items were retired).
+    fn synthetic_catalog() -> Catalog {
+        Catalog::from_doc(
+            serde_json::from_value(json!({
+                "schema": 1,
+                "slots": ["espalda", "cuello"],
+                "exclusive": [["cuello", ["capa_a", "capa_b"]]],
+                "items": [
+                    {"id": "alas", "slot": "espalda", "requires": "mvp", "name": {"es": "Alas", "en": "Wings"}},
+                    {"id": "capa_a", "slot": "espalda", "requires": "mvp", "name": {"es": "Capa A", "en": "Cloak A"}},
+                    {"id": "capa_b", "slot": "espalda", "requires": "mvp", "name": {"es": "Capa B", "en": "Cloak B"}},
+                    {"id": "bufanda", "slot": "cuello", "requires": "mvp", "name": {"es": "Bufanda", "en": "Scarf"}}
+                ],
+                "emotes": []
+            }))
+            .unwrap(),
+        )
+    }
+
     #[test]
-    fn catalog_loads_from_the_js_source() {
+    fn every_catalog_item_sits_in_a_declared_slot() {
         let c = catalog();
-        assert_eq!(c.slots.iter().collect::<Vec<_>>(), ["espalda", "cuello", "cabeza", "elitros"]);
-        assert!(c.items.contains_key("alas_eco"));
-        assert!(!c.slots.contains("brazos"));
+        assert!(!c.items.is_empty());
+        for item in c.items.values() {
+            assert!(c.slots.contains(&item.slot), "'{}' names unknown slot '{}'", item.id, item.slot);
+        }
+        for (slot, ids) in &c.doc.exclusive {
+            assert!(c.slots.contains(slot), "exclusive rule names unknown slot '{slot}'");
+            assert!(ids.iter().all(|id| c.items.contains_key(id)), "exclusive rule names an unknown item");
+        }
     }
 
     #[test]
     fn legal_loadout_round_trips_with_all_slots() {
         let out = validate_loadout(
-            &json!({ "espalda": "alas_eco", "cuello": "bufanda_llama_alma", "cabeza": "orejas_vulpinas" }),
+            &json!({
+                "espalda": "alas_eco",
+                "cuello": "panuelo_vaquero",
+                "cabeza": "bandana_roja",
+                "elitros": "elitros_nebulosa"
+            }),
             &mvp(),
         )
         .unwrap();
         assert_eq!(out["espalda"].as_deref(), Some("alas_eco"));
-        assert_eq!(out["cuello"].as_deref(), Some("bufanda_llama_alma"));
-        assert_eq!(out["cabeza"].as_deref(), Some("orejas_vulpinas"));
-        assert_eq!(out["elitros"], None);
+        assert_eq!(out["cuello"].as_deref(), Some("panuelo_vaquero"));
+        assert_eq!(out["cabeza"].as_deref(), Some("bandana_roja"));
+        assert_eq!(out["elitros"].as_deref(), Some("elitros_nebulosa"));
         assert!(!out.contains_key("brazos"));
+    }
+
+    #[test]
+    fn every_slot_combination_is_legal_without_exclusivity_rules() {
+        // `exclusive` is empty: any one item per slot may be worn together.
+        let out = validate_loadout(
+            &json!({
+                "espalda": "alas_eco",
+                "cuello": "panuelo_forajido",
+                "cabeza": "cinta_espectral",
+                "elitros": "elitros_ceniza"
+            }),
+            &mvp(),
+        )
+        .unwrap();
+        assert_eq!(
+            out.values().map(|v| v.as_deref()).collect::<Vec<_>>(),
+            [Some("alas_eco"), Some("panuelo_forajido"), Some("cinta_espectral"), Some("elitros_ceniza")]
+        );
     }
 
     #[test]
@@ -488,40 +559,54 @@ mod tests {
         assert_eq!(code(validate_loadout(&json!({ "piernas": "alas_eco" }), &mvp())), "BAD_LOADOUT");
         assert_eq!(code(validate_loadout(&json!({ "espalda": "nope" }), &mvp())), "UNKNOWN_COSMETIC");
         assert_eq!(code(validate_loadout(&json!({ "cuello": "alas_eco" }), &mvp())), "WRONG_SLOT");
-        assert_eq!(code(validate_loadout(&json!("manto_espectral"), &mvp())), "BAD_LOADOUT");
+        assert_eq!(code(validate_loadout(&json!("alas_eco"), &mvp())), "BAD_LOADOUT");
         assert_eq!(code(validate_loadout(&json!({ "espalda": 3 }), &mvp())), "BAD_LOADOUT");
-        assert_eq!(code(validate_loadout(&json!({ "espalda": "manto_espectral" }), &[])), "FLAG_REQUIRED");
-        assert_eq!(
-            code(validate_loadout(&json!({ "espalda": "manto_espectral" }), &["supporter".into()])),
-            "FLAG_REQUIRED"
-        );
+        assert_eq!(code(validate_loadout(&json!({ "espalda": "alas_eco" }), &[])), "FLAG_REQUIRED");
+        assert_eq!(code(validate_loadout(&json!({ "espalda": "alas_eco" }), &["supporter".into()])), "FLAG_REQUIRED");
+        // Items retired on 2026-11-09 are simply unknown now.
+        assert_eq!(code(validate_loadout(&json!({ "espalda": "manto_espectral" }), &mvp())), "UNKNOWN_COSMETIC");
+        assert_eq!(code(validate_loadout(&json!({ "cuello": "bufanda_llama_alma" }), &mvp())), "UNKNOWN_COSMETIC");
     }
 
     #[test]
-    fn exclusivity_is_enforced_wings_are_fine() {
-        for cloak in ["manto_espectral", "jirones_ceniza"] {
+    fn exclusivity_is_enforced() {
+        let cat = synthetic_catalog();
+        for cloak in ["capa_a", "capa_b"] {
             assert_eq!(
-                code(validate_loadout(&json!({ "cuello": "bufanda_llama_alma", "espalda": cloak }), &mvp())),
+                code(validate_loadout_in(&cat, &json!({ "cuello": "bufanda", "espalda": cloak }), &mvp())),
                 "EXCLUSIVE_CONFLICT"
             );
         }
-        let ok = validate_loadout(&json!({ "cuello": "bufanda_llama_alma", "espalda": "alas_eco" }), &mvp()).unwrap();
-        assert_eq!(ok["espalda"].as_deref(), Some("alas_eco"));
+        let ok = validate_loadout_in(&cat, &json!({ "cuello": "bufanda", "espalda": "alas" }), &mvp()).unwrap();
+        assert_eq!(ok["espalda"].as_deref(), Some("alas"));
+        assert_eq!(ok["cuello"].as_deref(), Some("bufanda"));
     }
 
     #[test]
-    fn sanitize_drops_disallowed_and_resolves_exclusivity() {
-        let state = lo(&[
-            ("espalda", Some("manto_espectral")),
-            ("cuello", Some("bufanda_llama_alma")),
-            ("cabeza", Some("nope")),
-        ]);
+    fn sanitize_drops_disallowed_and_unknown_items() {
+        let state =
+            lo(&[("espalda", Some("manto_espectral")), ("cuello", Some("panuelo_vaquero")), ("cabeza", Some("nope"))]);
         let clean = sanitize_loadout(&state, &mvp());
         assert_eq!(clean["espalda"], None);
-        assert_eq!(clean["cuello"].as_deref(), Some("bufanda_llama_alma"));
+        assert_eq!(clean["cuello"].as_deref(), Some("panuelo_vaquero"));
         assert_eq!(clean["cabeza"], None);
         assert!(!clean.contains_key("brazos"));
         assert!(sanitize_loadout(&state, &[]).values().all(Option::is_none));
+    }
+
+    #[test]
+    fn sanitize_resolves_exclusivity() {
+        let cat = synthetic_catalog();
+        let state = lo(&[("espalda", Some("capa_a")), ("cuello", Some("bufanda"))]);
+        // The conflicting item in the OTHER slot is dropped, so the cuello
+        // item survives (same rule as the JS original).
+        assert_eq!(sanitize_loadout_in(&cat, &state, &mvp()), lo(&[("espalda", None), ("cuello", Some("bufanda"))]));
+        // Without the cuello item, the cloak is fine.
+        let only_cloak = lo(&[("espalda", Some("capa_b")), ("cuello", None)]);
+        assert_eq!(
+            sanitize_loadout_in(&cat, &only_cloak, &mvp()),
+            lo(&[("espalda", Some("capa_b")), ("cuello", None)])
+        );
     }
 
     #[test]
@@ -530,7 +615,7 @@ mod tests {
             ("espalda", Some("alas_eco")),
             ("cuello", None),
             ("cabeza", Some("orejas_felinas")),
-            ("brazos", Some("vendas_runicas")),
+            ("brazos", Some("cualquiera")),
             ("elitros", None),
         ]);
         assert_eq!(
@@ -553,7 +638,7 @@ mod tests {
         patch_cosmetics(
             &e,
             UUID,
-            &json!({ "share": true, "loadout": { "espalda": "alas_eco", "cuello": "bufanda_llama_alma" }, "hidden_players": ["Griefer_1"] }),
+            &json!({ "share": true, "loadout": { "espalda": "alas_eco", "cuello": "panuelo_forajido" }, "hidden_players": ["Griefer_1"] }),
             &mvp(),
         )
         .unwrap();
@@ -573,7 +658,7 @@ mod tests {
         assert_eq!(doc["grant"], "h.p.s");
         assert_eq!(
             doc["loadout"],
-            json!({ "espalda": "alas_eco", "cuello": "bufanda_llama_alma", "cabeza": null, "elitros": null })
+            json!({ "espalda": "alas_eco", "cuello": "panuelo_forajido", "cabeza": null, "elitros": null })
         );
         assert_eq!(doc["hidden_players"], json!(["Griefer_1"]));
         assert_eq!(

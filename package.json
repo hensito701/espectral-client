@@ -11,6 +11,7 @@
   "engineStrict": true,
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "deploy:mod": "node scripts/deploy-mod.mjs"
+    "deploy:mod": "node scripts/deploy-mod.mjs",
+    "cosmetics:build": "python scripts/cosmetics/build.py"
   }
 }

@@ -41,11 +41,12 @@ public final class CosmeticElytra {
         String id = loadout.elitros();
         if (id == null) return null;
         boolean still = Cosmetics.reducedMotion();
-        int frame = CosmeticTextures.frameAt((int) avatar.ageInTicks, still);
         return switch (id) {
             case "elitros_vidriera" -> CosmeticTextures.ELYTRA_VIDRIERA;
-            case "elitros_nebulosa" -> CosmeticTextures.elytraFrame("elitros_nebulosa", frame);
-            case "elitros_ceniza" -> CosmeticTextures.elytraFrame("elitros_ceniza", frame);
+            case "elitros_nebulosa" ->
+                    CosmeticTextures.animatedFrame(CosmeticTextures.ELYTRA_NEBULOSA, (int) avatar.ageInTicks, still);
+            case "elitros_ceniza" ->
+                    CosmeticTextures.animatedFrame(CosmeticTextures.ELYTRA_CENIZA, (int) avatar.ageInTicks, still);
             default -> null;
         };
     }

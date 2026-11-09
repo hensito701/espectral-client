@@ -1,0 +1,35 @@
+{
+  "id": "alas_eco",
+  "kind": "model",
+  "slot": "espalda",
+  "requires": "mvp",
+  "order": 10,
+  "name": {
+    "es": "Alas de Eco",
+    "en": "Echo Wings"
+  },
+  "render": "translucent",
+  "hide_with": "cape",
+  "motion": {
+    "right_wing": [
+      {
+        "type": "flap",
+        "axis": "y",
+        "closed": 69.5571,
+        "open": -8.5944,
+        "beat": 12.6051,
+        "beat_speed": 0.55
+      }
+    ],
+    "left_wing": [
+      {
+        "type": "flap",
+        "axis": "y",
+        "closed": -69.5571,
+        "open": 8.5944,
+        "beat": -12.6051,
+        "beat_speed": 0.55
+      }
+    ]
+  }
+}

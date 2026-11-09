@@ -1,0 +1,29 @@
+{
+  "id": "bandana_roja",
+  "kind": "model",
+  "slot": "cabeza",
+  "requires": "mvp",
+  "order": 30,
+  "name": { "es": "Pañuelo Rojo", "en": "Red Bandana" },
+  "render": "cutout",
+  "hide_with": "hat",
+  "head_clearance_px": 0.6,
+  "motion": {
+    "tail_left": [
+      { "type": "swing", "axis": "x", "rest": 10, "min": -5, "max": 60,
+        "stiffness": 0.16, "damping": 0.84, "drag": 55, "fall": 30, "turn": 0.5, "sway": 2 }
+    ],
+    "tail_left_tip": [
+      { "type": "swing", "axis": "x", "rest": 8, "min": -12, "max": 45,
+        "stiffness": 0.2, "damping": 0.8, "drag": 32, "fall": 16, "turn": 0.28, "sway": 3 }
+    ],
+    "tail_right": [
+      { "type": "swing", "axis": "x", "rest": 10, "min": -5, "max": 60,
+        "stiffness": 0.15, "damping": 0.85, "drag": 52, "fall": 28, "turn": 0.45, "sway": 2 }
+    ],
+    "tail_right_tip": [
+      { "type": "swing", "axis": "x", "rest": 8, "min": -12, "max": 45,
+        "stiffness": 0.2, "damping": 0.8, "drag": 30, "fall": 15, "turn": 0.26, "sway": 3 }
+    ]
+  }
+}

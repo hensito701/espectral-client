@@ -1,0 +1,29 @@
+{
+  "id": "cinta_espectral",
+  "kind": "model",
+  "slot": "cabeza",
+  "requires": "mvp",
+  "order": 50,
+  "name": { "es": "Cinta Espectral", "en": "Spectral Headband" },
+  "render": "cutout",
+  "hide_with": "hat",
+  "head_clearance_px": 0.6,
+  "motion": {
+    "tail_right_upper": [
+      { "type": "swing", "axis": "x", "rest": 10, "min": -5, "max": 55,
+        "stiffness": 0.18, "damping": 0.82, "drag": 45, "fall": 25, "turn": 0.6, "sway": 2 }
+    ],
+    "tail_right_lower": [
+      { "type": "swing", "axis": "x", "rest": 6, "min": -12, "max": 35,
+        "stiffness": 0.14, "damping": 0.86, "drag": 60, "fall": 35, "turn": 0.4, "sway": 3 }
+    ],
+    "tail_left_upper": [
+      { "type": "swing", "axis": "x", "rest": 10, "min": -5, "max": 55,
+        "stiffness": 0.17, "damping": 0.83, "drag": 48, "fall": 25, "turn": 0.6, "sway": 2.4 }
+    ],
+    "tail_left_lower": [
+      { "type": "swing", "axis": "x", "rest": 6, "min": -12, "max": 35,
+        "stiffness": 0.13, "damping": 0.87, "drag": 64, "fall": 35, "turn": 0.4, "sway": 3.4 }
+    ]
+  }
+}

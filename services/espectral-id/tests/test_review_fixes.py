@@ -157,7 +157,7 @@ def test_rate_limit_keyed_per_token(client, monkeypatch):
 
 def test_validate_loadout_non_string_values():
     result = catalog.validate_loadout(
-        {"espalda": ["manto_espectral"],   # unhashable → would TypeError
+        {"espalda": ["bandana_roja"],    # unhashable → would TypeError
          "cuello": {"x": 1},
          "cabeza": 42,
          "brazos": True,          # withdrawn slot, must be ignored too
@@ -166,11 +166,24 @@ def test_validate_loadout_non_string_values():
     assert all(v is None for v in result.values())
 
 
+def test_validate_loadout_retired_items_dropped():
+    # Items retired on 2026-11-09 (the cloth set) are dropped; current ones stay.
+    result = catalog.validate_loadout(
+        {"espalda": "manto_espectral",
+         "cuello": "bufanda_llama_alma",
+         "cabeza": "cinta_espectral",
+         "elitros": "elitros_vidriera"},
+        ["supporter", "mvp"])
+    assert result == {"espalda": None, "cuello": None,
+                      "cabeza": "cinta_espectral",
+                      "elitros": "elitros_vidriera"}
+
+
 def test_presence_put_non_string_loadout(client, monkeypatch):
     token, _ = _verified_token(client, monkeypatch)
     r = client.put("/v1/presence",
                    headers={"Authorization": f"Bearer {token}"},
-                   json={"loadout": {"espalda": ["manto_espectral"]}})
+                   json={"loadout": {"espalda": ["bandana_roja"]}})
     assert r.status_code == 200
     assert r.json()["loadout"]["espalda"] is None
 

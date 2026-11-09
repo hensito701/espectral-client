@@ -69,6 +69,11 @@ public final class Catalog {
         return slots;
     }
 
+    /** Every catalog item, in file order (read-only). */
+    public java.util.Collection<Item> items() {
+        return items.values();
+    }
+
     /** True when {@code itemId} may be equipped given {@code flags}. */
     public boolean allowed(String itemId, Set<String> flags) {
         Item item = item(itemId);
@@ -139,7 +144,7 @@ public final class Catalog {
     }
 
     private static Catalog load() {
-        Map<String, Item> items = new HashMap<>();
+        Map<String, Item> items = new java.util.LinkedHashMap<>();
         List<String> slots = new ArrayList<>();
         Map<String, Set<String>> exclusivity = new HashMap<>();
         try (InputStream in = Catalog.class.getClassLoader().getResourceAsStream(RESOURCE)) {
@@ -189,6 +194,7 @@ public final class Catalog {
             slots.clear();
             exclusivity.clear();
         }
-        return new Catalog(Map.copyOf(items), List.copyOf(slots), Map.copyOf(exclusivity));
+        return new Catalog(Collections.unmodifiableMap(items), List.copyOf(slots),
+                Map.copyOf(exclusivity));
     }
 }

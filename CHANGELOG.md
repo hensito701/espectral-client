@@ -4,6 +4,34 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [Unreleased]
 
+### Added
+- **Five bandanas (MVP cosmetics).** Pañuelo Rojo / Red Bandana, Pañuelo Pirata /
+  Pirate Bandana and Cinta Espectral / Spectral Headband go in the *Cabeza*
+  slot; Pañuelo Vaquero / Cowboy Neckerchief and Pañuelo de Forajido / Outlaw
+  Mask go in the *Cuello* slot. They are box-built pixel-art items that hug the
+  head and neck, and their tails swing with the wearer's movement and head
+  turns. Worn like any other cosmetic from the Armario page.
+- **Cosmetics are now authored as data.** Every item is a Blockbench-compatible
+  model, a pixel-art texture and a small metadata file under
+  `branding-mod/cosmetics/`, checked and compiled by `npm run cosmetics:build`
+  — see [docs/cosmetics-pipeline.md](docs/cosmetics-pipeline.md). One generic
+  renderer draws them all, so new items no longer need Java changes, and
+  authors can preview an item on a player before it ships.
+
+### Changed
+- **Ears and wings are rendered from that data now.** Orejas Vulpinas, Orejas
+  Felinas and Alas de Eco keep their look and their reactions (twitch, flop,
+  flatten, open while falling, beat while sprinting); only the way they are
+  defined changed. No action needed.
+
+### Removed
+- **Manto Espectral, Capucha Errante, Jirones de Ceniza and Bufanda Llama de
+  Alma are gone.** Playtest rejected their smooth cloth look as unlike
+  Minecraft, and cloth physics retires with them. A loadout that still names
+  one simply drops the entry; nothing else changes for you. Their textures,
+  models, the cloth simulation behind them and the cloak/scarf exclusivity rule
+  they needed are all deleted.
+
 ### Fixed
 - **26.3 crashing when joining big servers (MCC Island, CubeCraft…).** Vanilla
   and Fabric launches now pass the JVM options Mojang ships in the version

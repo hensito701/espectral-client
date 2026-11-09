@@ -1,0 +1,287 @@
+{
+  "schema": 1,
+  "id": "bandana_roja",
+  "render": "cutout",
+  "hide_with": "hat",
+  "texture": {
+    "width": 64,
+    "height": 32
+  },
+  "parts": [
+    {
+      "part": "head",
+      "bones": [
+        {
+          "name": "band",
+          "pivot": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cubes": [
+            {
+              "from": [
+                -4.0,
+                -7.0,
+                -4.0
+              ],
+              "size": [
+                8.0,
+                2.0,
+                8.0
+              ],
+              "uv": [
+                0.0,
+                0.0
+              ],
+              "inflate": 0.6,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": []
+        },
+        {
+          "name": "knot",
+          "pivot": [
+            0.0,
+            -5.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cubes": [
+            {
+              "from": [
+                -1.5,
+                -2.0,
+                -0.5
+              ],
+              "size": [
+                3.0,
+                2.0,
+                1.0
+              ],
+              "uv": [
+                34.0,
+                0.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": []
+        },
+        {
+          "name": "tail_left",
+          "pivot": [
+            0.5,
+            -5.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.10472
+          ],
+          "cubes": [
+            {
+              "from": [
+                -0.5,
+                0.0,
+                -0.5
+              ],
+              "size": [
+                1.0,
+                2.0,
+                1.0
+              ],
+              "uv": [
+                34.0,
+                4.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [
+            "tail_left_tip"
+          ],
+          "motion": [
+            {
+              "type": "swing",
+              "axis": "x",
+              "rest": 10,
+              "min": -5,
+              "max": 60,
+              "stiffness": 0.16,
+              "damping": 0.84,
+              "drag": 55,
+              "fall": 30,
+              "turn": 0.5,
+              "sway": 2
+            }
+          ]
+        },
+        {
+          "name": "tail_left_tip",
+          "pivot": [
+            0.0,
+            2.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.122173
+          ],
+          "cubes": [
+            {
+              "from": [
+                -0.5,
+                0.0,
+                -0.5
+              ],
+              "size": [
+                1.0,
+                2.0,
+                1.0
+              ],
+              "uv": [
+                38.0,
+                4.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": [
+            {
+              "type": "swing",
+              "axis": "x",
+              "rest": 8,
+              "min": -12,
+              "max": 45,
+              "stiffness": 0.2,
+              "damping": 0.8,
+              "drag": 32,
+              "fall": 16,
+              "turn": 0.28,
+              "sway": 3
+            }
+          ]
+        },
+        {
+          "name": "tail_right",
+          "pivot": [
+            -0.5,
+            -5.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -0.10472
+          ],
+          "cubes": [
+            {
+              "from": [
+                -0.5,
+                0.0,
+                -0.5
+              ],
+              "size": [
+                1.0,
+                2.0,
+                1.0
+              ],
+              "uv": [
+                34.0,
+                8.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [
+            "tail_right_tip"
+          ],
+          "motion": [
+            {
+              "type": "swing",
+              "axis": "x",
+              "rest": 10,
+              "min": -5,
+              "max": 60,
+              "stiffness": 0.15,
+              "damping": 0.85,
+              "drag": 52,
+              "fall": 28,
+              "turn": 0.45,
+              "sway": 2
+            }
+          ]
+        },
+        {
+          "name": "tail_right_tip",
+          "pivot": [
+            0.0,
+            2.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            -0.122173
+          ],
+          "cubes": [
+            {
+              "from": [
+                -0.5,
+                0.0,
+                -0.5
+              ],
+              "size": [
+                1.0,
+                2.0,
+                1.0
+              ],
+              "uv": [
+                38.0,
+                8.0
+              ],
+              "inflate": 0.0,
+              "mirror": false
+            }
+          ],
+          "children": [],
+          "motion": [
+            {
+              "type": "swing",
+              "axis": "x",
+              "rest": 8,
+              "min": -12,
+              "max": 45,
+              "stiffness": 0.2,
+              "damping": 0.8,
+              "drag": 30,
+              "fall": 15,
+              "turn": 0.26,
+              "sway": 3
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

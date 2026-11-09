@@ -1,0 +1,12 @@
+{
+  "id": "elitros_nebulosa",
+  "kind": "elytra",
+  "slot": "elitros",
+  "requires": "mvp",
+  "order": 20,
+  "name": {
+    "es": "Élitros Nebulosa",
+    "en": "Nebula Elytra"
+  },
+  "frames": 8
+}

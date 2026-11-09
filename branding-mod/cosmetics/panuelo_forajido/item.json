@@ -1,0 +1,25 @@
+{
+  "id": "panuelo_forajido",
+  "kind": "model",
+  "slot": "cuello",
+  "requires": "mvp",
+  "order": 20,
+  "name": { "es": "Pañuelo de Forajido", "en": "Outlaw Mask" },
+  "render": "cutout",
+  "hide_with": "none",
+  "head_clearance_px": 0.6,
+  "motion": {
+    "mask_flap": [
+      { "type": "swing", "axis": "x", "rest": 0, "min": -25, "max": 8,
+        "stiffness": 0.12, "damping": 0.88, "drag": 22, "fall": 12, "turn": 0.2, "sway": 1.5 }
+    ],
+    "tail_right": [
+      { "type": "swing", "axis": "x", "rest": 10, "min": -5, "max": 70,
+        "stiffness": 0.16, "damping": 0.84, "drag": 55, "fall": 30, "turn": 0.5, "sway": 2 }
+    ],
+    "tail_left": [
+      { "type": "swing", "axis": "x", "rest": 8, "min": -5, "max": 70,
+        "stiffness": 0.18, "damping": 0.82, "drag": 48, "fall": 26, "turn": 0.44, "sway": 2.5 }
+    ]
+  }
+}
