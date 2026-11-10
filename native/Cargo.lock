@@ -1176,7 +1176,7 @@ checksum = "0b5343afd4a8365a643ac588dab4cf234a190c7f6c88c9f6dd6ffe00837661b7"
 
 [[package]]
 name = "espectral-client"
-version = "1.8.0"
+version = "1.8.2"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1199,7 +1199,7 @@ dependencies = [
 
 [[package]]
 name = "espectral-client-ui"
-version = "1.8.0"
+version = "1.8.2"
 dependencies = [
  "slint",
  "slint-build",
@@ -1207,7 +1207,7 @@ dependencies = [
 
 [[package]]
 name = "espectral-engine"
-version = "1.8.0"
+version = "1.8.2"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -1245,7 +1245,7 @@ dependencies = [
 
 [[package]]
 name = "espectral-skin3d"
-version = "1.8.0"
+version = "1.8.2"
 dependencies = [
  "png",
 ]
