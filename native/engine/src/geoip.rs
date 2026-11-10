@@ -3,8 +3,9 @@
 //!
 //! Data: <https://db-ip.com> — "IP Geolocation by DB-IP" (CC BY 4.0), the
 //! monthly `dbip-country-lite-YYYY-MM.csv.gz` (headerless `start,end,CC`
-//! rows). The launcher downloads it in the background at start, converts it
-//! to a fixed-width binary table and passes the absolute path to the game as
+//! rows). The launcher downloads it in the background shortly after start
+//! (once the window is up), converts it to a fixed-width binary table and
+//! passes the absolute path to the game as
 //! `-Despectral.geoip=<path>`; the in-game mod memory-maps it on a daemon
 //! thread and never touches the file again. Every step (download, gunzip,
 //! parse, encode, write) can fail without affecting a launch: the property is
@@ -80,6 +81,12 @@ pub const HEADER_LEN: usize = 24;
 pub const ENTRY_LEN: usize = 34;
 /// Reuse window for an already downloaded table (design: `< 35 days`).
 const MAX_AGE_SECS: i64 = 35 * 24 * 60 * 60;
+/// Delay before the start-up refresh: the launcher window is being built during
+/// these seconds, and the 4.6 MB download plus the gunzip/parse of ~40 MB of CSV
+/// would compete with it for a core. The cached table (if any) is served in the
+/// meantime.
+const STARTUP_REFRESH_DELAY_SECS: u64 = 20;
+
 /// Decompressed CSV cap — the real file is ~40 MB; anything far bigger is not
 /// the file we asked for (a gzip bomb would otherwise fill memory).
 const MAX_CSV_BYTES: u64 = 512 * 1024 * 1024;
@@ -144,8 +151,7 @@ pub fn encode(table: &GeoTable) -> Result<Vec<u8>, String> {
     }
     let v4_count = u32::try_from(table.v4.len()).map_err(|_| "too many IPv4 ranges".to_string())?;
     let v6_count = u32::try_from(table.v6.len()).map_err(|_| "too many IPv6 ranges".to_string())?;
-    let mut out =
-        Vec::with_capacity(HEADER_LEN + table.countries.len() * 2 + table.entry_count() * ENTRY_LEN);
+    let mut out = Vec::with_capacity(HEADER_LEN + table.countries.len() * 2 + table.entry_count() * ENTRY_LEN);
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&v4_count.to_le_bytes());
     out.extend_from_slice(&v6_count.to_le_bytes());
@@ -309,10 +315,7 @@ fn parse_row(start: &str, end: &str, cc: &str) -> Option<(RawRange, bool)> {
     if code.len() != 2 || !code.iter().all(u8::is_ascii_alphabetic) {
         return None;
     }
-    Some((
-        RawRange { start: s, end: e, cc: [code[0].to_ascii_uppercase(), code[1].to_ascii_uppercase()] },
-        v4,
-    ))
+    Some((RawRange { start: s, end: e, cc: [code[0].to_ascii_uppercase(), code[1].to_ascii_uppercase()] }, v4))
 }
 
 /// Parse DB-IP's headerless `start,end,CC` CSV. Malformed rows and `ZZ`
@@ -435,10 +438,16 @@ pub fn table_path(paths: &Paths) -> Option<PathBuf> {
 // Refresh (background start hook)
 // ---------------------------------------------------------------------------
 
-/// Engine start hook: refresh in the background, never block a launch.
+/// Engine start hook: refresh in the background once the window is up, never
+/// block a launch.
 pub async fn on_engine_start(engine: &Engine) -> EngineResult<()> {
     let e = engine.clone();
-    engine.spawn_background("geoip", async move { refresh(&e).await });
+    engine.spawn_background("geoip", async move {
+        // The launcher window is being built right now; downloading 4.6 MB and
+        // gunzipping/parsing ~40 MB of CSV would steal a core from it.
+        tokio::time::sleep(std::time::Duration::from_secs(STARTUP_REFRESH_DELAY_SECS)).await;
+        refresh(&e).await
+    });
     Ok(())
 }
 

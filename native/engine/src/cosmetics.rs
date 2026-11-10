@@ -305,18 +305,9 @@ fn write_file_atomic(file: &Path, text: &str) -> std::io::Result<()> {
     std::fs::rename(&tmp, file)
 }
 
-/// Write the mod file with an explicit grant view (tests / callers that already resolved it).
-pub fn write_cosmetics_file_with(
-    engine: &Engine,
-    uuid: &str,
-    game_dir: &Path,
-    canonical_game_dir: Option<&Path>,
-    view: &GrantView,
-) {
-    let doc = match serde_json::to_string_pretty(&cosmetics_doc(engine, uuid, view)) {
-        Ok(d) => d,
-        Err(e) => return tracing::warn!("[cosmetics] could not write espectral-cosmetics.json: {e}"),
-    };
+/// The dirs a cosmetics write targets: the launch game dir and the canonical
+/// dir, absolutised and deduplicated.
+fn cosmetics_dirs(game_dir: &Path, canonical_game_dir: Option<&Path>) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = vec![];
     for d in [Some(game_dir), canonical_game_dir].into_iter().flatten() {
         if d.as_os_str().is_empty() {
@@ -327,8 +318,68 @@ pub fn write_cosmetics_file_with(
             dirs.push(abs);
         }
     }
-    for dir in dirs {
+    dirs
+}
+
+fn cosmetics_json(engine: &Engine, uuid: &str, view: &GrantView) -> Option<String> {
+    match serde_json::to_string_pretty(&cosmetics_doc(engine, uuid, view)) {
+        Ok(d) => Some(d),
+        Err(e) => {
+            tracing::warn!("[cosmetics] could not write espectral-cosmetics.json: {e}");
+            None
+        }
+    }
+}
+
+/// The uuid a mod file names; None when the file is missing, unreadable or
+/// carries no uuid (it cannot prove ownership).
+fn file_uuid(file: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(file).ok()?;
+    let doc: Value = serde_json::from_str(&raw).ok()?;
+    doc.get("uuid").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)
+}
+
+/// Write the mod file with an explicit grant view (tests / callers that already resolved it).
+pub fn write_cosmetics_file_with(
+    engine: &Engine,
+    uuid: &str,
+    game_dir: &Path,
+    canonical_game_dir: Option<&Path>,
+    view: &GrantView,
+) {
+    let Some(doc) = cosmetics_json(engine, uuid, view) else { return };
+    for dir in cosmetics_dirs(game_dir, canonical_game_dir) {
         if let Err(e) = write_file_atomic(&crate::paths::cosmetics_config_in(&dir), &doc) {
+            tracing::warn!("[cosmetics] could not write espectral-cosmetics.json: {e}");
+        }
+    }
+}
+
+/// Rewrite only the copies that still belong to `flat_uuid`, each judged on its
+/// own file: a copy naming another uuid (an account switch on a shared gameDir)
+/// or a missing/unreadable one is left untouched. The launch path writes the
+/// file moments before requesting this, so a missing file means something else
+/// removed it and must not be recreated. Used by the launch's background grant
+/// refresh, which can land after the user switched accounts.
+pub fn rewrite_cosmetics_file_if_owned(
+    engine: &Engine,
+    flat_uuid: &str,
+    game_dir: &Path,
+    canonical_game_dir: Option<&Path>,
+) {
+    let Some(flat) = normalize_uuid(flat_uuid) else { return };
+    let view = grant_view(engine, &flat);
+    let Some(doc) = cosmetics_json(engine, &flat, &view) else { return };
+    for dir in cosmetics_dirs(game_dir, canonical_game_dir) {
+        let file = crate::paths::cosmetics_config_in(&dir);
+        let owned = match file_uuid(&file) {
+            Some(u) => normalize_uuid(&u).unwrap_or(u) == flat,
+            None => false,
+        };
+        if !owned {
+            continue;
+        }
+        if let Err(e) = write_file_atomic(&file, &doc) {
             tracing::warn!("[cosmetics] could not write espectral-cosmetics.json: {e}");
         }
     }
@@ -678,6 +729,50 @@ mod tests {
         // the contract fn never fails and (unverified account) writes the dead-grant doc
         write_cosmetics_file(&e, UUID, &game_dir, None).unwrap();
         assert_eq!(read(&game_dir)["grant"], Value::Null);
+    }
+
+    #[test]
+    fn guarded_rewrite_only_touches_own_files() {
+        let (d, e) = temp_engine();
+        let game_dir = d.path().join("game");
+        let canonical = d.path().join("canonical");
+        let other = "ffffffffffffffffffffffffffffffff";
+        let file_in = |dir: &Path| crate::paths::cosmetics_config_in(dir);
+
+        // Missing files are not created (something else removed them).
+        rewrite_cosmetics_file_if_owned(&e, UUID, &game_dir, Some(&canonical));
+        assert!(!file_in(&game_dir).exists() && !file_in(&canonical).exists());
+
+        // A copy naming another account is left byte-identical.
+        let foreign = json!({ "schema": 1, "uuid": other, "grant": null, "share": false });
+        std::fs::create_dir_all(file_in(&game_dir).parent().unwrap()).unwrap();
+        std::fs::write(file_in(&game_dir), foreign.to_string()).unwrap();
+        let before = std::fs::read(file_in(&game_dir)).unwrap();
+        rewrite_cosmetics_file_if_owned(&e, UUID, &game_dir, Some(&canonical));
+        assert_eq!(std::fs::read(file_in(&game_dir)).unwrap(), before, "another account's file is untouched");
+        assert!(!file_in(&canonical).exists(), "missing canonical copy is not recreated");
+
+        // Each target is judged on its own: ours in canonical, theirs in gameDir.
+        write_cosmetics_file_with(&e, UUID, &canonical, None, &GrantView::default());
+        rewrite_cosmetics_file_if_owned(&e, UUID, &game_dir, Some(&canonical));
+        assert_eq!(std::fs::read(file_in(&game_dir)).unwrap(), before, "still theirs");
+        let rewritten: Value = serde_json::from_str(&std::fs::read_to_string(file_in(&canonical)).unwrap()).unwrap();
+        assert_eq!(rewritten["uuid"], UUID, "our own copy is rewritten");
+
+        // Same uuid -> rewritten, even when the bytes differ.
+        std::fs::write(file_in(&game_dir), json!({ "schema": 1, "uuid": UUID, "share": false }).to_string()).unwrap();
+        rewrite_cosmetics_file_if_owned(&e, UUID, &game_dir, Some(&canonical));
+        let owned: Value = serde_json::from_str(&std::fs::read_to_string(file_in(&game_dir)).unwrap()).unwrap();
+        assert_eq!(owned["uuid"], UUID);
+        assert!(
+            owned.get("loadout").is_some() && owned.get("emotes").is_some(),
+            "rewritten with the full document: {owned}"
+        );
+
+        // An unreadable file cannot prove ownership and stays as it is.
+        std::fs::write(file_in(&game_dir), b"not json").unwrap();
+        rewrite_cosmetics_file_if_owned(&e, UUID, &game_dir, None);
+        assert_eq!(std::fs::read(file_in(&game_dir)).unwrap(), b"not json".to_vec());
     }
 
     #[test]

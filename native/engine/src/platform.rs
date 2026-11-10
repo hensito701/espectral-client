@@ -44,8 +44,16 @@ pub fn node_platform() -> &'static str {
 }
 
 /// Total physical memory in bytes (Node `os.totalmem()`); 0 when unknown.
+/// `ESPECTRAL_TOTAL_RAM_MB` replaces the detected amount, so every
+/// memory-based default (automatic heap, low-memory JVM flags, the software
+/// renderer) behaves as on a PC with that much RAM: the low-end profile can
+/// then be measured on a developer machine.
 pub fn total_memory_bytes() -> u64 {
-    imp::total_memory_bytes()
+    let forced = std::env::var("ESPECTRAL_TOTAL_RAM_MB").ok().and_then(|v| v.trim().parse::<u64>().ok());
+    match forced {
+        Some(mb) if mb > 0 => mb.saturating_mul(1024 * 1024),
+        _ => imp::total_memory_bytes(),
+    }
 }
 
 /// True when a process with `pid` exists (JS `process.kill(pid, 0)` probe).

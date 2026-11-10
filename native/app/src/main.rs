@@ -5,8 +5,8 @@
 //! 2. single instance: a second launch hands its argv (.mrpack paths) to the
 //!    running one and exits — or waits for a closing one, or offers to close
 //!    a stuck one (single_instance.rs);
-//! 3. renderer: OpenGL, or the software renderer on a PC where OpenGL failed
-//!    (renderer.rs);
+//! 3. renderer: OpenGL, or the software renderer on a low-memory PC or where
+//!    OpenGL failed (renderer.rs);
 //! 4. tokio runtime + `Engine::start` (onboarding, cluster start hooks);
 //! 5. the UI is built, every module wired, the window shown only once the
 //!    engine is ready;
@@ -86,8 +86,11 @@ fn main() {
     let renderer = shot.is_none().then(renderer::select);
 
     // ---- engine ----
+    // Size the runtime to the machine: two workers on a dual-core, four on a
+    // modern CPU; more threads would only contend with the game for cores.
+    let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).clamp(2, 4);
     let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
+        .worker_threads(workers)
         .thread_name("espectral-rt")
         .enable_all()
         .build()

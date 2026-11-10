@@ -26,6 +26,11 @@ const DETACHED_PROCESS: u32 = 0x0000_0008;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 #[cfg(windows)]
 const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+/// `BELOW_NORMAL_PRIORITY_CLASS`: the AOT trainer (and the JDK's
+/// cache-assembly child, which inherits it) must not steal a core from the
+/// player's game.
+#[cfg(windows)]
+const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
 
 /// How a JVM process ended (Node `exit` event arguments + `error`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -108,11 +113,38 @@ pub fn spawn_java(
     detached: bool,
     bridge_token: Option<&str>,
 ) -> std::io::Result<Child> {
+    spawn_java_with_priority(java_path, argv, cwd, detached, bridge_token, false)
+}
+
+/// [`spawn_java`] at below-normal priority: the AOT trainer and the JDK's
+/// cache-assembly child (which inherits the priority) must not compete with the
+/// player's game. Windows: `BELOW_NORMAL_PRIORITY_CLASS`; Unix: niceness +10.
+pub fn spawn_java_low_priority(
+    java_path: &str,
+    argv: &[String],
+    cwd: &Path,
+    detached: bool,
+    bridge_token: Option<&str>,
+) -> std::io::Result<Child> {
+    spawn_java_with_priority(java_path, argv, cwd, detached, bridge_token, true)
+}
+
+fn spawn_java_with_priority(
+    java_path: &str,
+    argv: &[String],
+    cwd: &Path,
+    detached: bool,
+    bridge_token: Option<&str>,
+    below_normal: bool,
+) -> std::io::Result<Child> {
     let args = argv.get(1..).unwrap_or(&[]);
     #[cfg(windows)]
     {
-        let flags =
+        let mut flags =
             if detached { DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW } else { CREATE_NO_WINDOW };
+        if below_normal {
+            flags |= BELOW_NORMAL_PRIORITY_CLASS;
+        }
         if detached {
             let mut cmd = base_command(java_path, args, cwd, bridge_token);
             cmd.creation_flags(flags | CREATE_BREAKAWAY_FROM_JOB).kill_on_drop(false);
@@ -128,6 +160,16 @@ pub fn spawn_java(
     {
         let mut cmd = base_command(java_path, args, cwd, bridge_token);
         cmd.kill_on_drop(!detached);
+        if below_normal {
+            // SAFETY: nice(2) touches no Rust state; pre_exec runs after fork.
+            // Best effort: a positive increment is always permitted.
+            unsafe {
+                cmd.pre_exec(|| {
+                    let _ = libc::nice(10);
+                    Ok(())
+                });
+            }
+        }
         if detached {
             // SAFETY: setsid() is async-signal-safe and touches no Rust state.
             unsafe {

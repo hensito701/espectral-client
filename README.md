@@ -85,8 +85,11 @@ cargo run --release -p espectral-client      # builds and starts the launcher
 | Rebuild + ship the mod jars | `npm run deploy:mod` |
 
 `ESPECTRAL_DATA_DIR` overrides the data directory, `SLINT_BACKEND=winit-software` falls back to the
-software renderer (the launcher also switches to it by itself on a PC where OpenGL fails), and
-`SLINT_BACKEND=winit-femtovg` forces OpenGL. The launcher logs to `<data>/logs/launcher.log`
+software renderer (the launcher also switches to it by itself on a PC where OpenGL fails, and uses it
+by default on a PC with 8.5 GB of RAM or less, where it saves about 120 MB), and
+`SLINT_BACKEND=winit-femtovg` forces OpenGL. `ESPECTRAL_TOTAL_RAM_MB=<n>` makes the launcher behave
+as on a PC with that much RAM (automatic heap, low-memory JVM options, renderer choice), which is how
+the low-end profile is tested on a bigger machine. The launcher logs to `<data>/logs/launcher.log`
 (`ESPECTRAL_LOG=debug` for more detail); on Windows the data directory is
 `%LOCALAPPDATA%\espectral-client`.
 

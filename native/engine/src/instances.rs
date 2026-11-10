@@ -898,18 +898,11 @@ pub async fn aot_status(engine: &Engine, instance: &InstanceMeta) -> EngineResul
 
     let mut stale = None;
     if cache_exists && crate::aot::loader_supports_aot(instance.loader) {
-        let resolved = async {
-            let vj = crate::resolver::get_version_json(engine, &instance.version).await?;
-            let fabric = if instance.loader == Loader::Fabric {
-                Some(crate::resolver::resolve_fabric(engine, &instance.version, None).await?)
-            } else {
-                None
-            };
-            Ok::<_, EngineError>(crate::resolver::resolve_classpath(engine, instance, &vj, fabric.as_ref()))
-        }
-        .await;
-        if let Ok(cp) = resolved {
-            stale = Some(crate::aot::is_cache_stale(engine, &key, &cp));
+        // Exactly the identity the next launch will use (the JVM gets a
+        // different classpath on Fabric/JDK 25+, and the flags decide validity
+        // too), so the chip converges once a retrain runs.
+        if let Ok(identity) = crate::launch::aot_identity(engine, instance).await {
+            stale = Some(crate::aot::is_cache_stale_with_flags(engine, &key, &identity.classpath, &identity.vm_flags));
         }
     }
 
@@ -1352,5 +1345,114 @@ mod tests {
         assert!(!crate::aot::is_cache_stale(&e, key, std::slice::from_ref(&jar)));
         std::fs::write(&jar, b"abcd").unwrap();
         assert!(crate::aot::is_cache_stale(&e, key, std::slice::from_ref(&jar)));
+    }
+
+    // --- aot_status agrees with the launch decision ------------------------
+
+    /// A flat version JSON + manifest entry in the resolver's cache (no network).
+    fn seed_version(e: &Engine, id: &str, json: serde_json::Value) {
+        let p = e.paths().versions_dir().join(format!("{id}.json"));
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, json.to_string()).unwrap();
+        let manifest = json!({
+            "fetched_at": crate::platform::now_ms(),
+            "latest_release": id,
+            "latest_snapshot": id,
+            "versions": [{ "id": id, "type": "release", "release_time": "2026-01-01T00:00:00+00:00",
+                           "url": format!("http://127.0.0.1:9/{id}.json") }]
+        });
+        std::fs::write(e.paths().version_manifest_cache(), manifest.to_string()).unwrap();
+        e.game_resolve_state().clear_manifest_memo();
+    }
+
+    #[tokio::test]
+    async fn aot_status_tracks_the_launch_classpath_and_flags() {
+        let (d, e) = temp_engine();
+        quiet(&e);
+        e.game_resolve_state().isolate();
+        e.game_resolve_state().set_endpoints(crate::api::game_resolve::ResolveEndpoints::all_on("http://127.0.0.1:9"));
+        seed_version(
+            &e,
+            "26.3",
+            json!({
+                "id": "26.3",
+                "mainClass": "net.minecraft.client.main.Main",
+                "javaVersion": { "majorVersion": 25 },
+                "libraries": [{ "name": "com.mojang:brigadier:1.3.10" }],
+                "arguments": { "jvm": ["-cp", "${classpath}"] }
+            }),
+        );
+        let java = d.path().join("jdk25").join("bin").join(if cfg!(windows) { "java.exe" } else { "java" });
+        std::fs::create_dir_all(java.parent().unwrap()).unwrap();
+        std::fs::write(&java, "x").unwrap();
+        e.game_resolve_state().update_hooks(move |h| h.path_java = Some(Some(java.clone())));
+
+        std::fs::create_dir_all(e.paths().instance_dir("converge")).unwrap();
+        crate::paths::write_json_atomic(
+            &e.paths().instance_json("converge"),
+            &json!({ "name": "converge", "version": "26.3", "loader": "fabric", "aot_auto_train": false }),
+        )
+        .unwrap();
+        let inst = get_instance(&e, "converge").await.unwrap();
+        // Fabric meta is unreachable: the identity cannot be resolved, so the
+        // chip stays undecided instead of guessing.
+        let key = crate::aot::cache_key("26.3", None, None);
+        std::fs::create_dir_all(e.paths().aot_cache_dir(&key)).unwrap();
+        std::fs::write(e.paths().aot_cache_file(&key), b"aot").unwrap();
+        let s = aot_status(&e, &inst).await.unwrap();
+        assert!(s.cache_exists && s.stale.is_none(), "no identity, no verdict: {:?}", s.stale);
+
+        // Once the launch identity resolves, a legacy meta.json (no vm_flags)
+        // reads stale — the same verdict the launch itself makes.
+        let client = e.paths().client_jar("26.3");
+        std::fs::create_dir_all(client.parent().unwrap()).unwrap();
+        std::fs::write(&client, b"jar").unwrap();
+        std::fs::write(
+            e.paths().versions_dir().join("fabric-loaders.json"),
+            json!({ "fetched_at": crate::platform::now_ms(), "latest_stable": "0.16.0",
+                    "loaders": [{ "version": "0.16.0", "stable": true, "build": 1 }] })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            e.paths().versions_dir().join("fabric-loader-26.3-0.16.0.json"),
+            json!({ "launcherMeta": { "mainClass": { "client": "net.fabricmc.loader.impl.launch.knot.KnotClient" } },
+                    "intermediary": { "maven": "net.fabricmc:intermediary:26.3" } })
+            .to_string(),
+        )
+        .unwrap();
+        let identity = crate::launch::aot_identity(&e, &inst).await.unwrap();
+        assert!(!identity.classpath.contains(&client), "client jar off the launch classpath");
+        // The stamp records size -1 for a path that does not exist and a stamped
+        // -1 can never prove validity, so the jars must be on disk first; only
+        // then does the verdict depend on vm_flags alone.
+        for p in &identity.classpath {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, b"jar").unwrap();
+        }
+        let stamp = crate::aot::classpath_stamp(&identity.classpath);
+        let write_meta = |flags: Option<Vec<String>>| {
+            let mut m = json!({ "trained_at": "2026-01-01T00:00:00.000Z", "classpath_stamp": stamp.clone() });
+            if let Some(f) = flags {
+                m["vm_flags"] = serde_json::to_value(f).unwrap();
+            }
+            std::fs::write(e.paths().aot_meta(&key), m.to_string()).unwrap();
+        };
+        // No vm_flags (every cache trained before 1.8.2) => stale.
+        write_meta(None);
+        let s = aot_status(&e, &inst).await.unwrap();
+        assert_eq!(s.stale, Some(true), "a meta.json without vm_flags is stale");
+        // The trainer's own meta.json (stamp + flags) reads fresh, so the chip
+        // converges after one retrain.
+        let flags = identity.vm_flags.clone();
+        write_meta(Some(flags.clone()));
+        let s = aot_status(&e, &inst).await.unwrap();
+        assert_eq!(s.stale, Some(false), "same stamp and flags => fresh");
+        // One extra flag changes what the launch passes => stale again.
+        let mut changed = flags;
+        changed.push("-XX:+UseCompactObjectHeaders".into());
+        write_meta(Some(changed));
+        let s = aot_status(&e, &inst).await.unwrap();
+        assert_eq!(s.stale, Some(true), "a different vm_flags set is stale");
     }
 }

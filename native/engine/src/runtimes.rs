@@ -7,12 +7,13 @@
 //! within the tier's ceiling ([`max_major_for`]: 8→8, 16→16, 17→≤21,
 //! 21/25→any), so a JDK 25 is never used for the 8/16/17 tiers.
 //!
-//! Resolution order per tier ([`java_for_version`]), all verified by probe:
+//! Resolution order per tier ([`java_for_version`]):
 //!   1. `config.jdk_path_override` (must fit the tier; never cached)
 //!   2. a same-tier JDK already cached in `config.jvm`
-//!   3. FastClient bundled Temurin 25 (never cached)
-//!   4. system PATH `java` (never cached)
-//!   5. already-downloaded runtime under `<data>/runtimes/jdk-<major>/`
+//!   3. already-downloaded runtime under `<data>/runtimes/jdk-<major>/`
+//!      (probed when it was downloaded; no probe now)
+//!   4. FastClient bundled Temurin 25 (probed; never cached)
+//!   5. system PATH `java` (probed; never cached)
 //!   6. Adoptium download (Temurin LTS 8/16/17/21/25)
 //!
 //! Archives: zip (Windows/macOS) via the `zip` crate, tar.gz (Linux) via
@@ -99,11 +100,40 @@ fn cached_jvm(engine: &Engine) -> Option<JavaRuntime> {
     (!info.path.is_empty() && Path::new(&info.path).exists()).then_some(info)
 }
 
-/// `<data>/runtimes/jdk-<major>/info.json` when its java still exists.
+/// True when a recorded runtime is intact: its java binary exists and the
+/// runtime image next to it does. Checking only the binary let a JDK whose
+/// image a cleanup tool or antivirus had removed (or a half-deleted folder)
+/// through, and the game then died with "could not open lib/modules"; since
+/// the reorder `java_for_version` picks the on-disk runtime before any probe,
+/// the image has to be verified here too. No process is spawned. The recorded
+/// path is canonicalized first, because a PATH java is often a symlink chain
+/// (`/usr/bin/java` -> `/etc/alternatives/java` -> `/usr/lib/jvm/<jdk>/bin/java`)
+/// and the raw path's home would be `/usr`; `<home>` is the parent of the `bin`
+/// directory holding the resolved java path: JDK 9+ keeps the class library in
+/// `lib/modules`, JDK 8 in `rt.jar` (a full JDK 8 nests it under `jre/`). The
+/// recorded path itself is never rewritten.
+fn runtime_usable(info: &JavaRuntime) -> bool {
+    if info.path.is_empty() {
+        return false;
+    }
+    let recorded = Path::new(&info.path);
+    let java = std::fs::canonicalize(recorded).unwrap_or_else(|_| recorded.to_path_buf());
+    if !java.exists() {
+        return false;
+    }
+    let home = java.parent().and_then(|bin| bin.parent());
+    home.is_some_and(|home| {
+        home.join("lib").join("modules").is_file()
+            || home.join("lib").join("rt.jar").is_file()
+            || home.join("jre").join("lib").join("rt.jar").is_file()
+    })
+}
+
+/// `<data>/runtimes/jdk-<major>/info.json` when its java and runtime image exist.
 pub fn cached_major(engine: &Engine, major: u32) -> Option<JavaRuntime> {
     let f = engine.paths().runtime_info(major);
     let info: JavaRuntime = serde_json::from_str(&std::fs::read_to_string(f).ok()?).ok()?;
-    (!info.path.is_empty() && Path::new(&info.path).exists()).then_some(info)
+    runtime_usable(&info).then_some(info)
 }
 
 /// Persist `info.json` for `major`; skips the write when the file already
@@ -319,7 +349,14 @@ pub async fn java_for_version(engine: &Engine, major: u32) -> EngineResult<JavaR
         }
     }
 
-    // 3. FastClient bundled Temurin 25 — returned directly (no poisoning).
+    // 3. Already-downloaded runtime for this tier. It was probed when it was
+    // downloaded, so using it costs no JVM start — the FastClient and PATH
+    // probes below each start a full JVM once per launcher session.
+    if let Some(existing) = cached_major(engine, need) {
+        return Ok(existing);
+    }
+
+    // 4. FastClient bundled Temurin 25 — returned directly (no poisoning).
     if let Some(fc) = fast_client_java(engine).filter(|p| p.exists()) {
         let probe = probe_java(engine, &fc).await?;
         if fits(&probe) {
@@ -327,17 +364,12 @@ pub async fn java_for_version(engine: &Engine, major: u32) -> EngineResult<JavaR
         }
     }
 
-    // 4. PATH java — same no-poison rule.
+    // 5. PATH java — same no-poison rule.
     if let Some(pj) = path_java(engine) {
         let probe = probe_java(engine, &pj).await?;
         if fits(&probe) {
             return Ok(runtime_from_probe(&pj, &probe, JvmSource::Path, probe.major));
         }
-    }
-
-    // 5. Already-downloaded runtime.
-    if let Some(existing) = cached_major(engine, need) {
-        return Ok(existing);
     }
 
     // 6. Adoptium download. (The JS then called `saveConfig({ jvm })`, but
@@ -377,6 +409,7 @@ pub async fn java_for_major_exact(engine: &Engine, major: u32) -> EngineResult<J
 mod tests {
     use super::*;
     use crate::test_support::{temp_engine, MockResponse, MockServer};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
     fn fake_probe(major: u32) -> crate::api::game_resolve::ProbeFn {
@@ -461,6 +494,7 @@ mod tests {
         let (d, e) = engine();
         let java21 = d.path().join("real-jdk21").join("bin").join("java.exe");
         touch(&java21);
+        touch(&d.path().join("real-jdk21").join("lib").join("modules"));
         let existing = JavaRuntime {
             path: java21.to_string_lossy().into(),
             version: "21.0.1".into(),
@@ -487,6 +521,7 @@ mod tests {
         let (d, e) = engine();
         let dummy = d.path().join("dummy-jdk21").join("bin").join("java.exe");
         touch(&dummy);
+        touch(&d.path().join("dummy-jdk21").join("lib").join("modules"));
         let info = JavaRuntime {
             path: dummy.to_string_lossy().into(),
             version: "21.0.7".into(),
@@ -551,6 +586,113 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tier_runtime_on_disk_skips_every_probe() {
+        let (d, e) = engine();
+        let j17 = e.paths().runtime_java(17);
+        touch(&j17);
+        touch(&e.paths().runtime_dir(17).join("lib").join("modules"));
+        cache_major(
+            &e,
+            17,
+            JavaRuntime {
+                path: j17.to_string_lossy().into(),
+                version: "17.0.9".into(),
+                build: "17.0.9+9".into(),
+                vendor: "Eclipse Temurin".into(),
+                source: JvmSource::Downloaded,
+                major: Some(17),
+                ..Default::default()
+            },
+        );
+        // Both probeable JVMs are present and would answer a wrong-tier 25.
+        let fc = d.path().join("fc").join("java");
+        touch(&fc);
+        e.game_resolve_state().update_hooks(|h| h.fastclient_java = Some(Some(fc.clone())));
+        let pj = d.path().join("pj").join("java");
+        touch(&pj);
+        e.game_resolve_state().update_hooks(|h| h.path_java = Some(Some(pj.clone())));
+        let probes = Arc::new(AtomicUsize::new(0));
+        let p = probes.clone();
+        e.game_resolve_state().set_probe_override(Some(Arc::new(move |path| {
+            p.fetch_add(1, Ordering::SeqCst);
+            fake_probe(25)(path)
+        })));
+        let r = java_for_version(&e, 17).await.unwrap();
+        assert_eq!((r.path.as_str(), r.major), (&*j17.to_string_lossy(), Some(17)));
+        assert_eq!(probes.load(Ordering::SeqCst), 0, "an on-disk tier runtime needs no probe");
+    }
+
+    #[tokio::test]
+    async fn tier_runtime_without_an_image_is_skipped() {
+        let (d, e) = engine();
+        let j17 = e.paths().runtime_java(17);
+        touch(&j17);
+        cache_major(
+            &e,
+            17,
+            JavaRuntime {
+                path: j17.to_string_lossy().into(),
+                version: "17.0.9".into(),
+                source: JvmSource::Downloaded,
+                major: Some(17),
+                ..Default::default()
+            },
+        );
+        // The java binary is still there but the runtime image is gone: the
+        // cached runtime must not be handed to the game, a fitting PATH java is.
+        let pj = d.path().join("bin").join("java");
+        touch(&pj);
+        e.game_resolve_state().update_hooks(|h| h.path_java = Some(Some(pj.clone())));
+        e.game_resolve_state().set_probe_override(Some(fake_probe(17)));
+        let r = java_for_version(&e, 17).await.unwrap();
+        assert_eq!((r.source, r.major), (JvmSource::Path, Some(17)));
+        assert_eq!(r.path, pj.to_string_lossy());
+
+        // With the image back, the cached runtime wins again — still no probe.
+        touch(&e.paths().runtime_dir(17).join("lib").join("modules"));
+        let r = java_for_version(&e, 17).await.unwrap();
+        assert_eq!((r.source, r.major), (JvmSource::Downloaded, Some(17)));
+        assert_eq!(r.path, j17.to_string_lossy());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn symlinked_java_path_is_resolved_for_the_image_check() {
+        let (d, e) = engine();
+        let jdk = d.path().join("jdk");
+        let java = jdk.join("bin").join("java");
+        touch(&java);
+        touch(&jdk.join("lib").join("modules"));
+        let link = d.path().join("usr-bin").join("java");
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&java, &link).unwrap();
+        cache_major(
+            &e,
+            21,
+            JavaRuntime {
+                path: link.to_string_lossy().into(),
+                version: "21.0.1".into(),
+                source: JvmSource::Downloaded,
+                major: Some(21),
+                ..Default::default()
+            },
+        );
+        // The symlink resolves to the real JDK home, so the image check passes
+        // and the recorded symlink path is returned unchanged.
+        let r = cached_major(&e, 21).unwrap();
+        assert_eq!(r.path, link.to_string_lossy());
+        let probes = Arc::new(AtomicUsize::new(0));
+        let p = probes.clone();
+        e.game_resolve_state().set_probe_override(Some(Arc::new(move |path| {
+            p.fetch_add(1, Ordering::SeqCst);
+            fake_probe(25)(path)
+        })));
+        let r = java_for_version(&e, 21).await.unwrap();
+        assert_eq!(r.path, link.to_string_lossy());
+        assert_eq!(probes.load(Ordering::SeqCst), 0, "the on-disk runtime is used, not probed");
+    }
+
+    #[tokio::test]
     async fn modern_jdk_never_serves_legacy_tiers() {
         let (d, e) = engine();
         let pj = d.path().join("bin").join("java");
@@ -562,6 +704,7 @@ mod tests {
         // A downloaded jdk-17 is used.
         let j17 = e.paths().runtime_java(17);
         touch(&j17);
+        touch(&e.paths().runtime_dir(17).join("lib").join("modules"));
         cache_major(
             &e,
             17,
@@ -592,10 +735,12 @@ mod tests {
         let (d, e) = engine();
         let j = e.paths().runtime_java(21);
         touch(&j);
+        touch(&e.paths().runtime_dir(21).join("lib").join("modules"));
         // Stale tier cache pointing at a 25 must not satisfy an exact-21 request.
         cache_major(&e, 21, JavaRuntime { path: j.to_string_lossy().into(), major: Some(25), ..Default::default() });
-        let pj = d.path().join("bin").join("java");
+        let pj = d.path().join("path-jdk21").join("bin").join("java");
         touch(&pj);
+        touch(&d.path().join("path-jdk21").join("lib").join("modules"));
         e.game_resolve_state().update_hooks(|h| h.path_java = Some(Some(pj.clone())));
         e.game_resolve_state().set_probe_override(Some(fake_probe(25)));
         let err = java_for_major_exact(&e, 21).await.unwrap_err();
@@ -617,6 +762,7 @@ mod tests {
             b.append_data(&mut h, path, data).unwrap();
         };
         add(&format!("{top}/bin/{}", crate::paths::java_bin_name()), b"#!/bin/sh\n", 0o755);
+        add(&format!("{top}/lib/rt.jar"), b"rt", 0o644);
         add(&format!("{top}/release"), b"JAVA_VERSION=\"17.0.9\"\n", 0o644);
         b.into_inner().unwrap().finish().unwrap()
     }
@@ -627,6 +773,8 @@ mod tests {
         let o = zip::write::SimpleFileOptions::default();
         w.start_file(format!("{top}/bin/{}", crate::paths::java_bin_name()), o).unwrap();
         w.write_all(b"MZ").unwrap();
+        w.start_file(format!("{top}/lib/rt.jar"), o).unwrap();
+        w.write_all(b"rt").unwrap();
         w.start_file(format!("{top}/release"), o).unwrap();
         w.write_all(b"JAVA_VERSION=\"17.0.9\"\n").unwrap();
         w.finish().unwrap().into_inner()

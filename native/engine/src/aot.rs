@@ -144,6 +144,67 @@ pub fn is_cache_stale(engine: &Engine, key: &str, classpath: &[PathBuf]) -> bool
     !stamp_matches(read_cache_stamp(engine, key).as_deref(), &classpath_stamp(classpath))
 }
 
+/// AOT-relevant JVM arguments, normalized for the `meta.json` stamp: everything
+/// before the main class except heap sizes, the classpath, `-D` properties, the
+/// AOT flags themselves, logging and heap-dump paths. `--add-opens` /
+/// `--add-exports` keep their value as one joined entry. Sorted + deduplicated
+/// so flag order cannot make a valid cache look stale.
+pub fn aot_vm_flags(jvm_args: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < jvm_args.len() {
+        let a = &jvm_args[i];
+        if a == "-cp" || a == "-classpath" {
+            i += 2; // the option and its value
+            continue;
+        }
+        if a.starts_with("-Xms")
+            || a.starts_with("-Xmx")
+            || a.starts_with("-D")
+            || a.starts_with("-XX:AOTCache")
+            || a.starts_with("-XX:AOTMode")
+            || a.starts_with("-XX:AOTConfiguration")
+            || a.starts_with("-Xlog")
+            || a.starts_with("-XX:HeapDumpPath")
+        {
+            i += 1;
+            continue;
+        }
+        if matches!(a.as_str(), "--add-opens" | "--add-exports") {
+            if let Some(v) = jvm_args.get(i + 1) {
+                out.push(format!("{a} {v}"));
+            }
+            i += 2;
+            continue;
+        }
+        out.push(a.clone());
+        i += 1;
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Stored `vm_flags` for a key, None when meta.json has none or is unreadable.
+pub fn read_cache_vm_flags(engine: &Engine, key: &str) -> Option<Vec<String>> {
+    let raw: Value = serde_json::from_str(&std::fs::read_to_string(engine.paths().aot_meta(key)).ok()?).ok()?;
+    let arr = raw.get("vm_flags")?.as_array()?;
+    Some(arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+}
+
+/// Staleness including the VM flags: classpath drift OR missing/different
+/// `vm_flags`. A cache trained without `vm_flags` (before 1.8.2) is stale by design —
+/// one retrain per instance after the update.
+pub fn is_cache_stale_with_flags(engine: &Engine, key: &str, classpath: &[PathBuf], vm_flags: &[String]) -> bool {
+    if is_cache_stale(engine, key, classpath) {
+        return true;
+    }
+    match read_cache_vm_flags(engine, key) {
+        Some(stored) => stored != vm_flags,
+        None => true,
+    }
+}
+
 /// Key from the CURRENT config state (no JVM discovery): `config.jvm.build`
 /// or 'unknown' until a JVM has been probed.
 pub async fn instance_key(engine: &Engine, instance: &InstanceMeta) -> EngineResult<String> {
@@ -375,6 +436,24 @@ fn train_payload(instance: &str, key: Option<String>, ok: bool, error: Option<St
 /// train-progress / train-done; returns the train-done payload. Opt-out and
 /// NeoForge skips return without a train-done event (like the JS).
 pub async fn train_instance(engine: &Engine, instance: &InstanceMeta, opts: TrainOptions) -> TrainDoneEvent {
+    let started = Instant::now();
+    let payload = train_instance_inner(engine, instance, opts).await;
+    // TrainProgress events are not logged, which left a 351 s training run
+    // invisible in the launcher log. Skips (opt-out / unsupported loader) are
+    // not runs: they return before the trainer exists.
+    if payload.skipped != Some(true) {
+        tracing::info!(
+            "[aot] training {} finished: {} in {:.1}s, cache {} bytes",
+            payload.instance,
+            if payload.ok { "ok" } else { "failed" },
+            started.elapsed().as_secs_f64(),
+            payload.cache_size_bytes.unwrap_or(0),
+        );
+    }
+    payload
+}
+
+async fn train_instance_inner(engine: &Engine, instance: &InstanceMeta, opts: TrainOptions) -> TrainDoneEvent {
     let name = instance.name.clone();
     let mut key = opts.key.clone();
     if !opts.force && instance.aot_auto_train == Some(false) {
@@ -473,11 +552,21 @@ pub async fn train_instance(engine: &Engine, instance: &InstanceMeta, opts: Trai
     }
     progress(&key, "spawn", format!("train JVM ({}) -> {}", resolved.java.build, cache_file.display()));
     let argv = crate::launch::build_argv(engine, instance, &mut resolved);
-    let child =
-        match process::spawn_java(&resolved.java.path, &argv, &game_dir, false, resolved.bridge_token.as_deref()) {
-            Ok(c) => c,
-            Err(e) => return done(train_payload(&name, key, false, Some(format!("spawn failed: {e}")))),
-        };
+    // The stamp must describe exactly what the JVM receives: the `-cp` list
+    // (Fabric on JDK 25+ keeps the signed client jar off it) and the
+    // AOT-relevant VM flags. Same helper `resolve_launch` uses at launch time,
+    // so a retrain and the launch that follows it always agree.
+    let identity = crate::launch::aot_identity_of(engine, instance, &resolved);
+    let child = match process::spawn_java_low_priority(
+        &resolved.java.path,
+        &argv,
+        &game_dir,
+        false,
+        resolved.bridge_token.as_deref(),
+    ) {
+        Ok(c) => c,
+        Err(e) => return done(train_payload(&name, key, false, Some(format!("spawn failed: {e}")))),
+    };
     let token = resolved.bridge_token.clone().unwrap_or_default();
     // Register the trainer with the mod bridge (its environment carries a token) and
     // detach it when the process ends.
@@ -545,7 +634,8 @@ pub async fn train_instance(engine: &Engine, instance: &InstanceMeta, opts: Trai
         let meta = json!({
             "key": resolved_key,
             "trained_at": crate::platform::now_iso(),
-            "classpath_stamp": classpath_stamp(&resolved.classpath),
+            "classpath_stamp": classpath_stamp(&identity.classpath),
+            "vm_flags": identity.vm_flags,
             "java_build": resolved.java.build,
             "game_version": resolved.version.id,
             "mod_set_hash": mod_set_hash,
@@ -902,6 +992,80 @@ mod tests {
         assert!(!is_cache_stale(&e, key, std::slice::from_ref(&jar)));
     }
 
+    #[test]
+    fn aot_vm_flags_normalizes() {
+        let args = vec![
+            "-Xms512M".into(),
+            "-Xmx2G".into(),
+            "-Djava.library.path=/natives".into(),
+            "-Despectral.bridge.url=http://127.0.0.1:4199/api/bridge".into(),
+            "-XX:AOTCache=/cache/game.aot".into(),
+            "-XX:AOTMode=auto".into(),
+            "-XX:AOTConfiguration=/cache/x.aot".into(),
+            "-Xlog:aot=info:file=aot-%p.log".into(),
+            "-XX:HeapDumpPath=/dumps".into(),
+            "--add-opens".into(),
+            "java.base/java.lang=ALL-UNNAMED".into(),
+            "--add-exports".into(),
+            "java.base/sun.nio.ch=ALL-UNNAMED".into(),
+            "-XX:-UsePerfData".into(),
+            "-Xverify:none".into(),
+            "-cp".into(),
+            "/a.jar".into(),
+        ];
+        assert_eq!(
+            aot_vm_flags(&args),
+            vec![
+                "--add-exports java.base/sun.nio.ch=ALL-UNNAMED".to_string(),
+                "--add-opens java.base/java.lang=ALL-UNNAMED".to_string(),
+                "-XX:-UsePerfData".to_string(),
+                "-Xverify:none".to_string(),
+            ]
+        );
+        // Order independence + dedup: the same set in another order is equal.
+        let reordered = vec![
+            "-Xverify:none".into(),
+            "-XX:-UsePerfData".into(),
+            "-XX:-UsePerfData".into(),
+            "--add-opens".into(),
+            "java.base/java.lang=ALL-UNNAMED".into(),
+        ];
+        assert_eq!(
+            aot_vm_flags(&reordered),
+            vec![
+                "--add-opens java.base/java.lang=ALL-UNNAMED".to_string(),
+                "-XX:-UsePerfData".to_string(),
+                "-Xverify:none".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn is_cache_stale_with_flags_reads_meta() {
+        let (d, e) = temp_engine();
+        let key = "flagskey";
+        let jar = d.path().join("lib.jar");
+        std::fs::write(&jar, "contents").unwrap();
+        let stamp = json!({ "classpath_stamp": classpath_stamp(std::slice::from_ref(&jar)) });
+        crate::paths::write_json_atomic(&e.paths().aot_meta(key), &stamp).unwrap();
+        let flags: Vec<String> = vec!["-Xverify:none".into(), "-XX:-UsePerfData".into()];
+        // A meta.json without vm_flags (before 1.8.2) is stale by design.
+        assert!(is_cache_stale_with_flags(&e, key, std::slice::from_ref(&jar), &flags));
+        let mut with_flags = stamp.clone();
+        with_flags["vm_flags"] = json!(&flags);
+        crate::paths::write_json_atomic(&e.paths().aot_meta(key), &with_flags).unwrap();
+        assert!(!is_cache_stale_with_flags(&e, key, std::slice::from_ref(&jar), &flags));
+        let changed = vec![
+            "-Xverify:none".to_string(),
+            "-XX:-UsePerfData".to_string(),
+            "-XX:+UseCompactObjectHeaders".to_string(),
+        ];
+        assert!(is_cache_stale_with_flags(&e, key, std::slice::from_ref(&jar), &changed));
+        // Classpath drift still stales even with matching flags.
+        set_mtime(&jar, crate::platform::now_ms() + 60_000);
+        assert!(is_cache_stale_with_flags(&e, key, std::slice::from_ref(&jar), &flags));
+    }
+
     #[tokio::test]
     async fn train_aborts_when_blocked_and_honors_opt_out() {
         let (_d, e) = temp_engine();
@@ -1067,7 +1231,9 @@ mod tests {
         assert!(a.cache_size_bytes.unwrap() > 0);
         let meta: Value = serde_json::from_str(&std::fs::read_to_string(e.paths().aot_meta(&key)).unwrap()).unwrap();
         assert_eq!(meta["game_version"], "1.21.11");
-        assert!(!is_cache_stale(&e, &key, &[jar]));
+        let vm_flags: Vec<String> = serde_json::from_value(meta["vm_flags"].clone()).unwrap();
+        assert!(!vm_flags.is_empty(), "the trainer stamps its AOT-relevant flags");
+        assert!(!is_cache_stale_with_flags(&e, &key, &[jar], &vm_flags));
         // argv carried the AOT output flag; the bridge token went in the
         // environment, never the argv (other users can read the argv).
         let args = std::fs::read_to_string(game_dir.join("args.txt")).unwrap();

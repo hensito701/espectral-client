@@ -81,7 +81,15 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
         SERVER_POLL.with(|p| {
             let mut p = p.borrow_mut();
             if wants && p.is_none() {
-                refresh_servers();
+                // The first fetch waits for the window: the shell navigates to
+                // #/ before ui.show(), and the fetch would compete with the
+                // first frame. It re-checks the route so leaving the page
+                // before it fires cancels it.
+                slint::Timer::single_shot(Duration::from_millis(300), || {
+                    if matches!(router::current().page, Page::Home | Page::Servers) {
+                        refresh_servers();
+                    }
+                });
                 let t = slint::Timer::default();
                 t.start(slint::TimerMode::Repeated, Duration::from_secs(60), || {
                     // pauseWhenRunning: quiet while a game boots / runs

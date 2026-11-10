@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.8.2] - 2026-11-10
 
 ### Added
 - **Five bandanas (MVP cosmetics).** Pañuelo Rojo / Red Bandana, Pañuelo Pirata /
@@ -23,6 +23,39 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   Felinas and Alas de Eco keep their look and their reactions (twitch, flop,
   flatten, open while falling, beat while sprinting); only the way they are
   defined changed. No action needed.
+- **The faster-start cache is ready after half a minute instead of six.** After
+  your first session on a Minecraft 26.x Fabric instance (and after every game
+  or loader update) Espectral builds a cache that makes later starts quicker —
+  about 2 seconds on our test PC (13.9 s → 11.9 s to the main menu). Building
+  it used to keep one CPU core busy for about 6 minutes and hold about 2 GB of
+  RAM after you closed the game, and starting the game again in the meantime
+  threw the work away, so on a slow PC the cache might never get finished. It
+  now takes about 32 seconds on the same PC and runs at low priority. The time
+  went into Java reading the 5 MB signature list inside Mojang's game file;
+  Fabric instances now hand that file to Fabric directly. Vanilla instances
+  still build the cache the slow way, but at low priority too.
+- **Less memory in game on Minecraft 26.x.** Vanilla and Fabric instances now
+  use Java's compact object layout, the same option Mojang's own launcher turns
+  on for these versions. On a PC with 8.5 GB of RAM or less the game also hands
+  unused memory back sooner: in a world with the default 2 GB limit it used
+  100–200 MB less on our test PC (about 1.8 GB → about 1.7 GB), with the same
+  frame times. The first launch after the update rebuilds the faster-start
+  cache once.
+- **The launcher is lighter on PCs with 8.5 GB of RAM or less.** It draws its
+  window without the graphics card there, which takes about 25 MB instead of
+  about 150 MB — memory the game can use — and puts the window on screen about
+  three times sooner. It looks the same. `SLINT_BACKEND=winit-femtovg` brings
+  the graphics-card drawing back.
+- **Play starts the game sooner when you are signed in to Espectral.** The
+  launcher used to wait for the server to confirm your supporter perks before
+  starting Java (0.6–0.8 s on every launch). It now starts with the perks it
+  already has and applies any change a moment later.
+- Opening the launcher does less at once: the server list is fetched after the
+  window appears, the monthly country table for the server list waits 20
+  seconds, and the accounts are loaded once instead of twice.
+- Starting an older version (1.8.9, 1.16.5…) no longer runs up to two extra
+  Java checks the first time in a session when its Java was already
+  downloaded.
 
 ### Removed
 - **Manto Espectral, Capucha Errante, Jirones de Ceniza and Bufanda Llama de
@@ -41,6 +74,13 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   pack on join, F3+T, or changing packs. Espectral's own servers send no pack,
   so they seemed unaffected. NeoForge/Forge already got these options from
   their merged profile.
+- **The faster-start cache could go unused without the launcher noticing.**
+  Java refuses a cache that was built with different Java options, and the
+  launcher only checked that the game files were the same: it kept passing the
+  refused cache and never rebuilt it, so the game started about 2 seconds
+  slower from then on. The launcher now records the options a cache was built
+  with and rebuilds it when they change — which this update does, because of
+  the crash fix above.
 
 ## [1.8.0] - 2026-11-08
 

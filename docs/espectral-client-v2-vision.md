@@ -187,6 +187,66 @@ Follow-up research on the remaining 7.2 s, with the seven-mod preset and the sui
 
 **Ranked next actions.** 1) The 1.21.11 variant still carries the same pattern (`branding-mod/mc12111/.../AvatarRendererMixin.java` shadows `model` and injects into `submit` the same way); it needs the same treatment, and it can only be verified on a 1.21.11 rig — this box ships 26.2 only. 2) The gate cannot see this class of defect: the harness stops the client at the first marker, so a post-marker failure or duplicate reload never lands in the saved log. Keep the marker assertions (0 `FAILED during APPLY`, one `Reloading ResourceManager`) **and** run one long launch per release, checking `Reloading ResourceManager == 1` and `Sound engine started == 1`. 3) Surface `fast_boot` as a visible, reversible Fast profile once Workstream 2 bounds its frame-time cost. 4) Fix the fullbright gamma value — `options.txt` still holds the player's `gamma:0.5` after sessions with the feature on, which is direct evidence the 15.0 override is rejected and the feature is a no-op. 5) Watch the JDK tier: JEP 544 is the only lever that can remove the remaining ~40 s of boot-time compilation, and AOT method-profile caches (JEP 515) only help *after* boot. 6) Do not spend effort on GC flags, CPU governors, launcher prefetch, or additive boot mods — all measured or reasoned to ~zero. 7) Mod-jar rebuilds do not invalidate the AOT cache (`isCacheStale` and the JVM both accept it after a branding jar change: the mods dir is not on the JVM classpath), so the stale-cache warnings remain reserved for real launcher-classpath drift.
 
+### 1.8.2 low-end pass (2026-11-10)
+
+**Method.** Windows 11, Ryzen 5 3600 (6c/12t), 32 GB, RX 580, SSD, Temurin 25.0.4.1. Instance: `26.3` Fabric + the performance preset + espectral-menu, render distance 16, vsync off, 854×480. Game arms were run interleaved and compared by median; the launcher ran from a copy with its own data directory on a second Windows desktop, so nothing was measured through the installed client. The low-end PC was emulated, not owned: `-Xmx2G` (the automatic heap up to 8.5 GB of RAM), the game pinned to 4 logical CPUs (2 cores), and `ESPECTRAL_TOTAL_RAM_MB` for the launcher's own decisions. A slow disk, real memory pressure and an integrated GPU were **not** emulated, so every figure below is a same-machine comparison, not a prediction for a given low-end PC. A second agent session ran a Paper server on the box for about half an hour of the pass; runs in that window are noisier and no conclusion rests on them alone.
+
+**AOT training took six minutes because of the signed client jar.** Training on this PC took 351 s, 352 s and 363 s. The trainer JVM spends about 160 s of one core at under 100 MB before the game starts to boot, and the JDK's cache-assembly child spends about as long again while the trainer waits at 1.5 GB (peak for the pair: 2.1 GB). Cause: Mojang signs the client jar, so its `META-INF/MANIFEST.MF` is 5.07 MB with 32 875 per-entry sections and 40 953 continuation lines, and JDK 25 reads the manifest of every classpath jar in AOT record and create mode with a routine that does not scale. `java -XX:AOTCacheOutput=x -cp 26.3.jar -version` runs for more than 300 s; the other 61 classpath jars together take 3.1 s; the same jar with the manifest cut down to its main section takes 0.8 s. Fabric does not need the game jar on the JVM classpath (Knot loads the game classes itself), so Fabric launches on an AOT-capable JVM now pass it as `-Dfabric.gameJarPath` instead.
+
+| | Training | Assembly step | Boot to menu with the cache (n=4) |
+|---|---:|---:|---:|
+| Client jar on the classpath (1.8.0 and earlier) | 351 s | ~165 s | 12.31 s (11.26–14.92) |
+| Client jar passed as `fabric.gameJarPath` | 32 s | ~14 s | 11.88 s (11.30–13.04) |
+| No cache | — | — | 13.93 s (13.72–14.70) |
+
+The boot itself does not change; what changes is how soon an instance gets its cache, and what building it costs. A game launched while the trainer is still booting supersedes it, so on a PC where training outlasts the pause between two sessions the cache was never finished. Vanilla launches still carry the signed jar on the classpath (the JVM's own loader needs it there) and still train slowly; the trainer and its assembly child now run at below-normal priority, which keeps that cost off the foreground. An unsigned derived jar would fix vanilla too and would let the JVM cache Minecraft's own classes (it skips classes from signed jars), but it is a new artifact with its own failure modes and was left out of this pass.
+
+**A cache trained under different JVM options was refused silently.** The JVM rejects a cache when the module options differ from training (`Mismatched values for property jdk.module.addexports`, `Unable to map shared spaces`), and the launcher compared only the classpath stamp: it kept passing the dead cache and never retrained. `meta.json` now records the AOT-relevant options (`vm_flags`); a cache without them, or with different ones, is stale. Every cache trained by 1.8.0 or earlier therefore retrains once after the update — necessary in any case, since 1.8.2 adds the options Mojang ships in the version JSON.
+
+**RAM in a world at `-Xmx2G`.** Native memory tracking at 1.94 GB RSS: Java heap 964 MB committed for 557 MB live, metaspace 139 MB, code 79 MB, GC structures 74 MB, thread stacks 49 MB, and about 540 MB outside the JVM (graphics driver, LWJGL buffers). The heap's committed-but-free share is the part the launcher controls.
+
+| Arm (4 logical CPUs) | Runs | RSS | Committed heap | Live heap | Game CPU | p50 frame | p99 frame | Frames > 50 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Options before this pass (1.8.0 plus the 26.3 crash-fix options) | 6 | 1804 MB | 849 MB | 650 MB | 349 s | 1.12–1.17 ms | 2.77–3.15 ms | 0 |
+| `+UseCompactObjectHeaders`, heap free ratio 20/40 | 8 | 1700 MB | 717 MB | 617 MB | 356 s | 1.12–1.17 ms | 3.05–3.14 ms | 0 |
+| `+UseCompactObjectHeaders`, heap free ratio 10/30 | 2 | 1592 MB | 615 MB | 484 MB | 378 s | +6% (static) | +37% | 2 |
+| Heap free ratio 20/40, no compact headers | 6 | 1734 MB | 756 MB | 669 MB | 356 s | 1.12–1.16 ms | 2.66–3.09 ms | 2 |
+
+Shipped: `-XX:+UseCompactObjectHeaders` on 26.x vanilla and Fabric (it is in Mojang's own `default-user-jvm` for those versions, and Temurin 25 ships the matching `classes_coh.jsa`), and, for those same launches on a PC with 8.5 GB of RAM or less, `-XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40`. Against the regression envelope: p50 −0.1%/−0.1%/−0.2% across the three scenes, p99 −1.3%/+11.7%/−0.3%, no frame above 50 ms, boot +1.8%, CPU +2%. The middle p99 figure is over the envelope's 5% on paper. Per-run p99 in these scenes falls into two groups in both arms, about 2.2–2.5 ms and about 3.1–3.2 ms, and the median moves with how many runs land in each group; what separates the groups was not found. It is not garbage collection: a GC log (`-Xlog:gc`, two runs per arm) shows 21 young pauses in world without the options and 31–33 with them, far fewer than the ~260 frames that make up the worst 1%. The same log gives the direct answer on stutter: with the options the collector runs about half again as often but each young pause is shorter (median 5.0 ms against 8.0 ms, longest 8–10 ms against 12 ms), the longest pause of any kind is the same (24–30 ms, a remark), pauses above 16 ms are the same (3–4 per run), and total pause time rises from about 280 to about 320 ms over the session. The ratio also makes the footprint predictable: without it the committed heap ended a run anywhere between 822 and 1144 MB (RSS up to 2121 MB), with it between 715 and 722 MB.
+
+Rejected: the same ratio without compact headers, which is what a 1.21.x, JDK 21 or NeoForge launch would have got (p99 +10.5% in the third scene and two frames above 50 ms in six runs, for 75 MB); the 10/30 ratio (another 100 MB, but 10% more CPU and frames above 50 ms on 4 threads); `-XX:+UseStringDeduplication` (no measurable gain: 1889 vs 1875 MB); the rest of `default-user-jvm` (`-Xms2G` and `-XX:+AlwaysPreTouch` commit the heap up front; ZGC cannot use the AOT cache on JDK 25). Compact headers alone lower the live heap by 2–8% and do not move RSS on their own; they pay off together with the ratio.
+
+**The launcher.** 1280×800 window, warm disk cache.
+
+| Renderer | Window visible | Private memory | Working set | CPU for a 9-page tour | With a game running |
+|---|---:|---:|---:|---:|---:|
+| OpenGL (femtovg) | 250–260 ms (1.2 s on a cold driver cache) | 142–150 MB | 136–144 MB | 1.48 s | 149 MB |
+| Software | 74–100 ms | 20–26 MB | 48–62 MB | 0.41 s | 26 MB |
+
+The software renderer is now the default on PCs with 8.5 GB of RAM or less. Launcher CPU while a game runs is 0.7 s over a whole 14 s boot and 0.03 s per 30 s afterwards on either renderer, so the log pump, the PiP drawer and the poll timers were left alone.
+
+**Play to `java`.** 15–47 ms for an offline account; 631, 632, 668 and 827 ms for a signed-in one, because the launch awaited the identity grant refresh. With a stored grant that is valid for more than ten minutes the refresh now runs beside the boot and rewrites the cosmetics file when it lands (only where that file still names the same account). Timed on the installed 1.8.2 with the same signed-in account and instance: 91 ms and 20 ms, and the stored grant's expiry had moved a day ahead afterwards, so the background refresh did run.
+
+**Through the built launcher.** The figures above come from running `java` by hand with the launcher's argv. The release build was then driven end to end (launcher window, MCP launch, in-game bench), on the same data directory:
+
+| Check | Result |
+|---|---|
+| Cache trained by the previous build (no `vm_flags`) | not passed to the JVM; retrained after the game exits |
+| Training, `26.3` Fabric | 30.3–31.2 s over five runs (was 351 s); `1.21.11` Fabric on JDK 25: 34.6 s |
+| Trainer priority | trainer and its assembly child at below-normal; a normal game launch at normal |
+| Boot with the new cache, `26.3` Fabric (n=7 over two builds) | 10.6–12.0 s, median 11.7 s, `Using AOT-linked classes: true` every time, no retrain afterwards |
+| `1.21.11` Fabric (older Fabric Loader) | reaches the title with the game jar passed as a property; second boot uses the cache |
+| Vanilla `26.3` | reaches the menu with compact headers; classpath unchanged |
+| `ESPECTRAL_TOTAL_RAM_MB=8000` | software renderer chosen, `-Xmx2G`, compact headers and the 20/40 ratio in the argv, cache retrained once because the options changed |
+
+Emulated 8 GB PC, 4 logical CPUs for launcher and game, in a world (two runs each, interleaved, plus one on the final build): the game's RSS went from 1852/1903 MB to 1665/1679/1631 MB and its committed heap from 924/975 MB to 710/712/712 MB; the launcher's private memory from 140 MB to 25 MB; p50 frame time 1.06–1.13 ms before and 1.05–1.12 ms after; no frame above 50 ms in either. Together about 320 MB less for the pair.
+
+Launcher start on the final build: 65–67 ms to a visible window and 23 MB private under the emulated 8 GB (software renderer chosen by itself); 215–352 ms and 144 MB on this 32 GB PC, where it stays on OpenGL — the same as before the pass (219–241 ms, 145 MB). The smaller start-up changes (one account load instead of two, the first server-status fetch after the window, the country table 20 s later, two to four runtime threads) are not measurable on this machine; they remove work from the first second on a slower one, and that was not measured.
+
+**Bench gotcha.** `inactivityFpsLimit:"afk"`, the 26.x default, caps the game at 30 fps after a minute without input. That is the "locked 33.3 ms" in the chunkload and entities scenes of the 2026-09-13 baseline: a bench instance needs `inactivityFpsLimit:"minimized"`.
+
+**Left for a decision.** A low-end options profile (render distance, graphics mode, particles) is the largest FPS lever on such a PC and the one this pass did not touch: product rule 1 forbids silent reductions, so it has to be a visible, reversible choice (rule 6).
+
 ## Workstream 2: FPS and smoothness
 
 ### Objective

@@ -167,6 +167,91 @@ pub fn stack_flags(windows: bool) -> &'static [&'static str] {
     }
 }
 
+/// Low-memory heap policy: on machines in the launcher's lowest automatic heap
+/// tier (total RAM <= 8.5 GiB, the first tier of
+/// `config::recommended_memory_mb_for`), keep the heap from growing back after a
+/// spike. Measured in a world at `-Xmx2G` on 4 threads, with compact headers:
+/// RSS 1804 -> 1700 MB, committed heap 849 -> 717 MB, p50 frame time -0.1 %, no
+/// frame over 50 ms, CPU +2 % (n=8 vs 6). Without compact headers the same pair
+/// cost +10 % p99 in one scene, and a tighter 10/30 pair cost +10 % CPU and
+/// frames over 50 ms, so neither ships: the flags need `compact_headers`.
+pub fn low_memory_heap_flags(total_bytes: u64, compact_headers: bool) -> &'static [&'static str] {
+    /// `config::recommended_memory_mb_for`'s lowest tier boundary (<= 8.5 GB).
+    const LOWEST_TIER_MAX_GB: f64 = 8.5;
+    let total_gb = total_bytes as f64 / 1024f64.powi(3);
+    if compact_headers && total_bytes > 0 && total_gb <= LOWEST_TIER_MAX_GB {
+        &["-XX:MinHeapFreeRatio=20", "-XX:MaxHeapFreeRatio=40"]
+    } else {
+        &[]
+    }
+}
+
+/// `-XX:+UseCompactObjectHeaders` gate: JDK 25+, an AOT-capable loader
+/// (vanilla/Fabric — Forge/NeoForge are unmeasured), the version profile's
+/// `default-user-jvm` template asking for it (Mojang ships it on 26.x), and a
+/// runtime with a compact-headers base CDS archive (`classes_coh.jsa`). Compact
+/// headers alone lower the live heap by 2-8 %; the RSS gain comes together with
+/// [`low_memory_heap_flags`]. The archive check keeps the JVM's base CDS archive
+/// in use — without `classes_coh.jsa` the JVM just runs without a base archive
+/// and starts slower.
+pub fn compact_object_headers(java_major: u32, loader: Loader, version_json: &Value, java_path: &str) -> bool {
+    java_major >= 25
+        && crate::aot::loader_supports_aot(loader)
+        && profile_wants_compact_headers(version_json)
+        && has_compact_headers_archive(java_path)
+}
+
+/// The profile's `arguments.default-user-jvm` template asks for
+/// `-XX:+UseCompactObjectHeaders`.
+///
+/// This walks the template itself instead of going through [`expand_jvm_args`]:
+/// Mojang's 26.x template carries the flag in an object entry with `value` but
+/// NO `rules` key, and `expand_with` treats a rule-less object as "not
+/// applicable" (it is written for `arguments.jvm`, where every object has
+/// rules). Here a rule-less object is unconditional, as the argument format
+/// says; only entries WITH rules are gated on them.
+fn profile_wants_compact_headers(version_json: &Value) -> bool {
+    let Some(template) = version_json.pointer("/arguments/default-user-jvm").and_then(Value::as_array) else {
+        return false;
+    };
+    let env = RuleEnv { os: crate::platform::os_name(), arch: crate::platform::node_arch(), features: None };
+    template.iter().any(|entry| {
+        let values: Vec<&Value> = match entry {
+            Value::String(_) => vec![entry],
+            Value::Object(o) => match o.get("rules") {
+                // Rule-less object entries are unconditional.
+                None => match o.get("value") {
+                    Some(Value::Array(vs)) => vs.iter().collect(),
+                    Some(v) => vec![v],
+                    None => vec![],
+                },
+                Some(rules) => {
+                    let probe = Value::Object(Map::from_iter([("rules".to_string(), rules.clone())]));
+                    if !crate::rules::rules_allow_with(&probe, &env) {
+                        return false;
+                    }
+                    match o.get("value") {
+                        Some(Value::Array(vs)) => vs.iter().collect(),
+                        Some(v) => vec![v],
+                        None => vec![],
+                    }
+                }
+            },
+            _ => vec![],
+        };
+        values.iter().any(|v| v.as_str() == Some("-XX:+UseCompactObjectHeaders"))
+    })
+}
+
+/// `<java_home>/{bin,lib}/server/classes_coh.jsa`, where `<java_home>` is the
+/// parent of the directory holding the resolved java executable.
+fn has_compact_headers_archive(java_path: &str) -> bool {
+    let Some(home) = Path::new(java_path).parent().and_then(|bin| bin.parent()) else {
+        return false;
+    };
+    ["bin/server", "lib/server"].iter().any(|dir| home.join(dir).join("classes_coh.jsa").is_file())
+}
+
 /// Boot-time flags (build_argv adds them on JDK 8 and 21+): `-XX:-UsePerfData`,
 /// `-Xverify:none` (JDK < 27 — a hard error from 27 on), on JDK 8
 /// `-XX:MetaspaceSize=128M` (its ~21 MB default stops a Forge 1.8.9 boot for
@@ -313,6 +398,33 @@ fn join_classpath(cp: &[PathBuf]) -> String {
     cp.iter().map(|p| lossy(p)).collect::<Vec<_>>().join(path_delimiter())
 }
 
+/// The classpath the JVM actually receives. Fabric on a JDK 25+ AOT runtime
+/// keeps Mojang's signed client jar off `-cp`: only that jar carries a 5 MB
+/// `META-INF/MANIFEST.MF` with 40 953 continuation lines, and JDK 25 reads it
+/// once in the AOT trainer and once in the cache-assembly child — ~160 s of one
+/// core each time, while the other 61 jars together cost 3 s. The client jar
+/// alone pushed a 32 s training run to 351 s. Fabric Loader locates the game jar
+/// through `-Dfabric.gameJarPath` instead, so the game still loads it and the
+/// cache is accepted. Every other loader / JVM tier keeps the resolved
+/// classpath byte for byte.
+pub fn launch_classpath(
+    engine: &Engine,
+    instance: &InstanceMeta,
+    java_major: u32,
+    classpath: &[PathBuf],
+) -> Vec<PathBuf> {
+    if fabric_jar_off_classpath(instance.loader, java_major) {
+        let client = engine.paths().client_jar(&instance.version);
+        return classpath.iter().filter(|p| **p != client).cloned().collect();
+    }
+    classpath.to_vec()
+}
+
+/// Whether a Fabric launch on this JVM keeps the client jar off `-cp`.
+fn fabric_jar_off_classpath(loader: Loader, java_major: u32) -> bool {
+    loader == Loader::Fabric && java_major >= 25
+}
+
 // ---------------------------------------------------------------------------
 // Accounts
 // ---------------------------------------------------------------------------
@@ -419,6 +531,183 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     let agent = resolved.agent;
     let join = resolved.join.clone();
     let window = resolved.window.clone();
+
+    let classpath_paths = launch_classpath(engine, instance, java_major, &resolved.classpath);
+    let classpath = join_classpath(&classpath_paths);
+    // Media Player: one music folder shared by every instance (the launcher's
+    // data dir, not the instance gameDir), created here so the mod only ever
+    // reads it. The mod falls back to <gameDir>/music when absent. Lives here,
+    // not in `jvm_args` (which `resolve_launch` also calls): resolving paths
+    // must not write.
+    let music = engine.paths().data_dir().join("music");
+    if let Err(e) = std::fs::create_dir_all(&music) {
+        tracing::warn!("could not create music folder {}: {e}", music.display());
+    }
+    let JvmArgs { args: mut jvm, subst, warnings } = jvm_args(engine, instance, resolved, &classpath);
+    resolved.warnings.extend(warnings);
+    // Fabric on an AOT-capable JVM keeps the signed client jar off `-cp`; Fabric
+    // Loader reads it from this property instead.
+    if fabric_jar_off_classpath(instance.loader, java_major) {
+        let client = engine.paths().client_jar(&instance.version);
+        let client = std::path::absolute(&client).unwrap_or(client);
+        jvm.push(format!("-Dfabric.gameJarPath={}", lossy(&client)));
+    }
+    jvm.push("-cp".into());
+    jvm.push(classpath);
+
+    let cache = lossy(&resolved.aot_cache_path);
+    // AOT (-XX:AOTCache*/JEP 483) exists only on JDK 25+ runtimes, and only a
+    // plain launcher classpath can be cached: NeoForge/Forge launch through
+    // their own module/bootstrap layer (resolve_launch already reports
+    // `aot_available: false` for them).
+    let aot_jdk = java_major >= 25;
+    if resolved.mode == LaunchMode::Train {
+        if aot_jdk && resolved.aot_available {
+            // The branding mod neutralizes MC's ClientShutdownWatchdog during
+            // training (the AOT dump always exceeds its budget).
+            jvm.push("-Despectral.aot-training=true".into());
+            jvm.push(format!("-XX:AOTCacheOutput={cache}"));
+        } else if !resolved.aot_available {
+            resolved
+                .warnings
+                .push(format!("AOT is not available for {} launches; skipping -XX:AOTCacheOutput", instance.loader));
+        } else {
+            resolved.warnings.push(format!(
+                "AOT training requires a JDK 25-tier runtime (current major {java_major}); skipping -XX:AOTCacheOutput"
+            ));
+        }
+    } else if aot_jdk && resolved.aot_available {
+        if resolved.aot_cache_exists && !resolved.aot_cache_stale {
+            jvm.push(format!("-XX:AOTCache={cache}"));
+            // RELATIVE proof log — -Xlog splits on ':' so C:\... would break; cwd = gameDir.
+            jvm.push("-Xlog:aot=info:file=aot-%p.log".into());
+        } else if resolved.aot_cache_exists {
+            resolved.warnings.push(format!(
+                "AOT cache {cache} no longer matches the classpath or VM flags on disk; retraining is required"
+            ));
+        } else {
+            resolved.warnings.push(format!("AOT cache {cache} not found; running without -XX:AOTCache"));
+        }
+    } else if !resolved.aot_available {
+        resolved
+            .warnings
+            .push(format!("AOT is not available for {} launches; running without -XX:AOTCache", instance.loader));
+    } else {
+        resolved.warnings.push(format!(
+            "AOT requires a JDK 25-tier runtime (current major {java_major}); running without -XX:AOTCache"
+        ));
+    }
+
+    let main_class = resolved
+        .loader
+        .as_ref()
+        .map(|l| l.main_class.clone())
+        .filter(|m| !m.is_empty())
+        .or_else(|| Some(resolved.version.main_class.clone()).filter(|m| !m.is_empty()))
+        .unwrap_or_else(|| "net.minecraft.client.main.Main".into());
+    // Features the vanilla/NeoForge game template gates its program args on.
+    // Fabric has no game template (it reuses the version's, empty in the loader
+    // profile), so its flags are appended explicitly below; NeoForge merges the
+    // vanilla game args and expands them here.
+    let mut features = Map::new();
+    features.insert("has_custom_resolution".into(), Value::Bool(window.is_some()));
+    features.insert("is_quick_play_singleplayer".into(), Value::Bool(join.as_ref().is_some_and(|j| j.world.is_some())));
+    features.insert("is_quick_play_multiplayer".into(), Value::Bool(join.as_ref().is_some_and(|j| j.server.is_some())));
+    let legacy_client = quick_play_unsupported(&resolved.version.json);
+    let mut fragment = crate::agent::game_arg_fragment(&crate::agent::LaunchOptions {
+        agent,
+        join: join.clone(),
+        window: window.clone(),
+    });
+    // Pre-1.20 clients have no `--quickPlay*` args at all: a server join becomes
+    // `--server/--port`, a world join is handed to the branded mod through
+    // `-Despectral.join.world=<save>` (the mod opens it once the title loads).
+    if legacy_client {
+        fragment = legacy_fragment(fragment);
+        if let Some(world) = join.as_ref().and_then(|j| j.world.clone()).filter(|w| !w.is_empty()) {
+            // Before `-cp` so the property is not parsed as a class name.
+            let at = jvm.iter().position(|a| a == "-cp").unwrap_or(jvm.len());
+            jvm.insert(at, format!("-Despectral.join.world={world}"));
+        }
+    }
+    // Pre-1.13 profiles have no `arguments.game` template, only a flat string.
+    let legacy_args = resolved
+        .version
+        .json
+        .get("minecraftArguments")
+        .and_then(Value::as_str)
+        .filter(|_| {
+            resolved.version.json.pointer("/arguments/game").and_then(Value::as_array).map_or(true, |a| a.is_empty())
+        })
+        .map(str::to_string);
+    let sub = |k: &str| subst.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+    let prog: Vec<String> = match &resolved.loader {
+        Some(l) if !l.game_args.is_empty() => {
+            expand_game_args(&l.game_args, &features).iter().map(|a| substitute_placeholders(a, &subst)).collect()
+        }
+        _ if legacy_args.is_some() => {
+            // Pre-1.13 versions (and legacy Forge, whose profile string carries
+            // --tweakClass): the version's own `minecraftArguments` string.
+            let mut prog: Vec<String> = legacy_args
+                .unwrap_or_default()
+                .split_whitespace()
+                .map(|a| substitute_placeholders(a, &subst))
+                .collect();
+            prog.extend(fragment);
+            prog
+        }
+        _ => {
+            let mut prog = vec![
+                "--username".into(),
+                sub("auth_player_name"),
+                "--version".into(),
+                resolved.version.id.clone(),
+                "--gameDir".into(),
+                lossy(&resolved.game_dir),
+                "--assetsDir".into(),
+                lossy(&resolved.assets_dir),
+                "--assetIndex".into(),
+                resolved.version.asset_index_id.clone().unwrap_or_else(|| "null".into()),
+                "--uuid".into(),
+                sub("auth_uuid"),
+                "--accessToken".into(),
+                sub("auth_access_token"),
+                "--userType".into(),
+                sub("user_type"),
+                "--versionType".into(),
+                "release".into(),
+            ];
+            // Fabric/vanilla fixed list: append the agent launch flags directly
+            // (there is no feature-gated template to expand here).
+            prog.extend(fragment);
+            prog
+        }
+    };
+    let mut argv = Vec::with_capacity(jvm.len() + prog.len() + 2);
+    argv.push(resolved.java.path.clone());
+    argv.extend(jvm);
+    argv.push(main_class);
+    argv.extend(prog);
+    argv
+}
+
+/// The JVM argument list before `-cp`, the placeholder map shared with the
+/// program args, and any warnings raised while assembling. One assembly shared
+/// by [`build_argv`] (which appends `-cp`, the AOT flags and the main class) and
+/// `resolve_launch` (which stamps the AOT `vm_flags`), so training and launch
+/// cannot drift apart.
+struct JvmArgs {
+    args: Vec<String>,
+    subst: Map<String, Value>,
+    warnings: Vec<String>,
+}
+
+fn jvm_args(engine: &Engine, instance: &InstanceMeta, resolved: &ResolvedLaunch, classpath: &str) -> JvmArgs {
+    let mut warnings = Vec::new();
+    let java_major = java_major_of(&resolved.java);
+    let agent = resolved.agent;
+    let join = resolved.join.clone();
+    let window = resolved.window.clone();
     let raw = &resolved.account;
     let access_token = if raw.access_token.is_empty() || raw.access_token == "undefined" {
         "0".to_string()
@@ -438,10 +727,9 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     };
     let effective_mb = effective_memory_mb(requested_mb, crate::platform::total_memory_bytes());
     if effective_mb != requested_mb {
-        resolved.warnings.push(format!("memory_mb {requested_mb} clamped to {effective_mb} (60% of system RAM)"));
+        warnings.push(format!("memory_mb {requested_mb} clamped to {effective_mb} (60% of system RAM)"));
     }
 
-    let classpath = join_classpath(&resolved.classpath);
     let natives = lossy(&resolved.natives_dir);
     let mut subst = Map::new();
     let mut put = |k: &str, v: String| {
@@ -458,7 +746,7 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     put("assets_index_name", resolved.version.asset_index_id.clone().unwrap_or_else(|| "null".into()));
     put("natives_directory", natives.clone());
     put("library_directory", lossy(&engine.paths().libraries_dir()));
-    put("classpath", classpath.clone());
+    put("classpath", classpath.to_string());
     put("classpath_separator", path_delimiter().into());
     put("launcher_name", LAUNCHER_NAME.into());
     put("launcher_version", LAUNCHER_VERSION.into());
@@ -480,14 +768,8 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         jvm.extend(FIXED_JVM_ARGS.iter().map(|s| s.to_string()));
     }
     jvm.push(format!("-Djava.library.path={natives}"));
-    // Media Player: one music folder shared by every instance (the launcher's
-    // data dir, not the instance gameDir), created here so the mod only ever
-    // reads it. The mod falls back to <gameDir>/music when absent.
-    let music = engine.paths().data_dir().join("music");
-    if let Err(e) = std::fs::create_dir_all(&music) {
-        tracing::warn!("could not create music folder {}: {e}", music.display());
-    }
-    jvm.push(format!("-Despectral.music.dir={}", lossy(&music)));
+    // Built by `build_argv`, which also creates the folder.
+    jvm.push(format!("-Despectral.music.dir={}", lossy(&engine.paths().data_dir().join("music"))));
     if let Some(a) = logging_config_arg(engine, &resolved.version.json) {
         jvm.push(a);
     }
@@ -499,6 +781,17 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
     if java_major >= 21 {
         jvm.extend(stack_flags(cfg!(windows)).iter().map(|s| s.to_string()));
     }
+    // Compact object headers: only when the profile asks and the runtime ships
+    // the compact-headers CDS archive. Decided once: the heap ratio flags are
+    // only measured clean together with it.
+    let compact_headers =
+        compact_object_headers(java_major, instance.loader, &resolved.version.json, &resolved.java.path);
+    if compact_headers {
+        jvm.push("-XX:+UseCompactObjectHeaders".into());
+    }
+    // Low-memory heap policy (the <= 8.5 GiB tier of the automatic heap).
+    let heap = low_memory_heap_flags(crate::platform::total_memory_bytes(), compact_headers);
+    jvm.extend(heap.iter().map(|s| s.to_string()));
     // Vanilla and Fabric launches build their own argv, so they would lose the
     // VM options Mojang ships in the version JSON. NeoForge/Forge profiles merge
     // that template already (their loader jvm_args below).
@@ -564,142 +857,7 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
             }
         }
     }
-    jvm.push("-cp".into());
-    jvm.push(classpath);
-
-    let cache = lossy(&resolved.aot_cache_path);
-    // AOT (-XX:AOTCache*/JEP 483) exists only on JDK 25+ runtimes, and only a
-    // plain launcher classpath can be cached: NeoForge/Forge launch through
-    // their own module/bootstrap layer (resolve_launch already reports
-    // `aot_available: false` for them).
-    let aot_jdk = java_major >= 25;
-    if resolved.mode == LaunchMode::Train {
-        if aot_jdk && resolved.aot_available {
-            // The branding mod neutralizes MC's ClientShutdownWatchdog during
-            // training (the AOT dump always exceeds its budget).
-            jvm.push("-Despectral.aot-training=true".into());
-            jvm.push(format!("-XX:AOTCacheOutput={cache}"));
-        } else if !resolved.aot_available {
-            resolved
-                .warnings
-                .push(format!("AOT is not available for {} launches; skipping -XX:AOTCacheOutput", instance.loader));
-        } else {
-            resolved.warnings.push(format!(
-                "AOT training requires a JDK 25-tier runtime (current major {java_major}); skipping -XX:AOTCacheOutput"
-            ));
-        }
-    } else if aot_jdk && resolved.aot_available {
-        if resolved.aot_cache_exists && !resolved.aot_cache_stale {
-            jvm.push(format!("-XX:AOTCache={cache}"));
-            // RELATIVE proof log — -Xlog splits on ':' so C:\... would break; cwd = gameDir.
-            jvm.push("-Xlog:aot=info:file=aot-%p.log".into());
-        } else if resolved.aot_cache_exists {
-            resolved
-                .warnings
-                .push(format!("AOT cache {cache} no longer matches the classpath on disk; retraining is required"));
-        } else {
-            resolved.warnings.push(format!("AOT cache {cache} not found; running without -XX:AOTCache"));
-        }
-    } else if !resolved.aot_available {
-        resolved
-            .warnings
-            .push(format!("AOT is not available for {} launches; running without -XX:AOTCache", instance.loader));
-    } else {
-        resolved.warnings.push(format!(
-            "AOT requires a JDK 25-tier runtime (current major {java_major}); running without -XX:AOTCache"
-        ));
-    }
-
-    let main_class = resolved
-        .loader
-        .as_ref()
-        .map(|l| l.main_class.clone())
-        .filter(|m| !m.is_empty())
-        .or_else(|| Some(resolved.version.main_class.clone()).filter(|m| !m.is_empty()))
-        .unwrap_or_else(|| "net.minecraft.client.main.Main".into());
-    // Features the vanilla/NeoForge game template gates its program args on.
-    // Fabric has no game template (it reuses the version's, empty in the loader
-    // profile), so its flags are appended explicitly below; NeoForge merges the
-    // vanilla game args and expands them here.
-    let mut features = Map::new();
-    features.insert("has_custom_resolution".into(), Value::Bool(window.is_some()));
-    features.insert("is_quick_play_singleplayer".into(), Value::Bool(join.as_ref().is_some_and(|j| j.world.is_some())));
-    features.insert("is_quick_play_multiplayer".into(), Value::Bool(join.as_ref().is_some_and(|j| j.server.is_some())));
-    let legacy_client = quick_play_unsupported(&resolved.version.json);
-    let mut fragment = crate::agent::game_arg_fragment(&crate::agent::LaunchOptions {
-        agent,
-        join: join.clone(),
-        window: window.clone(),
-    });
-    // Pre-1.20 clients have no `--quickPlay*` args at all: a server join becomes
-    // `--server/--port`, a world join is handed to the branded mod through
-    // `-Despectral.join.world=<save>` (the mod opens it once the title loads).
-    if legacy_client {
-        fragment = legacy_fragment(fragment);
-        if let Some(world) = join.as_ref().and_then(|j| j.world.clone()).filter(|w| !w.is_empty()) {
-            // Before `-cp` so the property is not parsed as a class name.
-            let at = jvm.iter().position(|a| a == "-cp").unwrap_or(jvm.len());
-            jvm.insert(at, format!("-Despectral.join.world={world}"));
-        }
-    }
-    // Pre-1.13 profiles have no `arguments.game` template, only a flat string.
-    let legacy_args = resolved
-        .version
-        .json
-        .get("minecraftArguments")
-        .and_then(Value::as_str)
-        .filter(|_| {
-            resolved.version.json.pointer("/arguments/game").and_then(Value::as_array).map_or(true, |a| a.is_empty())
-        })
-        .map(str::to_string);
-    let prog: Vec<String> = match &resolved.loader {
-        Some(l) if !l.game_args.is_empty() => {
-            expand_game_args(&l.game_args, &features).iter().map(|a| substitute_placeholders(a, &subst)).collect()
-        }
-        _ if legacy_args.is_some() => {
-            // Pre-1.13 versions (and legacy Forge, whose profile string carries
-            // --tweakClass): the version's own `minecraftArguments` string.
-            let mut prog: Vec<String> = legacy_args
-                .unwrap_or_default()
-                .split_whitespace()
-                .map(|a| substitute_placeholders(a, &subst))
-                .collect();
-            prog.extend(fragment);
-            prog
-        }
-        _ => {
-            let mut prog = vec![
-                "--username".into(),
-                username,
-                "--version".into(),
-                resolved.version.id.clone(),
-                "--gameDir".into(),
-                lossy(&resolved.game_dir),
-                "--assetsDir".into(),
-                lossy(&resolved.assets_dir),
-                "--assetIndex".into(),
-                resolved.version.asset_index_id.clone().unwrap_or_else(|| "null".into()),
-                "--uuid".into(),
-                uuid,
-                "--accessToken".into(),
-                access_token,
-                "--userType".into(),
-                user_type.into(),
-                "--versionType".into(),
-                "release".into(),
-            ];
-            // Fabric/vanilla fixed list: append the agent launch flags directly
-            // (there is no feature-gated template to expand here).
-            prog.extend(fragment);
-            prog
-        }
-    };
-    let mut argv = Vec::with_capacity(jvm.len() + prog.len() + 2);
-    argv.push(resolved.java.path.clone());
-    argv.extend(jvm);
-    argv.push(main_class);
-    argv.extend(prog);
-    argv
+    JvmArgs { args: jvm, subst, warnings }
 }
 
 /// True when the client has no `--quickPlay*` arguments (quick play shipped in
@@ -997,6 +1155,189 @@ pub fn select_game_dir(
     (base, natives)
 }
 
+/// The loader launch profile (main class + jvm/game argument templates) an
+/// instance launches with: Fabric's own profile, or the merged NeoForge/Forge
+/// templates. Shared by `resolve_launch` and [`aot_identity`] so the AOT
+/// identity cannot be derived from a different profile than the launch.
+fn loader_launch(
+    engine: &Engine,
+    instance: &InstanceMeta,
+    fabric: Option<&crate::types::FabricProfile>,
+    version_json: &Value,
+    version_main: &str,
+    game_dir: &Path,
+) -> Option<LoaderLaunch> {
+    if let Some(f) = fabric {
+        let mut jvm_args = f.jvm_args.clone();
+        if game_dir != engine.paths().instance_dir(&instance.name) {
+            let mods = crate::instances::effective_mods_dir(engine, instance);
+            jvm_args.push(Value::String(format!("-Dfabric.modsFolder={}", lossy(&mods))));
+        }
+        return Some(LoaderLaunch { main_class: f.main_class.clone(), jvm_args, game_args: vec![], kind: None });
+    }
+    if !matches!(instance.loader, Loader::Neoforge | Loader::Forge) {
+        return None;
+    }
+    // NeoForge and modern Forge: the merged profile's argument templates.
+    // Legacy Forge has none (empty arrays): build_argv then expands its
+    // `minecraftArguments` string, which carries `--tweakClass`.
+    let arr = |p: &str| version_json.pointer(p).and_then(Value::as_array).cloned().unwrap_or_default();
+    Some(LoaderLaunch {
+        main_class: version_main.to_string(),
+        jvm_args: arr("/arguments/jvm"),
+        game_args: arr("/arguments/game"),
+        kind: Some(if instance.loader == Loader::Neoforge { "neoforge" } else { "forge" }.into()),
+    })
+}
+
+/// What an AOT cache must match: the classpath the JVM actually receives and
+/// the AOT-relevant VM flags this launch passes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AotLaunchIdentity {
+    pub classpath: Vec<PathBuf>,
+    pub vm_flags: Vec<String>,
+}
+
+/// The AOT identity of an already-resolved launch (the launch path itself).
+pub fn aot_identity_of(engine: &Engine, instance: &InstanceMeta, resolved: &ResolvedLaunch) -> AotLaunchIdentity {
+    let classpath = launch_classpath(engine, instance, java_major_of(&resolved.java), &resolved.classpath);
+    let JvmArgs { args, .. } = jvm_args(engine, instance, resolved, &join_classpath(&classpath));
+    AotLaunchIdentity { classpath, vm_flags: crate::aot::aot_vm_flags(&args) }
+}
+
+/// The AOT identity the NEXT launch will have, resolved the way
+/// [`resolve_launch`] resolves it but without downloading, installing or
+/// touching any game artifact (only the resolver's own caches are used).
+/// `instances::aot_status` reports this so the UI chip can never disagree with
+/// the launch decision.
+pub async fn aot_identity(engine: &Engine, instance: &InstanceMeta) -> EngineResult<AotLaunchIdentity> {
+    let version_json = crate::resolver::get_version_json(engine, &instance.version).await?;
+    let version_main =
+        version_json.get("mainClass").and_then(Value::as_str).unwrap_or("net.minecraft.client.main.Main").to_string();
+    let version_java = version_json.pointer("/javaVersion/majorVersion").and_then(Value::as_u64).unwrap_or(8) as u32;
+    let java = status_java_for_launch(engine, instance, version_java).await?;
+    let fabric = if instance.loader == Loader::Fabric {
+        Some(crate::resolver::resolve_fabric(engine, &instance.version, None).await?)
+    } else {
+        None
+    };
+    let instance_dir = engine.paths().instance_dir(&instance.name);
+    let loader = loader_launch(engine, instance, fabric.as_ref(), &version_json, &version_main, &instance_dir);
+    let classpath = crate::resolver::resolve_classpath(engine, instance, &version_json, fabric.as_ref());
+    let resolved = ResolvedLaunch {
+        java,
+        version: ResolvedVersionRef {
+            id: instance.version.clone(),
+            main_class: version_main,
+            asset_index_id: None,
+            json: version_json,
+        },
+        loader,
+        fabric_profile: fabric,
+        classpath,
+        natives_dir: engine.paths().instance_natives_dir(&instance.name),
+        game_dir: instance_dir,
+        assets_dir: engine.paths().assets_dir(),
+        memory_mb: instance.memory_mb.unwrap_or_else(|| engine.config().default_memory_mb()),
+        account: default_account(),
+        bridge_token: None,
+        mode: LaunchMode::Normal,
+        aot_key: String::new(),
+        aot_cache_path: PathBuf::new(),
+        aot_cache_exists: false,
+        aot_cache_stale: false,
+        aot_available: false,
+        agent: false,
+        join: None,
+        window: None,
+        ffmpeg_path: None,
+        warnings: vec![],
+    };
+    Ok(aot_identity_of(engine, instance, &resolved))
+}
+
+/// [`java_for_launch`] for the AOT status read: the same ladder, step for step,
+/// with one intentional difference — it never performs the Adoptium download
+/// (`runtimes::java_for_version` step 6). Every other step can therefore pick
+/// the same runtime the next launch will: the per-instance override, the GLOBAL
+/// `config.jdk_path_override` (probed, accepted only inside the tier, never
+/// cached), `config.jvm`, the tier's downloaded runtime, FastClient's bundled
+/// JDK and PATH java. When nothing fits, the tier's own major is predicted (what
+/// a download would install) with an empty path, so the compact-headers archive
+/// is not found and the read can only over-report staleness until the first
+/// launch provisions the JDK.
+async fn status_java_for_launch(
+    engine: &Engine,
+    instance: &InstanceMeta,
+    version_java: u32,
+) -> EngineResult<JavaRuntime> {
+    if let Some(o) = instance.jdk_path_override.as_deref().filter(|s| !s.is_empty()) {
+        return crate::jvm::get_jvm_info(engine, Some(o)).await;
+    }
+    let tier = if instance.loader == Loader::Neoforge {
+        21
+    } else if instance.loader == Loader::Forge {
+        crate::forge::java_tier(&instance.version, version_java)
+    } else {
+        version_java
+    };
+    let need = if tier == 0 { 17 } else { tier };
+    let max = crate::runtimes::max_major_for(need);
+
+    // NeoForge goes through `java_for_major_exact` (EXACTLY 21, no override and
+    // no `config.jvm`): mirror that ladder instead of the tier one.
+    if instance.loader == Loader::Neoforge {
+        if let Some(c) = crate::runtimes::cached_major(engine, 21).filter(|j| java_major_of(j) == 21) {
+            return Ok(c);
+        }
+        if let Some(pj) = crate::jvm::path_java(engine) {
+            if let Ok(probe) = crate::jvm::probe_java(engine, &pj).await {
+                if probe.ok && probe.major == 21 {
+                    return Ok(crate::jvm::to_jvm_info(&pj, &probe, crate::types::JvmSource::Path));
+                }
+            }
+        }
+        return Ok(JavaRuntime { major: Some(21), ..Default::default() });
+    }
+
+    // 1. Settings -> Java path: probed, must fit the tier, never cached.
+    if let Some(p) = engine.config().jdk_path_override() {
+        let pp = Path::new(&p);
+        if pp.exists() {
+            // An unusable override makes a real launch fail; a status read just
+            // falls through and reports what the rest of the ladder decides.
+            if let Ok(probe) = crate::jvm::probe_java(engine, pp).await {
+                if probe.ok && (need..=max).contains(&probe.major) {
+                    return Ok(crate::jvm::to_jvm_info(pp, &probe, crate::types::JvmSource::Path));
+                }
+            }
+        }
+    }
+    // 2. `config.jvm`: the launch ranks it by the major parsed from
+    // `build`/`version` (a record with neither is skipped), not by its stored
+    // `major` field — mirrored here so both pick the same runtime.
+    if let Some(c) = engine.config().jvm().filter(|j| !j.path.is_empty() && Path::new(&j.path).exists()) {
+        let cm = parse_major(if !c.build.is_empty() { &c.build } else { &c.version });
+        if cm > 0 && (need..=max).contains(&cm) {
+            return Ok(JavaRuntime { major: Some(cm), ..c });
+        }
+    }
+    // 3. The tier's downloaded runtime (its own probe recorded the major).
+    if let Some(c) = crate::runtimes::cached_major(engine, need) {
+        return Ok(c);
+    }
+    // 4./5. FastClient's bundled JDK, then PATH java — same order, same gate.
+    for p in [crate::runtimes::fast_client_java(engine), crate::jvm::path_java(engine)].into_iter().flatten() {
+        // An unusable candidate is skipped, never fatal: this is a status read.
+        if let Ok(probe) = crate::jvm::probe_java(engine, &p).await {
+            if probe.ok && (need..=max).contains(&probe.major) {
+                return Ok(crate::jvm::to_jvm_info(&p, &probe, crate::types::JvmSource::Path));
+            }
+        }
+    }
+    Ok(JavaRuntime { major: Some(need), ..Default::default() })
+}
+
 /// The JDK a launch runs on: per-instance override (any JDK) > NeoForge's
 /// EXACT 21 > the version's own `javaVersion.majorVersion` tier.
 ///
@@ -1240,12 +1581,24 @@ pub async fn resolve_launch(
         // Cosmetics + per-launch bridge token (never blocks/fails a launch).
         if let Some(flat) = crate::identity::normalize_uuid(&launch_account.uuid) {
             bridge_token = Some(crate::bridge::mint_token());
-            match crate::identity::refresh_grant_soft(engine, &flat, 2000).await {
+            let canonical = crate::instances::effective_game_dir(engine, instance);
+            // A background refresh (the stored grant was already usable) rewrites
+            // the same file; the in-game mod hot-reloads it by mtime. It may land
+            // after the user switched accounts and another launch wrote its own
+            // cosmetics into the same gameDir, so it only touches copies that
+            // still name this account.
+            let on_refreshed = {
+                let (engine, flat, game_dir, canonical) =
+                    (engine.clone(), flat.clone(), game_dir.clone(), canonical.clone());
+                move || {
+                    crate::cosmetics::rewrite_cosmetics_file_if_owned(&engine, &flat, &game_dir, Some(&canonical));
+                }
+            };
+            match crate::identity::refresh_grant_for_launch(engine, &flat, 2000, on_refreshed).await {
                 Ok(refreshed) => {
                     if !refreshed {
                         warnings.push("identity grant refresh skipped/failed — using cached entitlement".into());
                     }
-                    let canonical = crate::instances::effective_game_dir(engine, instance);
                     let _ = crate::cosmetics::write_cosmetics_file(engine, &flat, &game_dir, Some(&canonical));
                 }
                 Err(e) => tracing::debug!("[launch] cosmetics staging skipped: {e}"),
@@ -1263,6 +1616,7 @@ pub async fn resolve_launch(
     }
 
     let classpath = crate::resolver::resolve_classpath(engine, instance, &version_json, fabric.as_ref());
+    let classpath = launch_classpath(engine, instance, java_major_of(&java), &classpath);
     phase("classpath");
     let assets_dir = engine.paths().assets_dir();
 
@@ -1272,33 +1626,8 @@ pub async fn resolve_launch(
     let aot_key = crate::aot::cache_key(&instance.version, build, None);
     let aot_cache_path = engine.paths().aot_cache_file(&aot_key);
     let aot_cache_exists = std::fs::metadata(&aot_cache_path).map(|m| m.len() > 0).unwrap_or(false);
-    // A cache whose recorded classpath identity drifted is REFUSED by the JVM;
-    // detect it so the launch skips -XX:AOTCache and the route retrains.
-    let aot_cache_stale = aot_cache_exists && crate::aot::is_cache_stale(engine, &aot_key, &classpath);
 
-    let instance_dir = engine.paths().instance_dir(&instance.name);
-    let loader = if let Some(f) = &fabric {
-        let mut jvm_args = f.jvm_args.clone();
-        if game_dir != instance_dir {
-            let mods = crate::instances::effective_mods_dir(engine, instance);
-            jvm_args.push(Value::String(format!("-Dfabric.modsFolder={}", lossy(&mods))));
-        }
-        Some(LoaderLaunch { main_class: f.main_class.clone(), jvm_args, game_args: vec![], kind: None })
-    } else if neoforge_id.is_some() || forge_id.is_some() {
-        // NeoForge and modern Forge: the merged profile's argument templates.
-        // Legacy Forge has none (empty arrays): build_argv then expands its
-        // `minecraftArguments` string, which carries `--tweakClass`.
-        let arr = |p: &str| version_json.pointer(p).and_then(Value::as_array).cloned().unwrap_or_default();
-        Some(LoaderLaunch {
-            main_class: version_main.clone(),
-            jvm_args: arr("/arguments/jvm"),
-            game_args: arr("/arguments/game"),
-            kind: Some(if neoforge_id.is_some() { "neoforge" } else { "forge" }.into()),
-        })
-    } else {
-        None
-    };
-
+    let loader = loader_launch(engine, instance, fabric.as_ref(), &version_json, &version_main, &game_dir);
     let aot_available = java.major.unwrap_or(0) >= 25 && crate::aot::loader_supports_aot(instance.loader);
 
     // ffmpeg for agent captures. Dry runs only look at what is already on disk
@@ -1318,7 +1647,7 @@ pub async fn resolve_launch(
         }
     }
 
-    Ok(ResolvedLaunch {
+    let mut resolved = ResolvedLaunch {
         version: ResolvedVersionRef {
             id: neoforge_id.or(forge_id).unwrap_or_else(|| instance.version.clone()),
             main_class: version_main,
@@ -1339,14 +1668,23 @@ pub async fn resolve_launch(
         aot_key,
         aot_cache_path,
         aot_cache_exists,
-        aot_cache_stale,
+        aot_cache_stale: false,
         aot_available,
         agent: opts.agent,
         join: opts.join.clone(),
         window: opts.window.clone(),
         ffmpeg_path,
         warnings,
-    })
+    };
+
+    // A cache is REFUSED by the JVM when its classpath identity or its VM flags
+    // differ from training; detect it here (before the route reads
+    // `aot_cache_stale`) so the launch skips -XX:AOTCache and the route retrains.
+    let identity = aot_identity_of(engine, instance, &resolved);
+    resolved.aot_cache_stale = aot_cache_exists
+        && crate::aot::is_cache_stale_with_flags(engine, &resolved.aot_key, &identity.classpath, &identity.vm_flags);
+
+    Ok(resolved)
 }
 
 /// DryRunResult: argv (tokens redacted) + classpath + missing entries +
@@ -1357,13 +1695,26 @@ pub fn dry_run_result(
     resolved: &ResolvedLaunch,
 ) -> EngineResult<DryRunResult> {
     let mut r = resolved.clone();
-    let missing: Vec<String> = r.classpath.iter().filter(|p| !p.exists()).map(|p| lossy(p)).collect();
+    // The list the JVM will actually receive (Fabric on JDK 25+ drops the
+    // client jar from `-cp`), so the report matches the argv it prints.
+    let java_major = java_major_of(&r.java);
+    let classpath = launch_classpath(engine, instance, java_major, &r.classpath);
+    let mut missing: Vec<String> = classpath.iter().filter(|p| !p.exists()).map(|p| lossy(p)).collect();
+    // The game still needs the client jar there — it is passed as
+    // `-Dfabric.gameJarPath` — so a preview before the first download must
+    // report it. The `classpath` field stays the list the JVM receives.
+    if fabric_jar_off_classpath(instance.loader, java_major) {
+        let client = engine.paths().client_jar(&instance.version);
+        if !client.exists() {
+            missing.push(lossy(&client));
+        }
+    }
     let index =
         r.assets_dir.join("indexes").join(format!("{}.json", r.version.asset_index_id.as_deref().unwrap_or("")));
     let argv = build_argv(engine, instance, &mut r);
     Ok(DryRunResult {
         argv: redact_preview(&argv, Some(r.account.access_token.as_str())),
-        classpath: r.classpath.iter().map(|p| lossy(p)).collect(),
+        classpath: classpath.iter().map(|p| lossy(p)).collect(),
         classpath_missing: missing,
         natives_dir: lossy(&r.natives_dir),
         assets_ok: index.exists(),
@@ -1743,7 +2094,10 @@ mod tests {
         // JDK 27 gate
         assert_eq!(boot_flags(&e, &inst("t"), Some(27)), ["-XX:-UsePerfData"]);
         // JDK 8 (Forge 1.8.9/1.12.2): metaspace headroom on top.
-        assert_eq!(boot_flags(&e, &inst("t"), Some(8)), ["-XX:-UsePerfData", "-Xverify:none", "-XX:MetaspaceSize=128M"]);
+        assert_eq!(
+            boot_flags(&e, &inst("t"), Some(8)),
+            ["-XX:-UsePerfData", "-Xverify:none", "-XX:MetaspaceSize=128M"]
+        );
         assert!(boot_flags(&e, &inst("t"), Some(26)).contains(&"-Xverify:none".to_string()));
         assert_eq!(boot_flags(&e, &on, Some(27)), ["-XX:-UsePerfData", "-XX:TieredStopAtLevel=1"]);
         assert!(boot_flags(&e, &inst("t"), None).contains(&"-Xverify:none".to_string()));
@@ -1753,6 +2107,257 @@ mod tests {
     fn stack_flags_are_windows_only() {
         assert_eq!(stack_flags(true), ["-XX:+UnlockDiagnosticVMOptions", "-XX:+AlwaysPreTouchStacks"]);
         assert!(stack_flags(false).is_empty());
+    }
+
+    #[test]
+    fn low_memory_heap_flags_need_the_lowest_tier_and_compact_headers() {
+        const GB: u64 = 1024 * 1024 * 1024;
+        let on = ["-XX:MinHeapFreeRatio=20", "-XX:MaxHeapFreeRatio=40"];
+        let bound = (8.5 * GB as f64) as u64;
+        let totals = [0, 4 * GB, 8 * GB, bound, bound + 1, 16 * GB];
+        for total in totals {
+            // Never without compact headers (that arm measured +10% p99).
+            assert!(low_memory_heap_flags(total, false).is_empty(), "{total}, no compact headers");
+        }
+        // Unknown RAM (0) and above the lowest tier never apply.
+        assert!(low_memory_heap_flags(0, true).is_empty(), "0 bytes");
+        assert!(low_memory_heap_flags(bound + 1, true).is_empty(), "8.5 GiB + 1 byte");
+        assert!(low_memory_heap_flags(16 * GB, true).is_empty(), "16 GiB");
+        // Inside the lowest tier with compact headers: the measured pair.
+        for total in [4 * GB, 8 * GB, bound] {
+            assert_eq!(low_memory_heap_flags(total, true), on, "{total}");
+        }
+    }
+
+    #[test]
+    fn compact_object_headers_needs_every_condition() {
+        let d = tempfile::tempdir().unwrap();
+        let jdk = d.path().join("jdk");
+        let bin = jdk.join("bin");
+        std::fs::create_dir_all(bin.join("server")).unwrap();
+        let java = bin.join("java.exe");
+        std::fs::write(&java, "x").unwrap();
+        std::fs::write(bin.join("server").join("classes_coh.jsa"), "x").unwrap();
+        let with_archive = java.to_string_lossy().into_owned();
+
+        // Mojang's real 26.3 `arguments.default-user-jvm`, verbatim: the flag
+        // sits in a rule-LESS object entry (the reason a plain
+        // `expand_jvm_args` walk can never see it).
+        let profile = json!({ "arguments": { "default-user-jvm": [
+            { "value": ["-Xms2G", "-Xmx4G", "-XX:+UseCompactObjectHeaders", "-XX:+AlwaysPreTouch",
+                        "-XX:+UseStringDeduplication"] },
+            { "rules": [
+                { "action": "allow", "os": { "name": "osx" } },
+                { "action": "allow", "os": { "name": "linux" } },
+                { "action": "allow", "os": { "name": "windows", "versionRange": { "min": "10.0.17134" } } }
+            ], "value": ["-XX:+UseZGC"] },
+            { "rules": [
+                { "action": "allow", "os": { "name": "windows", "versionRange": { "max": "10.0.17134" } } }
+            ], "value": ["-XX:+UnlockExperimentalVMOptions", "-XX:+UseG1GC", "-XX:G1NewSizePercent=20",
+                        "-XX:G1ReservePercent=20", "-XX:MaxGCPauseMillis=50", "-XX:G1HeapRegionSize=32M"] }
+        ] } });
+        let no_profile = json!({});
+        // The current walker must see the real shape...
+        assert!(profile_wants_compact_headers(&profile), "rule-less entry counts");
+        // ...and the old expansion path must not: this is the regression guard.
+        assert!(
+            !expand_jvm_args(
+                profile.pointer("/arguments/default-user-jvm").and_then(Value::as_array).unwrap(),
+                crate::platform::os_name(),
+                crate::platform::node_arch()
+            )
+            .iter()
+            .any(|a| a == "-XX:+UseCompactObjectHeaders"),
+            "expand_jvm_args drops rule-less entries"
+        );
+        // A flag only inside an entry whose rules exclude this machine (its
+        // allow rule names an OS that is not the current one) does not count.
+        let gated = json!({ "arguments": { "default-user-jvm": [
+            { "rules": [{ "action": "allow", "os": { "name": "plan9" } }], "value": ["-XX:+UseCompactObjectHeaders"] }
+        ] } });
+        assert!(!profile_wants_compact_headers(&gated), "gated entry does not count");
+        // The flag in a rule-less STRING entry counts too (the other legal shape).
+        assert!(profile_wants_compact_headers(
+            &json!({ "arguments": { "default-user-jvm": ["-XX:+UseCompactObjectHeaders"] } })
+        ));
+        // The flag absent entirely.
+        assert!(!profile_wants_compact_headers(
+            &json!({ "arguments": { "default-user-jvm": [{ "value": ["-Xms2G"] }] } })
+        ));
+
+        // All four conditions hold.
+        assert!(compact_object_headers(25, Loader::Vanilla, &profile, &with_archive));
+        assert!(compact_object_headers(25, Loader::Fabric, &profile, &with_archive));
+        // JDK < 25.
+        assert!(!compact_object_headers(21, Loader::Vanilla, &profile, &with_archive));
+        // Loader not AOT-capable.
+        assert!(!compact_object_headers(25, Loader::Neoforge, &profile, &with_archive));
+        assert!(!compact_object_headers(25, Loader::Forge, &profile, &with_archive));
+        // Profile does not ask.
+        assert!(!compact_object_headers(25, Loader::Vanilla, &no_profile, &with_archive));
+        // Runtime without the compact-headers archive.
+        let no_archive = d.path().join("jdk2").join("bin").join("java.exe");
+        std::fs::create_dir_all(no_archive.parent().unwrap()).unwrap();
+        std::fs::write(&no_archive, "x").unwrap();
+        assert!(!compact_object_headers(25, Loader::Vanilla, &profile, &no_archive.to_string_lossy()));
+        // The archive is also accepted under lib/server.
+        let lib_jdk = d.path().join("jdk3");
+        std::fs::create_dir_all(lib_jdk.join("lib").join("server")).unwrap();
+        let lib_java = lib_jdk.join("bin").join("java");
+        std::fs::create_dir_all(lib_java.parent().unwrap()).unwrap();
+        std::fs::write(&lib_java, "x").unwrap();
+        std::fs::write(lib_jdk.join("lib").join("server").join("classes_coh.jsa"), "x").unwrap();
+        assert!(compact_object_headers(25, Loader::Vanilla, &profile, &lib_java.to_string_lossy()));
+        // A bare executable name has no java_home to inspect.
+        assert!(!compact_object_headers(25, Loader::Vanilla, &profile, "java"));
+    }
+
+    #[test]
+    fn fabric_jdk25_keeps_the_client_jar_off_the_classpath() {
+        let (_d, e) = temp_engine();
+        let client = e.paths().client_jar("26.3");
+        let libs = vec![PathBuf::from("/data/libraries/a.jar"), client.clone()];
+        let fabric =
+            InstanceMeta { name: "f".into(), version: "26.3".into(), loader: Loader::Fabric, ..Default::default() };
+        let vanilla =
+            InstanceMeta { name: "v".into(), version: "26.3".into(), loader: Loader::Vanilla, ..Default::default() };
+
+        // Fabric on JDK 25: the client jar moves to -Dfabric.gameJarPath.
+        assert_eq!(launch_classpath(&e, &fabric, 25, &libs), vec![PathBuf::from("/data/libraries/a.jar")]);
+        // Fabric on JDK 21 and vanilla on JDK 25 keep the resolved classpath.
+        assert_eq!(launch_classpath(&e, &fabric, 21, &libs), libs);
+        assert_eq!(launch_classpath(&e, &vanilla, 25, &libs), libs);
+
+        // build_argv agrees: the property is present before -cp, which lacks the jar.
+        let mut r = make_resolved();
+        r.java = java("/jdk/bin/java.exe", 25, "25.0.4+7");
+        r.classpath = libs;
+        r.version = ResolvedVersionRef {
+            id: "26.3".into(),
+            main_class: "net.minecraft.client.main.Main".into(),
+            asset_index_id: Some("26.3".into()),
+            json: json!({}),
+        };
+        let argv = build_argv(&e, &fabric, &mut r);
+        let prop = format!("-Dfabric.gameJarPath={}", std::path::absolute(&client).unwrap().display());
+        let prop_idx = argv.iter().position(|a| *a == prop).expect("fabric.gameJarPath present");
+        let cp_idx = argv.iter().position(|a| a == "-cp").unwrap();
+        assert!(prop_idx < cp_idx, "property before -cp: {argv:?}");
+        assert!(!argv[cp_idx + 1].contains("26.3.jar"), "client jar off -cp: {argv:?}");
+    }
+
+    #[test]
+    fn dry_run_reports_the_missing_client_jar_on_fabric_jdk25() {
+        let (_d, e) = temp_engine();
+        let client = e.paths().client_jar("26.3");
+        let fabric =
+            InstanceMeta { name: "f".into(), version: "26.3".into(), loader: Loader::Fabric, ..Default::default() };
+        let mut r = make_resolved();
+        r.java = java("/jdk/bin/java.exe", 25, "25.0.4+7");
+        // The resolver's list, as `resolve_classpath` builds it: just the jar.
+        r.classpath = vec![client.clone()];
+        r.version = ResolvedVersionRef {
+            id: "26.3".into(),
+            main_class: "net.minecraft.client.main.Main".into(),
+            asset_index_id: Some("26.3".into()),
+            json: json!({}),
+        };
+
+        // Absent: the jar is off `-cp` but the game still needs it, so the
+        // preview reports it while `classpath` stays the JVM's list.
+        let dr = dry_run_result(&e, &fabric, &r).unwrap();
+        assert_eq!(dr.classpath_missing, vec![lossy(&client)], "{dr:?}");
+        assert!(!dr.classpath.iter().any(|c| c.ends_with("26.3.jar")), "{dr:?}");
+
+        // Present: no longer missing.
+        std::fs::create_dir_all(client.parent().unwrap()).unwrap();
+        std::fs::write(&client, b"jar").unwrap();
+        let dr = dry_run_result(&e, &fabric, &r).unwrap();
+        assert!(dr.classpath_missing.is_empty(), "{dr:?}");
+
+        // Vanilla keeps the jar on `-cp`, where the ordinary check covers it.
+        std::fs::remove_file(&client).unwrap();
+        let vanilla =
+            InstanceMeta { name: "v".into(), version: "26.3".into(), loader: Loader::Vanilla, ..Default::default() };
+        let dr = dry_run_result(&e, &vanilla, &r).unwrap();
+        assert_eq!(dr.classpath_missing, vec![lossy(&client)], "{dr:?}");
+        assert!(dr.classpath.iter().any(|c| c.ends_with("26.3.jar")), "{dr:?}");
+    }
+
+    #[tokio::test]
+    async fn status_jdk_ladder_honours_the_settings_java_path() {
+        let (d, e) = temp_engine();
+        e.game_resolve_state().isolate();
+        e.game_resolve_state().set_endpoints(crate::api::game_resolve::ResolveEndpoints::all_on("http://127.0.0.1:9"));
+        // A cached flat version JSON + manifest naming it: no network. The
+        // profile asks for compact headers (Mojang's rule-less entry shape), so
+        // the flag depends only on which JDK the ladder picks.
+        let vj = json!({ "id": "26.3", "mainClass": "net.minecraft.client.main.Main",
+                         "javaVersion": { "majorVersion": 25 }, "libraries": [],
+                         "arguments": { "default-user-jvm": [{ "value": ["-XX:+UseCompactObjectHeaders"] }] } });
+        std::fs::create_dir_all(e.paths().versions_dir()).unwrap();
+        std::fs::write(e.paths().versions_dir().join("26.3.json"), vj.to_string()).unwrap();
+        std::fs::write(
+            e.paths().version_manifest_cache(),
+            json!({ "fetched_at": crate::platform::now_ms(), "latest_release": "26.3", "latest_snapshot": "26.3",
+                    "versions": [{ "id": "26.3", "type": "release",
+                                   "release_time": "2026-01-01T00:00:00+00:00",
+                                   "url": "http://127.0.0.1:9/26.3.json" }] })
+            .to_string(),
+        )
+        .unwrap();
+        e.game_resolve_state().clear_manifest_memo();
+        // Both candidate JDKs probe as a fitting 25; only their paths differ.
+        e.game_resolve_state().set_probe_override(Some(std::sync::Arc::new(|_: &Path| crate::types::JavaProbe {
+            ok: true,
+            major: 25,
+            ..Default::default()
+        })));
+        let inst =
+            InstanceMeta { name: "s".into(), version: "26.3".into(), loader: Loader::Vanilla, ..Default::default() };
+
+        // Settings -> Java path: a 25 whose home carries the compact-headers
+        // archive, so the flag's presence in `vm_flags` proves which JDK the
+        // status read picked.
+        let chosen = d.path().join("settings-jdk").join("bin").join("java.exe");
+        std::fs::create_dir_all(chosen.parent().unwrap().join("server")).unwrap();
+        std::fs::write(&chosen, "x").unwrap();
+        std::fs::write(chosen.parent().unwrap().join("server").join("classes_coh.jsa"), "x").unwrap();
+        e.config().set("jdk_path_override", json!(chosen.to_string_lossy()));
+
+        let id = aot_identity(&e, &inst).await.unwrap();
+        assert!(
+            id.vm_flags.contains(&"-XX:+UseCompactObjectHeaders".into()),
+            "the status read honours the global override: {:?}",
+            id.vm_flags
+        );
+        // The launch ladder agrees for the same instance.
+        let java = java_for_launch(&e, &inst, 25).await.unwrap();
+        assert_eq!(java.path, chosen.to_string_lossy());
+
+        // An override OUTSIDE the tier is skipped by the launch (JDK 21 for
+        // 26.3), so the status read must skip it too and lose the flag.
+        let old = d.path().join("old-jdk").join("bin").join("java.exe");
+        std::fs::create_dir_all(old.parent().unwrap().join("server")).unwrap();
+        std::fs::write(&old, "x").unwrap();
+        std::fs::write(old.parent().unwrap().join("server").join("classes_coh.jsa"), "x").unwrap();
+        e.config().set("jdk_path_override", json!(old.to_string_lossy()));
+        e.game_resolve_state().set_probe_override(Some(std::sync::Arc::new(|_: &Path| crate::types::JavaProbe {
+            ok: true,
+            major: 21,
+            ..Default::default()
+        })));
+        let java = java_for_launch(&e, &inst, 25).await;
+        assert!(
+            java.map(|j| j.path != old.to_string_lossy().as_ref()).unwrap_or(true),
+            "launch skips an out-of-tier override (an error means it found no JDK at all)"
+        );
+        let id = aot_identity(&e, &inst).await.unwrap();
+        assert!(
+            !id.vm_flags.contains(&"-XX:+UseCompactObjectHeaders".into()),
+            "the status read skips it as well: {:?}",
+            id.vm_flags
+        );
     }
 
     #[test]

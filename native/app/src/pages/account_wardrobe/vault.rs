@@ -139,8 +139,6 @@ pub fn init(init_ctx: &Ctx, ui: &AppWindow) {
             }
         }
     });
-
-    reload_accounts(false);
 }
 
 /// Component-local state of AccountVault.svelte, reset on every mount.

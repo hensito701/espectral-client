@@ -18,12 +18,13 @@
 //! (ESPECTRAL_ID_URL env > config `identity_url` > default). The Mojang
 //! session server can be stubbed via ESPECTRAL_SESSION_SERVER (tests).
 //!
-//! NOTHING here may fail a launch — launch paths use [`refresh_grant_soft`].
+//! NOTHING here may fail a launch — launch paths use [`refresh_grant_soft`] and
+//! [`refresh_grant_for_launch`].
 //!
 //! CONTRACT (called by game-launch, accounts-skins cosmetics, bridge):
-//! normalize_uuid, identity_url, flags_for, refresh_grant_soft. Also public
-//! for accounts-skins (cosmetics doc / account view): [`flags_info`],
-//! [`token_for`], [`service_fetch`].
+//! normalize_uuid, identity_url, flags_for, refresh_grant_soft,
+//! refresh_grant_for_launch. Also public for accounts-skins (cosmetics doc /
+//! account view): [`flags_info`], [`token_for`], [`service_fetch`].
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -398,6 +399,61 @@ pub async fn refresh_grant_soft(engine: &Engine, flat_uuid: &str, budget_ms: u64
     Ok(refresh_grant(engine, flat_uuid, budget_ms.max(250)).await.is_ok())
 }
 
+/// A stored grant is worth launching on while it still has more than this many
+/// seconds left: the launch hands it to the game, which verifies it again a
+/// moment later, and a grant about to expire could be refused there.
+const GRANT_USABLE_MARGIN_SECS: i64 = 600;
+/// Budget for the background refresh in [`refresh_grant_for_launch`]: the
+/// launch does not wait for it, so it can afford the service's full answer.
+const LAUNCH_REFRESH_BUDGET_MS: u64 = 8000;
+
+/// The "is the stored grant usable now" decision, pure so it is unit-testable
+/// without a service: non-empty and more than [`GRANT_USABLE_MARGIN_SECS`]
+/// from expiry.
+fn stored_grant_usable(grant: Option<&str>, exp_secs: Option<i64>, now_secs: i64) -> bool {
+    let Some(exp) = exp_secs else { return false };
+    grant.is_some_and(|g| !g.is_empty()) && exp > now_secs + GRANT_USABLE_MARGIN_SECS
+}
+
+/// Launch-path grant refresh that does not hold up the launch when the stored grant is still usable.
+/// Returns Ok(true) when a usable grant is stored when the function returns
+/// (either it was already valid, or it was refreshed within `budget_ms`), Ok(false) otherwise.
+/// When the stored grant was already usable, the network refresh runs in the background and
+/// `on_refreshed` is called once after it succeeds; otherwise `on_refreshed` is never called
+/// (the caller acts on the returned value itself).
+pub async fn refresh_grant_for_launch<F>(
+    engine: &Engine,
+    flat_uuid: &str,
+    budget_ms: u64,
+    on_refreshed: F,
+) -> EngineResult<bool>
+where
+    F: FnOnce() + Send + 'static,
+{
+    let stored_usable = get_entry(engine, flat_uuid).is_some_and(|entry| {
+        let grant = entry.get("grant").and_then(Value::as_str);
+        let exp = entry.get("grant_exp").and_then(Value::as_f64).filter(|f| f.is_finite()).map(|f| f as i64);
+        stored_grant_usable(grant, exp, grant::now_s())
+    });
+
+    if !stored_usable {
+        // No usable grant: today's behaviour — one bounded refresh whose result
+        // the caller acts on.
+        return refresh_grant_soft(engine, flat_uuid, budget_ms).await;
+    }
+
+    // Usable now: launch on the stored grant and refresh in the background.
+    let e = engine.clone();
+    let uuid = flat_uuid.to_string();
+    engine.spawn_background("identity-grant", async move {
+        if refresh_grant(&e, &uuid, LAUNCH_REFRESH_BUDGET_MS).await.is_ok() {
+            on_refreshed();
+        }
+        Ok(())
+    });
+    Ok(true)
+}
+
 /// Prove uuid ownership: Mojang join with the account's live MC token, then
 /// the service challenge/verify handshake. Returns the stored entry.
 pub async fn verify_account(engine: &Engine, account: &Account) -> EngineResult<Map<String, Value>> {
@@ -602,6 +658,8 @@ pub async fn discord_unlink(engine: &Engine, uuid: &str) -> EngineResult<()> {
 pub(crate) mod tests {
     use super::*;
     use crate::test_support::{temp_engine, MockResponse, MockServer};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     pub(crate) const UUID: &str = "aabbccddeeff00112233445566778899";
 
@@ -814,6 +872,89 @@ pub(crate) mod tests {
         // Soft refresh never fails.
         seed_token(&e, UUID, "t");
         assert!(!refresh_grant_soft(&e, UUID, 10).await.unwrap());
+    }
+
+    // --- refresh_grant_for_launch -----------------------------------------
+
+    #[test]
+    fn stored_grant_usable_margin() {
+        let now = grant::now_s();
+        assert!(!stored_grant_usable(None, Some(now + 3600), now), "no stored grant");
+        assert!(!stored_grant_usable(Some(""), Some(now + 3600), now), "empty grant");
+        assert!(!stored_grant_usable(Some("g"), None, now), "no expiry");
+        assert!(!stored_grant_usable(Some("g"), Some(now + 300), now), "5 min left");
+        assert!(!stored_grant_usable(Some("g"), Some(now + 600), now), "exactly 10 min left");
+        assert!(stored_grant_usable(Some("g"), Some(now + 601), now), "11 min left");
+        assert!(!stored_grant_usable(Some("g"), Some(now - 1), now), "already expired");
+    }
+
+    #[tokio::test]
+    async fn launch_refresh_offline_uuid_stays_cheap_and_silent() {
+        let (_d, e) = temp_engine();
+        let server = MockServer::start(service_stub()).await;
+        point_at(&e, &server);
+        let called = Arc::new(AtomicBool::new(false));
+        let c = called.clone();
+        let ok = refresh_grant_for_launch(&e, UUID, 2000, move || c.store(true, Ordering::SeqCst)).await.unwrap();
+        assert!(!ok, "no stored grant and no live session");
+        assert!(!called.load(Ordering::SeqCst), "on_refreshed is never called on this path");
+        assert_eq!(server.hits(), 0, "no network for a uuid without a session");
+    }
+
+    #[tokio::test]
+    async fn launch_refresh_awaits_the_network_without_a_usable_grant() {
+        let (_d, e) = temp_engine();
+        let server = MockServer::start(service_stub()).await;
+        point_at(&e, &server);
+        seed_token(&e, UUID, "sess-token-1");
+        let called = Arc::new(AtomicBool::new(false));
+        let c = called.clone();
+        let ok = refresh_grant_for_launch(&e, UUID, 2000, move || c.store(true, Ordering::SeqCst)).await.unwrap();
+        assert!(ok, "a fresh grant was stored within budget");
+        assert!(!called.load(Ordering::SeqCst), "the awaited path never calls on_refreshed");
+        assert_eq!(server.hits(), 1);
+    }
+
+    #[tokio::test]
+    async fn launch_refresh_does_not_await_a_usable_stored_grant() {
+        let (_d, e) = temp_engine();
+        let stub = service_stub();
+        // A slow service: an awaited refresh would blow past the launch budget.
+        let server = MockServer::start(move |r| {
+            let resp = stub(r);
+            if r.path == "/v1/grant" {
+                resp.with_delay(Duration::from_millis(800))
+            } else {
+                resp
+            }
+        })
+        .await;
+        point_at(&e, &server);
+        seed_token(&e, UUID, "sess-token-1");
+        let mut patch = Map::new();
+        patch.insert("grant".into(), json!(crate::grant::tests::sign_test_grant(UUID, &["mvp"], 3600)));
+        patch.insert("grant_exp".into(), json!(grant::now_s() + 3600));
+        update_entry(&e, UUID, patch).unwrap();
+
+        let refreshed = Arc::new(AtomicBool::new(false));
+        let r = refreshed.clone();
+        let started = std::time::Instant::now();
+        let ok = refresh_grant_for_launch(&e, UUID, 2000, move || r.store(true, Ordering::SeqCst)).await.unwrap();
+        assert!(ok);
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "must not await the network (took {:?})",
+            started.elapsed()
+        );
+
+        for _ in 0..100 {
+            if refreshed.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(refreshed.load(Ordering::SeqCst), "on_refreshed after the background refresh");
+        assert_eq!(server.hits(), 1);
     }
 
     #[test]
