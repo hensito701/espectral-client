@@ -2,6 +2,51 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Cosmetics are chosen in game now.** Right Shift opens the Suite; the
+  Cosméticos row's gear button opens your wardrobe and lets you pick the piece
+  in each slot (or nothing), switch sharing on or off and allow or block
+  emotes, without leaving the game. Each choice goes to the launcher through
+  the same signed connection the ⚛ presence already uses, so it is validated
+  against your real rank, saved and applied to the running game immediately;
+  a refusal (a piece that needs MVP, one incompatible with what you wear) shows
+  on the same screen. The Armario page keeps your account, skin, Discord link,
+  rank badges and hidden players, and now points to the in-game screen instead
+  of offering its own cosmetic dropdowns.
+- **`POST /api/bridge/cosmetics` on the launcher's loopback bridge.** The mod
+  sends `{}` to read the wardrobe of the account the game runs as, or
+  `{"patch": {...}}` to apply the same changes `PUT /api/cosmetics/:uuid`
+  accepts; answers are signed like every other bridge answer.
+
+### Changed
+- **"Física de la tela" is now "Animación de los cosméticos".** The cloth items
+  it was named after were removed in 1.8.2, but the switch itself still turns
+  the motion of ears, wings and bandana tails on and off, so it stayed — with a
+  name that says what it does.
+
+### Fixed
+- **Armario: "No se pudo guardar: unknown cosmetic id" when equipping anything.**
+  If your saved loadout still named one of the items removed in 1.8.2 (Manto
+  Espectral, Capucha Errante, Jirones de Ceniza, Bufanda Llama de Alma), every
+  change in the wardrobe was refused, including equipping a bandana. The
+  launcher now drops a removed item when it reads your loadout.
+- **Blurry pixel font on displays scaled to 125 % or 150 %.** The Minecraft
+  title font is only sharp at sizes that are a multiple of 8 screen pixels. The
+  launcher sized it for 100 % scaling, so at 125 % its blocks landed between
+  pixels and smeared. Titles and pixel labels now snap to the nearest sharp
+  size for the display the window is on (and again when it moves to another
+  display). At 125 % the small labels and 16px titles are a little smaller
+  than before and 24px titles a little larger.
+- **Switch knobs sat 2 px up and to the left** in the instance settings and
+  Mods pages.
+- The header logo was drawn from a 256 px image at 44 px without smoothing; it
+  now uses a 96 px copy.
+- **Lowercase "m" and "w" in the bold title font read as "n" and "u"**
+  ("Conpartir nis cosnéticos"). Both glyphs are redrawn one pixel wider with
+  a visible middle stroke.
+
 ## [1.8.2] - 2026-11-10
 
 ### Added

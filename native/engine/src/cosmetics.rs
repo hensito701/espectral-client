@@ -113,6 +113,8 @@ impl AccountCosmetics {
 }
 
 /// Normalize a stored record into the public account state (unknown keys tolerated, never returned).
+/// A stored item the catalog no longer has (retired) or that sits in the wrong slot is dropped here,
+/// so the next save does not send it back and fail validation.
 pub fn get_cosmetics_state(engine: &Engine, uuid: &str) -> AccountCosmetics {
     let mut out = AccountCosmetics::default();
     let Some(flat) = normalize_uuid(uuid) else { return out };
@@ -125,9 +127,10 @@ pub fn get_cosmetics_state(engine: &Engine, uuid: &str) -> AccountCosmetics {
         out.emotes = *b;
     }
     if let Some(Value::Object(l)) = raw.get("loadout") {
-        for slot in &catalog().slots {
+        let cat = catalog();
+        for slot in &cat.slots {
             if let Some(Value::String(v)) = l.get(slot) {
-                if !v.is_empty() {
+                if cat.items.get(v).is_some_and(|item| item.slot == *slot) {
                     out.loadout.insert(slot.clone(), Some(v.clone()));
                 }
             }
@@ -503,6 +506,61 @@ pub fn cosmetics_account_view(engine: &Engine, uuid: &str, flags: &[String]) -> 
     }
 }
 
+/// The wardrobe view the in-game Cosméticos screen edits through
+/// `POST /api/bridge/cosmetics` (crate::loopback): the catalog split per slot
+/// with both names, the exclusivity rules, the account's stored loadout /
+/// share / emotes, its verified flags and whether it may equip (mvp).
+///
+/// `patch`, when given, is applied FIRST through [`patch_cosmetics`] with the
+/// same verified flags `PUT /api/cosmetics/:uuid` uses, so validation and its
+/// error codes stay in one place; the answer is then the resulting state.
+pub fn bridge_view(engine: &Engine, uuid: &str, patch: Option<&Value>) -> EngineResult<Value> {
+    let flat = normalize_uuid(uuid)
+        .ok_or_else(|| EngineError::api(409, "BRIDGE_NO_ACCOUNT", "this launch has no signed-in account"))?;
+    let flags = verified_flags(engine, &flat);
+    let state = match patch {
+        Some(p) => patch_cosmetics(engine, &flat, p, &flags)?,
+        None => get_cosmetics_state(engine, &flat),
+    };
+    Ok(wardrobe_view(&flat, &state, &flags))
+}
+
+/// [`bridge_view`]'s document (also what a test can compare against).
+fn wardrobe_view(flat: &str, state: &AccountCosmetics, flags: &[String]) -> Value {
+    let cat = catalog();
+    let slots: Vec<Value> = cat
+        .slots
+        .iter()
+        .map(|slot| {
+            let items: Vec<Value> = cat
+                .items
+                .values()
+                .filter(|i| i.slot == *slot)
+                .map(|i| {
+                    json!({
+                        "id": i.id,
+                        "requires": i.requires,
+                        "name": { "es": i.name.es, "en": i.name.en },
+                    })
+                })
+                .collect();
+            json!({ "slot": slot, "items": items })
+        })
+        .collect();
+    let exclusive: Vec<Value> =
+        cat.doc.exclusive.iter().map(|(slot, ids)| json!([slot, ids])).collect();
+    json!({
+        "uuid": flat,
+        "slots": slots,
+        "exclusive": exclusive,
+        "loadout": state.loadout,
+        "share": state.share,
+        "emotes": state.emotes,
+        "flags": flags,
+        "mvp": flags.iter().any(|f| f == "mvp"),
+    })
+}
+
 /// `getCosmeticsState(uuid).share` — affirmative consent to publish presence.
 pub fn share_enabled(engine: &Engine, flat_uuid: &str) -> EngineResult<bool> {
     Ok(get_cosmetics_state(engine, flat_uuid).share)
@@ -817,5 +875,25 @@ mod tests {
         assert_eq!(v["loadout"], json!({ "espalda": "alas_eco" }));
         assert_eq!(v["flags"], json!(["supporter", "mvp"]));
         assert_eq!(get_cosmetics_state(&e, "bad"), AccountCosmetics::default());
+    }
+
+    /// 1.8.2 regression: a stored loadout naming a retired item made every later save fail.
+    #[test]
+    fn retired_stored_item_does_not_block_the_next_save() {
+        let (_d, e) = temp_engine();
+        std::fs::write(
+            cosmetics_path(&e),
+            json!({ "accounts": { UUID: { "loadout": { "espalda": "manto_espectral", "cabeza": "orejas_felinas", "cuello": "alas_eco" } } } }).to_string(),
+        )
+        .unwrap();
+        let stored = get_cosmetics_state(&e, UUID).loadout;
+        assert_eq!(stored, lo(&[("cabeza", Some("orejas_felinas"))]));
+        // What the wardrobe sends: the loadout it was given, with one slot changed.
+        let mut next: serde_json::Map<String, Value> =
+            stored.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
+        next.insert("cabeza".into(), json!("bandana_roja"));
+        let out = patch_cosmetics(&e, UUID, &json!({ "loadout": next }), &mvp()).unwrap();
+        assert_eq!(out.loadout["cabeza"].as_deref(), Some("bandana_roja"));
+        assert_eq!(out.loadout["espalda"], None);
     }
 }

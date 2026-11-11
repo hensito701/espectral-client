@@ -5,6 +5,10 @@
 //!   `x-espectral-client: 1` plus the signed-request headers of
 //!   [`crate::proof`], body `{ uuids: [...] }`) -> [`crate::bridge::visible`]
 //!   for the launch that signed it; the answer carries `x-espectral-proof`;
+//! - `POST /api/bridge/cosmetics` — the same signed handshake, body `{}` or
+//!   `{ patch: {...} }`: the Cosméticos screen reads the wardrobe of the
+//!   launch's own account and applies a `PUT /api/cosmetics` patch through
+//!   [`crate::cosmetics::patch_cosmetics`] (all of it signed back);
 //! - `GET /api/discord/callback` — Discord's OAuth redirect (registered as
 //!   `http://127.0.0.1:4199/api/discord/callback`) -> `Engine::discord_callback`,
 //!   answering the completion / error HTML from routes/discord.mjs;
@@ -140,6 +144,38 @@ async fn bridge_visible(
         .map(|a| a.iter().map(|u| u.as_str().unwrap_or_default().to_string()).collect())
         .unwrap_or_default();
     let reply = axum::Json(crate::bridge::visible(&engine, &owner, &uuids)).into_response();
+    prove(reply, &owner, &nonce).await
+}
+
+/// `POST /api/bridge/cosmetics` — the in-game Cosméticos screen's wardrobe:
+/// `{}` reads the view of the account that owns the launch, `{"patch": {...}}`
+/// applies a `PUT /api/cosmetics/:uuid` patch through
+/// [`crate::cosmetics::patch_cosmetics`] (same validation and error codes)
+/// and answers the resulting view. A launch with no signed-in account is 409
+/// `BRIDGE_NO_ACCOUNT`.
+async fn bridge_cosmetics(
+    State(engine): State<Engine>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Some(r) = guard(&headers, true) {
+        return r;
+    }
+    let (owner, nonce) = match bridge_owner(&engine, &method, &uri, &headers, &body) {
+        Ok(o) => o,
+        Err(r) => return *r,
+    };
+    let parsed = match parse_body(&body) {
+        Ok(v) => v,
+        Err(r) => return prove(*r, &owner, &nonce).await,
+    };
+    let patch = parsed.get("patch").filter(|p| !p.is_null());
+    let reply = match crate::cosmetics::bridge_view(&engine, &owner.uuid, patch) {
+        Ok(view) => axum::Json(view).into_response(),
+        Err(e) => engine_error(&e),
+    };
     prove(reply, &owner, &nonce).await
 }
 
@@ -811,6 +847,7 @@ async fn not_found(headers: HeaderMap) -> Response {
 pub fn router(engine: Engine) -> Router {
     Router::new()
         .route("/api/bridge/visible", post(bridge_visible))
+        .route("/api/bridge/cosmetics", post(bridge_cosmetics))
         .route("/api/discord/callback", get(discord_callback))
         // routes/agent.mjs — agent API (Bearer token) + the mod relay
         // (per-launch bridge token).
@@ -935,6 +972,106 @@ mod tests {
         // The answer is signed for this request's nonce and exact body.
         assert!(bridge_proof_ok(&token, &nonce, proof.as_deref(), &b));
         assert!(!bridge_proof_ok(&token, &proof::mint_nonce(), proof.as_deref(), &b));
+        e.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn bridge_cosmetics_reads_and_patches_the_launch_account() {
+        use crate::test_support::{bridge_headers, bridge_proof_ok};
+        let (d, e) = temp_engine();
+        let addr = start(&e, 0).await.unwrap();
+        let uuid = "11111111111111111111111111111111";
+        let token = crate::bridge::mint_token();
+        crate::bridge::attach(&e, "inst", Some(uuid), d.path().into(), &token);
+        let path = "/api/bridge/cosmetics";
+
+        // An unsigned request is refused before anything is read.
+        let (s, _, b) = post_raw(addr, path, &[("x-espectral-client", "1".to_string())], "{}").await;
+        assert_eq!((s, code(&b).as_deref()), (403, Some("BRIDGE_AUTH")));
+        // A MAC over another body is refused too.
+        let (h, _) = bridge_headers(&token, path, "{}");
+        let (s, _, b) = post_raw(addr, path, &h, r#"{"patch":{"share":false}}"#).await;
+        assert_eq!((s, code(&b).as_deref()), (403, Some("BRIDGE_AUTH")));
+
+        // Read: the pristine view of a launch whose account has no flags yet.
+        let (h, nonce) = bridge_headers(&token, path, "{}");
+        let (s, proof, b) = post_raw(addr, path, &h, "{}").await;
+        assert_eq!(s, 200);
+        let view: Value = serde_json::from_slice(&b).unwrap();
+        assert_eq!(view["uuid"], uuid);
+        assert_eq!(view["mvp"], false);
+        assert_eq!(view["share"], true);
+        assert_eq!(view["emotes"], true);
+        assert_eq!(view["slots"][0]["slot"], "espalda");
+        assert_eq!(view["slots"][0]["items"][0]["id"], "alas_eco");
+        assert_eq!(view["slots"][0]["items"][0]["name"]["es"], "Alas de Eco");
+        assert_eq!(view["slots"][2]["slot"], "cabeza");
+        assert_eq!(view["slots"][2]["items"].as_array().unwrap().len(), 5);
+        assert!(bridge_proof_ok(&token, &nonce, proof.as_deref(), &b));
+
+        // A patch from a non-MVP account gets the engine's refusal, signed.
+        let body = r#"{"patch":{"loadout":{"espalda":"alas_eco"}}}"#;
+        let (h, nonce) = bridge_headers(&token, path, body);
+        let (s, proof, b) = post_raw(addr, path, &h, body).await;
+        assert_eq!((s, code(&b).as_deref()), (400, Some("FLAG_REQUIRED")));
+        assert!(bridge_proof_ok(&token, &nonce, proof.as_deref(), &b));
+        assert!(crate::cosmetics::get_cosmetics_state(&e, uuid).loadout.is_empty());
+
+        // With a verified mvp grant the same body is accepted and stored.
+        fn grant(uuid: &str) -> String {
+            crate::grant::tests::sign_test_grant(uuid, &["supporter", "mvp"], 600)
+        }
+        let mut patch = serde_json::Map::new();
+        patch.insert("grant".into(), json!(grant(uuid)));
+        crate::identity::update_entry(&e, uuid, patch).unwrap();
+        let body = r#"{"patch":{"loadout":{"espalda":"alas_eco","cabeza":"orejas_felinas"},"share":false}}"#;
+        let (h, nonce) = bridge_headers(&token, path, body);
+        let (s, proof, b) = post_raw(addr, path, &h, body).await;
+        assert_eq!(s, 200, "{}", String::from_utf8_lossy(&b));
+        let view: Value = serde_json::from_slice(&b).unwrap();
+        assert_eq!(view["mvp"], true);
+        assert_eq!(view["share"], false);
+        assert_eq!(view["loadout"]["espalda"], "alas_eco");
+        assert_eq!(view["loadout"]["cabeza"], "orejas_felinas");
+        assert!(bridge_proof_ok(&token, &nonce, proof.as_deref(), &b));
+        let stored = crate::cosmetics::get_cosmetics_state(&e, uuid);
+        assert!(!stored.share);
+        assert_eq!(stored.loadout["cabeza"].as_deref(), Some("orejas_felinas"));
+
+        // A later read answers the new state.
+        let (h, _) = bridge_headers(&token, path, "{}");
+        let (s, _, b) = post_raw(addr, path, &h, "{}").await;
+        assert_eq!(s, 200);
+        let view: Value = serde_json::from_slice(&b).unwrap();
+        assert_eq!(view["loadout"]["espalda"], "alas_eco");
+
+        // Engine validation codes come back unchanged (and stay signed).
+        let body = r#"{"patch":{"loadout":{"cuello":"alas_eco"}}}"#;
+        let (h, nonce) = bridge_headers(&token, path, body);
+        let (s, proof, b) = post_raw(addr, path, &h, body).await;
+        assert_eq!((s, code(&b).as_deref()), (400, Some("WRONG_SLOT")));
+        assert!(bridge_proof_ok(&token, &nonce, proof.as_deref(), &b));
+        // And unknown patch keys are still BAD_PATCH.
+        let body = r#"{"patch":{"cape":"alas_eco"}}"#;
+        let (h, _) = bridge_headers(&token, path, body);
+        let (s, _, b) = post_raw(addr, path, &h, body).await;
+        assert_eq!((s, code(&b).as_deref()), (400, Some("BAD_PATCH")));
+
+        e.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn bridge_cosmetics_needs_an_account_on_the_launch() {
+        use crate::test_support::bridge_headers;
+        let (d, e) = temp_engine();
+        let addr = start(&e, 0).await.unwrap();
+        let token = crate::bridge::mint_token();
+        // A launch registered without a uuid (an offline/forged account).
+        crate::bridge::attach(&e, "inst", None, d.path().into(), &token);
+        let path = "/api/bridge/cosmetics";
+        let (h, _) = bridge_headers(&token, path, "{}");
+        let (s, _, b) = post_raw(addr, path, &h, "{}").await;
+        assert_eq!((s, code(&b).as_deref()), (409, Some("BRIDGE_NO_ACCOUNT")));
         e.shutdown().await;
     }
 

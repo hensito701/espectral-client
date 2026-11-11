@@ -189,6 +189,54 @@ extreme of each driver (`min`/`max`, the react offsets, `±max`, `impulse`,
 5. Motion: drivers reference existing bones, ranges are sane (`min ≤ rest ≤
    max`, coefficients inside the listed bounds).
 
+## Choosing what to wear (in game)
+
+The launcher no longer edits the loadout. Right Shift opens the Suite; the
+**Cosméticos** row's gear button opens `ui/SuiteCosmeticsScreen`, which shows
+the local viewer switches plus one row per slot and, inside a slot, that slot's
+pieces and a *Nada* choice. Sharing and emotes are the same screen.
+
+Every wardrobe change is sent to the launcher, never to a server and never
+written by the mod:
+
+```
+POST <espectral.bridge.url>/cosmetics     signed as every bridge request (BridgeAuth)
+  {}                                      -> the view of the account this launch runs as
+  {"patch": {"loadout": {...}}}            -> apply, then answer the resulting view
+  {"patch": {"share": false}}               (the PUT /api/cosmetics body, same codes)
+  {"patch": {"emotes": true}}
+```
+
+The answer (signed back, `x-espectral-proof`) is:
+
+```json
+{
+  "uuid": "32 hex",
+  "slots": [ { "slot": "cabeza",
+               "items": [ { "id": "orejas_felinas", "requires": "mvp",
+                            "name": { "es": "Orejas Felinas", "en": "Cat Ears" } } ] } ],
+  "exclusive": [ ["cuello", ["id", "..."] ] ],
+  "loadout": { "espalda": "alas_eco", "cuello": null, "cabeza": null, "elitros": null },
+  "share": true,
+  "emotes": true,
+  "flags": ["supporter", "mvp"],
+  "mvp": true
+}
+```
+
+The engine applies a patch through the same `cosmetics::patch_cosmetics` the
+launcher's `PUT /api/cosmetics/:uuid` uses — catalog, exclusivity, `mvp` — and
+persists + republishes + rewrites `config/espectral-cosmetics.json` for the
+running game, which the mod hot-reloads. So the screen's answer *is* the stored
+state; a refusal (`FLAG_REQUIRED`, `EXCLUSIVE_CONFLICT`, …) becomes the one-line
+message above the rows, and nothing is stored. `WardrobeBridge` does all HTTP on
+one daemon thread and only publishes immutable snapshots (plus a serial) that
+the screen repaints from in `tick()`.
+
+A patch must carry the whole `loadout` object: the engine validates every slot
+it receives and any slot left out of it is cleared. The screen sends all four
+slots every time, taken from the last answer.
+
 ## Catalog
 
 `native/engine/data/cosmetics-catalog.json` is generated from

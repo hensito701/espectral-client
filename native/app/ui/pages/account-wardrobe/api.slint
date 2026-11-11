@@ -15,26 +15,6 @@ export struct VaultSkinEntry {
     variant: string,
 }
 
-/// One cosmetic item chip of a slot (Wardrobe).
-export struct WardrobeItem {
-    id: string,
-    name-es: string,
-    name-en: string,
-    equipped: bool,
-    /// Equipping it would unequip an incompatible item (dashed chip).
-    conflict: bool,
-}
-
-/// One slot picker (Wardrobe).
-export struct WardrobeSlot {
-    slot: string,
-    label-es: string,
-    label-en: string,
-    /// "none" chip equipped (slot empty).
-    empty: bool,
-    items: [WardrobeItem],
-}
-
 /// One account of the Wardrobe picker (engine types::IdentityAccount + PublicAccount bits).
 export struct WardrobeAccount {
     uuid: string,
@@ -173,14 +153,9 @@ export global AccountBridge {
     in property <string> w-load-error;
     in property <[WardrobeAccount]> w-accounts;
     in property <int> w-selected: -1;
-    in property <bool> w-share;
-    in property <bool> w-emotes;
-    in property <[WardrobeSlot]> w-slots;
-    in property <[WardrobeItem]> w-emotes-catalog;
     in property <[string]> w-hidden;
     in property <string> w-hidden-error;
     in property <int> w-hidden-serial;
-    in property <bool> w-saving;
     in property <bool> w-verifying;
     in property <bool> w-refreshing;
     in property <bool> w-linking;
@@ -192,9 +167,6 @@ export global AccountBridge {
     callback w-link();
     callback w-cancel-link();
     callback w-unlink();
-    callback w-toggle-share(on: bool);
-    callback w-toggle-emotes(on: bool);
-    callback w-equip(slot: string, item-id: string);
     callback w-add-hidden(name: string);
     callback w-remove-hidden(name: string);
 

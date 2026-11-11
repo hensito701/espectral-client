@@ -1,11 +1,12 @@
 // OWNER: account-wardrobe agent. Port of src/ui/src/pages/Wardrobe.svelte
-// (#/armario): identity verification, Discord link, supporter flags,
-// cosmetics consent, MVP slot pickers, emotes and hidden players.
+// (#/armario): identity verification, Discord link, supporter flags and hidden
+// players. Cosmetic choices (what is worn, sharing, emotes) are made in game —
+// Right Shift, Cosméticos, the gear button — so this page only points there.
 // Keep the exported component name and the empty interface used by app.slint.
 
 import { Theme, T, Router, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GlassCard, Elevation,
-    PageScaffold, Spinner, McTitle, Sticker } from "../../widgets.slint";
-import { AccountBridge, WardrobeAccount, WardrobeSlot, WardrobeItem } from "api.slint";
+    PageScaffold, Spinner, McTitle } from "../../widgets.slint";
+import { AccountBridge, WardrobeAccount } from "api.slint";
 import { PlainInput } from "parts.slint";
 
 // ---------------------------------------------------------------------------
@@ -34,84 +35,6 @@ component Note inherits Text {
     font-size: Theme.text-xs;
     color: Theme.muted;
     wrap: word-wrap;
-}
-
-/// .locked-note (MVP gate): flat amber block with the poster border.
-component LockedNote inherits Rectangle {
-    background: Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: Theme.accent-alt;
-    border-radius: Theme.radius-md;
-    min-height: lbl-row.preferred-height;
-    lbl-row := HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-        Text {
-            text: T.tr("wardrobe.slots.locked");
-            font-size: Theme.text-sm;
-            font-weight: 600;
-            color: Theme.accent-alt;
-            wrap: word-wrap;
-        }
-    }
-}
-
-/// .switch (44x26 pill): flat gold when on, flat card when off.
-component Switch inherits Rectangle {
-    in property <bool> on;
-    in property <bool> enabled: true;
-    callback toggled(on: bool);
-    width: 44px;
-    height: 26px;
-    border-radius: Theme.radius-pill;
-    background: on ? Theme.gold : Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: on ? Theme.brand-ink : Theme.border-solid;
-    opacity: enabled ? 1 : 0.45;
-    animate background, border-color { duration: Theme.dur-slow; }
-    Rectangle {
-        x: root.on ? 20px : 2px;
-        y: 2px;
-        width: 18px;
-        height: 18px;
-        border-radius: 9px;
-        background: root.on ? Theme.on-gold : Theme.muted;
-        animate x, background { duration: Theme.dur-slow; easing: ease-out; }
-    }
-    TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: root.enabled ? pointer : not-allowed;
-        clicked => { root.toggled(!root.on); }
-    }
-}
-
-/// .item-chip: flat pill chip, gold when equipped.
-component ItemChip inherits Rectangle {
-    in property <string> text;
-    in property <bool> equipped;
-    in property <bool> conflict;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: lbl.preferred-height + 12px;
-    width: lbl.preferred-width + 28px;
-    border-radius: Theme.radius-pill;
-    background: equipped ? Theme.gold : ta.has-hover && enabled ? Theme.surface-up : Theme.surface;
-    border-width: 2px;
-    border-color: equipped ? Theme.brand-ink : (ta.has-hover && enabled) ? Theme.hover-border : conflict ? Theme.muted.with-alpha(0.6) : Theme.border-solid;
-    animate border-color, background { duration: 150ms; }
-    lbl := Text {
-        text: root.text;
-        font-size: Theme.text-sm;
-        font-weight: root.equipped ? 700 : 400;
-        color: root.equipped ? Theme.on-gold : root.conflict ? Theme.muted : Theme.text;
-    }
-    ta := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: root.enabled ? pointer : not-allowed;
-        clicked => { root.clicked(); }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -416,122 +339,49 @@ component IdentityCard inherits GlassCard {
 }
 
 // ---------------------------------------------------------------------------
-// consent / slots / emotes / hidden players
+// cosmetics pointer + hidden players
 // ---------------------------------------------------------------------------
 
-component ConsentCard inherits GlassCard {
-    in property <WardrobeAccount> acc;
+/// Where cosmetics are chosen: in game, on the Cosméticos row of the Suite.
+component CosmeticsCard inherits GlassCard {
     elevation: Elevation.sm;
     min-width: 0px;
-    HorizontalLayout {
-        spacing: Theme.space-6;
-        VerticalLayout {
-            spacing: 6px;
-            horizontal-stretch: 1;
-            SectionTitle { small: true; title: T.tr("wardrobe.share.title"); subtitle: T.tr("wardrobe.share.desc"); }
-            if !root.acc.verified: Note { text: T.tr("wardrobe.share.needsVerify"); }
-        }
-        VerticalLayout {
-            alignment: center;
-            Switch {
-                on: AccountBridge.w-share;
-                enabled: !AccountBridge.w-saving;
-                toggled(v) => { AccountBridge.w-toggle-share(v); }
-            }
-        }
-    }
-}
-
-component SlotGroup inherits VerticalLayout {
-    in property <WardrobeSlot> data;
-    in property <bool> locked;
-    spacing: Theme.space-2;
-    Text {
-        text: (T.lang == "en" ? root.data.label-en : root.data.label-es).to-uppercase();
-        font-size: Theme.text-xs;
-        font-weight: 700;
-        letter-spacing: 0.96px;
-        color: Theme.muted;
+    spacing: Theme.space-3;
+    SectionTitle {
+        small: true;
+        title: T.tr("wardrobe.cosmetics.title");
+        subtitle: T.tr("wardrobe.cosmetics.desc");
     }
     HorizontalLayout {
-        spacing: Theme.space-2;
+        spacing: Theme.space-3;
         alignment: start;
-        ItemChip {
-            text: T.tr("wardrobe.slots.none");
-            equipped: root.data.empty;
-            enabled: !root.locked;
-            clicked => { AccountBridge.w-equip(root.data.slot, ""); }
-        }
-        for item in root.data.items: ItemChip {
-            text: T.lang == "en" ? item.name-en : item.name-es;
-            equipped: item.equipped;
-            conflict: item.conflict;
-            enabled: !root.locked;
-            clicked => { AccountBridge.w-equip(root.data.slot, item.id); }
-        }
-    }
-}
-
-component SlotsCard inherits GlassCard {
-    in property <WardrobeAccount> acc;
-    elevation: Elevation.md;
-    spacing: Theme.space-4;
-    min-width: 0px;
-    HorizontalLayout {
-        spacing: Theme.space-4;
-        SectionTitle {
-            horizontal-stretch: 1;
-            title: T.tr("wardrobe.slots.title");
-            subtitle: T.tr("wardrobe.slots.subtitle");
-        }
-        if !root.acc.mvp: VerticalLayout {
-            alignment: start;
-            Sticker { text: "MVP"; fill: Theme.accent-red; ink: #ffffff; }
-        }
-    }
-    if !root.acc.mvp: LockedNote { }
-    VerticalLayout {
-        spacing: Theme.space-4;
-        opacity: root.acc.mvp ? 1 : 0.55;
-        for slot in AccountBridge.w-slots: SlotGroup {
-            data: slot;
-            locked: !root.acc.mvp;
-        }
-    }
-}
-
-component EmotesCard inherits GlassCard {
-    in property <WardrobeAccount> acc;
-    elevation: Elevation.sm;
-    min-width: 0px;
-    HorizontalLayout {
-        spacing: Theme.space-6;
-        VerticalLayout {
-            spacing: 6px;
-            horizontal-stretch: 1;
-            SectionTitle { small: true; title: T.tr("wardrobe.emotes.title"); subtitle: T.tr("wardrobe.emotes.desc"); }
-            if !root.acc.mvp: LockedNote { }
-            if root.acc.mvp && AccountBridge.w-emotes-catalog.length > 0: HorizontalLayout {
-                spacing: 6px;
-                padding-top: 6px;
-                alignment: start;
-                for e in AccountBridge.w-emotes-catalog: Rectangle {
-                    height: el.preferred-height + 10px;
-                    width: el.preferred-width + 20px;
-                    border-radius: Theme.radius-pill;
-                    background: Theme.surface-up;
-                    border-width: 2px;
-                    border-color: Theme.border-solid;
-                    el := Text { text: T.lang == "en" ? e.name-en : e.name-es; font-size: Theme.text-xs; font-weight: 600; color: Theme.muted-strong; }
+        Rectangle {
+            height: key-row.preferred-height + 16px;
+            width: key-row.preferred-width + 24px;
+            border-radius: Theme.radius-sm;
+            background: Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: Theme.border-solid;
+            key-row := HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                alignment: center;
+                McTitle {
+                    text: T.tr("wardrobe.cosmetics.key");
+                    font-size: 12px;
+                    min-width: 0px;
+                    horizontal-stretch: 0;
                 }
             }
         }
         VerticalLayout {
+            horizontal-stretch: 1;
             alignment: center;
-            Switch {
-                on: AccountBridge.w-emotes;
-                enabled: root.acc.mvp && !AccountBridge.w-saving;
-                toggled(v) => { AccountBridge.w-toggle-emotes(v); }
+            Text {
+                text: T.tr("wardrobe.cosmetics.steps");
+                font-size: Theme.text-sm;
+                color: Theme.muted-strong;
+                wrap: word-wrap;
             }
         }
     }
@@ -649,9 +499,7 @@ component WardrobeBody inherits VerticalLayout {
         }
     }
     IdentityCard { acc: root.acc; }
-    ConsentCard { acc: root.acc; }
-    SlotsCard { acc: root.acc; }
-    EmotesCard { acc: root.acc; }
+    CosmeticsCard { }
     HiddenCard { }
     Disclaimer { }
 }

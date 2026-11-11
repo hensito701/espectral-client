@@ -1,7 +1,7 @@
 //! Wardrobe (#/armario, Wardrobe.svelte): per-account identity verification,
-//! Discord link (system browser + poll), supporter / MVP flags, the
-//! "share my cosmetics" consent, MVP-gated slot pickers with exclusivity,
-//! local emotes toggle and the hidden players list.
+//! Discord link (system browser + poll), supporter / MVP flags and the hidden
+//! players list. Cosmetic choices (item per slot, sharing, emotes) live in the
+//! game now (Suite → Cosméticos), so this page only points there.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -17,7 +17,7 @@ use super::{err_msg, valid_mc_name};
 use crate::bridge::Ctx;
 use crate::router::{self, Route};
 use crate::{i18n, prefs, toast, util};
-use crate::{AccountBridge, AppWindow, Page, WardrobeAccount, WardrobeItem, WardrobeSlot};
+use crate::{AccountBridge, AppWindow, Page, WardrobeAccount};
 
 const PREF_ACCOUNT: &str = "wardrobe.account";
 const LINK_POLL: Duration = Duration::from_millis(2000);
@@ -30,10 +30,7 @@ struct State {
     identity: Option<IdentityState>,
     cosmetics: Option<CosmeticsState>,
     selected: String,
-    // editable draft (per selected account)
-    share: bool,
-    emotes: bool,
-    loadout: Vec<(String, Option<String>)>,
+    // editable draft (per selected account): only hidden players remain here
     hidden: Vec<String>,
     saving: bool,
     pending: Option<CosmeticsPatch>,
@@ -86,17 +83,6 @@ pub fn init(init_ctx: &Ctx, init_ui: &AppWindow) {
         }
     });
     b.on_w_unlink(unlink_discord);
-    b.on_w_toggle_share(|on| {
-        ST.with(|s| s.borrow_mut().share = on);
-        publish();
-        save(CosmeticsPatch { share: Some(on), ..Default::default() });
-    });
-    b.on_w_toggle_emotes(|on| {
-        ST.with(|s| s.borrow_mut().emotes = on);
-        publish();
-        save(CosmeticsPatch { emotes: Some(on), ..Default::default() });
-    });
-    b.on_w_equip(|slot, item| equip(slot.to_string(), (!item.is_empty()).then(|| item.to_string())));
     b.on_w_add_hidden(|name| add_hidden(name.trim().to_string()));
     b.on_w_remove_hidden(|name| remove_hidden(name.to_string()));
 
@@ -192,17 +178,13 @@ fn selected_identity() -> Option<IdentityAccount> {
     })
 }
 
-/// Hydrate the editable draft from the server state of the selected account.
+/// Hydrate the editable draft (the hidden players list) from the server state.
 fn hydrate() {
     ST.with(|s| {
         let mut s = s.borrow_mut();
         let Some(cos) = s.cosmetics.as_ref() else { return };
         let Some(st) = cos.accounts.get(&s.selected).cloned() else { return };
-        let slots = cos.catalog.slots.clone();
-        s.share = st.share;
-        s.emotes = st.emotes;
         s.hidden = st.hidden_players.clone();
-        s.loadout = slots.iter().map(|slot| (slot.clone(), st.loadout.get(slot).cloned().flatten())).collect();
     });
 }
 
@@ -223,33 +205,6 @@ fn grant_exp(acc: &IdentityAccount, lang: i18n::Lang) -> String {
 
 fn discord_avatar_url(d: &espectral_engine::types::IdentityDiscord) -> Option<String> {
     d.avatar.as_ref().map(|a| format!("https://cdn.discordapp.com/avatars/{}/{}.png?size=64", d.id, a))
-}
-
-/// Equipped items that would conflict with equipping `item` into `slot`.
-fn conflicting(
-    exclusive: &[(String, Vec<String>)],
-    loadout: &[(String, Option<String>)],
-    slot: &str,
-    item: &str,
-) -> Vec<(String, String)> {
-    let get = |sl: &str| loadout.iter().find(|(s, _)| s == sl).and_then(|(_, v)| v.clone());
-    let mut out = vec![];
-    for (ex_slot, ids) in exclusive {
-        if slot == ex_slot {
-            for (other, equipped) in loadout {
-                if let Some(eq) = equipped {
-                    if other != slot && ids.contains(eq) {
-                        out.push((other.clone(), eq.clone()));
-                    }
-                }
-            }
-        } else if ids.iter().any(|i| i == item) {
-            if let Some(eq) = get(ex_slot) {
-                out.push((ex_slot.clone(), eq));
-            }
-        }
-    }
-    out
 }
 
 /// Push the whole wardrobe state into AccountBridge.
@@ -291,59 +246,8 @@ fn publish() {
         let sel = ids.iter().position(|a| a.uuid == s.selected).map(|i| i as i32).unwrap_or(-1);
         b.set_w_accounts(ModelRc::new(VecModel::from(rows)));
         b.set_w_selected(sel);
-        b.set_w_share(s.share);
-        b.set_w_emotes(s.emotes);
-        b.set_w_saving(s.saving);
         let hidden: Vec<SharedString> = s.hidden.iter().map(|h| SharedString::from(h.as_str())).collect();
         b.set_w_hidden(ModelRc::new(VecModel::from(hidden)));
-
-        let (slots, emotes) = match s.cosmetics.as_ref() {
-            Some(cos) => {
-                let cat = &cos.catalog;
-                let slots: Vec<WardrobeSlot> = cat
-                    .slots
-                    .iter()
-                    .map(|slot| {
-                        let equipped = s.loadout.iter().find(|(sl, _)| sl == slot).and_then(|(_, v)| v.clone());
-                        let items: Vec<WardrobeItem> = cat
-                            .items
-                            .iter()
-                            .filter(|i| &i.slot == slot)
-                            .map(|i| WardrobeItem {
-                                id: i.id.as_str().into(),
-                                name_es: i.name.es.as_str().into(),
-                                name_en: i.name.en.as_str().into(),
-                                equipped: equipped.as_deref() == Some(i.id.as_str()),
-                                conflict: !conflicting(&cat.exclusive, &s.loadout, slot, &i.id).is_empty(),
-                            })
-                            .collect();
-                        let key = format!("wardrobe.slot.{slot}");
-                        WardrobeSlot {
-                            slot: slot.as_str().into(),
-                            label_es: i18n::lookup(&key, i18n::Lang::Es).into(),
-                            label_en: i18n::lookup(&key, i18n::Lang::En).into(),
-                            empty: equipped.is_none(),
-                            items: ModelRc::new(VecModel::from(items)),
-                        }
-                    })
-                    .collect();
-                let emotes: Vec<WardrobeItem> = cat
-                    .emotes
-                    .iter()
-                    .map(|e| WardrobeItem {
-                        id: e.id.as_str().into(),
-                        name_es: e.name.es.as_str().into(),
-                        name_en: e.name.en.as_str().into(),
-                        equipped: false,
-                        conflict: false,
-                    })
-                    .collect();
-                (slots, emotes)
-            }
-            None => (vec![], vec![]),
-        };
-        b.set_w_slots(ModelRc::new(VecModel::from(slots)));
-        b.set_w_emotes_catalog(ModelRc::new(VecModel::from(emotes)));
     });
     for url in want_discord {
         fetch_discord_avatar(url);
@@ -561,21 +465,12 @@ fn unlink_discord() {
 }
 
 // ---------------------------------------------------------------------------
-// cosmetics persistence (edits during an in-flight PUT are merged and flushed)
+// hidden players persistence (edits during an in-flight PUT are merged and flushed)
 // ---------------------------------------------------------------------------
 
 fn merge(into: &mut CosmeticsPatch, p: CosmeticsPatch) {
-    if p.share.is_some() {
-        into.share = p.share;
-    }
-    if p.loadout.is_some() {
-        into.loadout = p.loadout;
-    }
     if p.hidden_players.is_some() {
         into.hidden_players = p.hidden_players;
-    }
-    if p.emotes.is_some() {
-        into.emotes = p.emotes;
     }
 }
 
@@ -596,9 +491,6 @@ fn save(patch: CosmeticsPatch) {
     });
     if busy {
         return;
-    }
-    if let Some(ui) = ui() {
-        bridge(&ui).set_w_saving(true);
     }
     put(uuid, patch);
 }
@@ -661,43 +553,6 @@ fn hydrate_if_selected(uuid: &str) {
     }
 }
 
-fn item_name(id: &str) -> String {
-    ST.with(|s| {
-        let s = s.borrow();
-        s.cosmetics
-            .as_ref()
-            .and_then(|c| c.catalog.items.iter().find(|i| i.id == id))
-            .map(|i| if i18n::lang() == i18n::Lang::En { i.name.en.clone() } else { i.name.es.clone() })
-            .unwrap_or_else(|| id.to_string())
-    })
-}
-
-fn equip(slot: String, item: Option<String>) {
-    let (next, dropped) = ST.with(|s| {
-        let mut s = s.borrow_mut();
-        let exclusive = s.cosmetics.as_ref().map(|c| c.catalog.exclusive.clone()).unwrap_or_default();
-        let mut dropped = vec![];
-        if let Some(item) = &item {
-            for (cslot, citem) in conflicting(&exclusive, &s.loadout, &slot, item) {
-                if let Some(e) = s.loadout.iter_mut().find(|(sl, _)| *sl == cslot) {
-                    e.1 = None;
-                }
-                dropped.push(citem);
-            }
-        }
-        match s.loadout.iter_mut().find(|(sl, _)| *sl == slot) {
-            Some(e) => e.1 = item.clone(),
-            None => s.loadout.push((slot.clone(), item.clone())),
-        }
-        (s.loadout.clone(), dropped)
-    });
-    for d in dropped {
-        toast::info(i18n::tf("wardrobe.slots.unequipped", &[("name", &item_name(&d))]));
-    }
-    publish();
-    save(CosmeticsPatch { loadout: Some(next.into_iter().collect()), ..Default::default() });
-}
-
 fn add_hidden(name: String) {
     let Some(ui) = ui() else { return };
     let b = bridge(&ui);
@@ -729,25 +584,4 @@ fn remove_hidden(name: String) {
     });
     publish();
     save(CosmeticsPatch { hidden_players: Some(next), ..Default::default() });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn exclusivity() {
-        let ex = vec![("cuello".to_string(), vec!["capa".to_string(), "alas".to_string()])];
-        let lo = vec![
-            ("espalda".to_string(), Some("capa".to_string())),
-            ("cuello".to_string(), None),
-            ("cabeza".to_string(), Some("gorro".to_string())),
-        ];
-        // equipping into the exclusive slot drops the listed ids worn elsewhere
-        assert_eq!(conflicting(&ex, &lo, "cuello", "bufanda"), vec![("espalda".into(), "capa".into())]);
-        // equipping a listed id drops what is worn in the exclusive slot
-        let lo2 = vec![("espalda".to_string(), None), ("cuello".to_string(), Some("bufanda".to_string()))];
-        assert_eq!(conflicting(&ex, &lo2, "espalda", "alas"), vec![("cuello".into(), "bufanda".into())]);
-        assert!(conflicting(&ex, &lo2, "cabeza", "gorro").is_empty());
-    }
 }
