@@ -170,6 +170,18 @@ export global Theme {
     pure public function pix(size: length) -> length {
         Math.max(1, Math.ceil(size * ui-scale / 8px - 0.5)) * 8px / ui-scale
     }
+    /// Short labels (badges, chips, key hints, eyebrows) that are drawn small:
+    /// the pixel font only when it lands on at least 16 physical px (2 px per
+    /// font pixel); below that a 1-px-stroke pixel font is barely legible, so
+    /// such labels use the body font instead. Pair with `label-size`.
+    pure public function label-family(size: length) -> string {
+        pix(size) * ui-scale >= 16px ? font-pixel : font-body
+    }
+    /// Size to pair with `label-family(size)`: `pix(size)` for the pixel font,
+    /// otherwise the requested size, at least 10px, for the body font.
+    pure public function label-size(size: length) -> length {
+        pix(size) * ui-scale >= 16px ? pix(size) : Math.max(size, 10px)
+    }
     out property <length> text-xs: 12px;
     out property <length> text-sm: 14px;
     out property <length> text-md: 15px;

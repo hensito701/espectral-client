@@ -34,11 +34,8 @@ import { ImportPage } from "pages/library-mods/import.slint";
 import { ModsPage } from "pages/library-mods/mods.slint";
 import { DonationsPage } from "pages/library-mods/donations.slint";
 import { AccountPage } from "pages/account-wardrobe/account-vault.slint";
-import { WardrobePage } from "pages/account-wardrobe/wardrobe.slint";
 import { AccountPopover } from "pages/account-wardrobe/account-popover.slint";
 import { SettingsPage } from "pages/settings-suite-servers/settings.slint";
-import { ClientPage } from "pages/settings-suite-servers/client-suite.slint";
-import { ServersPage } from "pages/settings-suite-servers/servers.slint";
 
 // ---- globals visible from Rust ----
 export { Theme, T, Page, Router, AppState, Shell, Session, Util, PaletteState }
@@ -104,14 +101,11 @@ export component AppWindow inherits Window {
 
             if Router.page == Page.home: HomePage { }
             if Router.page == Page.instance: InstanceHubPage { }
-            if Router.page == Page.servers: ServersPage { }
             if Router.page == Page.versions: VersionsPage { }
             if Router.page == Page.import: ImportPage { }
             if Router.page == Page.mods: ModsPage { }
-            if Router.page == Page.client: ClientPage { }
             if Router.page == Page.account: AccountPage { }
             if Router.page == Page.settings: SettingsPage { }
-            if Router.page == Page.wardrobe: WardrobePage { }
             if Router.page == Page.donations: DonationsPage { }
         }
 

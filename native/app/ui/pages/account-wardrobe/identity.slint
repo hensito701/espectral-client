@@ -1,0 +1,414 @@
+// OWNER: account-wardrobe agent. Espectral identity of the account on the
+// pedestal — the sections that used to live on the Armario page (#/armario):
+// Minecraft verification, Discord link, supporter badges, the cosmetics
+// pointer and the hidden players list. They are part of #/account now and
+// follow the active account (the one the Cuenta page shows as active).
+
+import { Theme, T, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GlassCard, Elevation, McTitle }
+    from "../../widgets.slint";
+import { AccountBridge, EspectralIdentity } from "api.slint";
+import { LoadingRow, PlainInput } from "parts.slint";
+
+// ---------------------------------------------------------------------------
+// small pieces
+// ---------------------------------------------------------------------------
+
+component Note inherits Text {
+    font-size: Theme.text-xs;
+    color: Theme.muted;
+    wrap: word-wrap;
+}
+
+/// Card head: pixel title + subtitle; the caller places trailing chips beside it.
+component Head inherits VerticalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    horizontal-stretch: 1;
+    spacing: Theme.space-1;
+    min-width: 0px;
+    McTitle {
+        text: root.title;
+        font-size: 16px;
+        min-width: 0px;
+    }
+    if root.subtitle != "": Text {
+        text: root.subtitle;
+        font-size: Theme.text-xs;
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// identity card
+// ---------------------------------------------------------------------------
+
+component IdentityRow inherits Rectangle {
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    border-radius: Theme.radius-md;
+    min-height: row.preferred-height;
+    row := HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        spacing: Theme.space-4;
+        @children
+    }
+}
+
+component RowLabel inherits Text {
+    font-size: Theme.text-md;
+    font-weight: 600;
+    color: Theme.text;
+    vertical-alignment: center;
+}
+
+component RowStatus inherits Text {
+    in property <bool> ok;
+    font-size: Theme.text-xs;
+    font-weight: 600;
+    letter-spacing: 0.48px;
+    color: ok ? Theme.accent-green : Theme.accent-alt;
+    vertical-alignment: center;
+}
+
+component VerifyRow inherits IdentityRow {
+    in property <EspectralIdentity> acc;
+    HorizontalLayout {
+        spacing: 10px;
+        horizontal-stretch: 1;
+        alignment: start;
+        RowLabel { text: root.acc.username; }
+        RowStatus {
+            ok: root.acc.verified;
+            text: (root.acc.verified ? T.tr("wardrobe.identity.verified") : T.tr("wardrobe.identity.notVerified")).to-uppercase();
+        }
+        if root.acc.grant-exp-es != "": Text {
+            text: T.tr1("wardrobe.identity.grantExp", "time", T.lang == "en" ? root.acc.grant-exp-en : root.acc.grant-exp-es);
+            font-size: Theme.text-xs;
+            color: Theme.muted;
+            vertical-alignment: center;
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: end;
+        if !root.acc.verified: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.primary;
+                size: BtnSize.sm;
+                loading: AccountBridge.identity-verifying;
+                enabled: !root.acc.offline;
+                text: AccountBridge.identity-verifying ? T.tr("wardrobe.identity.verifying") : T.tr("wardrobe.identity.verify");
+                clicked => { AccountBridge.identity-verify(); }
+            }
+        }
+        if root.acc.verified: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                loading: AccountBridge.identity-refreshing;
+                text: AccountBridge.identity-refreshing ? T.tr("wardrobe.identity.refreshing") : T.tr("wardrobe.identity.refresh");
+                clicked => { AccountBridge.identity-refresh-flags(); }
+            }
+        }
+    }
+}
+
+component DiscordRow inherits IdentityRow {
+    in property <EspectralIdentity> acc;
+    HorizontalLayout {
+        spacing: 10px;
+        horizontal-stretch: 1;
+        alignment: start;
+        if root.acc.has-discord && root.acc.has-discord-avatar: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                clip: true;
+                Image { width: 100%; height: 100%; source: root.acc.discord-avatar; image-fit: cover; }
+            }
+        }
+        RowLabel { text: root.acc.has-discord ? "@" + root.acc.discord-username : "Discord"; }
+        RowStatus {
+            ok: root.acc.has-discord;
+            text: (root.acc.has-discord ? T.tr("wardrobe.discord.linked") : T.tr("wardrobe.discord.notLinked")).to-uppercase();
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: end;
+        if AccountBridge.identity-linking: Text {
+            text: T.tr("wardrobe.discord.linking");
+            font-size: Theme.text-xs;
+            color: Theme.muted;
+            vertical-alignment: center;
+        }
+        if AccountBridge.identity-linking: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: T.tr("wardrobe.discord.cancel");
+                clicked => { AccountBridge.identity-cancel-link(); }
+            }
+        }
+        if !AccountBridge.identity-linking && root.acc.has-discord: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                loading: AccountBridge.identity-unlinking;
+                text: T.tr("wardrobe.discord.unlink");
+                clicked => { AccountBridge.identity-unlink(); }
+            }
+        }
+        if !AccountBridge.identity-linking && !root.acc.has-discord: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                enabled: !root.acc.offline;
+                text: T.tr("wardrobe.discord.link");
+                clicked => { AccountBridge.identity-link(); }
+            }
+        }
+    }
+}
+
+/// Espectral identity of the active account: verification, Discord and ranks.
+export component IdentitySection inherits GlassCard {
+    elevation: Elevation.md;
+    min-width: 0px;
+    spacing: Theme.space-4;
+
+    HorizontalLayout {
+        spacing: Theme.space-4;
+        min-width: 0px;
+        Head {
+            title: T.tr("wardrobe.identity.title");
+            subtitle: T.tr("wardrobe.identity.subtitle");
+        }
+        if AccountBridge.identity-available: HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: end;
+            VerticalLayout {
+                alignment: start;
+                if AccountBridge.identity.supporter: Badge { text: T.tr("wardrobe.flags.supporter"); variant: BadgeVariant.gold; large: true; }
+                if !AccountBridge.identity.supporter: Badge { text: T.tr("wardrobe.flags.none"); variant: BadgeVariant.accent; large: true; }
+            }
+            if AccountBridge.identity.mvp: VerticalLayout {
+                alignment: start;
+                Badge { text: T.tr("wardrobe.flags.mvp"); variant: BadgeVariant.purple; large: true; }
+            }
+        }
+    }
+
+    if AccountBridge.identity-loading && !AccountBridge.identity-available: LoadingRow {
+        text: T.tr("vault.loading");
+        padding: 0px;
+    }
+    if !AccountBridge.identity-loading && AccountBridge.identity-load-error != "": VerticalLayout {
+        spacing: Theme.space-2;
+        Note { text: T.tr1("wardrobe.loadError", "error", AccountBridge.identity-load-error); }
+        HorizontalLayout {
+            alignment: start;
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                text: T.tr("wardrobe.retry");
+                clicked => { AccountBridge.identity-load(); }
+            }
+        }
+    }
+    if !AccountBridge.identity-loading && AccountBridge.identity-load-error == "" && !AccountBridge.identity-available: Note {
+        text: T.tr("vault.heroNoActive");
+    }
+
+    if AccountBridge.identity-available: VerticalLayout {
+        spacing: Theme.space-3;
+        Note { text: T.tr("wardrobe.flags.legend"); }
+        VerifyRow { acc: AccountBridge.identity; }
+        if !AccountBridge.identity.verified: Note { text: T.tr("wardrobe.identity.verifyHint"); }
+        DiscordRow { acc: AccountBridge.identity; }
+        if !AccountBridge.identity.has-discord && !AccountBridge.identity.offline: Note { text: T.tr("wardrobe.discord.linkHint"); }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// cosmetics pointer + hidden players
+// ---------------------------------------------------------------------------
+
+/// Where cosmetics are chosen: in game, on the Cosméticos row of the Suite.
+export component CosmeticsSection inherits GlassCard {
+    elevation: Elevation.sm;
+    min-width: 0px;
+    spacing: Theme.space-3;
+
+    Head {
+        title: T.tr("wardrobe.cosmetics.title");
+        subtitle: T.tr("wardrobe.cosmetics.desc");
+    }
+    HorizontalLayout {
+        spacing: Theme.space-3;
+        alignment: start;
+        Rectangle {
+            height: key-row.preferred-height + 16px;
+            width: key-row.preferred-width;
+            border-radius: Theme.radius-sm;
+            background: Theme.card-bg-soft;
+            border-width: 2px;
+            border-color: Theme.border-solid;
+            key-row := HorizontalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding-left: 12px;
+                padding-right: 12px;
+                alignment: center;
+                // G1: a key chip is a small label; label-family keeps the
+                // pixel font only where it lands on >= 16 physical px.
+                Text {
+                    text: T.tr("wardrobe.cosmetics.key");
+                    font-family: Theme.label-family(12px);
+                    font-size: Theme.label-size(12px);
+                    font-weight: 700;
+                    color: Theme.title-color;
+                    vertical-alignment: center;
+                    min-width: 0px;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Text {
+                text: T.tr("wardrobe.cosmetics.steps");
+                font-size: Theme.text-sm;
+                color: Theme.muted-strong;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+/// Players whose ⚛ and cosmetics this account does not see (per account, in game too).
+export component HiddenSection inherits GlassCard {
+    elevation: Elevation.sm;
+    min-width: 0px;
+    spacing: Theme.space-4;
+    in-out property <string> draft;
+    // "Hide" bumps the serial so the field clears
+    property <int> serial: AccountBridge.identity-hidden-serial;
+    changed serial => { root.draft = ""; }
+
+    Head {
+        title: T.tr("wardrobe.hidden.title");
+        subtitle: T.tr("wardrobe.hidden.desc");
+    }
+
+    if AccountBridge.identity-loading && !AccountBridge.identity-available: LoadingRow {
+        text: T.tr("vault.loading");
+        padding: 0px;
+    }
+    if !AccountBridge.identity-loading && !AccountBridge.identity-available: Note {
+        text: T.tr("wardrobe.identity.none");
+    }
+
+    if AccountBridge.identity-available: VerticalLayout {
+        spacing: Theme.space-4;
+        VerticalLayout {
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                PlainInput {
+                    text <=> root.draft;
+                    height: 37px;
+                    placeholder: T.tr("wardrobe.hidden.placeholder");
+                    max-length: 16;
+                    accepted => { AccountBridge.identity-add-hidden(root.draft); }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        variant: BtnVariant.secondary;
+                        size: BtnSize.sm;
+                        text: T.tr("wardrobe.hidden.add");
+                        clicked => { AccountBridge.identity-add-hidden(root.draft); }
+                    }
+                }
+            }
+            if AccountBridge.identity-hidden-error != "": Text {
+                text: AccountBridge.identity-hidden-error;
+                font-size: Theme.text-xs;
+                color: Theme.accent-red;
+            }
+        }
+        if AccountBridge.identity-hidden.length == 0: Text {
+            text: T.tr("wardrobe.hidden.empty");
+            font-size: Theme.text-sm;
+            color: Theme.muted;
+            wrap: word-wrap;
+        }
+        if AccountBridge.identity-hidden.length > 0: HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            for name in AccountBridge.identity-hidden: Rectangle {
+                height: 32px;
+                width: hrow.preferred-width + 2px;
+                border-radius: Theme.radius-pill;
+                background: Theme.card-bg-soft;
+                border-width: 2px;
+                border-color: Theme.border-solid;
+                hrow := HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 6px;
+                    spacing: 6px;
+                    Text { text: name; font-size: Theme.text-sm; color: Theme.text; vertical-alignment: center; }
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 20px;
+                            height: 20px;
+                            border-radius: 10px;
+                            background: x-ta.has-hover ? Theme.accent-red : transparent;
+                            Text { text: "×"; font-size: Theme.text-sm; font-weight: 700; color: x-ta.has-hover ? #ffffff : Theme.muted; }
+                            x-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { AccountBridge.identity-remove-hidden(name); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component MinecraftDisclaimer inherits Rectangle {
+    background: Theme.card-bg-soft;
+    border-width: 2px;
+    border-color: Theme.border-solid;
+    border-radius: Theme.radius-md;
+    min-height: d-row.preferred-height;
+    d-row := HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        padding-top: 14px;
+        padding-bottom: 14px;
+        Text {
+            text: T.tr("wardrobe.disclaimer");
+            font-size: Theme.text-xs;
+            letter-spacing: 0.24px;
+            color: Theme.muted;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}

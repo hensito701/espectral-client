@@ -12,19 +12,38 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   the same signed connection the ⚛ presence already uses, so it is validated
   against your real rank, saved and applied to the running game immediately;
   a refusal (a piece that needs MVP, one incompatible with what you wear) shows
-  on the same screen. The Armario page keeps your account, skin, Discord link,
-  rank badges and hidden players, and now points to the in-game screen instead
-  of offering its own cosmetic dropdowns.
+  on the same screen. The launcher no longer has its own cosmetic dropdowns;
+  the Cuenta page points to the in-game screen.
 - **`POST /api/bridge/cosmetics` on the launcher's loopback bridge.** The mod
   sends `{}` to read the wardrobe of the account the game runs as, or
   `{"patch": {...}}` to apply the same changes `PUT /api/cosmetics/:uuid`
   accepts; answers are signed like every other bridge answer.
+- **ImmediatelyFast joins the performance set** (now eight mods). It batches
+  the game's menu, HUD and text drawing, which Sodium does not touch. It has
+  stable builds for 26.3, 26.2 and 1.21.11 and no conflict with our mod. Also
+  looked at and left out: EntityCulling (licence does not allow it, and it
+  rewrites the renderer our cosmetics use), ModernFix and ScalableLux (no
+  stable 26.x Fabric builds), BadOptimizations (fights our fullbright), More
+  Culling (needs Cloth Config, gaps in versions), Dynamic FPS (throttles the
+  game when unfocused, which the agent relies on not happening).
 
 ### Changed
 - **"Física de la tela" is now "Animación de los cosméticos".** The cloth items
   it was named after were removed in 1.8.2, but the switch itself still turns
   the motion of ears, wings and bandana tails on and off, so it stayed — with a
   name that says what it does.
+- **Three tabs instead of six.** Armario is now part of Cuenta: your Espectral
+  identity, Discord link, rank badges, the cosmetics pointer and hidden players
+  sit under your accounts and skin, for whichever account is active.
+  Servidores is gone (the server cards on Inicio stay; clicking one copies its
+  address). Cliente is gone: every switch it had (Suite features, HUD theme,
+  macros) is in the in-game Suite (Right Shift).
+- **Performance set updated** to the newest stable builds for each version:
+  26.3 uses Fabric API 0.166.0; 26.2 moves to Sodium 0.9.2, Iris 1.11.4, Mod
+  Menu 20.0.3 and Fabric API 0.161.0; 1.21.11 moves to Sodium 0.8.14, Iris
+  1.10.8 and Mod Menu 17.0.1. Installing or updating the set now switches off
+  the older copy of a mod it replaces (renamed to `.disabled`, not deleted),
+  so an update can no longer leave two Sodium jars that crash the game.
 
 ### Fixed
 - **Armario: "No se pudo guardar: unknown cosmetic id" when equipping anything.**
@@ -32,6 +51,12 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   Espectral, Capucha Errante, Jirones de Ceniza, Bufanda Llama de Alma), every
   change in the wardrobe was refused, including equipping a bandana. The
   launcher now drops a removed item when it reads your loadout.
+- **Small labels no longer smudge.** Chips, key hints, eyebrows and version
+  tags drawn in the pixel font at small sizes ended up with one-pixel strokes
+  (the "/" in "8/8 mods" vanished). Below two screen pixels per font pixel they
+  now use the regular bold font. Minecraft skin faces are drawn with hard
+  pixels instead of being smoothed, the JUGAR button uses the bold pixel font,
+  and the launch bar lines up with the page instead of floating centred.
 - **Blurry pixel font on displays scaled to 125 % or 150 %.** The Minecraft
   title font is only sharp at sizes that are a multiple of 8 screen pixels. The
   launcher sized it for 100 % scaling, so at 125 % its blocks landed between

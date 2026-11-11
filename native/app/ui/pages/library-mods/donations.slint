@@ -73,7 +73,7 @@ component Hero inherits Rectangle {
                     alignment: center;
                     Badge { text: T.tr("pav.heroBadge"); variant: BadgeVariant.gold; dot: true; }
                 }
-                VText { text: "ESPECTRAL CLIENT NETWORK"; font-family: Theme.font-pixel; font-size: Theme.pix(8px); letter-spacing: 0.8px; color: Theme.muted; }
+                VText { text: "ESPECTRAL CLIENT NETWORK"; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; letter-spacing: 0.8px; color: Theme.muted; }
             }
             VerticalLayout {
                 spacing: Theme.space-2;
@@ -546,7 +546,7 @@ component RankCardView inherits Rectangle {
                         color: wl.has-hover ? Theme.accent-alt : Theme.accent-gold;
                         wl := TouchArea {
                             mouse-cursor: pointer;
-                            clicked => { Router.navigate("#/armario"); }
+                            clicked => { Router.navigate("#/account"); }
                         }
                     }
                 }
@@ -571,7 +571,7 @@ component UnbanTier inherits Rectangle {
         padding-left: 20px;
         padding-right: 20px;
         spacing: 9.6px;
-        VText { text: "# " + root.level; font-family: Theme.font-pixel; font-size: Theme.pix(8px); color: Theme.accent-gold; }
+        VText { text: "# " + root.level; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.accent-gold; }
         VText { text: root.label; font-size: 14.4px; font-weight: 600; horizontal-stretch: 1; }
         VText { text: root.price; font-family: Theme.font-pixel; font-size: Theme.pix(16px); color: Theme.accent; }
     }

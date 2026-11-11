@@ -7,7 +7,7 @@
 //     export component SettingsPage inherits Rectangle {
 //         PageScaffold {
 //             content-padding: 40px;
-//             PageHeader { eyebrow: T.tr("dash.eyebrow"); title: T.tr("dash.title"); subtitle: T.tr("dash.subtitle"); }
+//             PageHeader { title: T.tr("dash.title"); subtitle: T.tr("dash.subtitle"); }
 //             ...
 //         }
 //     }
@@ -55,8 +55,10 @@ export component PageScaffold inherits Rectangle {
     }
 }
 
-/// Eyebrow chip + pixel title + subtitle + divider (Settings/Client/Mods headers).
+/// Pixel title + subtitle + divider (Settings/Client/Mods headers).
 /// `gradient` is kept for the callers; titles use the title colour.
+/// An eyebrow/tag goes in `@children` as a `Sticker` (badge.slint), which
+/// applies the G1 small-label typography centrally.
 export component PageHeader inherits VerticalLayout {
     in property <string> title;
     in property <string> subtitle;

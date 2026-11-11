@@ -47,7 +47,7 @@ fn active_name() -> String {
     ST.with(|s| s.borrow().active.clone())
 }
 
-fn active_account() -> Option<PublicAccount> {
+pub(super) fn active_account() -> Option<PublicAccount> {
     ST.with(|s| {
         let s = s.borrow();
         s.accounts.iter().find(|a| a.username == s.active).cloned()
@@ -245,6 +245,8 @@ fn apply_accounts(ui: &AppWindow, list: Vec<PublicAccount>, avatars: Vec<Option<
     b.set_accounts(ModelRc::new(VecModel::from(rows)));
     b.set_loading(false);
     b.set_refreshing(false);
+    // the identity sections on #/account follow the pedestal account
+    super::identity::on_accounts_changed();
     if prev_active != active {
         on_active_changed(ui);
     }

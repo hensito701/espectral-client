@@ -3,10 +3,10 @@
 // the named skin gallery (vanilla-launcher workflow).
 // The 3D viewer is the skin-renderer agent's SkinView (ui/skin3d).
 
-import { Theme, T, AppState, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, GlassCard, Elevation, Emoji, McTitle } from "../../widgets.slint";
+import { Theme, T, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, GlassCard, Elevation, Icons, McTitle } from "../../widgets.slint";
 import { SkinView } from "../../skin3d/skin-view.slint";
 import { AccountBridge, VaultSkinEntry } from "api.slint";
-import { LoadingRow, PlainInput, UploadChip } from "parts.slint";
+import { LoadingRow, PlainInput } from "parts.slint";
 
 component Note inherits Text {
     min-height: 22px; // line-height 1.6
@@ -67,15 +67,19 @@ component Radio inherits HorizontalLayout {
 component Stage inherits VerticalLayout {
     in property <string> source;
     in property <string> variant;
-    alignment: center;
+    // C4: the viewer sits at the start of its column (viewer left, controls
+    // right); centring it in a stretched column left a dead area on the left.
+    alignment: start;
     spacing: Theme.space-2;
     min-height: 200px;
     if AccountBridge.skin-loading && !AccountBridge.skin-info && root.source == "": LoadingRow {
         text: T.tr("vault.skin.viewerLoading");
     }
     if root.source != "": HorizontalLayout {
-        alignment: center;
-        // flat poster panel behind the 3D render (no glow, no radial floor)
+        alignment: start;
+        // flat poster panel behind the 3D render (no glow, no radial floor);
+        // C4: the panel hugs the viewer and the column is start-aligned, so
+        // viewer sits left and the controls right, both top-aligned.
         Rectangle {
             width: stage-view.width + 2 * Theme.space-4;
             height: stage-view.height + 2 * Theme.space-4;
@@ -97,17 +101,21 @@ component Stage inherits VerticalLayout {
             }
         }
     }
-    if root.source != "" && AccountBridge.staged: Note { text: T.tr("vault.skin.galleryStaged"); }
+    if root.source != "" && AccountBridge.staged: Note {
+        text: T.tr("vault.skin.galleryStaged");
+        horizontal-alignment: left;
+    }
     if root.source != "" && !AccountBridge.staged && AccountBridge.preview-id != "": HorizontalLayout {
-        alignment: center;
+        alignment: start;
         Badge { text: T.tr("vault.skin.galleryPreviewing") + ": " + AccountBridge.preview-name; variant: BadgeVariant.accent; }
     }
     if root.source != "" && !AccountBridge.staged && AccountBridge.preview-id == "" && AccountBridge.skin-cape: HorizontalLayout {
-        alignment: center;
+        alignment: start;
         Badge { text: T.tr("vault.skin.capeBadge"); variant: BadgeVariant.accent; }
     }
     if root.source == "" && !(AccountBridge.skin-loading && !AccountBridge.skin-info): Note {
         text: T.tr("vault.skin.noSkin");
+        horizontal-alignment: left;
     }
 }
 
@@ -143,7 +151,11 @@ component Controls inherits VerticalLayout {
     alignment: start;
     HorizontalLayout {
         alignment: start;
-        UploadChip {
+        // C4: the standard pill button, like every other action on the page.
+        Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.sm;
+            icon: Icons.upload;
             text: T.tr("vault.skin.uploadLabel");
             enabled: !AccountBridge.skin-busy;
             clicked => { AccountBridge.pick-skin-file(); }

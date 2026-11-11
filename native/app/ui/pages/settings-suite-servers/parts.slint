@@ -1,5 +1,5 @@
 // OWNER: settings-suite-servers agent. Small building blocks shared by the
-// Settings / Client Suite / Server Radar pages (not exported to other groups).
+// Settings page (not exported to other groups).
 //
 // Poster look: flat blocks, 2px borders, hard offset shadows, pixel-font card
 // titles (16px, title colour). No glass, glow or gradient.
@@ -42,7 +42,7 @@ export component PresetChip inherits Rectangle {
 }
 
 /// Badge variant="warn" size="sm" dot (local copy so CardHead can embed it).
-export component WarnBadge inherits Rectangle {
+component WarnBadge inherits Rectangle {
     in property <string> text;
     height: row.preferred-height;
     min-width: row.preferred-width;

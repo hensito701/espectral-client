@@ -1,29 +1,26 @@
-//! OWNER: settings-suite-servers agent. Rust side of SettingsDashboard /
-//! ClientSuite / ServerRadar (ui/pages/settings-suite-servers).
+//! Rust side of SettingsDashboard (#/settings) and the ServerRadarCard helpers
+//! used by the Home server strip (ui/pages/settings-suite-servers).
 //!
 //! Contract with the shell: keep `pub fn init(ctx, ui)`. Everything lives on
 //! the `SettingsBridge` global; each page has its own child module:
 //!
-//! | module      | page                      | Svelte source                      |
-//! |-------------|---------------------------|------------------------------------|
-//! | `settings`  | `#/settings`              | pages/SettingsDashboard.svelte     |
-//! | `agent`     | `#/settings` agent section| pages/SettingsDashboard.svelte (agent) |
-//! | `client`    | `#/client`                | pages/ClientSuite.svelte           |
-//! | `servers`   | `#/servers` + card helpers| pages/ServerRadar.svelte, components/ServerRadarCard + PingWaveform |
+//! | module       | page                       | Svelte source                       |
+//! |--------------|----------------------------|-------------------------------------|
+//! | `settings`   | `#/settings`               | pages/SettingsDashboard.svelte      |
+//! | `agent`      | `#/settings` agent section | pages/SettingsDashboard.svelte (agent) |
+//! | `radar_card` | Home server strip helpers  | components/ServerRadarCard + lib/motd |
 
 use crate::bridge::Ctx;
 use crate::AppWindow;
 
 mod agent;
-mod client;
-mod servers;
+mod radar_card;
 mod settings;
 
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
     settings::init(ctx, ui);
     agent::init(ctx, ui);
-    client::init(ctx, ui);
-    servers::init(ctx, ui);
+    radar_card::init(ctx, ui);
 }
 
 /// `e instanceof Error ? e.message : String(e)` for engine errors.

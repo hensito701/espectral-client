@@ -54,8 +54,10 @@ component ActiveCard inherits Rectangle {
                     height: active-lbl.preferred-height + 2px;
                     active-lbl := Text {
                         text: T.tr("account.active");
-                        font-family: Theme.font-pixel;
-                        font-size: Theme.pix(8px);
+                        // G1: 8px pixel font smudges; the bold body font stays legible.
+                        font-family: Theme.label-family(8px);
+                        font-size: Theme.label-size(8px);
+                        font-weight: 700;
                         color: Theme.on-gold;
                     }
                 }
@@ -141,7 +143,7 @@ component SectionLabel inherits HorizontalLayout {
         border-radius: Theme.radius-xs;
         width: cnt.preferred-width + 10px;
         height: cnt.preferred-height + 2px;
-        cnt := Text { text: root.count; font-family: Theme.font-pixel; font-size: Theme.pix(8px); color: Theme.muted; vertical-alignment: center; horizontal-alignment: center; }
+        cnt := Text { text: root.count; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.muted; vertical-alignment: center; horizontal-alignment: center; }
     }
 }
 

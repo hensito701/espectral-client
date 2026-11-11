@@ -1,18 +1,19 @@
-//! OWNER: account-wardrobe agent. Rust side of AccountVault / Wardrobe /
-//! AccountPopover (ui/pages/account-wardrobe).
+//! OWNER: account-wardrobe agent. Rust side of the Cuenta page (#/account) and
+//! the TopChrome account popover (ui/pages/account-wardrobe).
 //!
-//! * [`vault`]: accounts (shared by the vault page and the TopChrome popover),
-//!   offline forge, Microsoft device flow, avatars, client id, Skin Atelier.
-//! * [`wardrobe`]: identity verification, Discord link, cosmetics (#/armario).
+//! * [`vault`]: accounts (shared by the page and the popover), offline forge,
+//!   Microsoft device flow, avatars, client id, Skin Atelier.
+//! * [`identity`]: Espectral identity of the pedestal account — Minecraft
+//!   verification, Discord link, supporter flags, hidden players.
 
 use slint::ComponentHandle;
 
 use crate::bridge::Ctx;
 use crate::{AccountBridge, AppWindow};
 
+mod identity;
 mod image;
 mod vault;
-mod wardrobe;
 
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
     let b = ui.global::<AccountBridge>();
@@ -20,7 +21,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     b.on_truncate(|text, n| text.chars().take(n.max(0) as usize).collect::<String>().into());
     b.on_trim(|text| text.trim().into());
     vault::init(ctx, ui);
-    wardrobe::init(ctx, ui);
+    identity::init(ctx, ui);
 }
 
 /// `^[A-Za-z0-9_]{2,16}$` (AccountVault nameValid / AccountPopover isValidName).
@@ -28,7 +29,7 @@ pub(crate) fn valid_offline_name(name: &str) -> bool {
     (2..=16).contains(&name.len()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// `^[A-Za-z0-9_]{3,16}$` (Wardrobe MC_NAME_RE, hidden players).
+/// `^[A-Za-z0-9_]{3,16}$` (hidden players).
 pub(crate) fn valid_mc_name(name: &str) -> bool {
     (3..=16).contains(&name.len()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }

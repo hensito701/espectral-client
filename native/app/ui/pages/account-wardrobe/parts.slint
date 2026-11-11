@@ -1,10 +1,10 @@
-// OWNER: account-wardrobe agent. Small building blocks shared by the vault,
-// the wardrobe and the account popover.
+// OWNER: account-wardrobe agent. Small building blocks shared by the Cuenta
+// page (#/account), its identity sections and the account popover.
 
 import { Theme, Icon, Icons, Spinner } from "../../widgets.slint";
 import { AccountBridge } from "api.slint";
 
-/// Plain styled single-line input (popover add-input, wardrobe hidden-input,
+/// Plain styled single-line input (popover add-input, hidden-players input,
 /// gallery rename) — TextField has a fixed fill; these need their own.
 export component PlainInput inherits Rectangle {
     in-out property <string> text <=> input.text;

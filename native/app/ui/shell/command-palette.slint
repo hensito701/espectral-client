@@ -78,8 +78,10 @@ component PaletteRow inherits Rectangle {
                 border-color: active ? Theme.brand-ink : Theme.border-solid;
                 badge-text := Text {
                     text: root.item.badge;
-                    font-family: Theme.font-pixel;
-                    font-size: Theme.pix(8px);
+                    // G1: 8px pixel type lands on 1-px strokes; body font below 16 physical px.
+                    font-family: Theme.label-family(8px);
+                    font-size: Theme.label-size(8px);
+                    font-weight: 700;
                     color: active ? Theme.btn-fill : root.badge-fg;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -203,8 +205,10 @@ export component CommandPalette inherits Rectangle {
                             border-color: Theme.border-solid;
                             esc-t := Text {
                                 text: "ESC";
-                                font-family: Theme.font-pixel;
-                                font-size: Theme.pix(8px);
+                                // G1: small labels use the body font below 16 physical px.
+                                font-family: Theme.label-family(8px);
+                                font-size: Theme.label-size(8px);
+                                font-weight: 700;
                                 color: Theme.muted-strong;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
@@ -255,9 +259,10 @@ export component CommandPalette inherits Rectangle {
                         if item.section != "": Text {
                             height: 30px;
                             text: item.section;
-                            font-family: Theme.font-pixel;
-                            font-weight: 400;
-                            font-size: Theme.pix(8px);
+                            // G1: section headers are small labels, not titles.
+                            font-family: Theme.label-family(8px);
+                            font-weight: 700;
+                            font-size: Theme.label-size(8px);
                             color: Theme.muted;
                             vertical-alignment: bottom;
                             // CSS: padding 8px 12px 4px
@@ -302,8 +307,10 @@ export component CommandPalette inherits Rectangle {
                     Rectangle { horizontal-stretch: 1; }
                     Text {
                         text: "ESPECTRAL HORIZON";
-                        font-family: Theme.font-pixel;
-                        font-size: Theme.pix(8px);
+                        // G1: 8px pixel letters at 1 physical px per stroke smudge.
+                        font-family: Theme.label-family(8px);
+                        font-size: Theme.label-size(8px);
+                        font-weight: 700;
                         color: Theme.muted;
                         opacity: 0.6;
                         vertical-alignment: center;

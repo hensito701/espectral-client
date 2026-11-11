@@ -27,9 +27,10 @@ const FALLBACK: Duration = Duration::from_secs(90);
 const DEBOUNCE: Duration = Duration::from_millis(450);
 
 /// Pinned performance set: (slug, requires, required by).
-const PINNED_SET: [(&str, &[&str], &[&str]); 7] = [
+const PINNED_SET: [(&str, &[&str], &[&str]); 8] = [
     ("sodium", &[], &["iris"]),
     ("iris", &["sodium"], &[]),
+    ("immediatelyfast", &[], &[]),
     ("lithium", &[], &[]),
     ("ferrite-core", &[], &[]),
     ("krypton", &[], &[]),

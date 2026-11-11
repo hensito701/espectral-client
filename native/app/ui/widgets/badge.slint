@@ -1,6 +1,7 @@
-// Badge — flat chips (no glow); Kbd — the pixel-font key chips (HotkeyLegend,
-// palette footer, TopChrome "/" hint); GradientText — kept for the callers but
-// draws solid colour (gradient text fills are off-style in the poster look).
+// Badge — flat chips (no glow); Kbd — the key chips (HotkeyLegend, palette
+// footer, TopChrome "/" hint) on the G1 small-label typography; GradientText —
+// kept for the callers but draws solid colour (gradient text fills are
+// off-style in the poster look).
 
 import { Theme } from "../theme.slint";
 
@@ -12,7 +13,8 @@ export component Badge inherits Rectangle {
     in property <BadgeVariant> variant: BadgeVariant.neutral;
     /// Leading status dot.
     in property <bool> dot: false;
-    /// Minecraft pixel font (8px, one game pixel per px).
+    /// Short pixel-style label: pixel font only while it stays legible
+    /// (Theme.label-family), the body font otherwise.
     in property <bool> pixel: false;
     /// md = 5px 12px / 14px; sm = 3px 8px / 12px.
     in property <bool> large: false;
@@ -64,16 +66,18 @@ export component Badge inherits Rectangle {
         Text {
             text: root.text;
             color: root.fg;
-            font-size: root.pixel ? Theme.pix(8px) : root.large ? Theme.text-sm : Theme.text-xs;
-            font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
-            font-weight: root.pixel ? 400 : 600;
+            font-family: root.pixel ? Theme.label-family(8px) : Theme.font-body;
+            font-size: root.pixel ? Theme.label-size(8px) : root.large ? Theme.text-sm : Theme.text-xs;
+            // G1: small labels are bold, whether the pixel font or its body fallback.
+            font-weight: root.pixel ? 700 : 600;
             letter-spacing: root.pixel ? 0px : 0.3px;
             vertical-alignment: center;
         }
     }
 }
 
-/// <kbd class="font-pixel"> key chip.
+/// Key chip (G1: pixel font only when it lands on >= 16 physical px, body
+/// font otherwise).
 export component Kbd inherits Rectangle {
     in property <string> text;
     /// accent-tinted (TopChrome "/" , HotkeyLegend) vs neutral (palette footer).
@@ -89,8 +93,9 @@ export component Kbd inherits Rectangle {
     border-color: accent ? Theme.accent.with-alpha(0.3) : Theme.border;
     label := Text {
         text: root.text;
-        font-family: Theme.font-pixel;
-        font-size: Theme.pix(root.font-size);
+        font-family: Theme.label-family(root.font-size);
+        font-size: Theme.label-size(root.font-size);
+        font-weight: 700;
         color: root.accent ? Theme.accent : Theme.muted-strong;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -197,13 +202,14 @@ export component Wordmark inherits HorizontalLayout {
     WordmarkLetter { letter: "l"; tint: #ffd700; font-size: root.font-size; }
 }
 
-/// Sticker badge: small pixel label on a flat colour with a hard shadow,
-/// tilted about -4°. Defaults to the site's green tag: #10B981 with dark ink
-/// (white on that green is too faint). One per section at most.
+/// Sticker badge: small label on a flat colour with a hard shadow, tilted
+/// about -4°. Defaults to the site's green tag: #10B981 with dark ink (white
+/// on that green is too faint). One per section at most.
 ///
-/// Below 16px the label is regular weight and the sticker is NOT rotated:
-/// at 8px the bold pixel font fills its own counters, and rotating 1-pixel
-/// strokes on the GPU renderer resamples them into a smudge.
+/// Below 16px requested the pixel font would sit under 16 physical px (G1:
+/// 1-px strokes smudge), so the label falls back to the bold body font at
+/// `label-size` and the sticker is NOT rotated: rotating 1-pixel strokes on
+/// the GPU renderer resamples them into a smudge.
 export component Sticker inherits Rectangle {
     in property <string> text;
     in property <color> fill: #10b981;
@@ -231,9 +237,9 @@ export component Sticker inherits Rectangle {
             border-color: Theme.brand-ink;
             label := Text {
                 text: root.text;
-                font-family: Theme.font-title;
-                font-size: Theme.pix(root.font-size);
-                font-weight: root.small ? 400 : 700;
+                font-family: Theme.label-family(root.font-size);
+                font-size: Theme.label-size(root.font-size);
+                font-weight: 700;
                 color: root.ink;
                 horizontal-alignment: center;
                 vertical-alignment: center;

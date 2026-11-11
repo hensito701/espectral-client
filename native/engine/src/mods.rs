@@ -57,33 +57,93 @@ pub struct Pin {
 
 type PinRow = (&'static str, &'static str, &'static str, &'static str);
 
-const PINS_1_21_11: [PinRow; 7] = [
-    ("sodium", "AANobbMI", "UddlN6L4", "0.8.7"),
-    ("iris", "YL57xq9U", "fDpuVzVr", "1.10.7"),
-    ("lithium", "gvQqBUqZ", "Ow7wA0kG", "0.21.4"),
-    ("ferrite-core", "uXXizFIs", "Ii0gP3D8", "8.2.0"),
+// Performance pin set — researched 2026-11-11 against Modrinth (releases only,
+// `loaders=["fabric"]`). Every row is the newest RELEASE build of that project
+// for the MC version; betas/alphas are never pinned (Sodium 0.9.3 is beta, so
+// 26.3 stays on 0.9.2 — the exact build Iris 1.11.7 declares as its Sodium
+// dependency). The sha1 install verifies is the one Modrinth publishes for the
+// pinned version id (immutable per version), checked live for every row below:
+//   1.21.11: sodium 4a8733fe…, iris acfbe6d0…, immediatelyfast 43e45146…,
+//            lithium 203bdcb2…, ferrite eac76ff0…, krypton 94ddaeea…,
+//            modmenu d5612d70…, fabric-api c98467cb…
+//   26.2:    sodium 62a70961…, iris bd0b2473…, immediatelyfast 02862602…,
+//            lithium 435ad028…, ferrite eac76ff0…, krypton c83ed92c…,
+//            modmenu 9fc3816…,  fabric-api 332da34e…
+//   26.3:    sodium 9acfe851…, iris fa03640b…, immediatelyfast f565bbeb…,
+//            lithium 2d3afe9d…, ferrite eac76ff0…, krypton 21b21cb8…,
+//            modmenu 66ec40f1…, fabric-api 7f16cfcd…
+//
+// Why these eight for a PvP/UHC client (Sodium+Iris+the rest of the bundle),
+// and why the tempting alternatives are not here:
+// - ImmediatelyFast (LGPL-3.0-or-later) batches immediate-mode GUI/text draw
+//   calls. It is the one addition with clear, upstream-documented client FPS
+//   value at every pinned version and it ships in Fabulously Optimized on both
+//   the 1.21.11 and 26.3 lanes. Its mixins touch GuiRenderer / GuiGraphics,
+//   FontTexture, FeatureRenderDispatcher, RenderTypes, SignText, MapRenderer
+//   and Minecraft (§constructor / level change). We share only Minecraft and
+//   RenderTypes with it, and never the same method: our MinecraftMixin injects
+//   at the tail of tick(), our HUD/cosmetic path goes through Hud, Gui, Screen,
+//   ChatComponent, LivingEntityRenderer and AvatarRenderer — none of them
+//   mixed by ImmediatelyFast.
+// - EntityCulling rejected: not open source (tr7zw Protective
+//   License forbids commercial advantage) and it rewrites the entity renderer
+//   path our cosmetic layers live on.
+// - ModernFix rejected: the canonical project publishes no Fabric builds for
+//   26.x (they moved to the ModernFix-mVUS fork), and it is a heap/boot mod.
+// - Dynamic FPS rejected: it throttles fps precisely when nobody is looking,
+//   which fights AgentThrottleMixin (agent launches must never be throttled).
+// - More Culling rejected: needs Cloth Config and has release gaps for 1.21.6
+//   through 1.21.10, which would break dynamic resolution for those versions.
+// - BadOptimizations rejected: it cancels vanilla lightmap extraction, which is
+//   the exact tail our LightmapFullbrightMixin writes the fullbright factor on.
+// - ScalableLux (no 26.3 release), C2ME (betas only, server chunk-gen), Noisium
+//   (no 26.x, client unsupported), Sodium Extra (a video-options expansion,
+//   not an optimization) rejected.
+// - Krypton stays: it is LGPL-3.0, tiny, has releases for all three pins, and
+//   still consolidates the client's outbound Netty flush path. It targets
+//   Connection#createFrameEncoder and the compression/encryption handlers —
+//   never the Bootstrap.connect / channelActive hooks Ruta Espectral uses.
+//
+// fabric-api is pinned to the newest release for each MC version, which is one
+// patch ahead of the dev runtime in branding-mod/mc26*/build.gradle
+// (0.165.0 / 0.156.0 / 0.141.6). That direction is safe — the branding mod is
+// compiled against the older API and Fabric API keeps its modules stable within
+// a Minecraft version — but the dev runtime should be bumped to match so the
+// compile-time and ship-time surfaces stop drifting.
+const PINS_1_21_11: [PinRow; 8] = [
+    ("sodium", "AANobbMI", "rkdTcxoT", "mc1.21.11-0.8.14-fabric"),
+    ("iris", "YL57xq9U", "ka9PDlsN", "1.10.8+1.21.11-fabric"),
+    ("immediatelyfast", "5ZwdcRci", "4EwhsTu7", "1.14.3+1.21.11-fabric"),
+    ("lithium", "gvQqBUqZ", "Ow7wA0kG", "mc1.21.11-0.21.4-fabric"),
+    ("ferrite-core", "uXXizFIs", "Ii0gP3D8", "8.2.0-fabric"),
     ("krypton", "fQEb0iXm", "O9LmWYR7", "0.2.10"),
-    ("modmenu", "mOgUt4GM", "Tyk71iSw", "17.0.0"),
-    ("fabric-api", "P7dR8mSH", "6qAuTtLR", "0.141.6"),
+    ("modmenu", "mOgUt4GM", "cLkYaVuL", "17.0.1"),
+    ("fabric-api", "P7dR8mSH", "6qAuTtLR", "0.141.6+1.21.11"),
 ];
-const PINS_26_2: [PinRow; 7] = [
-    ("sodium", "AANobbMI", "2Yom1N68", "mc26.2-0.9.1-fabric"),
-    ("iris", "YL57xq9U", "oaD6KQls", "1.11.2+26.2-fabric"),
+const PINS_26_2: [PinRow; 8] = [
+    ("sodium", "AANobbMI", "xJZxADzI", "mc26.2-0.9.2-fabric"),
+    ("iris", "YL57xq9U", "gxZWWnKH", "1.11.4+26.2-fabric"),
+    ("immediatelyfast", "5ZwdcRci", "pMWERcSu", "1.16.5+26.2-fabric"),
     ("lithium", "gvQqBUqZ", "f7vZ0VWU", "mc26.2-0.25.3-fabric"),
     ("ferrite-core", "uXXizFIs", "d5ddUdiB", "9.0.0-fabric"),
     ("krypton", "fQEb0iXm", "5WeL0Nkz", "0.3.1"),
-    ("modmenu", "mOgUt4GM", "njXb639R", "20.0.1"),
-    ("fabric-api", "P7dR8mSH", "3gT0I5vt", "0.156.0+26.2"),
+    // modmenu 20.0.x lists placeholder-api on Modrinth as a required dependency
+    // but ships no copy of it and does not declare it in fabric.mod.json's
+    // `depends` (17.0.1 and 21.0.0 bundle it). JAR_IN_JAR therefore skips it —
+    // the install note is expected — and the loader graph stays satisfied.
+    ("modmenu", "mOgUt4GM", "iRo7AZXf", "20.0.3"),
+    ("fabric-api", "P7dR8mSH", "ewUK83HI", "0.161.0+26.2"),
 ];
 // Iris 1.11.7 requires exactly Sodium 0.9.2 (bAZQdGpg); Sodium 0.9.3 is still beta.
-const PINS_26_3: [PinRow; 7] = [
+const PINS_26_3: [PinRow; 8] = [
     ("sodium", "AANobbMI", "bAZQdGpg", "mc26.3-0.9.2-fabric"),
     ("iris", "YL57xq9U", "vTN4NRGW", "1.11.7+26.3-fabric"),
+    ("immediatelyfast", "5ZwdcRci", "3MP9UR23", "1.17.1+26.3-fabric"),
     ("lithium", "gvQqBUqZ", "fWv5bnZk", "mc26.3-0.26.3-fabric"),
     ("ferrite-core", "uXXizFIs", "d5ddUdiB", "9.0.0-fabric"),
     ("krypton", "fQEb0iXm", "UugdIYJw", "0.3.2"),
     ("modmenu", "mOgUt4GM", "kyy7dbrZ", "21.0.0"),
-    ("fabric-api", "P7dR8mSH", "EQKgpeKu", "0.165.0+26.3"),
+    ("fabric-api", "P7dR8mSH", "998R2rNP", "0.166.0+26.3"),
 ];
 /// Legacy-optional QoL pins (gamma-utils / clear-fog).
 const QOL_1_21_11: [PinRow; 2] =
@@ -93,10 +153,13 @@ const QOL_26_2: [PinRow; 2] =
 const QOL_26_3: [PinRow; 2] =
     [("gamma-utils", "wdLuzzEP", "k6ywOirE", "3.2.2+Fabric"), ("clear-fog", "46n24c6r", "C8eOUsdr", "26.3_Fabric")];
 
-/// The seven canonical performance projects.
-const PERFORMANCE_PROJECTS: [(&str, &str); 7] = [
+/// The eight canonical performance projects (dynamic resolution for versions
+/// without an exact pin table — every one has a release build for 1.21 through
+/// 26.x, which is what keeps this list safe to resolve at runtime).
+const PERFORMANCE_PROJECTS: [(&str, &str); 8] = [
     ("sodium", "AANobbMI"),
     ("iris", "YL57xq9U"),
+    ("immediatelyfast", "5ZwdcRci"),
     ("lithium", "gvQqBUqZ"),
     ("ferrite-core", "uXXizFIs"),
     ("krypton", "fQEb0iXm"),
@@ -833,6 +896,40 @@ async fn install_preset_inner(
         );
     }
     engine.http().download_all(items, DownloadAllOptions::default()).await?;
+    // install_preset is authoritative for its own projects: a version bump
+    // renames the jar (sodium-fabric-0.8.7… -> …-0.8.14…), and leaving the old
+    // file enabled would load two Sodium jars (duplicate mod id -> hard crash).
+    // Superseded jars are DISABLED, not deleted, so the player can re-enable a
+    // build they installed themselves. They are identified by sha1 through
+    // Modrinth, not by filename: `ferritecore-9.0.0-fabric.jar` does not
+    // contain the `ferrite-core` slug, and a filename heuristic could touch a
+    // jar that is not ours. When the lookup is unavailable nothing is touched —
+    // a stale jar is annoying, a wrongly disabled mod is not.
+    for name in &installed {
+        let _ = std::fs::remove_file(mods_dir.join(format!("{name}.disabled")));
+    }
+    let mut candidates: Vec<(String, String)> = vec![];
+    for file in read_names(&mods_dir).into_iter().filter(|f| is_mod_file(f)) {
+        if file.ends_with(".disabled") {
+            continue;
+        }
+        if installed.iter().any(|n| n == &file) {
+            continue;
+        }
+        if let Ok(hash) = crate::download::sha1_file(&mods_dir.join(&file)).await {
+            candidates.push((file, hash));
+        }
+    }
+    if !candidates.is_empty() {
+        let hashes: Vec<String> = candidates.iter().map(|(_, h)| h.clone()).collect();
+        if let Ok(by_hash) = post_version_files(engine, &hashes).await {
+            for file in superseded_pinned_jars(&candidates, &by_hash, &pins) {
+                if std::fs::rename(mods_dir.join(file), mods_dir.join(format!("{file}.disabled"))).is_ok() {
+                    tracing::info!("[mods] disabled superseded pinned jar {file} in {}", instance.name);
+                }
+            }
+        }
+    }
     mod_progress(
         engine,
         ProgressEvent {
@@ -845,6 +942,26 @@ async fn install_preset_inner(
         },
     );
     Ok(PresetInstallResult { installed, notes })
+}
+
+/// Filenames among `candidates` (name, sha1) that belong to a project the
+/// preset already installed a newer build of, given Modrinth's hash ->
+/// version map. Pure so the rule can be tested without a download.
+fn superseded_pinned_jars<'a>(
+    candidates: &'a [(String, String)],
+    by_hash: &Map<String, Value>,
+    pins: &[Pin],
+) -> Vec<&'a str> {
+    candidates
+        .iter()
+        .filter(|(_, hash)| {
+            by_hash
+                .get(hash)
+                .and_then(|v| s(v, "project_id"))
+                .is_some_and(|pid| pins.iter().any(|p| p.project_id == pid))
+        })
+        .map(|(file, _)| file.as_str())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -2000,13 +2117,55 @@ mod tests {
         let (_d, e) = engine_with(None);
         for v in PINNED_VERSIONS {
             let pins = pins_for_version(&e, v).await.unwrap();
-            assert_eq!(pins.len(), 7, "{v}");
+            assert_eq!(pins.len(), 8, "{v}");
             assert_eq!(pins, pins_by_version(v).unwrap());
+            // Every pinned project is in the dynamic list too, so a version
+            // without an exact table resolves the same set.
+            for p in &pins {
+                assert!(PERFORMANCE_PROJECTS.iter().any(|(_, pid)| *pid == p.project_id), "{v} {}", p.slug);
+            }
         }
         for v in ["1.20.4", "1.15.2", "25w11a", "27.0"] {
             assert!(pins_for_version(&e, v).await.is_none(), "{v}");
         }
         assert_eq!(pins_by_version("26.3").unwrap()[0].version_id, "bAZQdGpg");
+    }
+
+    /// Each table pins one build per project (a duplicated slug would download
+    /// two jars of the same mod) and the same set of slugs on every version, so
+    /// the preset means the same thing whichever lane a player is on.
+    #[test]
+    fn pin_tables_are_unique_and_aligned() {
+        let mut expected: Option<Vec<String>> = None;
+        for v in PINNED_VERSIONS {
+            let pins = pins_by_version(v).unwrap();
+            let mut slugs: Vec<String> = pins.iter().map(|p| p.slug.clone()).collect();
+            slugs.sort();
+            let before = slugs.len();
+            slugs.dedup();
+            assert_eq!(slugs.len(), before, "{v} pins a project twice");
+            match &expected {
+                None => expected = Some(slugs),
+                Some(e) => assert_eq!(&slugs, e, "{v} pins a different project set"),
+            }
+            assert!(pins.iter().any(|p| p.slug == "immediatelyfast"), "{v}");
+        }
+    }
+
+    /// A jar left over from a previous pin build is disabled (never deleted) so
+    /// two builds of one mod cannot be loaded at once, and a jar that Modrinth
+    /// does not attribute to a pinned project is left alone.
+    #[test]
+    fn superseded_pinned_jars_only_disables_known_old_pins() {
+        let pins = pins_by_version("26.3").unwrap();
+        let candidates = vec![
+            ("sodium-fabric-0.9.1+mc26.3.jar".to_string(), "old-sodium".to_string()),
+            ("my-own-pack.jar".to_string(), "unknown".to_string()),
+        ];
+        let mut by_hash = Map::new();
+        by_hash.insert("old-sodium".into(), json!({ "project_id": "AANobbMI" }));
+        let stale = superseded_pinned_jars(&candidates, &by_hash, &pins);
+        assert_eq!(stale, vec!["sodium-fabric-0.9.1+mc26.3.jar"]);
     }
 
     #[test]
@@ -2064,11 +2223,12 @@ mod tests {
             let other = rows.iter().find(|r| r.filename == "other.jar").unwrap();
             assert!(!other.enabled && other.project_slug.is_none());
             if version == "1.21.11" {
-                // the 7 pins are listed as not-installed rows even when Modrinth is down
-                assert_eq!(rows.iter().filter(|r| !r.installed).count(), 7);
+                // the 8 pins are listed as not-installed rows even when Modrinth is down
+                assert_eq!(rows.iter().filter(|r| !r.installed).count(), 8);
                 assert!(rows
                     .iter()
-                    .any(|r| r.filename == "sodium.jar" && r.version_number.as_deref() == Some("0.8.7")));
+                    .any(|r| r.filename == "sodium.jar"
+                        && r.version_number.as_deref() == Some("mc1.21.11-0.8.14-fabric")));
             }
         }
         let err = list_mods(&e, "missing").await.unwrap_err();

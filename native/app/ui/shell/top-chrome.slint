@@ -86,8 +86,10 @@ export component LanguageToggle inherits ChromeSquare {
     clicked => { Shell.toggle-language(); }
     Text {
         text: T.lang == "es" ? "EN" : "ES";
-        font-family: Theme.font-pixel;
-        font-size: Theme.pix(8px);
+        // G1: an 8px pixel label sits on 1-px strokes; body font below 16 physical px.
+        font-family: Theme.label-family(8px);
+        font-size: Theme.label-size(8px);
+        font-weight: 700;
         color: root.hovered ? (root.on-bar ? Bar.gold : Theme.hover-border) : (root.on-bar ? Bar.text : Theme.muted-strong);
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -134,7 +136,8 @@ export component TopChrome inherits Rectangle {
             }
         }
 
-        // ---- nav (fewer links as the window narrows) ----
+        // ---- nav: Inicio · Mods · Cuenta (Armario, Servidores and Cliente now
+        // live inside Cuenta / in-game via the Espectral Suite) ----
         HorizontalLayout {
             horizontal-stretch: 1;
             alignment: center;
@@ -149,15 +152,7 @@ export component TopChrome inherits Rectangle {
                     clicked => { Router.navigate("#/"); }
                 }
             }
-            if root.width >= 1000px: VerticalLayout {
-                alignment: center;
-                NavLink {
-                    label: T.tr("nav.servers");
-                    active: Router.page == Page.servers;
-                    clicked => { Router.navigate("#/servers"); }
-                }
-            }
-            if root.width >= 900px: VerticalLayout {
+            VerticalLayout {
                 alignment: center;
                 NavLink {
                     label: T.tr("nav.mods");
@@ -165,28 +160,12 @@ export component TopChrome inherits Rectangle {
                     clicked => { Router.navigate("#/mods"); }
                 }
             }
-            if root.width >= 1100px: VerticalLayout {
-                alignment: center;
-                NavLink {
-                    label: T.tr("nav.client");
-                    active: Router.page == Page.client;
-                    clicked => { Router.navigate("#/client"); }
-                }
-            }
-            if root.width >= 1180px: VerticalLayout {
+            VerticalLayout {
                 alignment: center;
                 NavLink {
                     label: T.tr("nav.account");
                     active: Router.page == Page.account;
                     clicked => { Router.navigate("#/account"); }
-                }
-            }
-            if root.width >= 1260px: VerticalLayout {
-                alignment: center;
-                NavLink {
-                    label: T.tr("nav.wardrobe");
-                    active: Router.page == Page.wardrobe;
-                    clicked => { Router.navigate("#/armario"); }
                 }
             }
         }

@@ -1,10 +1,10 @@
-// OWNER: settings-suite-servers agent. Port of components/ServerRadarCard.svelte
-// (+ PingWaveform). SHARED: home-instances' Home page imports this component
-// for its server strip, so keep the interface below stable (add properties,
-// never rename/remove). Data: AppState.servers (src/store.rs refresh_servers).
+// OWNER: NavCutover. Port of components/ServerRadarCard.svelte, kept to the
+// compact card the Home server strip renders (the Server Radar page that used
+// the full-size card is gone). Home imports this component; data:
+// AppState.servers (src/store.rs refresh_servers).
 //
-// Click copies the host (Svelte useCopy: "✓ Copiado" for 1.8 s, no toast) and
-// also emits clicked(); set `copy-on-click: false` to only get clicked().
+// Click copies the host (Svelte useCopy: "✓ Copiado" for 1.8 s, no toast); the
+// "Copiar" pill copies the direct ip:port when the status has one.
 // The beacon orb pulse animation is omitted (idle = 0% CPU).
 //
 // Poster look: the site's "Estado de servidores" card — flat block, 2px border,
@@ -12,65 +12,7 @@
 // JUGADORES / MOTD labels in small-caps body text.
 
 import { Theme, T, AppState, ServerRow, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, MonogramTile, MonogramShape } from "../../widgets.slint";
-import { SettingsBridge, MotdLineRow, PingWaveGeometry } from "api.slint";
-
-/// components/PingWaveform.svelte: deterministic sparkline seeded by the ping,
-/// emerald / amber / red by latency, dashed flat line when offline. The path is
-/// a pure function of (ping, online, size): recomputed only when one changes.
-export component PingWaveform inherits HorizontalLayout {
-    /// Latency in ms; -1 = unknown.
-    in property <int> ping-ms: -1;
-    in property <bool> online: true;
-    in property <length> wave-width: 84px;
-    in property <length> wave-height: 24px;
-    in property <bool> show-label: false;
-
-    property <bool> unknown: !root.online || root.ping-ms < 0;
-    property <color> stroke: root.unknown || root.ping-ms > 140 ? Theme.accent-red : root.ping-ms <= 65 ? Theme.accent-green : Theme.accent-alt;
-    property <PingWaveGeometry> geo: SettingsBridge.ping-wave(root.ping-ms, root.online, root.wave-width / 1px, root.wave-height / 1px);
-
-    spacing: Theme.space-2;
-    Rectangle {
-        width: root.wave-width;
-        height: root.wave-height;
-        // the gradient area fill is off-style: a flat low-alpha band instead
-        Rectangle {
-            x: 0;
-            y: root.wave-height * 0.5;
-            width: root.wave-width;
-            height: root.wave-height * 0.5;
-            background: root.stroke.with-alpha(0.12);
-        }
-        Path {
-            width: 100%;
-            height: 100%;
-            viewbox-width: root.wave-width / 1px;
-            viewbox-height: root.wave-height / 1px;
-            commands: root.geo.line;
-            stroke: root.stroke;
-            stroke-width: 2px;
-            stroke-line-cap: round;
-            stroke-line-join: round;
-        }
-        Rectangle {
-            x: root.geo.dot-x * 1px - 3px;
-            y: root.geo.dot-y * 1px - 3px;
-            width: 6px;
-            height: 6px;
-            border-radius: 1px;
-            background: root.stroke;
-            border-width: 1px;
-            border-color: Theme.brand-ink;
-        }
-    }
-    if root.show-label: Text {
-        text: root.online && root.ping-ms >= 0 ? root.ping-ms + "ms" : root.online ? "--ms" : "OFF";
-        font-family: Theme.font-pixel;
-        font-size: Theme.pix(8px);
-        color: Theme.muted-strong;
-        vertical-alignment: center;
-    }
-}
+import { SettingsBridge, MotdLineRow } from "api.slint";
 
 /// MOTD stage: § colored runs, one HorizontalLayout per line.
 component MotdStage inherits Rectangle {
@@ -105,7 +47,8 @@ component MotdStage inherits Rectangle {
     }
 }
 
-/// Small flat chip (software / version). Pixel font at 8px for short labels.
+/// Small flat chip (software / version). Short labels follow G1
+/// (Theme.label-family: body font below 16 physical px).
 component Chip inherits Rectangle {
     in property <string> text;
     in property <bool> pixel;
@@ -119,9 +62,10 @@ component Chip inherits Rectangle {
     border-color: root.edge;
     lbl := Text {
         text: root.text;
-        font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
-        font-size: root.pixel ? Theme.pix(8px) : 11px;
-        font-weight: root.pixel ? 400 : 600;
+        // G1: chips are small labels; the 8px pixel font lands on 1-px strokes.
+        font-family: root.pixel ? Theme.label-family(8px) : Theme.font-body;
+        font-size: root.pixel ? Theme.label-size(8px) : 11px;
+        font-weight: root.pixel ? 700 : 600;
         color: root.fg;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -132,13 +76,6 @@ component Chip inherits Rectangle {
 
 export component ServerRadarCard inherits Rectangle {
     in property <ServerRow> server;
-    in property <bool> compact: false;
-    in property <bool> interactive: false;
-    in property <bool> featured: false;
-    in property <bool> show-ip: true;
-    /// Copy the host on click (Svelte default). clicked() is emitted either way.
-    in property <bool> copy-on-click: true;
-    callback clicked();
 
     property <bool> copied: false;
     property <string> address: root.server.host != "" ? root.server.host : root.server.hostname;
@@ -173,16 +110,9 @@ export component ServerRadarCard inherits Rectangle {
         height: 100%;
         elevation: Elevation.md;
         clickable: true;
-        interactive: root.interactive;
-        featured: root.featured;
-        padding-size: root.compact ? 20px : 24px;
-        spacing: root.compact ? 8px : 12px;
-        clicked => {
-            if root.copy-on-click {
-                root.copy(root.address);
-            }
-            root.clicked();
-        }
+        padding-size: 20px;
+        spacing: 8px;
+        clicked => { root.copy(root.address); }
 
         // ---- name row: server icon + status dot + pixel-font name + players
         HorizontalLayout {
@@ -191,8 +121,8 @@ export component ServerRadarCard inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 Rectangle {
-                    width: root.compact ? 32px : 40px;
-                    height: root.compact ? 32px : 40px;
+                    width: 32px;
+                    height: 32px;
                     border-radius: Theme.radius-sm;
                     border-width: 2px;
                     border-color: Theme.brand-ink;
@@ -208,7 +138,7 @@ export component ServerRadarCard inherits Rectangle {
                         width: 100%;
                         height: 100%;
                         name: root.server.hostname != "" ? root.server.hostname : root.server.host != "" ? root.server.host : "ES";
-                        size: root.compact ? 32px : 40px;
+                        size: 32px;
                         shape: MonogramShape.rounded;
                     }
                 }
@@ -264,7 +194,6 @@ export component ServerRadarCard inherits Rectangle {
                         text: root.server.online ? root.server.players-online + "/" + root.server.players-max : "0/0";
                         variant: root.has-players ? BadgeVariant.accent : BadgeVariant.neutral;
                         pixel: true;
-                        large: !root.compact;
                     }
                 }
             }
@@ -305,31 +234,6 @@ export component ServerRadarCard inherits Rectangle {
             }
         }
 
-        if !root.compact && root.show-ip && root.direct != "": HorizontalLayout {
-            alignment: start;
-            spacing: 6px;
-            Rectangle {
-                height: ip.preferred-height + 6px;
-                width: ip.preferred-width + 14px;
-                border-radius: Theme.radius-sm;
-                background: Theme.card-bg-soft;
-                border-width: 2px;
-                border-color: ip-ta.has-hover ? Theme.hover-border : Theme.border-solid;
-                ip := Text {
-                    text: "IP: " + root.direct;
-                    font-family: Theme.font-mono;
-                    font-size: 11px;
-                    color: ip-ta.has-hover ? Theme.hover-border : Theme.muted;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-                ip-ta := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { root.copy(root.direct); }
-                }
-            }
-        }
-
         VerticalLayout {
             spacing: 4px;
             Text {
@@ -340,26 +244,6 @@ export component ServerRadarCard inherits Rectangle {
                 color: Theme.muted;
             }
             MotdStage { lines: SettingsBridge.motd-lines(root.server); }
-        }
-
-        // status footer (no ping in ServerRow: no sparkline here)
-        if !root.compact: VerticalLayout {
-            spacing: 8px;
-            Rectangle { height: 2px; background: Theme.border-solid; }
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: start;
-                if root.server.online: Badge { text: T.tr("common.online"); variant: BadgeVariant.ok; dot: true; }
-                if !root.server.online: Badge { text: T.tr("server.offline"); variant: BadgeVariant.err; }
-                if root.server.error != "": Text {
-                    text: root.server.error;
-                    font-size: 11px;
-                    color: Theme.accent-red;
-                    vertical-alignment: center;
-                    overflow: elide;
-                    horizontal-stretch: 1;
-                }
-            }
         }
     }
 }

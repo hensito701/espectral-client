@@ -336,7 +336,7 @@ fn log_hint() -> String {
     logging::log_path().map(|p| format!("\n\nRegistro / log: {}", p.display())).unwrap_or_default()
 }
 
-/// Measurement hook (`ESPECTRAL_TOUR="#/servers,#/mods,..."`, `ESPECTRAL_TOUR_MS`):
+/// Measurement hook (`ESPECTRAL_TOUR="#/mods,#/account,..."`, `ESPECTRAL_TOUR_MS`):
 /// visit each route in turn on the real windowed app (memory / CPU probes,
 /// UI-PORTING.md "Measurements"). Stays on the last route.
 fn tour(weak: slint::Weak<AppWindow>, routes: std::rc::Rc<Vec<String>>, i: usize, dwell: Duration) {

@@ -63,15 +63,14 @@ pub fn parse(hash: &str) -> Route {
             instance = percent_decode(name);
             Page::Instance
         }
-        ("servers", _) => Page::Servers,
         ("library", "versions") | ("versions", _) => Page::Versions,
         ("library", "import") | ("import", _) => Page::Import,
         ("mods", _) => Page::Mods,
-        ("client", _) => Page::Client,
         ("account", _) => Page::Account,
         ("settings", _) => Page::Settings,
         ("donaciones", _) => Page::Donations,
-        ("armario", _) => Page::Wardrobe,
+        // `#/servers`, `#/client` and `#/armario` were retired with their pages:
+        // an old bookmark falls back to Home like any other unknown route.
         _ => Page::Home,
     };
     Route { page, instance, query: query.to_string(), raw }
@@ -205,8 +204,11 @@ mod tests {
         assert_eq!(parse("#/versions").page, Page::Versions);
         assert_eq!(parse("#/library/import").page, Page::Import);
         assert_eq!(parse("#/account?section=skin").page, Page::Account);
-        assert_eq!(parse("#/armario").page, Page::Wardrobe);
         assert_eq!(parse("#/donaciones").page, Page::Donations);
+        // retired pages: old hashes are unknown routes and land on Home
+        assert_eq!(parse("#/servers").page, Page::Home);
+        assert_eq!(parse("#/client").page, Page::Home);
+        assert_eq!(parse("#/armario").page, Page::Home);
         assert_eq!(parse("#/nope").page, Page::Home);
     }
 

@@ -2,8 +2,9 @@
 // of this group that Rust can see (app.slint re-exports it by name).
 // Rust side: native/app/src/pages/account_wardrobe.rs (+ account_wardrobe/*.rs).
 //
-// Pages: AccountPage (AccountVault.svelte), WardrobePage (Wardrobe.svelte),
-// AccountPopover (components/AccountPopover.svelte).
+// Pages: AccountPage (account-vault.slint, #/account — accounts, Skin Atelier,
+// Espectral identity, Discord, supporter badges, cosmetics pointer and hidden
+// players) and AccountPopover (account-popover.slint).
 
 import { AccountRow } from "../../state.slint";
 
@@ -15,9 +16,9 @@ export struct VaultSkinEntry {
     variant: string,
 }
 
-/// One account of the Wardrobe picker (engine types::IdentityAccount + PublicAccount bits).
-export struct WardrobeAccount {
-    uuid: string,
+/// Espectral identity of the active account (engine types::IdentityAccount +
+/// PublicAccount bits). Shown in the identity card of the Cuenta page.
+export struct EspectralIdentity {
     username: string,
     verified: bool,
     supporter: bool,
@@ -30,8 +31,6 @@ export struct WardrobeAccount {
     /// Formatted grant expiry per UI language ("" when none).
     grant-exp-es: string,
     grant-exp-en: string,
-    has-avatar: bool,
-    avatar: image,
 }
 
 export global AccountBridge {
@@ -147,28 +146,30 @@ export global AccountBridge {
     callback popover-opened();
 
     // =====================================================================
-    // Wardrobe (#/armario)
+    // Espectral identity of the ACTIVE account (identity card of #/account):
+    // Minecraft ownership proof, Discord link, supporter flags and the hidden
+    // players list. The wardrobe page is gone; this follows the active account.
     // =====================================================================
-    in property <bool> w-loading: true;
-    in property <string> w-load-error;
-    in property <[WardrobeAccount]> w-accounts;
-    in property <int> w-selected: -1;
-    in property <[string]> w-hidden;
-    in property <string> w-hidden-error;
-    in property <int> w-hidden-serial;
-    in property <bool> w-verifying;
-    in property <bool> w-refreshing;
-    in property <bool> w-linking;
-    in property <bool> w-unlinking;
-    callback w-load();
-    callback w-select(index: int);
-    callback w-verify();
-    callback w-refresh-flags();
-    callback w-link();
-    callback w-cancel-link();
-    callback w-unlink();
-    callback w-add-hidden(name: string);
-    callback w-remove-hidden(name: string);
+    /// Identity loaded and known for the account on the pedestal.
+    in property <bool> identity-available;
+    in property <EspectralIdentity> identity;
+    in property <bool> identity-loading: true;
+    in property <string> identity-load-error;
+    in property <[string]> identity-hidden;
+    in property <string> identity-hidden-error;
+    in property <int> identity-hidden-serial;
+    in property <bool> identity-verifying;
+    in property <bool> identity-refreshing;
+    in property <bool> identity-linking;
+    in property <bool> identity-unlinking;
+    callback identity-load();
+    callback identity-verify();
+    callback identity-refresh-flags();
+    callback identity-link();
+    callback identity-cancel-link();
+    callback identity-unlink();
+    callback identity-add-hidden(name: string);
+    callback identity-remove-hidden(name: string);
 
     /// First n characters (Slint strings have no substring()).
     pure callback truncate(text: string, n: int) -> string;

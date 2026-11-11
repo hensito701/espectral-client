@@ -175,8 +175,10 @@ component MotdTicker inherits HorizontalLayout {
                 }
                 live := Text {
                     text: T.tr("home.motdLive");
-                    font-family: Theme.font-pixel;
-                    font-size: Theme.pix(8px);
+                    // G1: small chip label; the pixel font smudges below 16 physical px.
+                    font-family: Theme.label-family(8px);
+                    font-size: Theme.label-size(8px);
+                    font-weight: 700;
                     color: #ffffff;
                     vertical-alignment: center;
                 }
@@ -274,11 +276,6 @@ component HeroPanel inherits Rectangle {
                             text: T.tr("home.importModpack");
                             clicked => { LibraryBridge.mrpack-open = true; }
                         }
-                        HeroBtn {
-                            emoji: "🧩";
-                            text: T.tr("home.clientSuite");
-                            clicked => { Router.navigate("#/client"); }
-                        }
                     }
                 }
                 VerticalLayout {
@@ -335,17 +332,6 @@ component ServersSection inherits Rectangle {
                     horizontal-stretch: 1;
                     overflow: elide;
                 }
-                more := Text {
-                    text: T.tr("home.viewAllServers") + " →";
-                    color: more-t.has-hover ? Theme.accent-alt : Theme.accent;
-                    font-size: Theme.text-sm;
-                    font-weight: 700;
-                    vertical-alignment: center;
-                    more-t := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { Router.navigate("#/servers"); }
-                    }
-                }
             }
             if HomeBridge.top-servers.length > 0: HorizontalLayout {
                 spacing: Theme.space-4;
@@ -353,9 +339,6 @@ component ServersSection inherits Rectangle {
                     horizontal-stretch: 1;
                     min-width: 200px;
                     server: s;
-                    compact: true;
-                    interactive: true;
-                    clicked => { Router.navigate("#/servers"); }
                 }
             }
             if HomeBridge.top-servers.length == 0: Rectangle {

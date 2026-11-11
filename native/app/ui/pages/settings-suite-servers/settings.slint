@@ -219,9 +219,10 @@ component ThemePreview inherits Rectangle {
                     border-color: Theme.brand-ink;
                     chip := Text {
                         text: (Theme.dark ? "DARK" : "LIGHT") + " MODE";
-                        font-family: Theme.font-pixel;
-                        font-size: Theme.pix(8px);
-                        font-weight: 400;
+                        // G1: preview chip label (body font below 16 physical px).
+                        font-family: Theme.label-family(8px);
+                        font-size: Theme.label-size(8px);
+                        font-weight: 700;
                         line-height-factor: 1.25;
                         color: Theme.on-gold;
                     }
@@ -325,9 +326,10 @@ component LangTile inherits Rectangle {
                 background: Theme.brand-ink;
                 lbl := Text {
                     text: root.active-text;
-                    font-family: Theme.font-pixel;
-                    font-size: Theme.pix(8px);
-                    font-weight: 400;
+                    // G1: small chip label, body font fallback.
+                    font-family: Theme.label-family(8px);
+                    font-size: Theme.label-size(8px);
+                    font-weight: 700;
                     color: Theme.gold;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -536,7 +538,7 @@ component RamBadge inherits Rectangle {
         VerticalLayout {
             alignment: end;
             padding-bottom: 1px;
-            Text { text: "GB"; font-family: Theme.font-pixel; font-size: Theme.pix(8px); font-weight: 700; color: Theme.muted-strong; }
+            Text { text: "GB"; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.muted-strong; }
         }
     }
 }
@@ -1745,7 +1747,7 @@ export component SettingsPage inherits Rectangle {
                     Btn {
                         variant: BtnVariant.secondary;
                         size: BtnSize.sm;
-                        text: T.tr("servers.retry");
+                        text: T.tr("actions.retry");
                         clicked => { SettingsBridge.settings-reload(); }
                     }
                 }

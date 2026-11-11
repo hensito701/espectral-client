@@ -179,13 +179,6 @@ fn all_commands() -> Vec<Cmd> {
         &["inicio", "home", "carrusel", "instancias", "juegos", "main"],
     ));
     items.push(nav(
-        "nav-servers",
-        "command.nav.servers",
-        "command.nav.serversDesc",
-        "#/servers",
-        &["servidores", "servers", "radar", "multijugador", "online", "ping", "espectral"],
-    ));
-    items.push(nav(
         "nav-versions",
         "command.nav.versions",
         "command.nav.versionsDesc",
@@ -207,18 +200,15 @@ fn all_commands() -> Vec<Cmd> {
         &["mods", "modrinth", "catalog", "presets", "performance", "optifine", "sodium"],
     ));
     items.push(nav(
-        "nav-client",
-        "command.nav.client",
-        "command.nav.clientDesc",
-        "#/client",
-        &["cliente", "client", "suite", "macros", "fullbright", "aot", "optimizaciones"],
-    ));
-    items.push(nav(
         "nav-account",
         "command.nav.account",
         "command.nav.accountDesc",
         "#/account",
-        &["cuenta", "account", "microsoft", "msa", "offline", "perfil", "avatar", "vault"],
+        &[
+            "cuenta", "account", "microsoft", "msa", "offline", "perfil", "avatar", "vault",
+            // the wardrobe (cosmetics, identity) now lives inside Cuenta
+            "armario", "wardrobe", "cosmeticos", "cosmetics", "capa", "cloak", "identidad", "discord", "mvp",
+        ],
     ));
     items.push(nav(
         "nav-settings",
@@ -233,13 +223,6 @@ fn all_commands() -> Vec<Cmd> {
         "command.nav.donationsDesc",
         "#/donaciones",
         &["donaciones", "donations", "donar", "apoyo", "vip", "donar", "pabellon"],
-    ));
-    items.push(nav(
-        "nav-wardrobe",
-        "command.nav.wardrobe",
-        "command.nav.wardrobeDesc",
-        "#/armario",
-        &["armario", "wardrobe", "cosmeticos", "cosmetics", "capa", "cloak", "identidad", "discord", "mvp"],
     ));
     let action = |id: &str, title: &str, desc: &str, icon: &'static str, kw: &[&str], a: Action| Cmd {
         id: id.into(),

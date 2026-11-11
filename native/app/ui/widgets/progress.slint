@@ -42,8 +42,9 @@ export component ProgressBar inherits VerticalLayout {
         if root.show-value && !root.indeterminate: Text {
             text: round(root.pct * 100) + "%";
             color: Theme.text;
-            font-family: Theme.font-pixel;
-            font-size: Theme.pix(8px);
+            font-family: Theme.label-family(8px);
+            font-size: Theme.label-size(8px);
+            font-weight: 700;
             vertical-alignment: center;
         }
     }

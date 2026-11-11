@@ -7,14 +7,11 @@
 export enum Page {
     home,        // #/  (and #/instances)
     instance,    // #/instances/:name     (Router.instance-name)
-    servers,     // #/servers
     versions,    // #/library/versions    (legacy #/versions)
     import,      // #/library/import      (legacy #/import)
     mods,        // #/mods
-    client,      // #/client
     account,     // #/account             (Router.query e.g. "section=skin")
     settings,    // #/settings
-    wardrobe,    // #/armario
     donations,   // #/donaciones
 }
 
@@ -90,7 +87,7 @@ export struct LaunchRow {
     agent: bool,
 }
 
-/// engine types::ServerStatus (GET /api/servers, polled every 60 s while Home / Servers is shown)
+/// engine types::ServerStatus (GET /api/servers, polled every 60 s while Home is shown)
 export struct ServerRow {
     host: string,
     online: bool,
@@ -128,13 +125,11 @@ export global AppState {
     /// Number of launches with running == true.
     in property <int> running-count;
     in property <[ServerRow]> servers;
-    in property <bool> servers-loaded;
 
     /// Re-fetch shared lists (the Svelte stores' refresh()).
     callback refresh-instances();
     callback refresh-accounts();
     callback refresh-launches();
-    callback refresh-servers();
     /// Open an http(s) URL in the system browser.
     callback open-url(url: string);
     /// Open a folder with the system file manager (engine.open_folder: must be inside the data dir / an instance dir).

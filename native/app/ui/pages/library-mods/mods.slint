@@ -41,8 +41,9 @@ component CatalogHeader inherits HorizontalLayout {
             }
             VText {
                 text: T.tr("mods.kicker");
-                font-family: Theme.font-pixel;
-                font-size: Theme.pix(8px);
+                font-family: Theme.label-family(8px);
+                font-size: Theme.label-size(8px);
+                font-weight: 700;
                 color: Theme.accent;
             }
         }
@@ -146,7 +147,7 @@ component InstanceStrip inherits GlassPanel {
             if LibraryBridge.m-has-target && LibraryBridge.m-sel-version != "": VerticalLayout {
                 alignment: center;
                 Badge {
-                    text: LibraryBridge.m-count + " " + T.tr1("mods.count", "count", LibraryBridge.m-count);
+                    text: T.tr1("mods.count", "count", LibraryBridge.m-count);
                     pixel: true;
                 }
             }
@@ -212,8 +213,9 @@ component ProgressDeck inherits GlassPanel {
             }
             VText {
                 text: LibraryBridge.m-progress-done + " / " + LibraryBridge.m-progress-total;
-                font-family: Theme.font-pixel;
-                font-size: Theme.pix(8px);
+                font-family: Theme.label-family(8px);
+                font-size: Theme.label-size(8px);
+                font-weight: 700;
             }
         }
         ProgressBar {
@@ -521,9 +523,9 @@ component ModEntryRow inherits Rectangle {
                         height: ver.preferred-height + 6px;
                         ver := Text {
                             text: root.entry.version;
-                            font-family: Theme.font-pixel;
-                            font-size: Theme.pix(8px);
-                            letter-spacing: -0.48px;
+                            font-family: Theme.label-family(8px);
+                            font-size: Theme.label-size(8px);
+                            font-weight: 700;
                             color: Theme.muted;
                         }
                     }
@@ -738,7 +740,7 @@ component PresetsPane inherits VerticalLayout {
             VerticalLayout {
                 alignment: center;
                 Text { text: T.tr("mods.performance"); font-size: Theme.text-base; font-weight: 700; color: Theme.text; }
-                Text { text: "7 mods verificados"; font-family: Theme.font-pixel; font-size: Theme.pix(8px); color: Theme.muted; }
+                Text { text: T.tr1("mods.performanceCount", "count", LibraryBridge.m-pinned.length); font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.muted; }
             }
             Rectangle { horizontal-stretch: 1; }
             VerticalLayout {
@@ -839,8 +841,9 @@ component SearchHeader inherits GlassPanel {
             }
             VText {
                 text: "Modrinth Matrix";
-                font-family: Theme.font-pixel;
-                font-size: Theme.pix(8px);
+                font-family: Theme.label-family(8px);
+                font-size: Theme.label-size(8px);
+                font-weight: 700;
                 color: Theme.accent-green;
             }
         }

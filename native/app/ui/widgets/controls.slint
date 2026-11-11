@@ -161,7 +161,7 @@ export component Segmented inherits Rectangle {
     in property <[string]> items;
     in-out property <int> current;
     in property <length> font-size: Theme.text-xs;
-    /// Pixel font (ES/EN chip style).
+    /// Compact chip style (ES/EN): label typography via Theme.label-family.
     in property <bool> compact: false;
     callback selected(index: int);
 
@@ -185,9 +185,9 @@ export component Segmented inherits Rectangle {
             background: active ? Theme.btn-fill : t.has-hover ? Theme.surface-up : transparent;
             lbl := Text {
                 text: item;
-                font-family: root.compact ? Theme.font-pixel : Theme.font-body;
-                font-size: root.compact ? Theme.pix(8px) : root.font-size;
-                font-weight: 600;
+                font-family: root.compact ? Theme.label-family(8px) : Theme.font-body;
+                font-size: root.compact ? Theme.label-size(8px) : root.font-size;
+                font-weight: root.compact ? 700 : 600;
                 color: active ? Theme.btn-ink : t.has-hover ? Theme.text : Theme.muted;
                 horizontal-alignment: center;
                 vertical-alignment: center;

@@ -116,8 +116,8 @@ describe it in your report (it will be applied at merge).
 |---|---|---|---|---|
 | **home-instances** | pages/Home, pages/InstanceHub, components/HorizonRail, HorizonTile, TelemetryCapsule, InstanceWizardModal, MrpackModal, DryRunModal, PipLogDrawer, lib/stores.ts launchLog | `ui/pages/home-instances/*` (`home.slint`→`HomePage`, `instance-hub.slint`→`InstanceHubPage`, `pip-log.slint`→`PipLogDrawer`, `api.slint`→`HomeBridge`) | `src/pages/home_instances.rs` (+ `src/pages/home_instances/*.rs`) | `home.json`, `instance.json`, `piplog.json`, `personalization.json` |
 | **library-mods** | pages/VersionArmory, ImportCenter, ModCatalog, DonationsPavilion | `ui/pages/library-mods/*` (`versions.slint`→`VersionsPage`, `import.slint`→`ImportPage`, `mods.slint`→`ModsPage`, `donations.slint`→`DonationsPage`, `api.slint`→`LibraryBridge`) | `src/pages/library_mods.rs` (+ children) | `versions.json`, `import.json`, `mods.json`, `donations.json` |
-| **account-wardrobe** | pages/AccountVault, Wardrobe, components/AccountPopover | `ui/pages/account-wardrobe/*` (`account-vault.slint`→`AccountPage`, `wardrobe.slint`→`WardrobePage`, `account-popover.slint`→`AccountPopover`, `api.slint`→`AccountBridge`) | `src/pages/account_wardrobe.rs` (+ children) | `account.json`, `wardrobe.json` |
-| **settings-suite-servers** | pages/SettingsDashboard, ClientSuite, ServerRadar, components/ServerRadarCard, PingWaveform | `ui/pages/settings-suite-servers/*` (`settings.slint`→`SettingsPage`, `client-suite.slint`→`ClientPage`, `servers.slint`→`ServersPage`, `server-radar-card.slint`→`ServerRadarCard` (**shared**: Home imports it), `api.slint`→`SettingsBridge`) | `src/pages/settings_suite_servers.rs` (+ children) | `settings.json`, `client.json`, `servers.json`, `agent.json` |
+| **account-wardrobe** | pages/AccountVault, Wardrobe, components/AccountPopover | `ui/pages/account-wardrobe/*` (`account-vault.slint`→`AccountPage`, the wardrobe sections fold into it, `account-popover.slint`→`AccountPopover`, `api.slint`→`AccountBridge`) | `src/pages/account_wardrobe.rs` (+ children) | `account.json`, `wardrobe.json` |
+| **settings-suite-servers** | pages/SettingsDashboard, components/ServerRadarCard | `ui/pages/settings-suite-servers/*` (`settings.slint`→`SettingsPage`, `server-radar-card.slint`→`ServerRadarCard` (**shared**: Home imports it), `api.slint`→`SettingsBridge`) | `src/pages/settings_suite_servers.rs` (+ children) | `settings.json`, `servers.json`, `agent.json` |
 | **skin-renderer** | components/SkinViewer (skinview3d/three.js) | `ui/skin3d/*` (`SkinView`, `SkinBridge`, `SkinFrameRequest`) | `src/skin.rs`, the whole `native/skin3d/` crate | `skin.json` (create if needed) |
 | foundation | App.svelte, TopChrome, AmbientBackdrop, Toast, CommandPalette, LoginGate, HotkeyLegend, ThemeToggle, LanguageToggle, Btn, GlassCard, Badge, Field, GradientText, ProgressBar, MonogramTile, LoaderBadge, lib/theme, lib/i18n, lib/toast, lib/discord, lib/format, lib/stores (shared lists) | everything else under `ui/` | everything else under `src/` | `common.json`, `palette.json`, `discord.json` |
 
@@ -125,8 +125,8 @@ Rules that keep the merge conflict-free:
 
 - **Keep the exported names and interfaces** that `app.slint` uses
   (`HomePage`, `InstanceHubPage`, `PipLogDrawer`, `VersionsPage`, `ImportPage`,
-  `ModsPage`, `DonationsPage`, `AccountPage`, `WardrobePage`, `AccountPopover`,
-  `SettingsPage`, `ClientPage`, `ServersPage`, `ServerRadarCard`, the four
+  `ModsPage`, `DonationsPage`, `AccountPage`, `AccountPopover`,
+  `SettingsPage`, `ServerRadarCard`, the four
   `*Bridge` globals, `SkinView`/`SkinBridge`/`SkinFrameRequest`). Pages take no
   properties from the shell: they read globals.
 - **One bridge global per group** (`HomeBridge`, `LibraryBridge`,
@@ -362,16 +362,17 @@ Shell components (foundation): `TopChrome` (+ `ThemeToggle`, `LanguageToggle`),
 | pages/InstanceHub | ui/pages/home-instances/instance-hub.slint | home-instances |
 | components/PipLogDrawer | ui/pages/home-instances/pip-log.slint | home-instances |
 | pages/VersionArmory / ImportCenter / ModCatalog / DonationsPavilion | ui/pages/library-mods/{versions,import,mods,donations}.slint | library-mods |
-| pages/AccountVault / Wardrobe, components/AccountPopover | ui/pages/account-wardrobe/{account-vault,wardrobe,account-popover}.slint | account-wardrobe |
-| pages/SettingsDashboard / ClientSuite / ServerRadar, components/ServerRadarCard, PingWaveform | ui/pages/settings-suite-servers/{settings,client-suite,servers,server-radar-card}.slint | settings-suite-servers |
+| pages/AccountVault + Wardrobe sections, components/AccountPopover | ui/pages/account-wardrobe/{account-vault,identity,account-popover}.slint | account-wardrobe |
+| pages/SettingsDashboard, components/ServerRadarCard | ui/pages/settings-suite-servers/{settings,server-radar-card}.slint | settings-suite-servers |
 | components/SkinViewer (skinview3d, three.js) | ui/skin3d/skin-view.slint + src/skin.rs + native/skin3d | skin-renderer |
 
 Routes (`router::parse`, identical to App.svelte): `#/` and `#/instances` →
 `Page.home`; `#/instances/:name` → `Page.instance` (+ `Router.instance-name`);
-`#/servers`; `#/library/versions` (legacy `#/versions`); `#/library/import`
-(legacy `#/import`); `#/mods`; `#/client`; `#/account` (`?section=skin`);
-`#/settings`; `#/donaciones` → `Page.donations`; `#/armario` → `Page.wardrobe`;
-anything else → home. The page component is instantiated on entry and
+`#/library/versions` (legacy `#/versions`); `#/library/import`
+(legacy `#/import`); `#/mods`; `#/account` (`?section=skin`, the wardrobe lives
+here too); `#/settings`; `#/donaciones` → `Page.donations`; anything else →
+home. The retired `#/servers`, `#/client` and `#/armario` hashes are unknown
+routes: they land on home, like any other unknown hash. The page component is instantiated on entry and
 destroyed on exit (like the Svelte `{#key}` remount): keep cross-visit state
 in your bridge global or in Rust.
 
@@ -414,13 +415,10 @@ Captured from the JS engine with a fresh data dir (instance "Espectral default",
 | login-gate.png | Discord gate (first run) |
 | home.png, home-scrolled.png, home-bottom.png, home-light.png | `#/` |
 | instance.png, instance-tab-{config,servers,mods,danger}.png, instance-light.png | `#/instances/Espectral%20default` |
-| servers.png | `#/servers` |
 | library-versions.png, library-import.png | `#/library/versions`, `#/library/import` |
 | mods.png | `#/mods` |
-| client.png | `#/client` |
 | account.png, account-scrolled.png | `#/account` |
 | settings.png, settings-scrolled.png, settings-en.png, settings-light.png | `#/settings` |
-| armario.png | `#/armario` |
 | donaciones.png | `#/donaciones` |
 | command-palette.png, command-palette-query.png | palette open / query "set" |
 | instance-wizard.png | Home → "+ Nueva Instancia" |
@@ -532,14 +530,12 @@ Every reference screenshot was re-taken with the Slint app
 | Instance wizard | done | 3 steps; preselected version from VersionArmory |
 | InstanceHub (`#/instances/:name`) | done | config / servers / mods / danger tabs + live console; capture tools toggle (Replay Mod install/remove) |
 | PiP launch log | done | Space / palette / hub button |
-| Server Radar (`#/servers`) + ServerRadarCard | done | |
 | VersionArmory (`#/library/versions`) | done | manifest unreachable in the sandbox (error card matches the reference); rows checked with `ESPECTRAL_SHOT_LIB=versions-fake` |
 | ImportCenter (`#/library/import`) | done | dropzone border fainter than the reference (dashed CSS border approximated) |
 | MrpackModal | done | hosted by Home and ImportCenter; OS drag & drop |
 | ModCatalog (`#/mods`) | done | the filter placeholder stays hard-coded Spanish, as in the Svelte page |
-| Client Suite (`#/client`) | done | |
-| AccountVault + Skin Atelier (`#/account`) | done | 3D viewer, gallery preview / try / apply / rename / delete; MSA device-code flow not exercised (no network) |
-| Wardrobe (`#/armario`) | done | Discord-linked states not exercised visually (no Discord session in the sandbox) |
+| AccountVault + Skin Atelier + wardrobe (`#/account`) | done | 3D viewer, gallery preview / try / apply / rename / delete; identity verification and cosmetics folded in from the old `#/armario` page; MSA device-code flow not exercised (no network); Discord-linked states not exercised visually (no Discord session in the sandbox) |
+| ServerRadarCard (Home server strip) | done | compact card only; the Server Radar page and the Cliente / Suite pages were removed (in-game configuration through the Espectral Suite) |
 | AccountPopover | done | |
 | Settings (`#/settings`) | done | incl. "Acceso para agentes" (MCP): toggle, safety rules, JSON/TOML config copy, token path + rotate, allowlist editor. Deliberate difference: the blocked-host warning also catches `host:port` forms (`play.uhce.top:25565`), which the Svelte check let through |
 | Donations (`#/donaciones`) | done | |
@@ -567,11 +563,10 @@ Release build: 14m52s with `-j 2`, peak 12.9 GB used system-wide.
 
 PSS from `/proc/<pid>/smaps_rollup`; CPU = utime+stime ticks (1 tick = 10 ms)
 over 20 s. (a) idle on Home 20 s after start; (b) on Home after visiting every
-route (instance hub + 3 tabs, servers, versions, import, mods, client,
-account, settings, donations, wardrobe) via `ESPECTRAL_TOUR`; (c) Skin Atelier
-(`#/account`) with the 3D viewer spinning (a gallery skin previewed in the
-stage — the Wardrobe page `#/armario` has no viewer). Offline account "Steve",
-anonymous Discord session. Scripts: scratchpad `mem.sh` / `mem-inner.sh`.
+route (instance hub + 3 tabs, versions, import, mods, account, settings,
+donations) via `ESPECTRAL_TOUR`; (c) Skin Atelier (`#/account`) with the 3D
+viewer spinning (a gallery skin previewed in the stage). Offline account
+"Steve", anonymous Discord session. Scripts: scratchpad `mem.sh` / `mem-inner.sh`.
 
 | Backend | (a) Home idle | (b) after all pages | (c) skin viewer spinning | idle CPU (a) / (b) | CPU (c) |
 |---|---|---|---|---|---|

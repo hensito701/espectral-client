@@ -28,13 +28,7 @@ thread_local! {
     static LAUNCHES: RefCell<Vec<LaunchHandle>> = const { RefCell::new(Vec::new()) };
     static CTX: RefCell<Option<Ctx>> = const { RefCell::new(None) };
     static POLL: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
-    static SERVERS: RefCell<Vec<ServerStatus>> = const { RefCell::new(Vec::new()) };
     static SERVER_POLL: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
-}
-
-/// Last fetched server statuses (UI thread).
-pub fn servers() -> Vec<ServerStatus> {
-    SERVERS.with(|v| v.borrow().clone())
 }
 
 /// Last fetched instance list (UI thread).
@@ -74,10 +68,9 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     s.on_refresh_instances(refresh_instances);
     s.on_refresh_accounts(refresh_accounts);
     s.on_refresh_launches(refresh_launches);
-    s.on_refresh_servers(refresh_servers);
-    // servers: fetched + polled every 60 s only while a page that shows them is open
+    // servers: fetched + polled every 60 s only while the Home strip is shown
     router::on_route(|_ui, route| {
-        let wants = matches!(route.page, Page::Home | Page::Servers);
+        let wants = route.page == Page::Home;
         SERVER_POLL.with(|p| {
             let mut p = p.borrow_mut();
             if wants && p.is_none() {
@@ -86,7 +79,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
                 // first frame. It re-checks the route so leaving the page
                 // before it fires cancels it.
                 slint::Timer::single_shot(Duration::from_millis(300), || {
-                    if matches!(router::current().page, Page::Home | Page::Servers) {
+                    if router::current().page == Page::Home {
                         refresh_servers();
                     }
                 });
@@ -253,10 +246,7 @@ pub fn refresh_servers() {
         },
         |ui, (list, icons)| {
             let rows: Vec<ServerRow> = list.iter().zip(icons).map(|(s, icon)| server_row(s, icon)).collect();
-            SERVERS.with(|v| *v.borrow_mut() = list);
-            let s = ui.global::<AppState>();
-            s.set_servers(ModelRc::new(VecModel::from(rows)));
-            s.set_servers_loaded(true);
+            ui.global::<AppState>().set_servers(ModelRc::new(VecModel::from(rows)));
         },
     );
 }

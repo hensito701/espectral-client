@@ -1,14 +1,5 @@
 {
   "es": {
-    "nav.wardrobe": "Armario",
-    "command.nav.wardrobe": "Ir al Armario",
-    "command.nav.wardrobeDesc": "Verificación de identidad, Discord y cosméticos de supporter",
-    "wardrobe.title": "Armario",
-    "wardrobe.subtitle": "Verifica tu cuenta de Minecraft, vincula Discord y consulta tus cosméticos de supporter. Lo que llevas se elige en el juego con Mayús derecho.",
-    "wardrobe.tag": "IDENTIDAD Y COSMÉTICOS",
-    "wardrobe.account.picker": "Cuenta",
-    "wardrobe.account.none": "No hay cuentas registradas. Añade una en la Bóveda de Cuentas.",
-    "wardrobe.account.openVault": "Abrir Bóveda de Cuentas",
     "wardrobe.identity.title": "Identidad Espectral",
     "wardrobe.identity.subtitle": "Prueba de propiedad del UUID de Minecraft y vínculo con Discord.",
     "wardrobe.identity.verified": "Minecraft verificado",
@@ -45,18 +36,10 @@
     "wardrobe.loadError": "El motor local no responde: {error}",
     "wardrobe.retry": "Reintentar",
     "wardrobe.disclaimer": "NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.",
-    "pav.wardrobeLink": "Ver mi Armario →"
+    "pav.wardrobeLink": "Ver mi identidad y cosméticos →",
+    "wardrobe.identity.none": "No hay una cuenta activa con identidad Espectral."
   },
   "en": {
-    "nav.wardrobe": "Wardrobe",
-    "command.nav.wardrobe": "Go to Wardrobe",
-    "command.nav.wardrobeDesc": "Identity verification, Discord link, and supporter cosmetics",
-    "wardrobe.title": "Wardrobe",
-    "wardrobe.subtitle": "Verify your Minecraft account, link Discord and check your supporter cosmetics. What you wear is chosen in game with Right Shift.",
-    "wardrobe.tag": "IDENTITY & COSMETICS",
-    "wardrobe.account.picker": "Account",
-    "wardrobe.account.none": "No accounts registered. Add one in the Account Vault.",
-    "wardrobe.account.openVault": "Open Account Vault",
     "wardrobe.identity.title": "Espectral Identity",
     "wardrobe.identity.subtitle": "Minecraft UUID ownership proof and Discord link.",
     "wardrobe.identity.verified": "Minecraft verified",
@@ -93,6 +76,7 @@
     "wardrobe.loadError": "Local engine unreachable: {error}",
     "wardrobe.retry": "Retry",
     "wardrobe.disclaimer": "NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.",
-    "pav.wardrobeLink": "View my Wardrobe →"
+    "pav.wardrobeLink": "View my identity & cosmetics →",
+    "wardrobe.identity.none": "No active account with an Espectral identity."
   }
 }

@@ -1015,7 +1015,7 @@ component RecentSection inherits Rectangle {
             VText { text: T.tr("import.recent.title"); font-size: Theme.text-base; font-weight: 700; }
             VerticalLayout {
                 alignment: center;
-                Badge { text: T.tr("import.recent.badge"); variant: BadgeVariant.accent; pixel: true; }
+                Badge { text: T.tr("import.recent.badge"); variant: BadgeVariant.accent; }
             }
             Rectangle { horizontal-stretch: 1; }
             VText {
@@ -1056,7 +1056,7 @@ export component ImportPage inherits Rectangle {
                 alignment: start;
                 VerticalLayout {
                     alignment: center;
-                    Badge { text: "MIGRATION & PACKS"; variant: BadgeVariant.accent; pixel: true; }
+                    Badge { text: "MIGRATION & PACKS"; variant: BadgeVariant.accent; }
                 }
                 VText { text: "#/library/import"; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; opacity: 0.8; }
             }

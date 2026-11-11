@@ -67,6 +67,7 @@ component PlayButton inherits Rectangle {
                 color: root.running ? #ffffff : Theme.on-gold;
                 font-family: Theme.font-pixel;
                 font-size: Theme.pix(16px);
+                font-weight: 700;
                 vertical-alignment: center;
             }
         }
@@ -129,24 +130,26 @@ export component TelemetryCapsule inherits Rectangle {
     changed instance-name => { HomeBridge.capsule-target(self.instance-name); }
     init => { HomeBridge.capsule-target(self.instance-name); }
 
-    // dock: padding 0 16px 16px, capsule max 960px centered
-    height: 64px + 4px + Theme.space-4;
+    // The capsule is a section of the page, not a floating dock: it spans the
+    // content column (its left edge lines up with the instance title) and its
+    // face leaves the 4px the hard shadow hangs off to the right.
+    height: 64px + 4px;
     min-width: 0;
 
-    // hard shadow block under the dock
+    // hard shadow block under the capsule
     Rectangle {
-        x: max(Theme.space-4, (parent.width - self.width) / 2) + 4px;
+        x: 4px;
         y: 4px;
-        width: min(960px, root.width - 2 * Theme.space-4);
+        width: root.width - 4px;
         height: 64px;
         border-radius: Theme.radius-lg;
         background: root.running ? Theme.brand-purple : Theme.brand-ink;
     }
 
     capsule := Rectangle {
-        x: max(Theme.space-4, (parent.width - self.width) / 2);
+        x: 0;
         y: 0;
-        width: min(960px, root.width - 2 * Theme.space-4);
+        width: root.width - 4px;
         height: 64px;
         border-radius: Theme.radius-lg;
         background: Theme.card-bg;
@@ -338,22 +341,36 @@ export component TelemetryCapsule inherits Rectangle {
                     }
                     if root.instance-name != "" && HomeBridge.aot-chip-kind != "" && HomeBridge.capsule-instance == root.instance-name: VerticalLayout {
                         alignment: center;
-                        Rectangle {
+                        aot-chip := Rectangle {
                             property <string> kind: HomeBridge.aot-chip-kind;
+                            property <color> fg: kind == "ok" ? Theme.accent-green : kind == "warn" ? Theme.accent-alt : Theme.muted;
                             height: chip.preferred-height + 8px;
-                            min-width: chip.preferred-width + 20px;
+                            min-width: chip.preferred-width + 6px;
                             border-radius: Theme.radius-xs;
                             border-width: 2px;
                             border-color: kind == "ok" ? Theme.accent-green : kind == "warn" ? Theme.accent-alt : Theme.border-solid;
                             background: kind == "ok" ? Theme.accent-green.with-alpha(0.14) : kind == "warn" ? Theme.accent-alt.with-alpha(0.14) : Theme.card-bg-soft;
                             opacity: kind == "off" ? 0.85 : 1;
-                            chip := Text {
-                                text: "⚡ " + T.tr(HomeBridge.aot-chip-key);
-                                color: parent.kind == "ok" ? Theme.accent-green : parent.kind == "warn" ? Theme.accent-alt : Theme.muted;
-                                font-family: Theme.font-pixel;
-                                font-size: Theme.pix(8px);
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
+                            chip := HorizontalLayout {
+                                width: parent.width;
+                                height: parent.height;
+                                padding-left: 8px;
+                                padding-right: 10px;
+                                spacing: 4px;
+                                alignment: center;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Icon { data: Icons.zap; filled: true; weight: 0; size: 10px; color: aot-chip.fg; }
+                                }
+                                Text {
+                                    text: T.tr(HomeBridge.aot-chip-key);
+                                    color: aot-chip.fg;
+                                    font-family: Theme.label-family(8px);
+                                    font-size: Theme.label-size(8px);
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
                             }
                         }
                     }

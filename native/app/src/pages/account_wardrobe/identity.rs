@@ -1,7 +1,9 @@
-//! Wardrobe (#/armario, Wardrobe.svelte): per-account identity verification,
-//! Discord link (system browser + poll), supporter / MVP flags and the hidden
-//! players list. Cosmetic choices (item per slot, sharing, emotes) live in the
-//! game now (Suite → Cosméticos), so this page only points there.
+//! Espectral identity of the account on the pedestal — the sections that used
+//! to be the Armario page (#/armario): Minecraft verification, Discord link
+//! (system browser + poll), supporter / MVP flags, the cosmetics pointer and
+//! the hidden players list. They live on #/account now, follow the ACTIVE
+//! account (the one the Cuenta page shows on the pedestal) and load together
+//! with the vault when the route is entered.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -9,28 +11,24 @@ use std::time::Duration;
 
 use espectral_engine::download::FetchOptions;
 use espectral_engine::types::{
-    CosmeticsAccountState, CosmeticsPatch, CosmeticsState, IdentityAccount, IdentityState, PublicAccount, TokenKind,
+    CosmeticsAccountState, CosmeticsPatch, CosmeticsState, IdentityAccount, IdentityState, TokenKind,
 };
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use super::{err_msg, valid_mc_name};
 use crate::bridge::Ctx;
 use crate::router::{self, Route};
-use crate::{i18n, prefs, toast, util};
-use crate::{AccountBridge, AppWindow, Page, WardrobeAccount};
+use crate::{i18n, toast, util};
+use crate::{AccountBridge, AppWindow, EspectralIdentity, Page};
 
-const PREF_ACCOUNT: &str = "wardrobe.account";
 const LINK_POLL: Duration = Duration::from_millis(2000);
 const LINK_POLL_MAX: u32 = 90;
 
 #[derive(Default)]
 struct State {
-    accounts: Vec<PublicAccount>,
-    avatars: HashMap<String, SharedPixelBuffer<Rgba8Pixel>>,
     identity: Option<IdentityState>,
     cosmetics: Option<CosmeticsState>,
-    selected: String,
-    // editable draft (per selected account): only hidden players remain here
+    // editable draft (per active account): only hidden players remain here
     hidden: Vec<String>,
     saving: bool,
     pending: Option<CosmeticsPatch>,
@@ -60,39 +58,43 @@ fn norm(uuid: &str) -> String {
     uuid.replace('-', "").to_lowercase()
 }
 
+/// Flat UUID of the account on the pedestal (level with the Cuenta roster).
+fn active_flat() -> Option<String> {
+    super::vault::active_account().map(|a| norm(&a.uuid))
+}
+
+/// The identity entry of the active account, if the snapshot knows it.
+fn active_identity() -> Option<IdentityAccount> {
+    let active = active_flat()?;
+    ST.with(|s| {
+        s.borrow().identity.as_ref().and_then(|i| i.accounts.iter().find(|a| a.uuid == active).cloned())
+    })
+}
+
 pub fn init(init_ctx: &Ctx, init_ui: &AppWindow) {
     CTX.with(|c| *c.borrow_mut() = Some(init_ctx.clone()));
-    ST.with(|s| s.borrow_mut().selected = prefs::get_str(PREF_ACCOUNT).unwrap_or_default());
     let b = bridge(init_ui);
-    b.on_w_load(load);
-    b.on_w_select(|i| {
-        let uuid = ST.with(|s| {
-            s.borrow().identity.as_ref().and_then(|id| id.accounts.get(i.max(0) as usize)).map(|a| a.uuid.clone())
-        });
-        if let Some(uuid) = uuid {
-            select(uuid);
-        }
-    });
-    b.on_w_verify(verify);
-    b.on_w_refresh_flags(refresh_flags);
-    b.on_w_link(link_discord);
-    b.on_w_cancel_link(|| {
+    b.on_identity_load(load);
+    b.on_identity_verify(verify);
+    b.on_identity_refresh_flags(refresh_flags);
+    b.on_identity_link(link_discord);
+    b.on_identity_cancel_link(|| {
         ST.with(|s| s.borrow_mut().link_gen += 1);
         if let Some(ui) = ui() {
-            bridge(&ui).set_w_linking(false);
+            bridge(&ui).set_identity_linking(false);
         }
     });
-    b.on_w_unlink(unlink_discord);
-    b.on_w_add_hidden(|name| add_hidden(name.trim().to_string()));
-    b.on_w_remove_hidden(|name| remove_hidden(name.to_string()));
+    b.on_identity_unlink(unlink_discord);
+    b.on_identity_add_hidden(|name| add_hidden(name.trim().to_string()));
+    b.on_identity_remove_hidden(|name| remove_hidden(name.to_string()));
 
     router::on_route(|ui, route: &Route| {
-        if route.page == Page::Wardrobe {
-            // fresh component (Svelte onMount): stop a link poll from a previous visit
-            ST.with(|s| s.borrow_mut().link_gen += 1);
+        // any navigation invalidates a Discord poll started by the last visit
+        ST.with(|s| s.borrow_mut().link_gen += 1);
+        if route.page == Page::Account {
             let b = bridge(ui);
-            b.set_w_linking(false);
-            b.set_w_hidden_error("".into());
+            b.set_identity_linking(false);
+            b.set_identity_hidden_error("".into());
             load();
         }
     });
@@ -106,86 +108,65 @@ fn load() {
     let Some(c) = ctx() else { return };
     if let Some(ui) = c.ui() {
         let b = bridge(&ui);
-        b.set_w_loading(true);
-        b.set_w_load_error("".into());
+        b.set_identity_loading(true);
+        b.set_identity_load_error("".into());
     }
     c.call_with(
         |e| async move {
-            let (accounts, identity, cosmetics) =
-                tokio::try_join!(e.list_accounts(), e.identity_state(), e.get_cosmetics())?;
-            let mut avatars = HashMap::new();
-            for a in &accounts {
-                if a.has_avatar {
-                    if let Some(buf) = e.account_avatar(&a.username).await.ok().and_then(|b| util::decode_png(&b)) {
-                        avatars.insert(a.username.clone(), buf);
-                    }
-                }
-            }
-            Ok((accounts, avatars, identity, cosmetics))
+            let (identity, cosmetics) = tokio::try_join!(e.identity_state(), e.get_cosmetics())?;
+            Ok((identity, cosmetics))
         },
-        |ui, (accounts, avatars, identity, cosmetics)| {
+        |ui, (identity, cosmetics)| {
             ST.with(|s| {
                 let mut s = s.borrow_mut();
-                s.accounts = accounts;
-                s.avatars = avatars;
                 s.identity = Some(identity);
                 s.cosmetics = Some(cosmetics);
             });
-            bridge(ui).set_w_loading(false);
-            fix_selection();
+            bridge(ui).set_identity_loading(false);
             hydrate();
             publish();
         },
         |ui, e| {
             let b = bridge(ui);
-            b.set_w_loading(false);
-            b.set_w_load_error(err_msg(&e).into());
+            b.set_identity_loading(false);
+            b.set_identity_load_error(err_msg(&e).into());
         },
     );
 }
 
-/// `account = find(selectedUuid) ?? accounts[0]` + persist the selection.
-fn fix_selection() {
-    let sel = ST.with(|s| {
-        let mut s = s.borrow_mut();
-        let list = s.identity.as_ref().map(|i| i.accounts.clone()).unwrap_or_default();
-        let found = list.iter().any(|a| a.uuid == s.selected);
-        if !found {
-            s.selected = list.first().map(|a| a.uuid.clone()).unwrap_or_default();
-        }
-        s.selected.clone()
-    });
-    if !sel.is_empty() {
-        prefs::set(PREF_ACCOUNT, serde_json::Value::from(sel));
-    }
-}
-
-fn select(uuid: String) {
-    let same = ST.with(|s| s.borrow().selected == uuid);
-    if same {
+/// Called by the vault after the account list changed (switch, create, logout,
+/// import): the identity sections follow the new account on the pedestal,
+/// refetching the snapshot only when it does not know that account yet.
+pub(super) fn on_accounts_changed() {
+    // a fetch already in flight publishes the new active account when it lands
+    if ui().is_some_and(|u| bridge(&u).get_identity_loading()) {
         return;
     }
-    ST.with(|s| s.borrow_mut().selected = uuid);
-    fix_selection();
+    if ST.with(|s| s.borrow().identity.is_some()) && active_identity().is_none() && active_flat().is_some() {
+        load();
+        return;
+    }
     hydrate();
     publish();
 }
 
-fn selected_identity() -> Option<IdentityAccount> {
-    ST.with(|s| {
-        let s = s.borrow();
-        s.identity.as_ref().and_then(|i| i.accounts.iter().find(|a| a.uuid == s.selected).cloned())
-    })
-}
-
 /// Hydrate the editable draft (the hidden players list) from the server state.
+/// An account the snapshot does not know yet starts with an empty list, never
+/// with the previous account's names.
 fn hydrate() {
-    ST.with(|s| {
-        let mut s = s.borrow_mut();
-        let Some(cos) = s.cosmetics.as_ref() else { return };
-        let Some(st) = cos.accounts.get(&s.selected).cloned() else { return };
-        s.hidden = st.hidden_players.clone();
+    let Some(active) = active_flat() else {
+        ST.with(|s| s.borrow_mut().hidden.clear());
+        return;
+    };
+    let next = ST.with(|s| {
+        s.borrow()
+            .cosmetics
+            .as_ref()
+            .and_then(|cos| cos.accounts.get(&active))
+            .map(|st| st.hidden_players.clone())
+            .unwrap_or_default()
     });
+    ST.with(|s| s.borrow_mut().hidden = next);
 }
 
 // ---------------------------------------------------------------------------
@@ -207,48 +188,51 @@ fn discord_avatar_url(d: &espectral_engine::types::IdentityDiscord) -> Option<St
     d.avatar.as_ref().map(|a| format!("https://cdn.discordapp.com/avatars/{}/{}.png?size=64", d.id, a))
 }
 
-/// Push the whole wardrobe state into AccountBridge.
+/// Push the identity of the active account into AccountBridge.
 fn publish() {
     let Some(ui) = ui() else { return };
     let b = bridge(&ui);
-    let mut want_discord: Vec<String> = vec![];
-    ST.with(|s| {
+    let active = active_flat();
+    let public = super::vault::active_account();
+    let mut want_discord = vec![];
+    let row = ST.with(|s| {
         let s = s.borrow();
-        let ids = s.identity.as_ref().map(|i| i.accounts.clone()).unwrap_or_default();
-        let rows: Vec<WardrobeAccount> = ids
-            .iter()
-            .map(|a| {
-                let public = s.accounts.iter().find(|p| norm(&p.uuid) == a.uuid);
-                let avatar = public.and_then(|p| s.avatars.get(&p.username)).cloned();
-                let durl = a.discord.as_ref().and_then(discord_avatar_url);
-                let davatar = durl.as_ref().and_then(|u| s.discord_avatars.get(u)).cloned();
-                if let Some(u) = durl.filter(|u| !s.discord_avatars.contains_key(u)) {
-                    want_discord.push(u);
-                }
-                WardrobeAccount {
-                    uuid: a.uuid.as_str().into(),
-                    username: a.username.as_str().into(),
-                    verified: a.verified,
-                    supporter: a.flags.iter().any(|f| f == "supporter"),
-                    mvp: a.flags.iter().any(|f| f == "mvp"),
-                    offline: public.is_some_and(|p| p.token_kind == TokenKind::Offline),
-                    has_discord: a.discord.is_some(),
-                    discord_username: a.discord.as_ref().map(|d| d.username.as_str()).unwrap_or("").into(),
-                    has_discord_avatar: davatar.is_some(),
-                    discord_avatar: davatar.map(util::to_image).unwrap_or_default(),
-                    grant_exp_es: grant_exp(a, i18n::Lang::Es).into(),
-                    grant_exp_en: grant_exp(a, i18n::Lang::En).into(),
-                    has_avatar: avatar.is_some(),
-                    avatar: avatar.map(util::to_image).unwrap_or_default(),
-                }
-            })
-            .collect();
-        let sel = ids.iter().position(|a| a.uuid == s.selected).map(|i| i as i32).unwrap_or(-1);
-        b.set_w_accounts(ModelRc::new(VecModel::from(rows)));
-        b.set_w_selected(sel);
-        let hidden: Vec<SharedString> = s.hidden.iter().map(|h| SharedString::from(h.as_str())).collect();
-        b.set_w_hidden(ModelRc::new(VecModel::from(hidden)));
+        let acc = active
+            .as_ref()
+            .and_then(|u| s.identity.as_ref().and_then(|i| i.accounts.iter().find(|a| &a.uuid == u)))?;
+        let durl = acc.discord.as_ref().and_then(discord_avatar_url);
+        let davatar = durl.as_ref().and_then(|u| s.discord_avatars.get(u)).cloned();
+        if let Some(u) = durl.filter(|u| !s.discord_avatars.contains_key(u)) {
+            want_discord.push(u);
+        }
+        Some(EspectralIdentity {
+            username: acc.username.as_str().into(),
+            verified: acc.verified,
+            supporter: acc.flags.iter().any(|f| f == "supporter"),
+            mvp: acc.flags.iter().any(|f| f == "mvp"),
+            offline: public.as_ref().is_some_and(|p| p.token_kind == TokenKind::Offline),
+            has_discord: acc.discord.is_some(),
+            discord_username: acc.discord.as_ref().map(|d| d.username.as_str()).unwrap_or("").into(),
+            has_discord_avatar: davatar.is_some(),
+            discord_avatar: davatar.map(util::to_image).unwrap_or_default(),
+            grant_exp_es: grant_exp(acc, i18n::Lang::Es).into(),
+            grant_exp_en: grant_exp(acc, i18n::Lang::En).into(),
+        })
     });
+    match &row {
+        Some(row) => {
+            b.set_identity(row.clone());
+            b.set_identity_available(true);
+        }
+        None => b.set_identity_available(false),
+    }
+    let hidden: Vec<SharedString> = ST.with(|s| {
+        if row.is_none() {
+            return vec![];
+        }
+        s.borrow().hidden.iter().map(|h| SharedString::from(h.as_str())).collect()
+    });
+    b.set_identity_hidden(ModelRc::new(VecModel::from(hidden)));
     for url in want_discord {
         fetch_discord_avatar(url);
     }
@@ -292,7 +276,6 @@ fn reload_identity(toast_verified: bool) {
         |e| async move { e.identity_state().await },
         move |_ui, identity| {
             ST.with(|s| s.borrow_mut().identity = Some(identity));
-            fix_selection();
             publish();
             if toast_verified {
                 toast::ok(i18n::t("wardrobe.identity.verified"));
@@ -308,21 +291,21 @@ fn save_error(e: &espectral_engine::EngineError) {
 
 fn verify() {
     let Some(ui) = ui() else { return };
-    let Some(acc) = selected_identity() else { return };
+    let Some(acc) = active_identity() else { return };
     let b = bridge(&ui);
-    if b.get_w_verifying() {
+    if b.get_identity_verifying() {
         return;
     }
-    b.set_w_verifying(true);
+    b.set_identity_verifying(true);
     let Some(c) = ctx() else { return };
     c.call_with(
         move |e| async move { e.verify_identity(&acc.uuid).await },
         |ui, _| {
-            bridge(ui).set_w_verifying(false);
+            bridge(ui).set_identity_verifying(false);
             reload_identity(true);
         },
         |ui, e| {
-            bridge(ui).set_w_verifying(false);
+            bridge(ui).set_identity_verifying(false);
             save_error(&e);
         },
     );
@@ -330,21 +313,21 @@ fn verify() {
 
 fn refresh_flags() {
     let Some(ui) = ui() else { return };
-    let Some(acc) = selected_identity() else { return };
+    let Some(acc) = active_identity() else { return };
     let b = bridge(&ui);
-    if b.get_w_refreshing() {
+    if b.get_identity_refreshing() {
         return;
     }
-    b.set_w_refreshing(true);
+    b.set_identity_refreshing(true);
     let Some(c) = ctx() else { return };
     c.call_with(
         move |e| async move { e.identity_refresh(&acc.uuid).await },
         |ui, _| {
-            bridge(ui).set_w_refreshing(false);
+            bridge(ui).set_identity_refreshing(false);
             reload_identity(false);
         },
         |ui, e| {
-            bridge(ui).set_w_refreshing(false);
+            bridge(ui).set_identity_refreshing(false);
             save_error(&e);
         },
     );
@@ -354,12 +337,12 @@ fn refresh_flags() {
 /// then poll the identity until the account shows a linked Discord.
 fn link_discord() {
     let Some(ui) = ui() else { return };
-    let Some(acc) = selected_identity() else { return };
+    let Some(acc) = active_identity() else { return };
     let b = bridge(&ui);
-    if b.get_w_linking() {
+    if b.get_identity_linking() {
         return;
     }
-    b.set_w_linking(true);
+    b.set_identity_linking(true);
     let gen = ST.with(|s| {
         let mut s = s.borrow_mut();
         s.link_gen += 1;
@@ -385,13 +368,13 @@ fn link_discord() {
                 reload_identity(false);
             }
             if open::that_detached(&url).is_err() {
-                bridge(ui).set_w_linking(false);
+                bridge(ui).set_identity_linking(false);
                 return;
             }
             poll_link(c2.clone(), uuid, gen);
         },
         |ui, e| {
-            bridge(ui).set_w_linking(false);
+            bridge(ui).set_identity_linking(false);
             if e.has_code("DISCORD_CALLBACK_UNAVAILABLE") {
                 toast::err(i18n::t("gate.callbackBusy"));
             } else {
@@ -426,7 +409,7 @@ fn poll_link(c: Ctx, uuid: String, gen: u64) {
                 ST.with(|s| s.borrow_mut().identity = Some(identity));
                 publish();
                 if linked {
-                    bridge(ui).set_w_linking(false);
+                    bridge(ui).set_identity_linking(false);
                     toast::ok(i18n::t("wardrobe.discord.linked"));
                 }
             });
@@ -436,7 +419,7 @@ fn poll_link(c: Ctx, uuid: String, gen: u64) {
         }
         c2.on_ui(move |ui| {
             if ST.with(|s| s.borrow().link_gen) == gen {
-                bridge(ui).set_w_linking(false);
+                bridge(ui).set_identity_linking(false);
             }
         });
     });
@@ -444,21 +427,21 @@ fn poll_link(c: Ctx, uuid: String, gen: u64) {
 
 fn unlink_discord() {
     let Some(ui) = ui() else { return };
-    let Some(acc) = selected_identity() else { return };
+    let Some(acc) = active_identity() else { return };
     let b = bridge(&ui);
-    if b.get_w_unlinking() {
+    if b.get_identity_unlinking() {
         return;
     }
-    b.set_w_unlinking(true);
+    b.set_identity_unlinking(true);
     let Some(c) = ctx() else { return };
     c.call_with(
         move |e| async move { e.identity_discord_unlink(&acc.uuid).await },
         |ui, _| {
-            bridge(ui).set_w_unlinking(false);
+            bridge(ui).set_identity_unlinking(false);
             reload_identity(false);
         },
         |ui, e| {
-            bridge(ui).set_w_unlinking(false);
+            bridge(ui).set_identity_unlinking(false);
             save_error(&e);
         },
     );
@@ -475,7 +458,7 @@ fn merge(into: &mut CosmeticsPatch, p: CosmeticsPatch) {
 }
 
 fn save(patch: CosmeticsPatch) {
-    let Some(uuid) = selected_identity().map(|a| a.uuid) else { return };
+    let Some(uuid) = active_flat() else { return };
     let busy = ST.with(|s| {
         let mut s = s.borrow_mut();
         if s.saving {
@@ -513,7 +496,7 @@ fn put(uuid: String, patch: CosmeticsPatch) {
                 None => {
                     ST.with(|s| s.borrow_mut().saving = false);
                     toast::ok(i18n::t("wardrobe.saved"));
-                    hydrate_if_selected(&u2);
+                    hydrate_if_active(&u2);
                     publish();
                 }
             }
@@ -547,8 +530,8 @@ fn finish_after_error() {
     }
 }
 
-fn hydrate_if_selected(uuid: &str) {
-    if ST.with(|s| s.borrow().selected == uuid) {
+fn hydrate_if_active(uuid: &str) {
+    if active_flat().as_deref() == Some(uuid) {
         hydrate();
     }
 }
@@ -557,11 +540,11 @@ fn add_hidden(name: String) {
     let Some(ui) = ui() else { return };
     let b = bridge(&ui);
     if !valid_mc_name(&name) {
-        b.set_w_hidden_error(i18n::t("wardrobe.hidden.invalid").into());
+        b.set_identity_hidden_error(i18n::t("wardrobe.hidden.invalid").into());
         return;
     }
-    b.set_w_hidden_error("".into());
-    b.set_w_hidden_serial(b.get_w_hidden_serial() + 1); // clears the input
+    b.set_identity_hidden_error("".into());
+    b.set_identity_hidden_serial(b.get_identity_hidden_serial() + 1); // clears the input
     let next = ST.with(|s| {
         let mut s = s.borrow_mut();
         if s.hidden.iter().any(|h| h.eq_ignore_ascii_case(&name)) {

@@ -34,7 +34,9 @@ The complete v2 experience is Fabric-first.
 | Other versions and loaders | Launcher/core behavior only |
 | macOS | No v2 commitment |
 
-The performance preset retains all seven expected components, installed and enabled: **Fabric API, Sodium, Iris, Lithium, FerriteCore, Krypton, and Mod Menu**. Diagnostic work may temporarily ablate a mod to measure its cost, but no release or performance claim may be obtained by silently removing one.
+The performance preset retains all eight expected components, installed and enabled: **Fabric API, Sodium, Iris, ImmediatelyFast, Lithium, FerriteCore, Krypton, and Mod Menu**. Diagnostic work may temporarily ablate a mod to measure its cost, but no release or performance claim may be obtained by silently removing one.
+
+*Set revision (2026-11-11):* ImmediatelyFast joined the preset — it batches immediate-mode GUI/text draws and is the only candidate that is open source (LGPL-3.0-or-later), ships stable releases for 1.21.11, 26.2 and 26.3, and touches none of the classes the branding mod rewrites. EntityCulling (non-free licence, entity renderer rewrite), ModernFix (no Fabric 26.x builds in the canonical project), Dynamic FPS (fights agent launches' no-throttle rule), More Culling (Cloth Config dependency, release gaps for 1.21.6–1.21.10), BadOptimizations (cancels the lightmap extraction our fullbright hooks) and ScalableLux/C2ME/Noisium/Sodium Extra were rejected. Measurements below marked "seven-mod" predate this change.
 
 ## Workstream 1: Faster boot
 
@@ -328,7 +330,7 @@ All later v2 work must satisfy:
 - Heap after GC no worse than **5%**.
 - No increase in frames above 50 ms.
 - Balanced screenshots and settings remain equivalent.
-- All seven performance-stack components remain present and enabled.
+- All eight performance-stack components remain present and enabled.
 
 A 10–15% p95 improvement and 5–10% heap reduction are research goals, not release promises, until representative scene baselines establish normal variance.
 
@@ -364,7 +366,7 @@ When `suite.enabled` is off, every Espectral-owned in-world effect is suppressed
 Turning the suite off does not:
 
 - Mutate granular feature choices.
-- Disable the seven performance mods, which require restart-level changes.
+- Disable the eight performance mods, which require restart-level changes.
 - Disable launcher authentication, updating, or telemetry preferences.
 - Remove the branded menu entry, Right Shift recovery, or Apoyar link.
 
@@ -718,7 +720,7 @@ This release remains useful without a backend.
 V2 stable requires all of the following:
 
 - Normal full-stack AOT meets the Fedora ≤9.5-second engineering gate. *(met 2026-09-11: 7.19 s median `menu_ms`, 20/20 linked-class proof — see Workstream 1 "Measured outcome")*
-- The exact seven-mod preset and Balanced visuals remain intact.
+- The exact eight-mod preset and Balanced visuals remain intact.
 - Custom UI and master state pass on both supported Fabric versions and required resolutions. *(26.2 side met 2026-09-12 at 854×480 and a 1920-wide window — see Workstream 3 "Measured outcome"; the 1.21.11 lane is still unverified on this box, so this gate stays open)*
 - Spoofed brand, local tier, peer URL, tampered asset, and invalid grant cannot produce paid cosmetics on a conforming viewer.
 - Share-off sends no presence publication.
@@ -750,7 +752,7 @@ The accurate formulation is:
 
 > **No Minecraft plugin jar or configuration changes. One new first-party Espectral backend supports verified entitlements, participating-client cosmetics, and optional telemetry.**
 
-Performance claims must name the hardware, operating system, Minecraft version, loader, JDK, mod stack, visual profile, cache state, and benchmark method. FastClient’s 60-mod result is not directly comparable with Espectral’s seven-mod preset; Lunar and Feather comparisons remain suspended until equivalent reproducible automation exists.
+Performance claims must name the hardware, operating system, Minecraft version, loader, JDK, mod stack, visual profile, cache state, and benchmark method. FastClient’s 60-mod result is not directly comparable with Espectral’s preset (seven mods in the measurements above, eight since 2026-11-11); Lunar and Feather comparisons remain suspended until equivalent reproducible automation exists.
 
 ## Guiding principle
 

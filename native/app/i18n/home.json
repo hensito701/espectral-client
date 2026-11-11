@@ -10,7 +10,6 @@
     "home.quickActions": "Acciones Rápidas",
     "home.newInstance": "Nueva Instancia",
     "home.importModpack": "Importar modpack",
-    "home.clientSuite": "Suite de Cliente",
     "home.instancesRailTitle": "Mis Instancias",
     "home.noInstancesTitle": "No tienes instancias creadas",
     "home.noInstancesSubtitle": "Crea tu primera instancia de Minecraft para comenzar a jugar con el máximo rendimiento.",
@@ -20,7 +19,6 @@
     "home.serversTitle": "Servidores Destacados",
     "home.serversSubtitle": "Radar y estado en tiempo real",
     "home.noServers": "No hay servidores configurados",
-    "home.viewAllServers": "Ver todos los servidores",
     "home.motdTitle": "Anuncios y Novedades",
     "home.motdLive": "EN VIVO",
     "home.motdDefault": "¡Bienvenido a Espectral Client! Máximo rendimiento con optimización AOT FastBoot.",
@@ -133,7 +131,9 @@
     "home.dryRunCopied": "¡Copiado!",
     "home.dryRunClose": "Cerrar",
     "home.dryRunLoading": "Generando informe de dry-run...",
-    "home.capsuleTiming": "Preparación {prep}s · JVM {jvm}s"
+    "home.capsuleTiming": "Preparación {prep}s · JVM {jvm}s",
+    "client.suiteDisabled": "Suite DESACTIVADA",
+    "client.suppressed": "suprimida por la Suite"
   },
   "en": {
     "home.title": "Home",
@@ -146,7 +146,6 @@
     "home.quickActions": "Quick Actions",
     "home.newInstance": "New Instance",
     "home.importModpack": "Import Modpack",
-    "home.clientSuite": "Client Suite",
     "home.instancesRailTitle": "My Instances",
     "home.noInstancesTitle": "No instances created yet",
     "home.noInstancesSubtitle": "Create your first Minecraft instance to start playing with maximum performance.",
@@ -156,7 +155,6 @@
     "home.serversTitle": "Featured Servers",
     "home.serversSubtitle": "Real-time radar and status",
     "home.noServers": "No servers configured",
-    "home.viewAllServers": "View all servers",
     "home.motdTitle": "News & Announcements",
     "home.motdLive": "LIVE",
     "home.motdDefault": "Welcome to Espectral Client! Maximum performance with AOT FastBoot optimization.",
@@ -269,6 +267,8 @@
     "home.dryRunCopied": "Copied!",
     "home.dryRunClose": "Close",
     "home.dryRunLoading": "Generating dry-run report...",
-    "home.capsuleTiming": "Prep {prep}s · JVM {jvm}s"
+    "home.capsuleTiming": "Prep {prep}s · JVM {jvm}s",
+    "client.suiteDisabled": "Suite DISABLED",
+    "client.suppressed": "suppressed by the Suite"
   }
 }

@@ -287,8 +287,9 @@ component VersionRowCard inherits Rectangle {
                         height: jdk.preferred-height + 4px;
                         jdk := Text {
                             text: "JDK " + root.entry.java;
-                            font-family: Theme.font-pixel;
-                            font-size: Theme.pix(8px);
+                            font-family: Theme.label-family(8px);
+                            font-size: Theme.label-size(8px);
+                            font-weight: 700;
                             letter-spacing: 0.18px;
                             color: Theme.accent-gold;
                         }
