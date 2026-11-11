@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.8.3] - 2026-11-11
 
 ### Added
 - **Cosmetics are chosen in game now.** Right Shift opens the Suite; the
