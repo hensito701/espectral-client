@@ -390,7 +390,6 @@ const ESPECTRAL_SERVERS: [EspectralServer; 3] = [
             "uhc2.espectral.es",
             "uhc3.espectral.es",
             "bingo.espectral.es",
-            "<nvh1-ip>",
         ],
         details: "Espectral UHC · MAIN",
         state: "main.uhce.top",
@@ -398,7 +397,7 @@ const ESPECTRAL_SERVERS: [EspectralServer; 3] = [
         large_text: "Espectral UHC",
     },
     EspectralServer {
-        hosts: &["mini.uhce.top", "<ovm3-ip>"],
+        hosts: &["mini.uhce.top"],
         details: "Espectral UHC · Mini",
         state: "mini.uhce.top",
         image: "espectral_logo",
@@ -1706,7 +1705,7 @@ mod tests {
         let main = presence_for_server("main.uhce.top");
         assert_eq!(main.details.as_deref(), Some("Espectral UHC · MAIN"));
         assert_eq!(main.state, "main.uhce.top");
-        for h in ["uhc2.espectral.es", "<nvh1-ip>", "MAIN.uhce.top", "main.uhce.top."] {
+        for h in ["uhc2.espectral.es", "MAIN.uhce.top", "main.uhce.top."] {
             assert_eq!(presence_for_server(h).details.as_deref(), Some("Espectral UHC · MAIN"), "{h}");
         }
         assert_eq!(presence_for_server("mini.uhce.top").details.as_deref(), Some("Espectral UHC · Mini"));

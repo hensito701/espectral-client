@@ -4,6 +4,12 @@
 //! header (10 s deadline) → grant → `mvp` → destination policy → per-sub limits
 //! → upstream connect (8 s deadline) → `OK` → bidirectional copy until EOF,
 //! idle timeout (300 s) or the daily quota runs out.
+//!
+//! Everything before `OK` must also finish inside one pre-auth deadline
+//! ([`Config::pre_auth_timeout`]); the per-stage timeouts are additionally
+//! capped by whatever is left of it. A peer that never authenticates therefore
+//! cannot hold a socket open past that deadline, and the number of such peers
+//! at once is bounded by [`Config::pre_auth_max`].
 
 use std::io::Write as _;
 use std::net::{IpAddr, SocketAddr};
@@ -43,6 +49,7 @@ impl Server {
             cfg.per_sub_daily_bytes,
             cfg.per_ip_concurrency,
             cfg.global_max,
+            cfg.pre_auth_max,
         );
         Server {
             cfg,
@@ -60,6 +67,7 @@ impl Server {
             cfg.per_sub_daily_bytes,
             cfg.per_ip_concurrency,
             cfg.global_max,
+            cfg.pre_auth_max,
         );
         Server {
             cfg,
@@ -71,11 +79,12 @@ impl Server {
     /// Binds one listener and serves it (used by the tests).
     pub async fn serve_on(self, listener: TcpListener) -> std::io::Result<()> {
         log_line(&format!(
-            "time={} event=listen addr={} workers={} global_max={}",
+            "time={} event=listen addr={} workers={} global_max={} pre_auth_max={}",
             fmt_rfc3339(now_unix()),
             listener.local_addr()?,
             self.cfg.workers,
-            self.cfg.global_max
+            self.cfg.global_max,
+            self.cfg.pre_auth_max
         ));
         self.accept_loop(listener).await
     }
@@ -167,12 +176,19 @@ impl Server {
     async fn connection(self, mut client: TcpStream, peer: SocketAddr, mut slot: Slot) -> Code {
         let mut log = ConnLog::new();
         let src = peer.ip();
+        // The whole pre-auth phase shares one deadline. Each blocking stage
+        // below is additionally capped by whatever is left of it, so a peer
+        // that stalls in one stage cannot borrow time from another.
+        let started = Instant::now();
+        let deadline = started + self.cfg.pre_auth_timeout;
 
-        // 1. Handshake line, 10 s.
+        // 1. Handshake line, `--header-timeout` (never past the pre-auth one).
+        let header_budget = self
+            .cfg
+            .header_timeout
+            .min(deadline.saturating_duration_since(Instant::now()));
         let (req, pipelined) =
-            match tokio::time::timeout(self.cfg.header_timeout, proto::read_header(&mut client))
-                .await
-            {
+            match tokio::time::timeout(header_budget, proto::read_header(&mut client)).await {
                 Ok(Ok(v)) => v,
                 Ok(Err(code)) => return self.fail(&mut client, log, src, code).await,
                 Err(_) => return self.fail(&mut client, log, src, Code::Proto).await,
@@ -202,17 +218,20 @@ impl Server {
         if self.limits.attach_sub(&mut slot, &claims.sub).is_err() {
             return self.fail(&mut client, log, src, Code::Limit).await;
         }
+        // The peer is authenticated: free its pre-auth reservation so the pool
+        // only ever holds sockets that have proved nothing yet.
+        slot.finish_pre_auth();
 
-        // 5. Upstream, 8 s.
-        let mut upstream = match tokio::time::timeout(
-            self.cfg.connect_timeout,
-            TcpStream::connect(req.dest),
-        )
-        .await
-        {
-            Ok(Ok(s)) => s,
-            _ => return self.fail(&mut client, log, src, Code::Connect).await,
-        };
+        // 5. Upstream, `--connect-timeout` (never past the pre-auth deadline).
+        let connect_budget = self
+            .cfg
+            .connect_timeout
+            .min(deadline.saturating_duration_since(Instant::now()));
+        let mut upstream =
+            match tokio::time::timeout(connect_budget, TcpStream::connect(req.dest)).await {
+                Ok(Ok(s)) => s,
+                _ => return self.fail(&mut client, log, src, Code::Connect).await,
+            };
         let _ = upstream.set_nodelay(true);
 
         // 5b. A destination behind a PROXY-aware front (`--proxy-v2`) needs the

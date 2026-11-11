@@ -6,8 +6,8 @@ never sees the player's IP. MVP-only, opt-in per server, TCP only.
 
 - Wire contract and every rule: [`../PROTOCOL.md`](../PROTOCOL.md) — canonical
   copy of the shared spec; the spec text is verbatim, with a short
-  "Relay implementation notes" block appended at the end listing the three
-  ambiguities found and how the relay resolves them (none change the wire).
+  "Relay implementation notes" block appended at the end listing the details
+  the spec leaves open and how the relay resolves them (none change the wire).
   If this README ever disagrees with `PROTOCOL.md`, the protocol wins.
 - Code: `src/` — `proto` (header line), `grant` (Ed25519 compact JWS),
   `dest` (destination policy), `limits` (concurrency/rate/quota), `server`
@@ -79,6 +79,8 @@ read from a file.
 | `--per-sub-daily-bytes <SIZE>` (`8GiB`, `8g`, plain bytes) | `RUTA_PER_SUB_DAILY_BYTES` | 8 GiB, UTC day |
 | `--per-ip-concurrency <N>` | `RUTA_PER_IP_CONCURRENCY` | 8 |
 | `--global-max <N>` | `RUTA_GLOBAL_MAX` | 400 |
+| `--pre-auth-max <N>` (concurrent connections that have not authenticated) | `RUTA_PRE_AUTH_MAX` | 64 |
+| `--pre-auth-timeout <DUR>` (whole accept→`OK` phase) | `RUTA_PRE_AUTH_TIMEOUT` | 10 s |
 | `--header-timeout <DUR>` (`10s`, `500ms`, plain seconds) | `RUTA_HEADER_TIMEOUT` | 10 s |
 | `--connect-timeout <DUR>` | `RUTA_CONNECT_TIMEOUT` | 8 s |
 | `--idle-timeout <DUR>` (no bytes either way) | `RUTA_IDLE_TIMEOUT` | 300 s |
@@ -99,13 +101,18 @@ throwaway Ed25519 key; without that env var it still uses the pinned key.
 ## Behaviour in one paragraph
 
 A client connects and writes one line
-`ERT1 <grant> <dest-ip> <dest-port>\n` (≤ 4096 bytes, 10 s). The relay answers
+`ERT1 <grant> <dest-ip> <dest-port>\n` (≤ 4096 bytes, 10 s). Everything before
+`OK` — the line, the grant check and the upstream connect — must finish inside
+`--pre-auth-timeout` (10 s), so a peer that never authenticates is closed
+rather than held open, and at most `--pre-auth-max` such peers (64) can be
+connected at once; the rest get `ERR busy`. The relay answers
 `OK\n` or `ERR <code>\n` and closes. After `OK` the socket is a transparent
 bidirectional byte pipe with `TCP_NODELAY` on both sides, 16 KiB copy buffers
 per direction, idle tracking (300 s) and byte counting. Order of checks
 (what `ERR` you get when several apply): `proto` → `auth` → `expired` →
-`notmvp` → `dest` → `limit` → `connect`; `busy` (global cap) and `limit`
-(per-source-IP cap) are decided at accept, before the header is read.
+`notmvp` → `dest` → `limit` → `connect`; `busy` (global cap or pre-auth pool
+full) and `limit` (per-source-IP cap) are decided at accept, before the header
+is read.
 
 For a destination listed in `--proxy-v2`, the relay also writes a PROXY protocol
 v2 header with the player's real address, right after connecting and before the
@@ -113,8 +120,8 @@ first Minecraft byte. See the next section.
 
 ## PROXY v2 fronts
 
-The MAIN and Meetups servers sit behind a HAProxy front on NVH1 (`<nvh1-ip>`,
-ports 25564 and 25568). That front reads the player's real address from a PROXY
+The MAIN and Meetups servers sit behind a HAProxy front on NVH1
+(ports 25564 and 25568). That front reads the player's real address from a PROXY
 protocol v2 header, which keeps AuthMe per-IP limits and AdvancedBan IP bans
 working for routed players. The relay writes the header for each `--proxy-v2`
 destination and for no other.
@@ -129,7 +136,7 @@ ports with no header, so accept the header only from the relay's egress
 address, not on every connection. On HAProxy 2.x that is roughly
 `tcp-request connection expect-proxy layer4 if { src <relay egress IP> }`; check
 the rule against the installed version. Confirm the egress IP the front sees
-(expected to be OVM2's `<ovm2-ip>`) before enabling the flags.
+(expected to be the relay host's public address) before enabling the flags.
 
 ## Log format
 
@@ -145,17 +152,32 @@ Never payload bytes, never the grant.
 
 ## Deploy (OVM2)
 
-1. Copy the static binary:
+1. Copy the static binary under a versioned name and point the unit at it:
    ```bash
-   scp target/x86_64-unknown-linux-musl/release/ruta-relay \
-     ubuntu@<ovm2-ip>:/tmp/ruta-relay
-   sudo install -m 0755 -o root -g root /tmp/ruta-relay /usr/local/bin/ruta-relay
+   scp target/x86_64-unknown-linux-musl/release/ruta-relay-<version> \
+     ovm2:/tmp/ruta-relay-<version>
+   ssh ovm2 'sudo install -m 0755 -o root -g root /tmp/ruta-relay-<version> \
+     /usr/local/bin/ruta-relay-<version>'
+   # keep the previous release next to it (ruta-relay-<old>.bak-<date>)
+   scp deploy/ruta-relay.service ovm2:/tmp/ruta-relay.service
+   ssh ovm2 'sudo install -m 0644 /tmp/ruta-relay.service \
+     /etc/systemd/system/ruta-relay.service'
    ```
-2. Install the unit:
+   `ExecStart` in the shipped unit names the **versioned** path
+   (`/usr/local/bin/ruta-relay-<version>`), so a deploy is a unit edit plus a
+   restart and a rollback is a one-line change back to the previous file.
+2. Add the host drop-in for the PROXY v2 fronts (their addresses are
+   deployment-specific and deliberately not in the repo):
+   ```ini
+   # /etc/systemd/system/ruta-relay.service.d/10-fronts.conf
+   [Service]
+   ExecStart=
+   ExecStart=/usr/local/bin/ruta-relay-<version> --listen 0.0.0.0:25565 --listen 0.0.0.0:443 \
+     --proxy-v2 <front-ip>:25564 --proxy-v2 <front-ip>:25568
+   ```
    ```bash
-   sudo install -m 0644 deploy/ruta-relay.service /etc/systemd/system/ruta-relay.service
    sudo systemctl daemon-reload
-   sudo systemctl enable --now ruta-relay
+   sudo systemctl enable --now ruta-relay   # or restart, if it was running
    ```
    The unit listens on **25565 and 443** and runs as a `DynamicUser` with only
    `CAP_NET_BIND_SERVICE` (for 443) — everything else is confined.
@@ -189,7 +211,7 @@ so it cannot be used as a pivot into the tailnet.
 ## Protocol-doc notes
 
 `PROTOCOL.md` holds the shared spec verbatim, with a short "Relay
-implementation notes" block appended at the end. Four points where the
+implementation notes" block appended at the end. Five points where the
 document could be read two ways, and what this implementation does:
 
 1. **NAT64.** The deny list contains `64:ff9b::/96` *and* says "`::ffff:a.b.c.d`
@@ -210,6 +232,13 @@ document could be read two ways, and what this implementation does:
 4. **Quota direction.** The 8 GiB/day figure is a per-`sub` budget for the
    session's traffic; this build counts both directions combined (up + down)
    and charges before forwarding.
+5. **Pre-auth phase.** The spec fixes a 10 s header deadline and per-source-IP
+   concurrency but says nothing about a peer that simply stops sending. This
+   build bounds the whole accept→`OK` phase by `--pre-auth-timeout`
+   (`RUTA_PRE_AUTH_TIMEOUT`, default 10 s) and caps how many connections may
+   sit in it at once with `--pre-auth-max` (`RUTA_PRE_AUTH_MAX`, default 64),
+   answering `ERR busy` beyond that. A verified grant leaves the pool at once.
+   No wire change; a protocol-compliant client never notices.
 
 Everything else — codes, order of checks, limits, log fields — follows the
 document as written.

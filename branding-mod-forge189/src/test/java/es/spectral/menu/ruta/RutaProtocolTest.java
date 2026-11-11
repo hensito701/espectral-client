@@ -101,7 +101,7 @@ public class RutaProtocolTest {
     @Test
     public void publicAddressesAndHostnamesAreEligible() {
         for (String ip : new String[] {
-            "8.8.8.8", "<ovm3-ip>", "<home-ip>", "203.0.114.1",
+            "8.8.8.8", "203.0.114.9", "217.126.0.60", "203.0.114.1",
             "2a00:1450:4001::1", "::ffff:8.8.8.8", "mc.hypixel.net", "play.example.net:25566",
         }) {
             assertTrue(ip, RutaProtocol.isEligible(ip));
@@ -110,8 +110,8 @@ public class RutaProtocolTest {
 
     @Test
     public void handshakeLineIsOneAsciiLine() {
-        String line = RutaProtocol.handshakeLine("a.b.c", "<ovm3-ip>", 25565);
-        assertEquals("ERT1 a.b.c <ovm3-ip> 25565\n", line);
+        String line = RutaProtocol.handshakeLine("a.b.c", "203.0.114.9", 25565);
+        assertEquals("ERT1 a.b.c 203.0.114.9 25565\n", line);
         assertEquals('E', line.charAt(0));
     }
 

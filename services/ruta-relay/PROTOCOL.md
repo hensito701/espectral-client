@@ -1,8 +1,8 @@
 # Ruta Espectral — relay protocol v1 ("ERT1")
 
 MVP-only, opt-in per server, Minecraft (TCP) traffic only. Relay host: `ruta.uhce.top`
-(Cloudflare DNS-only A record → OVM2 `<ovm2-ip>`). The relay listens on **25565 and 443**
-(both open in OVM2's OCI security list and ufw). Client: connect to `ruta.uhce.top:25565`; if the
+(Cloudflare DNS-only A record pointing at the OVM2 relay host). The relay listens on **25565 and 443**
+(both open in the relay host's OCI security list and ufw). Client: connect to `ruta.uhce.top:25565`; if the
 TCP connect fails or times out (3 s), retry once on `ruta.uhce.top:443` (networks that block
 Minecraft's port usually allow 443). Host and ports are constants in one place on the client; the
 server takes repeatable `--listen` flags.
@@ -51,7 +51,7 @@ Deny IPv6: ::/128, ::1, fc00::/7, fe80::/10, ff00::/8, 2001:db8::/32, 64:ff9b::/
 ## Limits (defaults, all configurable)
 per `sub`: ≤ 4 concurrent, ≤ 30 new connections / minute, ≤ 8 GiB per UTC day;
 per source IP: ≤ 8 concurrent; global: ≤ 400 concurrent; header timeout 10 s; upstream connect
-timeout 8 s; idle timeout 300 s (no bytes either direction).
+timeout 8 s; idle timeout 300 s (no bytes either direction). Pre-auth: see note 6.
 
 ## Logging
 One line per connection end: time, `sub` first 8 hex, source IP, dest ip:port, bytes up/down,
@@ -74,7 +74,7 @@ duration, result code. Never payload bytes. No other persistence.
 
 *Appended by `services/ruta-relay`. Everything above is the shared spec, except
 the Espectral-hosts rule on lines 66-67 (amended 2026-11-07). This block records
-the five details the spec leaves open and how the relay reads them. The client
+the six details the spec leaves open and how the relay reads them. The client
 implementation is not affected by any of it.*
 
 1. **NAT64.** The IPv6 deny list contains `64:ff9b::/96`, and the same
@@ -105,3 +105,14 @@ implementation is not affected by any of it.*
    Only list PROXY-aware fronts: a plain server reads the header as Minecraft
    traffic and drops the connection. If the write fails, the client gets the
    same `ERR connect` as an unreachable upstream.
+6. **Pre-auth phase.** Everything before `OK` — the header line, the grant
+   check and the upstream connect — runs against one deadline,
+   `--pre-auth-timeout` / `RUTA_PRE_AUTH_TIMEOUT` (default 10 s), so a peer
+   that stalls in one stage cannot borrow time from another; the per-stage
+   `--header-timeout` and `--connect-timeout` still apply and are capped by
+   whatever is left of it. Concurrently, at most `--pre-auth-max` /
+   `RUTA_PRE_AUTH_MAX` (default 64) connections may sit in that phase across
+   all listeners; anything beyond is answered `ERR busy` at accept. A
+   connection leaves the pool the moment its grant verifies, so the cap never
+   touches established sessions. The per-source-IP cap (`--per-ip-concurrency`,
+   default 8) counts both pre-auth and established connections.

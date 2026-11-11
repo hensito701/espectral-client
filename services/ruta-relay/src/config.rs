@@ -17,6 +17,9 @@ pub const DEFAULT_PER_SUB_RATE_PER_MIN: u32 = 30;
 pub const DEFAULT_PER_SUB_DAILY_BYTES: u64 = 8 * 1024 * 1024 * 1024; // 8 GiB
 pub const DEFAULT_PER_IP_CONCURRENCY: usize = 8;
 pub const DEFAULT_GLOBAL_MAX: usize = 400;
+/// Unauthenticated connections allowed at once, across every listener.
+pub const DEFAULT_PRE_AUTH_MAX: usize = 64;
+pub const DEFAULT_PRE_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_HEADER_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -31,6 +34,12 @@ pub struct Config {
     pub per_sub_daily_bytes: u64,
     pub per_ip_concurrency: usize,
     pub global_max: usize,
+    /// Concurrent connections that have not authenticated yet, across every
+    /// listener. Bounds how many sockets one attacker can hold open.
+    pub pre_auth_max: usize,
+    /// Hard cap on the whole pre-auth phase (accept → `OK`). The stage
+    /// timeouts below are additionally capped by whatever is left of it.
+    pub pre_auth_timeout: Duration,
     pub header_timeout: Duration,
     pub connect_timeout: Duration,
     pub idle_timeout: Duration,
@@ -52,6 +61,8 @@ impl Default for Config {
             per_sub_daily_bytes: DEFAULT_PER_SUB_DAILY_BYTES,
             per_ip_concurrency: DEFAULT_PER_IP_CONCURRENCY,
             global_max: DEFAULT_GLOBAL_MAX,
+            pre_auth_max: DEFAULT_PRE_AUTH_MAX,
+            pre_auth_timeout: DEFAULT_PRE_AUTH_TIMEOUT,
             header_timeout: DEFAULT_HEADER_TIMEOUT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
@@ -85,6 +96,10 @@ Options (env fallback in brackets, command line wins):
   --per-sub-daily-bytes <SIZE>  Daily byte budget per sub, UTC day. [RUTA_PER_SUB_DAILY_BYTES] (8GiB)
   --per-ip-concurrency <N>      Concurrent connections per source IP. [RUTA_PER_IP_CONCURRENCY] (8)
   --global-max <N>              Global concurrent connection cap. [RUTA_GLOBAL_MAX] (400)
+  --pre-auth-max <N>            Concurrent connections still in the pre-auth phase
+                                (accept to OK, all listeners). [RUTA_PRE_AUTH_MAX] (64)
+  --pre-auth-timeout <DURATION> Deadline for the whole pre-auth phase: header line
+                                plus upstream connect. [RUTA_PRE_AUTH_TIMEOUT] (10s)
   --header-timeout <DURATION>   Handshake line deadline. [RUTA_HEADER_TIMEOUT] (10s)
   --connect-timeout <DURATION>  Upstream TCP connect deadline. [RUTA_CONNECT_TIMEOUT] (8s)
   --idle-timeout <DURATION>     Close after this long with no bytes either way. [RUTA_IDLE_TIMEOUT] (300s)
@@ -165,6 +180,14 @@ where
                 cfg.global_max = parse_num(&value("--global-max")?)?;
                 set.insert("global_max");
             }
+            "--pre-auth-max" => {
+                cfg.pre_auth_max = parse_num(&value("--pre-auth-max")?)?;
+                set.insert("pre_auth_max");
+            }
+            "--pre-auth-timeout" => {
+                cfg.pre_auth_timeout = parse_duration(&value("--pre-auth-timeout")?)?;
+                set.insert("pre_auth_timeout");
+            }
             "--header-timeout" => {
                 cfg.header_timeout = parse_duration(&value("--header-timeout")?)?;
                 set.insert("header_timeout");
@@ -231,6 +254,8 @@ where
     env_or!("RUTA_PER_SUB_DAILY_BYTES", per_sub_daily_bytes, parse_bytes);
     env_or!("RUTA_PER_IP_CONCURRENCY", per_ip_concurrency, parse_num);
     env_or!("RUTA_GLOBAL_MAX", global_max, parse_num);
+    env_or!("RUTA_PRE_AUTH_MAX", pre_auth_max, parse_num);
+    env_or!("RUTA_PRE_AUTH_TIMEOUT", pre_auth_timeout, parse_duration);
     env_or!("RUTA_HEADER_TIMEOUT", header_timeout, parse_duration);
     env_or!("RUTA_CONNECT_TIMEOUT", connect_timeout, parse_duration);
     env_or!("RUTA_IDLE_TIMEOUT", idle_timeout, parse_duration);
@@ -268,7 +293,7 @@ where
             Ok(addr) if addr.port() != 0 => addr,
             _ => {
                 return Err(format!(
-                    "--proxy-v2 {name:?}: expected IP:PORT (e.g. <nvh1-ip>:25564)"
+                    "--proxy-v2 {name:?}: expected IP:PORT (e.g. 203.0.113.10:25564)"
                 ))
             }
         };
@@ -298,10 +323,17 @@ fn validate(cfg: &Config) -> Result<(), String> {
     if cfg.global_max == 0 {
         return Err("--global-max must be at least 1".into());
     }
+    if cfg.pre_auth_max == 0 {
+        return Err("--pre-auth-max must be at least 1".into());
+    }
     if cfg.workers == 0 {
         return Err("--workers must be at least 1".into());
     }
-    if cfg.idle_timeout.is_zero() || cfg.connect_timeout.is_zero() || cfg.header_timeout.is_zero() {
+    if cfg.idle_timeout.is_zero()
+        || cfg.connect_timeout.is_zero()
+        || cfg.header_timeout.is_zero()
+        || cfg.pre_auth_timeout.is_zero()
+    {
         return Err("timeouts must be greater than zero".into());
     }
     Ok(())
@@ -403,6 +435,8 @@ mod tests {
         assert_eq!(c.per_sub_daily_bytes, 8 * 1024 * 1024 * 1024);
         assert_eq!(c.per_ip_concurrency, 8);
         assert_eq!(c.global_max, 400);
+        assert_eq!(c.pre_auth_max, 64);
+        assert_eq!(c.pre_auth_timeout, Duration::from_secs(10));
         assert_eq!(c.header_timeout, Duration::from_secs(10));
         assert_eq!(c.connect_timeout, Duration::from_secs(8));
         assert_eq!(c.idle_timeout, Duration::from_secs(300));
@@ -446,6 +480,31 @@ mod tests {
         );
         assert_eq!(c.global_max, 10);
         assert_eq!(c.idle_timeout, Duration::from_secs(42));
+    }
+
+    #[test]
+    fn pre_auth_limits_are_configurable() {
+        let c = cfg(&["--pre-auth-max", "5", "--pre-auth-timeout", "4s"], &[]);
+        assert_eq!(c.pre_auth_max, 5);
+        assert_eq!(c.pre_auth_timeout, Duration::from_secs(4));
+
+        let c = cfg(
+            &[],
+            &[
+                ("RUTA_PRE_AUTH_MAX", "12"),
+                ("RUTA_PRE_AUTH_TIMEOUT", "2500ms"),
+            ],
+        );
+        assert_eq!(c.pre_auth_max, 12);
+        assert_eq!(c.pre_auth_timeout, Duration::from_millis(2500));
+
+        // Command line wins over the environment.
+        let c = cfg(&["--pre-auth-max", "3"], &[("RUTA_PRE_AUTH_MAX", "99")]);
+        assert_eq!(c.pre_auth_max, 3);
+
+        assert!(parse_args(&["--pre-auth-max", "0"], &[]).is_err());
+        assert!(parse_args(&["--pre-auth-timeout", "0"], &[]).is_err());
+        assert!(parse_args(&[], &[("RUTA_PRE_AUTH_MAX", "nope")]).is_err());
     }
 
     #[test]
@@ -512,37 +571,37 @@ mod tests {
         let c = cfg(
             &[
                 "--proxy-v2",
-                "<nvh1-ip>:25564",
-                "--proxy-v2=<nvh1-ip>:25568,<nvh1-ip>:25564",
+                "203.0.113.10:25564",
+                "--proxy-v2=203.0.113.10:25568,203.0.113.10:25564",
             ],
             &[],
         );
         assert_eq!(
             c.proxy_v2,
-            BTreeSet::from([addr("<nvh1-ip>:25564"), addr("<nvh1-ip>:25568")])
+            BTreeSet::from([addr("203.0.113.10:25564"), addr("203.0.113.10:25568")])
         );
 
         // IPv4-mapped IPv6 is stored as plain IPv4, so the lookup matches the
         // address the relay actually dials.
-        let c = cfg(&["--proxy-v2", "[::ffff:<nvh1-ip>]:25564"], &[]);
-        assert_eq!(c.proxy_v2, BTreeSet::from([addr("<nvh1-ip>:25564")]));
+        let c = cfg(&["--proxy-v2", "[::ffff:203.0.113.10]:25564"], &[]);
+        assert_eq!(c.proxy_v2, BTreeSet::from([addr("203.0.113.10:25564")]));
 
-        let c = cfg(&[], &[("RUTA_PROXY_V2", "<nvh1-ip>:25564, <nvh1-ip>:25568")]);
+        let c = cfg(&[], &[("RUTA_PROXY_V2", "203.0.113.10:25564, 203.0.113.10:25568")]);
         assert_eq!(c.proxy_v2.len(), 2);
 
         // Command line wins over the environment.
         let c = cfg(
-            &["--proxy-v2", "<nvh1-ip>:25568"],
-            &[("RUTA_PROXY_V2", "<nvh1-ip>:25564")],
+            &["--proxy-v2", "203.0.113.10:25568"],
+            &[("RUTA_PROXY_V2", "203.0.113.10:25564")],
         );
-        assert_eq!(c.proxy_v2, BTreeSet::from([addr("<nvh1-ip>:25568")]));
+        assert_eq!(c.proxy_v2, BTreeSet::from([addr("203.0.113.10:25568")]));
     }
 
     #[test]
     fn rejects_malformed_or_port_zero_proxy_v2() {
         assert!(parse_args(&["--proxy-v2", "example.com:25564"], &[]).is_err());
-        assert!(parse_args(&["--proxy-v2", "<nvh1-ip>"], &[]).is_err());
-        assert!(parse_args(&["--proxy-v2", "<nvh1-ip>:0"], &[]).is_err());
-        assert!(parse_args(&[], &[("RUTA_PROXY_V2", "<nvh1-ip>:0")]).is_err());
+        assert!(parse_args(&["--proxy-v2", "203.0.113.10"], &[]).is_err());
+        assert!(parse_args(&["--proxy-v2", "203.0.113.10:0"], &[]).is_err());
+        assert!(parse_args(&[], &[("RUTA_PROXY_V2", "203.0.113.10:0")]).is_err());
     }
 }

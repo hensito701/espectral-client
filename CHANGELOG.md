@@ -2,6 +2,23 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Security
+- **`services/ruta-relay` closes unauthenticated connections and caps how many can exist.**
+  Everything before `OK` (header line, grant check, upstream connect) now runs inside one
+  `--pre-auth-timeout` / `RUTA_PRE_AUTH_TIMEOUT` deadline (default 10 s), so a peer that sends a
+  valid-looking handshake and then stalls is closed instead of being held open; the per-stage
+  header and connect timeouts still apply and are capped by whatever is left. Concurrently, at
+  most `--pre-auth-max` / `RUTA_PRE_AUTH_MAX` connections (default 64) may sit in that phase
+  across all listeners and the rest get `ERR busy` at accept; a connection leaves that pool as
+  soon as its grant verifies, so established sessions are unaffected. Complements the existing
+  per-source-IP cap (`--per-ip-concurrency`, default 8).
+- **No infrastructure addresses left in the tree.** The relay unit no longer hard-codes the PROXY
+  v2 front addresses (they live in the host drop-in), and the relay host, OVM3, NVH1 and the
+  operator's home IP were removed from the docs, tests and the launcher's Discord presence
+  table in favour of hostnames or documentation placeholders.
+
 ## [1.8.3] - 2026-11-11
 
 ### Added

@@ -1,5 +1,6 @@
 //! In-memory limit accounting: global + per source-IP concurrency at accept,
-//! per-`sub` concurrency/rate/quota once the grant is verified.
+//! the pre-authentication pool, per-`sub` concurrency/rate/quota once the
+//! grant is verified.
 //!
 //! Everything lives in one `Mutex`-guarded map. At the documented caps (400
 //! global, 8 per IP, 4 per sub) the critical section is a few hash lookups on a
@@ -35,6 +36,10 @@ struct SubEntry {
 #[derive(Debug, Default)]
 struct Inner {
     global: usize,
+    /// Connections that have not finished the pre-auth phase yet. Bounded by
+    /// `pre_auth_max` and released as soon as the grant verifies, so a burst of
+    /// silent sockets cannot occupy the whole `global` budget.
+    pre_auth: usize,
     subs: HashMap<String, SubEntry>,
     ips: HashMap<IpAddr, usize>,
 }
@@ -58,6 +63,9 @@ pub struct Limits {
     pub per_sub_daily_bytes: u64,
     pub per_ip_concurrency: usize,
     pub global_max: usize,
+    /// Concurrent connections that may sit in the pre-auth phase at once.
+    /// The per-IP cap (`per_ip_concurrency`) bounds one address's share.
+    pub pre_auth_max: usize,
 }
 
 /// A held reservation for one connection.
@@ -65,6 +73,9 @@ pub struct Slot {
     limits: Limits,
     ip: IpAddr,
     sub: Option<String>,
+    /// Still counted in the pre-auth pool; cleared by
+    /// [`Slot::finish_pre_auth`] or by `Drop`.
+    pre_auth: bool,
 }
 
 impl std::fmt::Debug for Slot {
@@ -121,11 +132,26 @@ impl Slot {
             None => 0,
         }
     }
+
+    /// Leaves the pre-auth pool: everything the relay needs from an
+    /// unauthenticated peer is done (header, grant, destination, upstream).
+    /// Idempotent, and `Drop` does it too on every error path.
+    pub fn finish_pre_auth(&mut self) {
+        if !self.pre_auth {
+            return;
+        }
+        self.pre_auth = false;
+        let mut g = self.limits.inner.lock().unwrap_or_else(|e| e.into_inner());
+        g.pre_auth = g.pre_auth.saturating_sub(1);
+    }
 }
 
 impl Drop for Slot {
     fn drop(&mut self) {
         let mut g = self.limits.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if self.pre_auth {
+            g.pre_auth = g.pre_auth.saturating_sub(1);
+        }
         g.global = g.global.saturating_sub(1);
         if let Some(n) = g.ips.get_mut(&self.ip) {
             *n = n.saturating_sub(1);
@@ -148,6 +174,7 @@ impl Drop for Slot {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Snapshot {
     pub global: usize,
+    pub pre_auth: usize,
     pub subs: usize,
     pub ips: usize,
 }
@@ -159,6 +186,7 @@ impl Limits {
         per_sub_daily_bytes: u64,
         per_ip_concurrency: usize,
         global_max: usize,
+        pre_auth_max: usize,
     ) -> Self {
         Limits {
             inner: Arc::new(Mutex::new(Inner::default())),
@@ -167,13 +195,20 @@ impl Limits {
             per_sub_daily_bytes,
             per_ip_concurrency,
             global_max,
+            pre_auth_max,
         }
     }
 
-    /// Reserves the global and per-source-IP slots, before any crypto runs.
+    /// Reserves the global, per-source-IP and pre-auth slots, before any crypto
+    /// runs. The pre-auth pool keeps a burst of silent sockets from occupying
+    /// every global slot; it is released by [`Slot::finish_pre_auth`] the
+    /// moment the grant verifies.
     pub fn accept(&self, ip: IpAddr) -> Result<Slot, Reject> {
         let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if g.global >= self.global_max {
+            return Err(Reject::Busy);
+        }
+        if g.pre_auth >= self.pre_auth_max {
             return Err(Reject::Busy);
         }
         // `get` first: a rejected connection must not leave a stray zero entry
@@ -183,10 +218,12 @@ impl Limits {
         }
         *g.ips.entry(ip).or_insert(0) += 1;
         g.global += 1;
+        g.pre_auth += 1;
         Ok(Slot {
             limits: self.clone(),
             ip,
             sub: None,
+            pre_auth: true,
         })
     }
 
@@ -231,6 +268,13 @@ impl Limits {
             }
         }
         slot.sub = Some(sub.to_owned());
+        // The grant verified: this peer is no longer unauthenticated, so it
+        // stops occupying the pre-auth pool. Done under the same guard rather
+        // than via `finish_pre_auth`, which would relock the mutex.
+        if slot.pre_auth {
+            slot.pre_auth = false;
+            g.pre_auth = g.pre_auth.saturating_sub(1);
+        }
         Ok(())
     }
 
@@ -256,6 +300,7 @@ impl Limits {
         let g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         Snapshot {
             global: g.global,
+            pre_auth: g.pre_auth,
             subs: g.subs.len(),
             ips: g.ips.len(),
         }
@@ -287,7 +332,7 @@ mod tests {
 
     #[test]
     fn sub_concurrency_limit() {
-        let l = Limits::new(2, 100, u64::MAX, 100, 100);
+        let l = Limits::new(2, 100, u64::MAX, 100, 100, 100);
         let mut a = l.accept(ip(1)).unwrap();
         l.attach_sub(&mut a, "s").unwrap();
         let _b = with_sub(&l, "s", 1);
@@ -299,7 +344,7 @@ mod tests {
 
     #[test]
     fn rate_limit_within_minute() {
-        let l = Limits::new(100, 3, u64::MAX, 100, 100);
+        let l = Limits::new(100, 3, u64::MAX, 100, 100, 100);
         let now = now_unix();
         {
             let mut g = l.inner.lock().unwrap();
@@ -319,7 +364,7 @@ mod tests {
 
     #[test]
     fn ip_concurrency_limit_is_per_ip() {
-        let l = Limits::new(100, 100, u64::MAX, 1, 100);
+        let l = Limits::new(100, 100, u64::MAX, 1, 100, 100);
         let _a = with_sub(&l, "s1", 1);
         assert_eq!(l.accept(ip(1)).unwrap_err(), Reject::Limit);
         assert!(l.accept(ip(2)).is_ok());
@@ -327,7 +372,7 @@ mod tests {
 
     #[test]
     fn rejected_accepts_leave_no_ip_entry() {
-        let l = Limits::new(100, 100, u64::MAX, 1, 100);
+        let l = Limits::new(100, 100, u64::MAX, 1, 100, 100);
         let a = l.accept(ip(1)).unwrap();
         // Per-IP rejection from a *new* source must not create a zero entry.
         assert_eq!(l.accept(ip(1)).unwrap_err(), Reject::Limit);
@@ -336,7 +381,7 @@ mod tests {
         assert_eq!(l.snapshot().ips, 0);
 
         // Same for a global-cap rejection with no live slots anywhere.
-        let g = Limits::new(100, 100, u64::MAX, 100, 1);
+        let g = Limits::new(100, 100, u64::MAX, 100, 1, 100);
         let b = g.accept(ip(7)).unwrap();
         assert_eq!(g.accept(ip(8)).unwrap_err(), Reject::Busy);
         assert_eq!(g.snapshot().ips, 1);
@@ -346,7 +391,7 @@ mod tests {
 
     #[test]
     fn global_cap() {
-        let l = Limits::new(100, 100, u64::MAX, 100, 2);
+        let l = Limits::new(100, 100, u64::MAX, 100, 2, 100);
         let a = with_sub(&l, "a", 1);
         let b = with_sub(&l, "b", 2);
         assert_eq!(l.accept(ip(3)).unwrap_err(), Reject::Busy);
@@ -357,7 +402,7 @@ mod tests {
 
     #[test]
     fn daily_quota() {
-        let l = Limits::new(4, 100, 1000, 100, 100);
+        let l = Limits::new(4, 100, 1000, 100, 100, 100);
         let s = with_sub(&l, "s", 1);
         assert!(s.charge(600));
         assert!(s.charge(400));
@@ -372,7 +417,7 @@ mod tests {
 
     #[test]
     fn quota_resets_on_utc_midnight() {
-        let l = Limits::new(4, 100, 1000, 100, 100);
+        let l = Limits::new(4, 100, 1000, 100, 100, 100);
         {
             let mut g = l.inner.lock().unwrap();
             let e = g.subs.entry("s".into()).or_default();
@@ -396,7 +441,7 @@ mod tests {
 
     #[test]
     fn slots_release_on_drop() {
-        let l = Limits::new(4, 100, u64::MAX, 4, 4);
+        let l = Limits::new(4, 100, u64::MAX, 4, 4, 100);
         {
             let s = with_sub(&l, "s", 1);
             s.charge(10);
@@ -404,17 +449,89 @@ mod tests {
             assert_eq!(snap.global, 1);
             assert_eq!(snap.ips, 1);
             assert_eq!(snap.subs, 1);
+            assert_eq!(snap.pre_auth, 0, "attach_sub frees the pre-auth slot");
         }
         let snap = l.snapshot();
         assert_eq!(snap.global, 0);
         assert_eq!(snap.ips, 0);
+        assert_eq!(snap.pre_auth, 0);
         // The sub entry survives only while it has quota charged today.
         assert_eq!(snap.subs, 1);
     }
 
     #[test]
+    fn pre_auth_pool_is_capped_and_released() {
+        // 4 global slots but only 2 may sit unauthenticated at once.
+        let l = Limits::new(4, 100, u64::MAX, 100, 4, 2);
+        let a = l.accept(ip(1)).unwrap();
+        let b = l.accept(ip(2)).unwrap();
+        assert_eq!(l.snapshot().pre_auth, 2);
+        // A third silent peer is turned away as `busy`, not `limit`: the pool,
+        // like the global cap, is a server-wide shortage.
+        assert_eq!(l.accept(ip(3)).unwrap_err(), Reject::Busy);
+        assert_eq!(l.snapshot().global, 2, "a rejected peer takes no slot");
+        drop(a);
+        assert_eq!(l.snapshot().pre_auth, 1);
+        assert!(l.accept(ip(3)).is_ok());
+        drop(b);
+    }
+
+    #[test]
+    fn finishing_pre_auth_is_idempotent_and_keeps_the_session_slot() {
+        let l = Limits::new(4, 100, u64::MAX, 4, 4, 2);
+        let mut s = l.accept(ip(1)).unwrap();
+        l.attach_sub(&mut s, "s").unwrap();
+        assert_eq!(l.snapshot().pre_auth, 0);
+        s.finish_pre_auth();
+        assert_eq!(
+            l.snapshot().pre_auth,
+            0,
+            "double release must not underflow"
+        );
+        // The connection still holds a global and per-IP slot while it runs.
+        assert_eq!(l.snapshot().global, 1);
+        drop(s);
+        let snap = l.snapshot();
+        assert_eq!(snap.global, 0);
+        assert_eq!(
+            snap.pre_auth, 0,
+            "drop after the release does not double-count"
+        );
+    }
+
+    #[test]
+    fn silent_peers_cannot_take_the_whole_global_budget() {
+        // 10 global slots, but only 3 unauthenticated sockets at once: three
+        // silent peers fill the pre-auth pool and nothing else gets in, while
+        // the other seven global slots are free for authenticated sessions.
+        let l = Limits::new(4, 100, u64::MAX, 10, 10, 3);
+        let mut silent = Vec::new();
+        for n in 1..=3 {
+            silent.push(l.accept(ip(n)).unwrap());
+        }
+        assert_eq!(l.accept(ip(9)).unwrap_err(), Reject::Busy);
+        assert_eq!(l.snapshot().global, 3, "a rejected peer takes no slot");
+
+        // Releasing one silent peer lets the next player through; once its
+        // grant verifies it leaves the pool and frees room for another.
+        silent.pop();
+        let mut players = Vec::new();
+        for n in 4..=6 {
+            let mut s = l.accept(ip(n)).unwrap();
+            l.attach_sub(&mut s, &format!("sub{n}")).unwrap();
+            players.push(s);
+        }
+        assert_eq!(l.snapshot().global, 5);
+        assert_eq!(l.snapshot().pre_auth, 2);
+        drop(players);
+        drop(silent);
+        assert_eq!(l.snapshot().global, 0);
+        assert_eq!(l.snapshot().pre_auth, 0);
+    }
+
+    #[test]
     fn dropped_slot_keeps_rate_window_then_prunes() {
-        let l = Limits::new(4, 100, u64::MAX, 4, 4);
+        let l = Limits::new(4, 100, u64::MAX, 4, 4, 100);
         drop(with_sub(&l, "s", 1));
         // The start timestamp stays for the one-minute window, so a burst
         // cannot bypass the rate limit by closing and reopening.
@@ -433,7 +550,7 @@ mod tests {
 
     #[test]
     fn prune_resets_stale_day_and_caps_maps() {
-        let l = Limits::new(4, 100, 1000, 4, 4);
+        let l = Limits::new(4, 100, 1000, 4, 4, 100);
         {
             let mut g = l.inner.lock().unwrap();
             let e = g.subs.entry("old".into()).or_default();
@@ -450,7 +567,7 @@ mod tests {
 
     #[test]
     fn preload_seam() {
-        let l = Limits::new(4, 100, 500, 4, 4);
+        let l = Limits::new(4, 100, 500, 4, 4, 100);
         l.preload_day_bytes("s", 500);
         let mut c = l.accept(ip(1)).unwrap();
         assert_eq!(l.attach_sub(&mut c, "s").unwrap_err(), Reject::Limit);

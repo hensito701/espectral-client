@@ -12,8 +12,14 @@ StartLimitBurst=10
 Type=simple
 DynamicUser=yes
 SyslogIdentifier=ruta-relay
-# NVH1 HAProxy must accept PROXY v2 from this host before these flags go live.
-ExecStart=/usr/local/bin/ruta-relay --listen 0.0.0.0:25565 --listen 0.0.0.0:443 --proxy-v2 <nvh1-ip>:25564 --proxy-v2 <nvh1-ip>:25568
+# The PROXY v2 fronts are deployment-specific, so their addresses live in a
+# host drop-in (e.g. /etc/systemd/system/ruta-relay.service.d/10-fronts.conf):
+#   [Service]
+#   ExecStart=
+#   ExecStart=/usr/local/bin/ruta-relay-1.0.1 --listen 0.0.0.0:25565 --listen 0.0.0.0:443 \
+#     --proxy-v2 <front-ip>:25564 --proxy-v2 <front-ip>:25568
+# Make the front accept PROXY v2 from this host before that drop-in goes live.
+ExecStart=/usr/local/bin/ruta-relay-1.0.1 --listen 0.0.0.0:25565 --listen 0.0.0.0:443
 Restart=always
 RestartSec=2
 

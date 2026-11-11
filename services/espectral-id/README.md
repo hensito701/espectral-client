@@ -3,7 +3,7 @@
 Identity + entitlement service for Espectral Client personalization/cosmetics.
 Python 3.12 · FastAPI + uvicorn + httpx + cryptography · SQLite (sessions,
 challenges) + in-memory presence. Production: `https://id.espectral.es` on
-OVM3 (`127.0.0.1:8091` behind nginx).
+OVM3 (uvicorn bound to loopback, behind nginx; port from `ESPECTRAL_ID_PORT`).
 
 ## Endpoints (`/v1`, all JSON)
 
@@ -40,7 +40,7 @@ Logs never contain tokens or request bodies.
 
 ```
 /home/ubuntu/espectral-id/{app,venv,data,.env}
-systemd: espectral-id.service (EnvironmentFile=.env, uvicorn 127.0.0.1:8091)
+systemd: espectral-id.service (EnvironmentFile=.env, uvicorn on 127.0.0.1:$ESPECTRAL_ID_PORT)
 nginx:   /etc/nginx/sites-available/id.espectral.es → sites-enabled/
 ```
 
@@ -61,7 +61,7 @@ Idempotent; `.env` is written 0600 via ssh stdin and never printed
 - Cloudflare zone is **Flexible** (edge HTTPS → origin HTTP). A proxied record
   would carry bearer tokens in plaintext CF→origin, and the zone API token has
   no ruleset/pagerule/tunnel scope to set per-hostname Full (strict) — so the
-  `id.espectral.es` A record is **DNS-only → <ovm3-ip>** with a Let's
+  `id.espectral.es` A record is **DNS-only → OVM3's address** with a Let's
   Encrypt cert on the origin (certbot `dns-cloudflare`, creds
   `/etc/letsencrypt/cf-dns.ini`; auto-renews).
 - Host firewall `CF_WEB` chain drops non-Cloudflare sources on 80/443, so one

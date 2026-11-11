@@ -23,8 +23,8 @@ public class GeoIpTableTest {
 
     private static final byte[] V4_US_START = mapped(8, 8, 8, 0);
     private static final byte[] V4_US_END = mapped(8, 8, 8, 255);
-    private static final byte[] V4_ES_START = mapped(95, 17, 83, 0);
-    private static final byte[] V4_ES_END = mapped(95, 17, 83, 255);
+    private static final byte[] V4_ES_START = mapped(217, 126, 0, 0);
+    private static final byte[] V4_ES_END = mapped(217, 126, 0, 255);
     private static final byte[] V6_DE_START = v6(0x2a, 0x00, 0x14, 0x50);
     private static final byte[] V6_DE_END = v6End(0x2a, 0x00, 0x14, 0x50);
 
@@ -96,7 +96,7 @@ public class GeoIpTableTest {
         assertEquals("US", table.country(InetAddress.getByName("8.8.8.8")));
         assertEquals("US", table.country(InetAddress.getByName("8.8.8.0")));
         assertEquals("US", table.country(InetAddress.getByName("8.8.8.255")));
-        assertEquals("ES", table.country(InetAddress.getByName("<home-ip>")));
+        assertEquals("ES", table.country(InetAddress.getByName("217.126.0.60")));
         assertEquals("DE", table.country(InetAddress.getByName("2a00:1450:4001::1")));
     }
 

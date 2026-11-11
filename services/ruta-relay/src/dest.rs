@@ -171,7 +171,7 @@ mod tests {
             "100.128.0.0",
             "126.255.255.255",
             "128.0.0.0",
-            "<ovm2-ip>",
+            "150.0.0.1",
             "169.253.255.255",
             "169.255.0.0",
             "172.15.255.255",
@@ -238,7 +238,7 @@ mod tests {
             assert!(!allowed(s, 25565), "{s} must be denied");
         }
         assert!(allowed("::ffff:8.8.8.8", 25565));
-        assert!(allowed("::ffff:<ovm2-ip>", 25565));
+        assert!(allowed("::ffff:1.1.1.1", 25565));
     }
 
     #[test]

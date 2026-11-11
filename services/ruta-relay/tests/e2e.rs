@@ -447,6 +447,94 @@ async fn header_timeout_is_enforced() {
 }
 
 #[tokio::test]
+async fn pre_auth_deadline_closes_a_silent_connection() {
+    let mut cfg = test_config();
+    cfg.pre_auth_timeout = Duration::from_millis(250);
+    cfg.header_timeout = Duration::from_secs(30); // the stage timeout is not the bound
+    let relay = start_relay(cfg).await;
+
+    // A peer that connects and sends nothing at all — the shape the pentest
+    // found held open.
+    let mut s = connect(relay).await;
+    let started = std::time::Instant::now();
+    let reply = tokio::time::timeout(Duration::from_secs(5), read_line(&mut s))
+        .await
+        .expect("relay did not enforce the pre-auth deadline");
+    assert_eq!(reply, "ERR proto");
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "closed only after {:?}",
+        started.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn pre_auth_deadline_caps_a_stalled_handshake() {
+    let upstream = echo_upstream().await;
+    let mut cfg = test_config();
+    cfg.pre_auth_timeout = Duration::from_millis(300);
+    cfg.header_timeout = Duration::from_secs(30);
+    let relay = start_relay(cfg).await;
+
+    // Half a valid line, then silence: still bounded by the total deadline.
+    let mut s = connect(relay).await;
+    s.write_all(format!("ERT1 a.b.c {} ", upstream.ip()).as_bytes())
+        .await
+        .unwrap();
+    let started = std::time::Instant::now();
+    let reply = tokio::time::timeout(Duration::from_secs(5), read_line(&mut s))
+        .await
+        .expect("relay did not enforce the pre-auth deadline");
+    assert_eq!(reply, "ERR proto");
+    assert!(started.elapsed() < Duration::from_secs(3));
+}
+
+#[tokio::test]
+async fn pre_auth_pool_cap_reports_busy() {
+    let mut cfg = test_config();
+    cfg.pre_auth_max = 1;
+    cfg.per_ip_concurrency = 8;
+    cfg.global_max = 64;
+    let relay = start_relay(cfg).await;
+
+    // One silent peer fills the pool; the next connection is refused at accept
+    // and told `ERR busy` instead of being served.
+    let _silent = connect(relay).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        handshake_line(relay, b"ERT1 a.b.c 1.2.3.4 25565\n").await,
+        "ERR busy"
+    );
+}
+
+#[tokio::test]
+async fn authenticated_sessions_leave_the_pre_auth_pool() {
+    let upstream = echo_upstream().await;
+    let mut cfg = test_config();
+    cfg.pre_auth_max = 1;
+    let relay = start_relay(cfg).await;
+    let grant = mint(&GrantSpec::mvp(&sub(17), common::now()));
+
+    // First session authenticates and stays open inside the pipe.
+    let mut a = connect(relay).await;
+    a.write_all(format!("ERT1 {grant} {} {}\n", upstream.ip(), upstream.port()).as_bytes())
+        .await
+        .unwrap();
+    assert_eq!(read_line(&mut a).await, "OK");
+
+    // A second player can still authenticate: the pool is held only by peers
+    // that have not proved anything yet.
+    let grant2 = mint(&GrantSpec::mvp(&sub(18), common::now()));
+    let mut b = connect(relay).await;
+    b.write_all(format!("ERT1 {grant2} {} {}\n", upstream.ip(), upstream.port()).as_bytes())
+        .await
+        .unwrap();
+    assert_eq!(read_line(&mut b).await, "OK");
+    drop(a);
+    drop(b);
+}
+
+#[tokio::test]
 async fn oversize_header_is_rejected() {
     let relay = start_relay(test_config()).await;
     let mut s = connect(relay).await;
