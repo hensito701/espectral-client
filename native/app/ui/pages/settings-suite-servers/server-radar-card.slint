@@ -66,7 +66,7 @@ export component PingWaveform inherits HorizontalLayout {
     if root.show-label: Text {
         text: root.online && root.ping-ms >= 0 ? root.ping-ms + "ms" : root.online ? "--ms" : "OFF";
         font-family: Theme.font-pixel;
-        font-size: 8px;
+        font-size: Theme.pix(8px);
         color: Theme.muted-strong;
         vertical-alignment: center;
     }
@@ -120,7 +120,7 @@ component Chip inherits Rectangle {
     lbl := Text {
         text: root.text;
         font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
-        font-size: root.pixel ? 8px : 11px;
+        font-size: root.pixel ? Theme.pix(8px) : 11px;
         font-weight: root.pixel ? 400 : 600;
         color: root.fg;
         horizontal-alignment: center;
@@ -234,7 +234,7 @@ export component ServerRadarCard inherits Rectangle {
                     Text {
                         text: root.server.hostname != "" ? root.server.hostname : root.server.host;
                         font-family: Theme.font-title;
-                        font-size: 16px;
+                        font-size: Theme.pix(16px);
                         font-weight: 700;
                         color: Theme.title-color;
                         overflow: elide;

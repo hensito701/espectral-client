@@ -55,7 +55,7 @@ component ActiveCard inherits Rectangle {
                     active-lbl := Text {
                         text: T.tr("account.active");
                         font-family: Theme.font-pixel;
-                        font-size: 8px;
+                        font-size: Theme.pix(8px);
                         color: Theme.on-gold;
                     }
                 }
@@ -141,7 +141,7 @@ component SectionLabel inherits HorizontalLayout {
         border-radius: Theme.radius-xs;
         width: cnt.preferred-width + 10px;
         height: cnt.preferred-height + 2px;
-        cnt := Text { text: root.count; font-family: Theme.font-pixel; font-size: 8px; color: Theme.muted; vertical-alignment: center; horizontal-alignment: center; }
+        cnt := Text { text: root.count; font-family: Theme.font-pixel; font-size: Theme.pix(8px); color: Theme.muted; vertical-alignment: center; horizontal-alignment: center; }
     }
 }
 
@@ -286,7 +286,7 @@ export component AccountPopover inherits Rectangle {
                 Text {
                     text: T.tr("account.profileTitle").to-uppercase();
                     font-family: Theme.font-title;
-                    font-size: 16px;
+                    font-size: Theme.pix(16px);
                     font-weight: 700;
                     color: Theme.title-color;
                     horizontal-stretch: 1;

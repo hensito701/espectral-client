@@ -87,7 +87,7 @@ export component LanguageToggle inherits ChromeSquare {
     Text {
         text: T.lang == "es" ? "EN" : "ES";
         font-family: Theme.font-pixel;
-        font-size: 8px;
+        font-size: Theme.pix(8px);
         color: root.hovered ? (root.on-bar ? Bar.gold : Theme.hover-border) : (root.on-bar ? Bar.text : Theme.muted-strong);
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -121,7 +121,8 @@ export component TopChrome inherits Rectangle {
                     Image {
                         width: 44px;
                         height: 44px;
-                        source: @image-url("../assets/logo_circle.png");
+                        // 96px copy: the 256px original aliases when drawn this small.
+                        source: @image-url("../assets/logo_circle_96.png");
                         image-fit: contain;
                     }
                 }
@@ -333,7 +334,7 @@ export component TopChrome inherits Rectangle {
                                 if !AppState.has-active-account: Text {
                                     text: "+";
                                     font-family: Theme.font-pixel;
-                                    font-size: 16px;
+                                    font-size: Theme.pix(16px);
                                     color: Bar.gold;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;

@@ -64,7 +64,7 @@ export component Badge inherits Rectangle {
         Text {
             text: root.text;
             color: root.fg;
-            font-size: root.pixel ? 8px : root.large ? Theme.text-sm : Theme.text-xs;
+            font-size: root.pixel ? Theme.pix(8px) : root.large ? Theme.text-sm : Theme.text-xs;
             font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
             font-weight: root.pixel ? 400 : 600;
             letter-spacing: root.pixel ? 0px : 0.3px;
@@ -90,7 +90,7 @@ export component Kbd inherits Rectangle {
     label := Text {
         text: root.text;
         font-family: Theme.font-pixel;
-        font-size: root.font-size;
+        font-size: Theme.pix(root.font-size);
         color: root.accent ? Theme.accent : Theme.muted-strong;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -122,7 +122,8 @@ export component McTitle inherits Rectangle {
     in property <color> shadow-ink: Theme.brand-purple;
     in property <TextHorizontalAlignment> horizontal-alignment: left;
     in property <bool> wrap: true;
-    property <length> px: font-size / 8;
+    property <length> fs: Theme.pix(font-size);
+    property <length> px: fs / 8;
 
     // A long pixel title must never widen its parent: when it wraps, it
     // wraps; when it doesn't, it is clipped by the layout instead.
@@ -140,7 +141,7 @@ export component McTitle inherits Rectangle {
         height: root.height - root.px;
         text: root.text;
         font-family: Theme.font-title;
-        font-size: root.font-size;
+        font-size: root.fs;
         font-weight: 700;
         color: root.shadow-ink;
         horizontal-alignment: root.horizontal-alignment;
@@ -153,7 +154,7 @@ export component McTitle inherits Rectangle {
         height: root.height - root.px;
         text: root.text;
         font-family: Theme.font-title;
-        font-size: root.font-size;
+        font-size: root.fs;
         font-weight: 700;
         color: root.ink;
         horizontal-alignment: root.horizontal-alignment;
@@ -168,11 +169,12 @@ component WordmarkLetter inherits Rectangle {
     in property <string> letter;
     in property <color> tint;
     in property <length> font-size;
-    property <length> px: font-size / 8;
+    property <length> fs: Theme.pix(font-size);
+    property <length> px: fs / 8;
     width: glyph.preferred-width;
     height: glyph.preferred-height + px;
-    Text { x: root.px; y: root.px; text: root.letter; font-family: Theme.font-title; font-size: root.font-size; font-weight: 700; color: Theme.brand-purple.with-alpha(0.6); }
-    glyph := Text { x: 0; y: 0; text: root.letter; font-family: Theme.font-title; font-size: root.font-size; font-weight: 700; color: root.tint; }
+    Text { x: root.px; y: root.px; text: root.letter; font-family: Theme.font-title; font-size: root.fs; font-weight: 700; color: Theme.brand-purple.with-alpha(0.6); }
+    glyph := Text { x: 0; y: 0; text: root.letter; font-family: Theme.font-title; font-size: root.fs; font-weight: 700; color: root.tint; }
 }
 
 /// The "Espectral" wordmark: per-letter gold gradient #FFAA00 → #FFD700 →
@@ -230,7 +232,7 @@ export component Sticker inherits Rectangle {
             label := Text {
                 text: root.text;
                 font-family: Theme.font-title;
-                font-size: root.font-size;
+                font-size: Theme.pix(root.font-size);
                 font-weight: root.small ? 400 : 700;
                 color: root.ink;
                 horizontal-alignment: center;

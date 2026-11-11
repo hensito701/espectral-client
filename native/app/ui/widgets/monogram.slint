@@ -50,7 +50,7 @@ export component MonogramTile inherits Rectangle {
     if !root.has-avatar: Text {
         text: Util.initial(root.name);
         font-family: Theme.font-title;
-        font-size: max(8px, round(root.size * 0.4 / 8px) * 8px);
+        font-size: Theme.pix(max(8px, round(root.size * 0.4 / 8px) * 8px));
         font-weight: 700;
         color: Theme.hsla(root.hue, 0.9, 0.78, 1);
         horizontal-alignment: center;

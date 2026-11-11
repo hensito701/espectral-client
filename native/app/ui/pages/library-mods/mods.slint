@@ -42,7 +42,7 @@ component CatalogHeader inherits HorizontalLayout {
             VText {
                 text: T.tr("mods.kicker");
                 font-family: Theme.font-pixel;
-                font-size: 8px;
+                font-size: Theme.pix(8px);
                 color: Theme.accent;
             }
         }
@@ -213,7 +213,7 @@ component ProgressDeck inherits GlassPanel {
             VText {
                 text: LibraryBridge.m-progress-done + " / " + LibraryBridge.m-progress-total;
                 font-family: Theme.font-pixel;
-                font-size: 8px;
+                font-size: Theme.pix(8px);
             }
         }
         ProgressBar {
@@ -461,8 +461,9 @@ component Switch inherits Rectangle {
     border-color: on ? Theme.brand-ink : Theme.border-solid;
     animate background, border-color { duration: Theme.dur-med; easing: ease-out; }
     Rectangle {
-        x: root.on ? 21px : 3px;
-        y: 3px;
+        // Slint positions children from the outer edge, border included.
+        x: root.on ? 23px : 5px;
+        y: 5px;
         width: 14px;
         height: 14px;
         border-radius: 7px;
@@ -521,7 +522,7 @@ component ModEntryRow inherits Rectangle {
                         ver := Text {
                             text: root.entry.version;
                             font-family: Theme.font-pixel;
-                            font-size: 8px;
+                            font-size: Theme.pix(8px);
                             letter-spacing: -0.48px;
                             color: Theme.muted;
                         }
@@ -737,7 +738,7 @@ component PresetsPane inherits VerticalLayout {
             VerticalLayout {
                 alignment: center;
                 Text { text: T.tr("mods.performance"); font-size: Theme.text-base; font-weight: 700; color: Theme.text; }
-                Text { text: "7 mods verificados"; font-family: Theme.font-pixel; font-size: 8px; color: Theme.muted; }
+                Text { text: "7 mods verificados"; font-family: Theme.font-pixel; font-size: Theme.pix(8px); color: Theme.muted; }
             }
             Rectangle { horizontal-stretch: 1; }
             VerticalLayout {
@@ -839,7 +840,7 @@ component SearchHeader inherits GlassPanel {
             VText {
                 text: "Modrinth Matrix";
                 font-family: Theme.font-pixel;
-                font-size: 8px;
+                font-size: Theme.pix(8px);
                 color: Theme.accent-green;
             }
         }

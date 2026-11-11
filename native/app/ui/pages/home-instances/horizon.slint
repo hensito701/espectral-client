@@ -100,7 +100,7 @@ export component HorizonTile inherits Rectangle {
             y: -10px;
             text: Util.initial(root.inst.name);
             font-family: Theme.font-pixel;
-            font-size: 96px;
+            font-size: Theme.pix(96px);
             color: root.glyph-color;
             opacity: 0.38;
         }
@@ -110,7 +110,7 @@ export component HorizonTile inherits Rectangle {
             y: caption.y - self.height - 6px;
             text: root.inst.version;
             font-family: Theme.font-pixel;
-            font-size: 32px;
+            font-size: Theme.pix(32px);
             color: root.glyph-color;
             opacity: 0.45;
         }
@@ -252,7 +252,7 @@ export component AddTile inherits Rectangle {
                     Text {
                         text: "+";
                         font-family: Theme.font-pixel;
-                        font-size: 24px;
+                        font-size: Theme.pix(24px);
                         color: root.hovered ? Theme.on-gold : Theme.muted-strong;
                         horizontal-alignment: center;
                         vertical-alignment: center;

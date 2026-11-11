@@ -73,7 +73,7 @@ component Hero inherits Rectangle {
                     alignment: center;
                     Badge { text: T.tr("pav.heroBadge"); variant: BadgeVariant.gold; dot: true; }
                 }
-                VText { text: "ESPECTRAL CLIENT NETWORK"; font-family: Theme.font-pixel; font-size: 8px; letter-spacing: 0.8px; color: Theme.muted; }
+                VText { text: "ESPECTRAL CLIENT NETWORK"; font-family: Theme.font-pixel; font-size: Theme.pix(8px); letter-spacing: 0.8px; color: Theme.muted; }
             }
             VerticalLayout {
                 spacing: Theme.space-2;
@@ -148,7 +148,7 @@ component LinkBtn inherits Rectangle {
         }
         VText {
             text: root.text;
-            font-size: root.pixel ? 16px : 14px;
+            font-size: root.pixel ? Theme.pix(16px) : 14px;
             font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
             font-weight: 700;
             color: root.fg;
@@ -232,7 +232,7 @@ component ChannelCard inherits Rectangle {
                         text: root.title;
                         color: Theme.title-color;
                         font-family: Theme.font-title;
-                        font-size: 16px;
+                        font-size: Theme.pix(16px);
                         font-weight: 700;
                         wrap: word-wrap;
                         horizontal-stretch: 1;
@@ -454,7 +454,7 @@ component RankCardView inherits Rectangle {
                     VerticalLayout {
                         alignment: end;
                         padding-bottom: 5px;
-                        Text { text: T.tr(root.rank.price-key); color: Theme.title-color; font-family: Theme.font-pixel; font-size: 16px; }
+                        Text { text: T.tr(root.rank.price-key); color: Theme.title-color; font-family: Theme.font-pixel; font-size: Theme.pix(16px); }
                     }
                 }
                 Text {
@@ -571,9 +571,9 @@ component UnbanTier inherits Rectangle {
         padding-left: 20px;
         padding-right: 20px;
         spacing: 9.6px;
-        VText { text: "# " + root.level; font-family: Theme.font-pixel; font-size: 8px; color: Theme.accent-gold; }
+        VText { text: "# " + root.level; font-family: Theme.font-pixel; font-size: Theme.pix(8px); color: Theme.accent-gold; }
         VText { text: root.label; font-size: 14.4px; font-weight: 600; horizontal-stretch: 1; }
-        VText { text: root.price; font-family: Theme.font-pixel; font-size: 16px; color: Theme.accent; }
+        VText { text: root.price; font-family: Theme.font-pixel; font-size: Theme.pix(16px); color: Theme.accent; }
     }
 }
 

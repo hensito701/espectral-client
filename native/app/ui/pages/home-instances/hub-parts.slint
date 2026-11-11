@@ -210,8 +210,10 @@ export component Switch inherits Rectangle {
     opacity: enabled ? 1 : 0.5;
     animate background { duration: Theme.dur-fast; }
     Rectangle {
-        x: root.on ? 22px : 2px;
-        y: 2px;
+        // Slint positions children from the outer edge, border included
+        // (CSS measured these from inside the 2px border).
+        x: root.on ? 24px : 4px;
+        y: 4px;
         width: 16px;
         height: 16px;
         border-radius: 2px;

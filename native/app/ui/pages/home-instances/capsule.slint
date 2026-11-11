@@ -66,7 +66,7 @@ component PlayButton inherits Rectangle {
                 text: root.label;
                 color: root.running ? #ffffff : Theme.on-gold;
                 font-family: Theme.font-pixel;
-                font-size: 16px;
+                font-size: Theme.pix(16px);
                 vertical-alignment: center;
             }
         }
@@ -351,7 +351,7 @@ export component TelemetryCapsule inherits Rectangle {
                                 text: "⚡ " + T.tr(HomeBridge.aot-chip-key);
                                 color: parent.kind == "ok" ? Theme.accent-green : parent.kind == "warn" ? Theme.accent-alt : Theme.muted;
                                 font-family: Theme.font-pixel;
-                                font-size: 8px;
+                                font-size: Theme.pix(8px);
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }

@@ -186,7 +186,7 @@ export component Segmented inherits Rectangle {
             lbl := Text {
                 text: item;
                 font-family: root.compact ? Theme.font-pixel : Theme.font-body;
-                font-size: root.compact ? 8px : root.font-size;
+                font-size: root.compact ? Theme.pix(8px) : root.font-size;
                 font-weight: 600;
                 color: active ? Theme.btn-ink : t.has-hover ? Theme.text : Theme.muted;
                 horizontal-alignment: center;

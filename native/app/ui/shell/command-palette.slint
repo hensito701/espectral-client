@@ -79,7 +79,7 @@ component PaletteRow inherits Rectangle {
                 badge-text := Text {
                     text: root.item.badge;
                     font-family: Theme.font-pixel;
-                    font-size: 8px;
+                    font-size: Theme.pix(8px);
                     color: active ? Theme.btn-fill : root.badge-fg;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -204,7 +204,7 @@ export component CommandPalette inherits Rectangle {
                             esc-t := Text {
                                 text: "ESC";
                                 font-family: Theme.font-pixel;
-                                font-size: 8px;
+                                font-size: Theme.pix(8px);
                                 color: Theme.muted-strong;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
@@ -257,7 +257,7 @@ export component CommandPalette inherits Rectangle {
                             text: item.section;
                             font-family: Theme.font-pixel;
                             font-weight: 400;
-                            font-size: 8px;
+                            font-size: Theme.pix(8px);
                             color: Theme.muted;
                             vertical-alignment: bottom;
                             // CSS: padding 8px 12px 4px
@@ -303,7 +303,7 @@ export component CommandPalette inherits Rectangle {
                     Text {
                         text: "ESPECTRAL HORIZON";
                         font-family: Theme.font-pixel;
-                        font-size: 8px;
+                        font-size: Theme.pix(8px);
                         color: Theme.muted;
                         opacity: 0.6;
                         vertical-alignment: center;

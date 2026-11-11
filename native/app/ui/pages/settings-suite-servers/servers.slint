@@ -123,7 +123,7 @@ component PixelValue inherits HorizontalLayout {
     Text {
         text: root.number;
         font-family: Theme.font-pixel;
-        font-size: 24px;
+        font-size: Theme.pix(24px);
         font-weight: 700;
         color: Theme.title-color;
         vertical-alignment: bottom;
@@ -134,7 +134,7 @@ component PixelValue inherits HorizontalLayout {
         Text {
             text: root.suffix;
             font-family: Theme.font-pixel;
-            font-size: root.suffix-size;
+            font-size: Theme.pix(root.suffix-size);
             color: root.suffix-color;
         }
     }
@@ -344,7 +344,7 @@ component GuidanceCard inherits GlassCard {
             Text {
                 text: T.tr("servers.customTitle");
                 font-family: Theme.font-title;
-                font-size: 16px;
+                font-size: Theme.pix(16px);
                 font-weight: 700;
                 color: Theme.title-color;
                 line-height-factor: 1.1;

@@ -313,7 +313,7 @@ component RosterEmpty inherits RosterBox {
                 text: T.tr("vault.rosterEmpty");
                 color: Theme.title-color;
                 font-family: Theme.font-title;
-                font-size: 16px;
+                font-size: Theme.pix(16px);
                 font-weight: 700;
                 horizontal-alignment: center;
             }
@@ -707,7 +707,7 @@ component FlowStepHead inherits HorizontalLayout {
         Text {
             text: root.mark;
             font-family: Theme.font-pixel;
-            font-size: 8px;
+            font-size: Theme.pix(8px);
             color: Theme.on-gold;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -787,7 +787,7 @@ component CodeBanner inherits Rectangle {
         Text {
             text: AccountBridge.ms-user-code;
             font-family: Theme.font-pixel;
-            font-size: 24px;
+            font-size: Theme.pix(24px);
             font-weight: 700;
             letter-spacing: 3px;
             color: Theme.title-color;
@@ -1146,7 +1146,7 @@ component LunarCard inherits Rectangle {
                 Text {
                     text: T.tr("vault.lunarShieldTitle");
                     font-family: Theme.font-title;
-                    font-size: 16px;
+                    font-size: Theme.pix(16px);
                     font-weight: 700;
                     color: Theme.title-color;
                     vertical-alignment: center;

@@ -25,6 +25,8 @@ export global Theme {
     in-out property <string> accent-id: "oro";
     /// Resolved scheme: true = dark palette.
     out property <bool> dark: mode == "system" ? Palette.color-scheme != ColorScheme.light : mode != "light";
+    /// Window scale factor (1.25 at Windows "125 %"). Set by Rust; `pix` needs it.
+    in property <float> ui-scale: 1;
 
     // ---- surfaces ------------------------------------------------------------
     // Flat, opaque blocks. The translucent names are kept for the callers but
@@ -154,12 +156,20 @@ export global Theme {
     // ---- typography ----------------------------------------------------------
     out property <string> font-body: "Space Grotesk";
     /// Titles, card titles, stat numbers: the Minecraft pixel font (bold).
-    /// Sizes in multiples of 8px keep glyph edges sharp.
+    /// Its glyphs sit on an em/8 grid, so they are sharp only when the size
+    /// in physical pixels is a multiple of 8: give every size as `pix(...)`.
     out property <string> font-display: "Minecraft Espectral";
     out property <string> font-title: "Minecraft Espectral";
     /// Short pixel labels (badges, key chips).
     out property <string> font-pixel: "Minecraft Espectral";
     out property <string> font-mono: "JetBrains Mono";
+
+    /// The size nearest to `size` at which the pixel font is sharp on this
+    /// display: a multiple of 8 physical px (halfway rounds down, minimum 8).
+    /// 16px stays 16px at 100 % and becomes 12.8px (16 physical) at 125 %.
+    pure public function pix(size: length) -> length {
+        Math.max(1, Math.ceil(size * ui-scale / 8px - 0.5)) * 8px / ui-scale
+    }
     out property <length> text-xs: 12px;
     out property <length> text-sm: 14px;
     out property <length> text-md: 15px;

@@ -67,7 +67,7 @@ component ToastCard inherits Rectangle {
                 text: root.item.kind == ToastKind.ok ? "LOGRO DESBLOQUEADO" : root.item.kind == ToastKind.err ? "AVISO DEL SISTEMA" : "NOTIFICACIÓN";
                 font-family: Theme.font-pixel;
                 font-weight: 400;
-                font-size: 8px;
+                font-size: Theme.pix(8px);
                 color: root.tone;
             }
             Text {

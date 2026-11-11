@@ -1,7 +1,12 @@
+//! The window's one winit event callback (Slint allows a single one).
+//!
 //! OS drag & drop of `.mrpack` files onto the window (the Svelte ImportCenter
 //! dropzone, made window-wide): winit `HoveredFile` lights the dropzone,
 //! `DroppedFile` selects the pack — in the open MrpackModal if there is one,
 //! otherwise in ImportCenter's lane A (navigating there first).
+//!
+//! It also forwards scale-factor changes to the theme, which keeps the pixel
+//! font on whole pixels.
 //!
 //! Needs Slint's `unstable-winit-030` feature (WinitWindowAccessor); a no-op
 //! on non-winit platforms (the headless screenshot renderer).
@@ -15,7 +20,7 @@ use crate::{router, toast, AppWindow, LibraryBridge, Page};
 
 pub fn init(_ctx: &Ctx, ui: &AppWindow) {
     let weak = ui.as_weak();
-    ui.window().on_winit_window_event(move |_w, ev| {
+    ui.window().on_winit_window_event(move |w, ev| {
         let Some(ui) = weak.upgrade() else { return EventResult::Propagate };
         match ev {
             winit::event::WindowEvent::HoveredFile(path) => {
@@ -28,6 +33,14 @@ pub fn init(_ctx: &Ctx, ui: &AppWindow) {
             winit::event::WindowEvent::DroppedFile(path) => {
                 ui.global::<LibraryBridge>().set_dragging_file(false);
                 dropped(&ui, &path.to_string_lossy());
+            }
+            winit::event::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                crate::theme::set_ui_scale(&ui, *scale_factor as f32);
+            }
+            // A new window reports scale 1 until it exists; its first size
+            // event is the earliest point where the real factor is known.
+            winit::event::WindowEvent::Resized(_) => {
+                crate::theme::set_ui_scale(&ui, w.scale_factor());
             }
             _ => {}
         }

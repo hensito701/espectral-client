@@ -62,7 +62,7 @@ component SuitePill inherits Rectangle {
             kb := Text {
                 text: root.keybind;
                 font-family: Theme.font-pixel;
-                font-size: 8px;
+                font-size: Theme.pix(8px);
                 color: root.active ? Theme.gold : Theme.accent-gold;
             }
         }
@@ -98,7 +98,7 @@ component CardDeck inherits HorizontalLayout {
     VerticalLayout {
         alignment: center;
         horizontal-stretch: 1;
-        Text { text: root.title; font-family: Theme.font-title; font-size: 16px; font-weight: 700; color: Theme.title-color; line-height-factor: 1.2; overflow: elide; }
+        Text { text: root.title; font-family: Theme.font-title; font-size: Theme.pix(16px); font-weight: 700; color: Theme.title-color; line-height-factor: 1.2; overflow: elide; }
         Text { text: root.subhead; font-size: 12px; color: Theme.muted; line-height-factor: 1.25; wrap: word-wrap; }
     }
     @children
@@ -116,7 +116,7 @@ component CountChip inherits Rectangle {
     lbl := Text {
         text: root.text;
         font-family: Theme.font-pixel;
-        font-size: 8px;
+        font-size: Theme.pix(8px);
         font-weight: 400;
         color: Theme.muted-strong;
     }
@@ -683,7 +683,7 @@ component ActionRow inherits GlassPanel {
                     width: 16px;
                     text: root.index + 1;
                     font-family: Theme.font-pixel;
-                    font-size: 8px;
+                    font-size: Theme.pix(8px);
                     color: Theme.muted;
                     horizontal-alignment: center;
                     vertical-alignment: center;

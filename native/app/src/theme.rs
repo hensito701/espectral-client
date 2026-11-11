@@ -39,6 +39,15 @@ pub fn apply(ui: &AppWindow, mode: &str, accent: &str) {
     t.set_accent_id(SharedString::from(accent));
 }
 
+/// Tell the theme the window's scale factor (`Theme.pix` snaps the pixel font to it).
+pub fn set_ui_scale(ui: &AppWindow, scale: f32) {
+    let t = ui.global::<Theme>();
+    if t.get_ui_scale() != scale {
+        tracing::info!("[ui] display scale factor {scale}");
+        t.set_ui_scale(scale);
+    }
+}
+
 fn set_mode(ctx: &Ctx, mode: String) {
     if let Some(ui) = ctx.ui() {
         ui.global::<Theme>().set_mode(SharedString::from(mode.as_str()));

@@ -220,7 +220,7 @@ component ThemePreview inherits Rectangle {
                     chip := Text {
                         text: (Theme.dark ? "DARK" : "LIGHT") + " MODE";
                         font-family: Theme.font-pixel;
-                        font-size: 8px;
+                        font-size: Theme.pix(8px);
                         font-weight: 400;
                         line-height-factor: 1.25;
                         color: Theme.on-gold;
@@ -326,7 +326,7 @@ component LangTile inherits Rectangle {
                 lbl := Text {
                     text: root.active-text;
                     font-family: Theme.font-pixel;
-                    font-size: 8px;
+                    font-size: Theme.pix(8px);
                     font-weight: 400;
                     color: Theme.gold;
                     horizontal-alignment: center;
@@ -532,11 +532,11 @@ component RamBadge inherits Rectangle {
         padding-top: 5.6px;
         padding-bottom: 5.6px;
         spacing: 4px;
-        Text { text: root.value; font-family: Theme.font-pixel; font-size: 16px; font-weight: 700; color: Theme.title-color; vertical-alignment: bottom; }
+        Text { text: root.value; font-family: Theme.font-pixel; font-size: Theme.pix(16px); font-weight: 700; color: Theme.title-color; vertical-alignment: bottom; }
         VerticalLayout {
             alignment: end;
             padding-bottom: 1px;
-            Text { text: "GB"; font-family: Theme.font-pixel; font-size: 8px; font-weight: 700; color: Theme.muted-strong; }
+            Text { text: "GB"; font-family: Theme.font-pixel; font-size: Theme.pix(8px); font-weight: 700; color: Theme.muted-strong; }
         }
     }
 }
@@ -815,7 +815,7 @@ component ToggleCard inherits GlassCard {
             Text {
                 text: root.heading;
                 font-family: Theme.font-title;
-                font-size: 16px;
+                font-size: Theme.pix(16px);
                 font-weight: 700;
                 line-height-factor: 1.1;
                 color: Theme.title-color;
@@ -1104,7 +1104,7 @@ component VipBanner inherits Rectangle {
             }
             VerticalLayout {
                 spacing: 5.6px;
-                Text { text: T.tr("dash.about.supportBanner"); font-family: Theme.font-title; font-size: 16px; font-weight: 700; color: Theme.title-color; line-height-factor: 1.25; horizontal-alignment: center; wrap: word-wrap; }
+                Text { text: T.tr("dash.about.supportBanner"); font-family: Theme.font-title; font-size: Theme.pix(16px); font-weight: 700; color: Theme.title-color; line-height-factor: 1.25; horizontal-alignment: center; wrap: word-wrap; }
                 Text { text: T.tr("dash.about.rankPerks"); font-size: 12.8px; color: Theme.muted; line-height-factor: 1.09; horizontal-alignment: center; wrap: word-wrap; }
             }
             HorizontalLayout {
