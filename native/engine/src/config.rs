@@ -31,8 +31,10 @@ use crate::types::{Account, AppConfig, JavaRuntime};
 /// Canonical espectral-id service URL (the espectral.es zone lapsed 2026-10-22).
 pub const DEFAULT_IDENTITY_URL: &str = "https://id.uhce.top";
 
-/// Identity hosts that predate the uhce.top move; migrated on load.
-pub const LEGACY_IDENTITY_URLS: &[&str] = &["https://id.espectral.es"];
+/// Host of the pre-uhce.top identity service. Any URL served by that host is
+/// migrated on load, whatever its scheme, port, path or case (F3): the client
+/// appends its own `/v1/...` paths, so a stored path is always dropped.
+pub const LEGACY_IDENTITY_HOST: &str = "id.espectral.es";
 
 /// Old fixed defaults (engine 3072, wizard 4096): instances carrying one were
 /// never chosen deliberately (instances.mjs migrates them to automatic).
@@ -98,11 +100,22 @@ pub fn recommended_memory_mb() -> u32 {
     recommended_memory_mb_for(platform::total_memory_bytes() as f64)
 }
 
-/// True when `url` is exactly a bare legacy identity host (trailing slashes
-/// and surrounding whitespace tolerated, host case-insensitive).
+/// True when `url` is any URL served by the legacy identity host (any scheme,
+/// port, path, query, fragment, host case or trailing dot; surrounding
+/// whitespace tolerated). Only the *host* is compared, so `/v1`-style prefixes
+/// left over from an older launcher are migrated too.
 pub fn is_legacy_identity_url(url: &str) -> bool {
-    let norm = url.trim().trim_end_matches('/').to_lowercase();
-    LEGACY_IDENTITY_URLS.contains(&norm.as_str())
+    let trimmed = url.trim();
+    // A hand-edited config may omit the scheme (`id.espectral.es/v1`); retry
+    // with an implicit https:// so those still resolve to a host.
+    let parsed = url::Url::parse(trimmed).or_else(|_| url::Url::parse(&format!("https://{trimmed}")));
+    match parsed {
+        Ok(parsed) => {
+            let host = parsed.host_str().unwrap_or("").trim_end_matches('.').to_lowercase();
+            host == LEGACY_IDENTITY_HOST
+        }
+        Err(_) => false,
+    }
 }
 
 /// JS `Number.isInteger(v)` for a JSON value.
@@ -188,8 +201,8 @@ impl ConfigStore {
             if !matches!(doc.get("agent"), Some(Value::Object(_))) {
                 doc.insert("agent".into(), json!({ "enabled": false, "allowed_servers": [] }));
             }
-            // Only a *legacy* identity_url is rewritten; a custom one is the
-            // user's own self-hosted service.
+            // Only a *legacy* identity_url (any URL on the old host) is rewritten;
+            // a custom one is the user's own self-hosted service.
             let migrated_identity =
                 matches!(doc.get("identity_url"), Some(Value::String(u)) if is_legacy_identity_url(u));
             if migrated_identity {
@@ -551,6 +564,27 @@ mod tests {
         std::fs::write(p.config_json(), r#"{"identity_url":"https://id.espectral.es/"}"#).unwrap();
         assert_eq!(ConfigStore::new(&p).load()["identity_url"], "https://id.uhce.top");
 
+        // Any URL on the legacy host is rewritten to the bare default; the
+        // client appends its own /v1/... paths, so a stored path is dropped.
+        for raw in [
+            "https://id.espectral.es/v1",
+            "https://id.espectral.es/v1/",
+            "https://id.espectral.es/v1/grant?x=1#f",
+            "https://ID.ESPECTRAL.ES/V1",
+            "http://id.espectral.es/v1",
+            "http://id.espectral.es:8080/v1",
+            "https://id.espectral.es:443/v1",
+            "https://id.espectral.es./v1",
+            "id.espectral.es",
+            "id.espectral.es/v1",
+            "  https://id.espectral.es/v1/grant  ",
+        ] {
+            std::fs::write(p.config_json(), format!(r#"{{"identity_url":"{}"}}"#, raw.replace('"', "\\\""))).unwrap();
+            assert_eq!(ConfigStore::new(&p).load()["identity_url"], "https://id.uhce.top", "raw: {raw}");
+            let on_disk: Value = serde_json::from_str(&std::fs::read_to_string(p.config_json()).unwrap()).unwrap();
+            assert_eq!(on_disk["identity_url"], "https://id.uhce.top", "raw: {raw}");
+        }
+
         std::fs::write(p.config_json(), r#"{"identity_url":"https://id.example.test/v1"}"#).unwrap();
         assert_eq!(ConfigStore::new(&p).load()["identity_url"], "https://id.example.test/v1");
         let on_disk: Value = serde_json::from_str(&std::fs::read_to_string(p.config_json()).unwrap()).unwrap();
@@ -558,23 +592,35 @@ mod tests {
     }
 
     #[test]
-    fn is_legacy_identity_url_matches_only_the_bare_host() {
+    fn is_legacy_identity_url_matches_any_path_on_the_legacy_host() {
         for url in [
             "https://id.espectral.es",
             "https://id.espectral.es/",
             "https://id.espectral.es//",
             "  https://id.espectral.es  ",
             "https://ID.espectral.es",
+            "https://id.espectral.es/v1",
+            "https://id.espectral.es/v1/",
+            "https://id.espectral.es/v1/grant?x=1#frag",
+            "http://id.espectral.es",
+            "http://id.espectral.es:8080/v1",
+            "https://id.espectral.es:443/v1",
+            "https://id.espectral.es./v1",
+            "id.espectral.es",
+            "id.espectral.es/v1",
         ] {
             assert!(is_legacy_identity_url(url), "{url}");
         }
         for url in [
             "https://id.espectral.es.evil.example",
-            "http://id.espectral.es",
-            "https://id.espectral.es/v1",
+            "https://id.espectral.es.evil.example/v1",
             "https://id.uhce.top",
+            "https://id.uhce.top/v1",
             "https://espectral.es",
+            "https://espectral.es/v1",
+            "https://notid.espectral.es",
             "",
+            "not a url",
         ] {
             assert!(!is_legacy_identity_url(url), "{url}");
         }
