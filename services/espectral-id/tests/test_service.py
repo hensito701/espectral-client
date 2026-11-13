@@ -28,7 +28,7 @@ def verify_grant(token: str, pubkey: Ed25519PrivateKey, uuid32: str):
     sig = base64.urlsafe_b64decode(pad(s))
     assert header == {"alg": "EdDSA", "kid": "eid1", "typ": "ESG"}
     pubkey.verify(sig, f"{h}.{p}".encode())
-    assert payload["iss"] == "https://id.espectral.es"
+    assert payload["iss"] == "https://id.uhce.top"
     assert payload["aud"] == "espectral-client"
     assert payload["sub"] == uuid32
     now = int(time.time())

@@ -20,7 +20,7 @@ MVP_ROLE_IDS = frozenset({
 
 GRANT_TTL_SECONDS = 86400          # grant exp = iat + 24 h
 GRANT_AUD = "espectral-client"
-GRANT_ISS = "https://id.espectral.es"
+GRANT_ISS = "https://id.uhce.top"  # 2026-11-13: id.espectral.es was re-registered by a third party
 GRANT_KID = "eid1"
 
 CHALLENGE_TTL_SECONDS = 120        # contract: challenge expires_in 120
