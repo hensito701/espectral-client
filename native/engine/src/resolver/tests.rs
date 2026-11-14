@@ -81,6 +81,54 @@ fn classpath_order_and_filters() {
 }
 
 #[test]
+fn classpath_loader_library_wins_over_vanilla_build() {
+    // Mojang's 1.21.9 json ships asm 9.6; Fabric Loader ships its own ASM.
+    // Two ASM jars on -cp abort Fabric before it logs anything.
+    let (_d, e) = temp_engine();
+    let inst =
+        InstanceMeta { name: "x".into(), version: "1.21.9".into(), loader: Loader::Fabric, ..Default::default() };
+    let vj = json!({ "libraries": [
+        { "name": "org.ow2.asm:asm:9.6" },
+        { "name": "org.lwjgl:lwjgl:3.3.3" },
+        { "name": "org.lwjgl:lwjgl:3.3.3:sources" }
+    ] });
+    let lib = |name: &str, rel: &str| LibraryDownload {
+        name: name.into(),
+        rel_path: rel.into(),
+        url: "u".into(),
+        sha1: None,
+        size: None,
+    };
+    let fabric = FabricProfile {
+        mc_version: "1.21.9".into(),
+        loader_version: "0.20.1".into(),
+        loader_maven: None,
+        intermediary: None,
+        main_class: "K".into(),
+        jvm_args: vec![],
+        libraries: vec![
+            lib("org.ow2.asm:asm:9.10.1", "org/ow2/asm/asm/9.10.1/asm-9.10.1.jar"),
+            lib("org.lwjgl:lwjgl:3.3.4:sources", "org/lwjgl/lwjgl/3.3.4/lwjgl-3.3.4-sources.jar"),
+        ],
+        min_java_version: None,
+        library_count: None,
+        seeded: None,
+        downloaded: None,
+    };
+    let libs = e.paths().libraries_dir();
+    assert_eq!(
+        resolve_classpath(&e, &inst, &vj, Some(&fabric)),
+        vec![
+            libs.join("org/ow2/asm/asm/9.10.1/asm-9.10.1.jar"),
+            libs.join("org/lwjgl/lwjgl/3.3.4/lwjgl-3.3.4-sources.jar"),
+            // A different classifier is a different library and stays.
+            libs.join("org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3.jar"),
+            e.paths().client_jar("1.21.9"),
+        ]
+    );
+}
+
+#[test]
 fn load_instance_meta_codes() {
     let (_d, e) = temp_engine();
     assert_eq!(load_instance_meta(&e, "bad/name").unwrap_err().envelope().code, "invalid_instance_name");

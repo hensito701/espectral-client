@@ -4,6 +4,20 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [Unreleased]
 
+### Fixed
+- **Fabric on 1.21.2 through 1.21.10 starts again.** Mojang's version files for those
+  releases list their own copy of ASM (9.3 / 9.6) and Fabric Loader brings a newer one; with
+  both on the classpath Fabric stopped right after launch with "duplicate ASM classes found on
+  classpath" and the game exited with code 1. When the loader ships a library, its build now
+  replaces vanilla's (1.21.11 and 26.x never listed ASM, which is why they kept working).
+- **One Sodium per instance.** For versions without a curated mod set (1.21.2 through 1.21.10)
+  the performance set took the newest Sodium and then added the older build Iris names on
+  Modrinth, so 1.21.3 and 1.21.5–1.21.8 instances got two Sodium jars and Fabric refused to
+  load. The set now installs a dependency only when it does not already contain that mod
+  (Iris accepts any Sodium 0.6.x / 0.7.x). Instances that already have two copies of a mod
+  are fixed on the next launch: the older jar is renamed to `.jar.disabled` and the launch
+  log says which one.
+
 ### Security
 - **`services/ruta-relay` closes unauthenticated connections and caps how many can exist.**
   Everything before `OK` (header line, grant check, upstream connect) now runs inside one

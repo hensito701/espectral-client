@@ -208,6 +208,13 @@ pub fn load_instance_meta(engine: &Engine, name: &str) -> EngineResult<InstanceM
 
 /// Classpath: loader libs first, then allowed non-natives vanilla libs, then
 /// the client jar (resolver.resolveClasspath).
+///
+/// A vanilla library the loader profile also ships (same group, artifact and
+/// classifier, any version) is left out: the loader's build wins, as in every
+/// launcher that merges an `inheritsFrom` profile. Mojang's 1.21.2–1.21.10
+/// jsons carry `org.ow2.asm:asm` (9.3 / 9.6) while Fabric Loader brings its
+/// own newer ASM, and Fabric aborts before its first log line on two ASM jars
+/// ("duplicate ASM classes found on classpath").
 pub fn resolve_classpath(
     engine: &Engine,
     instance: &InstanceMeta,
@@ -215,11 +222,15 @@ pub fn resolve_classpath(
     fabric: Option<&FabricProfile>,
 ) -> Vec<PathBuf> {
     let libs_dir = engine.paths().libraries_dir();
-    let mut out: Vec<PathBuf> =
-        fabric.map(|f| f.libraries.iter().map(|l| join_rel(&libs_dir, &l.rel_path)).collect()).unwrap_or_default();
+    let loader_libs = fabric.map(|f| f.libraries.as_slice()).unwrap_or_default();
+    let provided: HashSet<String> = loader_libs.iter().filter_map(|l| library_key(&l.name)).collect();
+    let mut out: Vec<PathBuf> = loader_libs.iter().map(|l| join_rel(&libs_dir, &l.rel_path)).collect();
     if let Some(Value::Array(libs)) = version_json.get("libraries") {
         for lib in libs {
             let name = lib.get("name").and_then(Value::as_str).unwrap_or("");
+            if library_key(name).is_some_and(|k| provided.contains(&k)) {
+                continue;
+            }
             if crate::rules::rules_allow(lib) && crate::rules::natives_classifier(name).is_none() {
                 out.push(join_rel(&libs_dir, &crate::rules::maven_path(name)));
             }
@@ -227,6 +238,17 @@ pub fn resolve_classpath(
     }
     out.push(engine.paths().client_jar(&instance.version));
     out
+}
+
+/// `group:artifact[:classifier]` of maven coordinates — the identity of a
+/// library across versions (None for a malformed name).
+fn library_key(name: &str) -> Option<String> {
+    let parts: Vec<&str> = name.split(':').collect();
+    match parts.as_slice() {
+        [group, artifact, _version] => Some(format!("{group}:{artifact}")),
+        [group, artifact, _version, classifier, ..] => Some(format!("{group}:{artifact}:{classifier}")),
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------

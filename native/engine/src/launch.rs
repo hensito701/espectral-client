@@ -1562,6 +1562,15 @@ pub async fn resolve_launch(
         if let Err(e) = ensure_legacy_log4j(engine, &version_json) {
             warnings.push(format!("legacy log4j config write failed: {e}"));
         }
+        if instance.loader == Loader::Fabric {
+            let mods_dir = crate::instances::effective_mods_dir(engine, instance);
+            let healed = tokio::task::spawn_blocking(move || crate::mods::disable_duplicate_mod_ids(&mods_dir))
+                .await
+                .unwrap_or_default();
+            for (stale, kept) in healed {
+                progress(&format!("[espectral] mod duplicado desactivado: {stale} (se mantiene {kept})"));
+            }
+        }
         let _ = crate::mods::ensure_branding_seeded(engine, instance).await;
         phase("branding");
         apply_launch_preferences(engine, instance, Some(&game_dir));

@@ -847,15 +847,24 @@ async fn install_preset_inner(
             if dep.get("dependency_type").and_then(Value::as_str) != Some("required") {
                 continue;
             }
+            // One build per project. Iris names the exact Sodium build it was
+            // released against (1.9.6+1.21.8 -> 0.7.2) while the set pins the
+            // newest one (0.7.3): adding the dependency's build as well put two
+            // Sodium jars in mods/ and Fabric refuses to start with a duplicate
+            // mod id. Iris itself only asks Fabric for `sodium 0.7.x`, so the
+            // build already in the set satisfies it.
+            let pid = s(&dep, "project_id").unwrap_or_default();
+            if !pid.is_empty()
+                && (pins.iter().any(|p| p.project_id == pid)
+                    || install_map.values().any(|m| s(m, "project_id").as_deref() == Some(pid.as_str())))
+            {
+                continue;
+            }
             if let Some(vid) = s(&dep, "version_id") {
                 if !install_map.contains_key(&vid) {
                     let m = version_meta(engine, &vid).await?;
                     install_map.insert(vid, m);
                 }
-                continue;
-            }
-            let pid = s(&dep, "project_id").unwrap_or_default();
-            if pins.iter().any(|p| p.project_id == pid) {
                 continue;
             }
             if JAR_IN_JAR.contains(&pid.as_str()) {
@@ -962,6 +971,46 @@ fn superseded_pinned_jars<'a>(
         })
         .map(|(file, _)| file.as_str())
         .collect()
+}
+
+/// Fabric refuses to boot when two enabled jars in `mods/` declare the same
+/// mod id. Launchers up to 1.8.3 put two Sodium builds into the dynamically
+/// pinned 1.21.2–1.21.8 instances (the preset's newest plus the one Iris
+/// names), so a launch disables every older duplicate and keeps the newest.
+/// Only duplicates whose versions both parse as semver are touched; anything
+/// else is left for Fabric to report. Reads only each jar's central directory
+/// and `fabric.mod.json`. Returns `(disabled, kept)` filename pairs.
+pub fn disable_duplicate_mod_ids(mods_dir: &Path) -> Vec<(String, String)> {
+    let mut by_id: IndexMap<String, Vec<(semver::Version, String)>> = IndexMap::new();
+    let mut names: Vec<String> = read_names(mods_dir).into_iter().filter(|f| f.ends_with(".jar")).collect();
+    names.sort();
+    for name in names {
+        let Some((id, version)) = fabric_mod_identity(&mods_dir.join(&name)) else { continue };
+        if let Ok(v) = semver::Version::parse(&version) {
+            by_id.entry(id).or_default().push((v, name));
+        }
+    }
+    let mut out = vec![];
+    for (_, mut jars) in by_id.into_iter().filter(|(_, j)| j.len() > 1) {
+        jars.sort_by(|a, b| b.0.cmp_precedence(&a.0));
+        let kept = jars[0].1.clone();
+        for (_, stale) in &jars[1..] {
+            if std::fs::rename(mods_dir.join(stale), mods_dir.join(format!("{stale}.disabled"))).is_ok() {
+                out.push((stale.clone(), kept.clone()));
+            }
+        }
+    }
+    out
+}
+
+/// `(id, version)` from a jar's `fabric.mod.json` (None when absent/unreadable).
+fn fabric_mod_identity(jar: &Path) -> Option<(String, String)> {
+    use std::io::Read;
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(jar).ok()?).ok()?;
+    let mut raw = String::new();
+    zip.by_name("fabric.mod.json").ok()?.take(1 << 20).read_to_string(&mut raw).ok()?;
+    let meta: Value = serde_json::from_str(&raw).ok()?;
+    Some((s(&meta, "id")?, s(&meta, "version")?))
 }
 
 // ---------------------------------------------------------------------------
@@ -2478,6 +2527,64 @@ mod tests {
         assert_eq!(phases.first().map(String::as_str), Some("start"));
         assert_eq!(phases.last().map(String::as_str), Some("done"));
         assert_eq!(phases.iter().filter(|p| *p == "done").count(), 3, "{phases:?}");
+    }
+
+    #[test]
+    fn duplicate_mod_ids_keep_the_newest_build() {
+        use std::io::Write;
+        let d = tempfile::tempdir().unwrap();
+        let jar = |file: &str, fmj: &str| {
+            let mut w = zip::ZipWriter::new(std::fs::File::create(d.path().join(file)).unwrap());
+            w.start_file("fabric.mod.json", zip::write::SimpleFileOptions::default()).unwrap();
+            w.write_all(fmj.as_bytes()).unwrap();
+            w.finish().unwrap();
+        };
+        // Name order puts the newer Sodium first; versions decide, not names.
+        jar("sodium-fabric-0.7.10+mc1.21.8.jar", r#"{"id":"sodium","version":"0.7.10+mc1.21.8"}"#);
+        jar("sodium-fabric-0.7.2+mc1.21.8.jar", r#"{"id":"sodium","version":"0.7.2+mc1.21.8"}"#);
+        jar("iris.jar", r#"{"id":"iris","version":"1.9.6+mc1.21.8"}"#);
+        // Unparseable versions are Fabric's to report, never guessed at.
+        jar("odd-a.jar", r#"{"id":"odd","version":"r12"}"#);
+        jar("odd-b.jar", r#"{"id":"odd","version":"r13"}"#);
+        let healed = disable_duplicate_mod_ids(d.path());
+        assert_eq!(
+            healed,
+            vec![("sodium-fabric-0.7.2+mc1.21.8.jar".to_string(), "sodium-fabric-0.7.10+mc1.21.8.jar".to_string())]
+        );
+        assert!(d.path().join("sodium-fabric-0.7.2+mc1.21.8.jar.disabled").exists());
+        assert!(d.path().join("odd-a.jar").exists() && d.path().join("odd-b.jar").exists());
+        assert!(disable_duplicate_mod_ids(d.path()).is_empty(), "second launch finds nothing to do");
+    }
+
+    /// Dynamic pins (1.21.8): Iris names the exact Sodium build it shipped
+    /// with (an older one than the set's newest). The set must keep ONE
+    /// Sodium — two jars with mod id `sodium` stop Fabric at boot.
+    #[tokio::test]
+    async fn install_preset_keeps_one_build_per_pinned_project() {
+        let srv = MockServer::start(fake_modrinth(json!({}), json!({}), json!({}))).await;
+        let cdn = srv.url("/cdn");
+        let mut versions = Map::new();
+        let mut pinned = Map::new();
+        for (slug, pid) in PERFORMANCE_PROJECTS {
+            let deps = if slug == "iris" {
+                json!([{ "project_id": "AANobbMI", "version_id": "sodium-old", "dependency_type": "required" }])
+            } else {
+                json!([])
+            };
+            let v = modrinth_version(pid, &format!("{slug}-new"), deps, &format!("{cdn}/{slug}.jar"));
+            versions.insert(pid.into(), json!([v.clone()]));
+            pinned.insert(format!("{slug}-new"), v);
+        }
+        let mut old = modrinth_version("AANobbMI", "sodium-old", json!([]), &format!("{cdn}/sodium-old.jar"));
+        old["files"][0]["filename"] = json!("sodium-old.jar");
+        pinned.insert("sodium-old".into(), old);
+        let server = MockServer::start(fake_modrinth(Value::Object(versions), Value::Object(pinned), json!({}))).await;
+        let (_d, e) = engine_with(Some(&server));
+        let mods = write_instance(&e, "dyn", "1.21.8", "fabric");
+        let r = install_preset(&e, "dyn", ModPreset::Performance).await.unwrap();
+        assert_eq!(r.installed.len(), 8, "{:?}", r.installed);
+        assert!(r.installed.contains(&"AANobbMI-1.0.0.jar".to_string()));
+        assert!(!mods.join("sodium-old.jar").exists(), "{:?}", read_names(&mods));
     }
 
     #[tokio::test]
