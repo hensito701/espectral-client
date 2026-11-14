@@ -2,7 +2,7 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.8.4] - 2026-11-14
 
 ### Fixed
 - **Fabric on 1.21.2 through 1.21.10 starts again.** Mojang's version files for those
