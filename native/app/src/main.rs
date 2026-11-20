@@ -235,6 +235,25 @@ fn run_ui(
     palette::init(&ctx, &ui);
     skin::init(&ctx, &ui);
     ui.global::<Shell>().set_hide_hotkeys(prefs::get_bool("hide_hotkeys"));
+    // "Opciones avanzadas" disclosures: closed until the player opens one
+    // (screenshots: closed unless `--open advanced`, never the fixture's pref).
+    let show_advanced = match &shot {
+        Some(s) => s.open.iter().any(|o| o == "advanced"),
+        None => prefs::get_bool(prefs::SHOW_ADVANCED),
+    };
+    ui.global::<Shell>().set_show_advanced(show_advanced);
+    {
+        let weak = ui.as_weak();
+        let persist = shot.is_none();
+        ui.global::<Shell>().on_set_show_advanced(move |open| {
+            if let Some(ui) = weak.upgrade() {
+                ui.global::<Shell>().set_show_advanced(open);
+            }
+            if persist {
+                prefs::set(prefs::SHOW_ADVANCED, serde_json::Value::Bool(open));
+            }
+        });
+    }
     pages::init_all(&ctx, &ui);
     bridge::start_event_pump(&ctx);
 

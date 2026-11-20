@@ -11,7 +11,7 @@
 // Data lives in HomeBridge (capsule-*, aot-chip-*, launching / stopping);
 // the capsule announces its instance with HomeBridge.capsule-target().
 
-import { Theme, T, AppState, Router, Util, Icon, Icons, MonogramTile, MonogramShape, Badge, BadgeVariant, Spinner } from "../../widgets.slint";
+import { Theme, T, AppState, Shell, Router, Util, Icon, Icons, MonogramTile, MonogramShape, Badge, BadgeVariant, Spinner } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 
 component PlayButton inherits Rectangle {
@@ -339,7 +339,7 @@ export component TelemetryCapsule inherits Rectangle {
                         font-italic: true;
                         vertical-alignment: center;
                     }
-                    if root.instance-name != "" && HomeBridge.aot-chip-kind != "" && HomeBridge.capsule-instance == root.instance-name: VerticalLayout {
+                    if root.instance-name != "" && Shell.show-advanced && HomeBridge.aot-chip-kind != "" && HomeBridge.capsule-instance == root.instance-name: VerticalLayout {
                         alignment: center;
                         aot-chip := Rectangle {
                             property <string> kind: HomeBridge.aot-chip-kind;
@@ -416,7 +416,7 @@ export component TelemetryCapsule inherits Rectangle {
             HorizontalLayout {
                 spacing: Theme.space-2;
                 horizontal-stretch: 0;
-                VerticalLayout {
+                if Shell.show-advanced: VerticalLayout {
                     alignment: center;
                     dry := Rectangle {
                         property <bool> enabled: root.instance-name != "";

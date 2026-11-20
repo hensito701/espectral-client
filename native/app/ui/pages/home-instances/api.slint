@@ -172,6 +172,13 @@ export global HomeBridge {
     /// Implemented in Rust (engine `instances::loader_offered`): whether the
     /// wizard offers `loader` for Minecraft `version`.
     pure callback wiz-loader-offered(version: string, loader: string) -> bool;
+    /// Implemented in Rust (engine `mods::supports_suite`): whether `loader`
+    /// on `version` gets the Espectral mod (Suite, zoom, fullbright, no fog…).
+    pure callback wiz-suite-supported(version: string, loader: string) -> bool;
+    /// Where the Espectral mod exists, e.g. "Fabric 26.3, 26.2, 1.21.11 · Forge 1.8.9".
+    in-out property <string> wiz-suite-versions;
+    /// Newest Fabric version with the Espectral mod (the wizard's suggestion).
+    in-out property <string> wiz-suite-suggest;
 
     // =====================================================================
     // PiP launch-log drawer

@@ -376,6 +376,44 @@ pub fn supports_branding(engine: &Engine, version: &str, loader: Loader) -> bool
     branding_pin_for_version(engine, version, loader).is_some()
 }
 
+/// Mod id of the full Espectral mod: the Suite (Right Shift), zoom,
+/// fullbright, no fog, HUD, cosmetics and the title menu. The NeoForge jar is
+/// `espectral-brand`, a brand handshake with none of those features.
+pub const SUITE_MOD_ID: &str = "espectral-menu";
+
+/// True when this version + loader gets the full Espectral mod.
+pub fn supports_suite(engine: &Engine, version: &str, loader: Loader) -> bool {
+    branding_pin_for_version(engine, version, loader).is_some_and(|p| p.slug == SUITE_MOD_ID)
+}
+
+/// Every (loader, version) the bundled jars give the full Espectral mod,
+/// grouped by loader (Fabric, Forge, NeoForge), newest version first.
+pub fn suite_targets(engine: &Engine) -> Vec<(Loader, String)> {
+    let Some(manifest) = branding_manifest(engine) else { return vec![] };
+    let Some(mods) = manifest.get("mods").and_then(Value::as_object) else { return vec![] };
+    let top_id = s(&manifest, "mod_id");
+    let mut out: Vec<(Loader, String)> = vec![];
+    for (version, entry) in mods {
+        if s(entry, "mod_id").or_else(|| top_id.clone()).as_deref() != Some(SUITE_MOD_ID) {
+            continue;
+        }
+        let loaders: Vec<Loader> = match entry.get("loaders").and_then(Value::as_array) {
+            Some(a) => a.iter().filter_map(Value::as_str).filter_map(Loader::parse).collect(),
+            None => vec![Loader::Fabric],
+        };
+        out.extend(loaders.into_iter().map(|l| (l, version.clone())));
+    }
+    let loader_rank = |l: Loader| match l {
+        Loader::Fabric => 0,
+        Loader::Forge => 1,
+        Loader::Neoforge => 2,
+        Loader::Vanilla => 3,
+    };
+    let numeric = |v: &str| v.split('.').map(|p| p.parse::<u32>().unwrap_or(0)).collect::<Vec<_>>();
+    out.sort_by(|a, b| loader_rank(a.0).cmp(&loader_rank(b.0)).then_with(|| numeric(&b.1).cmp(&numeric(&a.1))));
+    out
+}
+
 fn branding_note(engine: &Engine, version: &str, loader: Loader) -> String {
     let versions = branding_versions(engine).join(", ");
     let covers = if versions.is_empty() { "nothing".to_string() } else { versions };
@@ -2249,6 +2287,26 @@ mod tests {
             assert_eq!(pin.size, Some(data.len() as u64));
         }
         assert!(branding_pin_for_version(&e, "1.20.4", Loader::Fabric).is_none());
+    }
+
+    /// The NeoForge jar only carries the brand handshake: the wizard must not
+    /// promise zoom/fullbright there, and the list it shows is newest-first.
+    #[test]
+    fn suite_coverage_excludes_brand_only_jars() {
+        let (_d, e) = engine_with(None);
+        assert!(supports_suite(&e, "1.21.11", Loader::Fabric));
+        assert!(supports_suite(&e, "1.8.9", Loader::Forge));
+        assert!(supports_branding(&e, "1.21.1", Loader::Neoforge));
+        assert!(!supports_suite(&e, "1.21.1", Loader::Neoforge));
+        assert!(!supports_suite(&e, "1.21.8", Loader::Fabric));
+        let targets = suite_targets(&e);
+        assert!(targets.contains(&(Loader::Fabric, "1.21.11".into())));
+        assert!(targets.contains(&(Loader::Forge, "1.8.9".into())));
+        assert!(!targets.iter().any(|(l, _)| *l == Loader::Neoforge));
+        let fabric: Vec<&str> = targets.iter().filter(|(l, _)| *l == Loader::Fabric).map(|(_, v)| v.as_str()).collect();
+        let pos = |v: &str| fabric.iter().position(|x| *x == v).unwrap();
+        assert!(pos("26.2") < pos("1.21.11"), "newest first: {fabric:?}");
+        assert_eq!(targets.last().unwrap().0, Loader::Forge, "{targets:?}");
     }
 
     #[tokio::test]

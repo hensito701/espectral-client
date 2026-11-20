@@ -1,0 +1,115 @@
+// AdvancedToggle — the one "Opciones avanzadas" disclosure every page uses.
+//
+// Pages keep the basic settings visible and put the rest after this bar:
+//
+//     AdvancedToggle { summary: T.tr("settings.advancedSummary"); changed: 2; }
+//     if Shell.show-advanced: VerticalLayout { /* advanced cards */ }
+//
+// Open/closed is ONE launcher-wide choice (`Shell.show-advanced`, persisted by
+// Rust as the "show_advanced" UI pref): a player who opens it once sees the
+// advanced options on every page from then on. `changed` > 0 shows a badge so
+// a customized value (custom Java, custom game folder…) is never silently out
+// of sight.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { Shell } from "../state.slint";
+import { Icon, Icons } from "icon.slint";
+import { Badge, BadgeVariant } from "badge.slint";
+
+export component AdvancedToggle inherits Rectangle {
+    /// One line naming what is inside ("Java, carpetas, arranque…").
+    in property <string> summary;
+    /// Settings inside that differ from their default (0 = no badge).
+    in property <int> changed: 0;
+    in property <string> title: T.tr("common.advancedTitle");
+
+    property <bool> open: Shell.show-advanced;
+
+    min-width: 0px;
+    height: row.preferred-height;
+    border-radius: Theme.radius-lg;
+    border-width: 2px;
+    border-color: ta.has-hover || root.open ? Theme.title-color.with-alpha(0.55) : Theme.border-solid;
+    background: ta.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+    animate background, border-color { duration: Theme.dur-fast; }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Shell.set-show-advanced(!Shell.show-advanced); }
+    }
+
+    row := HorizontalLayout {
+        padding-left: Theme.space-5;
+        padding-right: Theme.space-5;
+        padding-top: Theme.space-4;
+        padding-bottom: Theme.space-4;
+        spacing: Theme.space-4;
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: Theme.radius-md;
+                background: root.open ? Theme.gold : Theme.surface-up;
+                border-width: 2px;
+                border-color: root.open ? Theme.brand-ink : Theme.border-solid;
+                Icon {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    data: Icons.settings;
+                    size: 18px;
+                    color: root.open ? Theme.on-gold : Theme.title-color;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            spacing: 2px;
+            Text {
+                text: root.title;
+                font-size: Theme.text-md;
+                font-weight: 700;
+                color: ta.has-hover ? Theme.title-color : Theme.text;
+                overflow: elide;
+            }
+            if root.summary != "": Text {
+                text: root.summary;
+                font-size: Theme.text-xs;
+                color: Theme.muted;
+                overflow: elide;
+            }
+        }
+        if root.changed > 0: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Badge {
+                text: T.tr1("common.advancedChanged", "count", root.changed);
+                variant: BadgeVariant.warn;
+                dot: true;
+            }
+        }
+        HorizontalLayout {
+            horizontal-stretch: 0;
+            spacing: 6px;
+            Text {
+                text: root.open ? T.tr("common.advancedHide") : T.tr("common.advancedShow");
+                font-size: Theme.text-sm;
+                font-weight: 600;
+                color: ta.has-hover ? Theme.title-color : Theme.muted-strong;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                Icon {
+                    data: root.open ? Icons.chevron-up : Icons.chevron-down;
+                    size: 16px;
+                    color: ta.has-hover ? Theme.title-color : Theme.muted-strong;
+                }
+            }
+        }
+    }
+}

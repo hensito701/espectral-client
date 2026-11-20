@@ -1,7 +1,7 @@
 // OWNER: home-instances agent. InstanceHub "Configuración" tab (two card
 // stacks + the full-width client-suite card).
 
-import { Theme, T, AppState, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, Slider, ProgressBar, ProgressTone, Emoji } from "../../widgets.slint";
+import { Theme, T, AppState, Shell, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, Slider, ProgressBar, ProgressTone, Emoji, AdvancedToggle } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 import { HiSelect, HiCheck, HiTextField } from "common.slint";
 import { HubCard, ActionFooter, PresetPill, Inset, MicroLabel, CheckRow, Note, Switch, FileBtn } from "hub-parts.slint";
@@ -772,6 +772,9 @@ component SuiteCard inherits HubCard {
 
 export component ConfigTab inherits VerticalLayout {
     spacing: 20px;
+    property <int> advanced-changed: (HomeBridge.hub.game-dir != "" ? 1 : 0)
+        + (HomeBridge.jdk-override != "" ? 1 : 0)
+        + (HomeBridge.capture-tools ? 1 : 0);
     HorizontalLayout {
         spacing: 20px;
         VerticalLayout {
@@ -782,10 +785,6 @@ export component ConfigTab inherits VerticalLayout {
             alignment: start;
             VersionCard { }
             MemoryCard { }
-            GameDirCard { }
-            CaptureCard { }
-            JvmCard { }
-            AotCard { }
         }
         VerticalLayout {
             min-width: 100px;
@@ -794,8 +793,38 @@ export component ConfigTab inherits VerticalLayout {
             spacing: 20px;
             alignment: start;
             AppearanceCard { }
-            OptionsCard { }
         }
     }
     if HomeBridge.client-visible: SuiteCard { }
+    AdvancedToggle {
+        summary: T.tr("instance.advancedSummary");
+        changed: root.advanced-changed;
+    }
+    if Shell.show-advanced: VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 20px;
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            spacing: 20px;
+            VerticalLayout {
+                min-width: 100px;
+                preferred-width: 100px;
+                horizontal-stretch: 1;
+                spacing: 20px;
+                alignment: start;
+                GameDirCard { }
+                CaptureCard { }
+                JvmCard { }
+                AotCard { }
+            }
+            VerticalLayout {
+                min-width: 100px;
+                preferred-width: 100px;
+                horizontal-stretch: 1;
+                spacing: 20px;
+                alignment: start;
+                OptionsCard { }
+            }
+        }
+    }
 }

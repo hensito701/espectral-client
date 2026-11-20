@@ -737,9 +737,18 @@ fn load(ui: &AppWindow, name: &str) {
             } else {
                 None
             };
-            Ok((detail, jvm.ok(), client.ok(), icon))
+            // The saved per-instance Java override (not part of the summary).
+            let jdk_override = std::fs::read_to_string(e.paths().instance_json(&n))
+                .ok()
+                .and_then(|s| serde_json::from_str::<espectral_engine::types::InstanceMeta>(&s).ok())
+                .and_then(|m| m.jdk_path_override)
+                .unwrap_or_default();
+            Ok((detail, jvm.ok(), client.ok(), icon, jdk_override))
         },
-        |ui, (detail, jvm, client, icon)| apply_detail(ui, detail, jvm, client, icon),
+        |ui, (detail, jvm, client, icon, jdk_override)| {
+            ui.global::<HomeBridge>().set_jdk_override(jdk_override.as_str().into());
+            apply_detail(ui, detail, jvm, client, icon)
+        },
         |ui, e| {
             let hb = ui.global::<HomeBridge>();
             hb.set_hub_loading(false);
@@ -914,6 +923,18 @@ fn apply_client(ui: &AppWindow, info: ClientInfo) {
     hb.set_bg_selected(perso.get("background").and_then(|v| v.as_str()).unwrap_or("").into());
     let suite = info.config.suite.as_ref().and_then(|s| s.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(true);
     hb.set_suite_enabled(suite);
+    // The registry entries carry the English text (API wire shape); the
+    // compiled-in registry document also has `name_es` / `description_es`.
+    let lang = i18n::lang().code();
+    let doc_features = espectral_engine::client::suite_registry().doc.get("features").and_then(Value::as_array);
+    let localized = |id: &str, field: &str| -> Option<String> {
+        doc_features?
+            .iter()
+            .find(|f| f.get("id").and_then(Value::as_str) == Some(id))?
+            .get(format!("{field}_{lang}"))?
+            .as_str()
+            .map(str::to_string)
+    };
     let feats: Vec<HiFeature> = info
         .registry
         .iter()
@@ -925,11 +946,13 @@ fn apply_client(ui: &AppWindow, info: ClientInfo) {
                 .and_then(|v| v.get("enabled"))
                 .and_then(|v| v.as_bool())
                 .unwrap_or(f.default_enabled);
+            let name = localized(&f.id, "name").unwrap_or_else(|| f.name.clone());
+            let desc = localized(&f.id, "description").unwrap_or_else(|| f.description.clone());
             HiFeature {
                 id: f.id.as_str().into(),
-                name: f.name.as_str().into(),
-                desc: f.description.as_str().into(),
-                keybind: f.keybind.as_deref().unwrap_or("").into(),
+                name: name.as_str().into(),
+                desc: desc.as_str().into(),
+                keybind: f.keybind.as_deref().map(key_label).unwrap_or_default().into(),
                 enabled,
             }
         })
@@ -937,6 +960,19 @@ fn apply_client(ui: &AppWindow, info: ClientInfo) {
     hb.set_client_visible(info.supported && !info.registry.is_empty());
     hb.set_features(ModelRc::new(VecModel::from(feats)));
     HUB.with(|h| h.borrow_mut().client = Some(info));
+}
+
+/// "key.keyboard.z" → "Z", "key.keyboard.left.shift" → "Left Shift";
+/// anything that is not a keyboard key is shown as the game names it.
+fn key_label(key: &str) -> String {
+    let Some(rest) = key.strip_prefix("key.keyboard.") else { return key.to_string() };
+    rest.split('.')
+        .map(|w| {
+            let mut c = w.chars();
+            c.next().map(|f| f.to_uppercase().chain(c).collect::<String>()).unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 // ---------------------------------------------------------------------------

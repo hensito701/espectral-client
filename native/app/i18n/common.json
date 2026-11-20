@@ -1,5 +1,9 @@
 {
   "es": {
+    "common.advancedTitle": "Opciones avanzadas",
+    "common.advancedShow": "Mostrar",
+    "common.advancedHide": "Ocultar",
+    "common.advancedChanged": "Personalizadas: {count}",
     "actions.play": "Jugar",
     "actions.back": "Volver",
     "actions.cancel": "Cancelar",
@@ -98,6 +102,10 @@
     "toast.mrpackInstalled": "Modpack \"{name}\" importado"
   },
   "en": {
+    "common.advancedTitle": "Advanced options",
+    "common.advancedShow": "Show",
+    "common.advancedHide": "Hide",
+    "common.advancedChanged": "Customized: {count}",
     "actions.play": "Play",
     "actions.back": "Back",
     "actions.cancel": "Cancel",

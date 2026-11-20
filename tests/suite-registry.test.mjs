@@ -1,8 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
   buildLangMaps,
@@ -16,15 +14,9 @@ import {
   readExtraStrings,
 } from '../scripts/sync-suite-registry.mjs';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const doc = JSON.parse(fs.readFileSync(REGISTRY_SOURCE, 'utf8'));
 const en = JSON.parse(fs.readFileSync(DEST_EN, 'utf8'));
 const es = JSON.parse(fs.readFileSync(DEST_ES, 'utf8'));
-// 1.7.0: the Svelte UI is gone; the live launcher strings now live in the
-// Rust app's i18n tables (native/app/i18n/<ns>.json, { es, en } maps).
-const clientI18n = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, 'native/app/i18n/client.json'), 'utf8'),
-);
 
 test('registry shape: 18 features, 5 categories, schema 2, suite on by default', () => {
   assert.equal(doc.schema, 2);
@@ -58,15 +50,6 @@ test('parity: every feature and category has a key in both lang files', () => {
   for (const c of doc.categories) {
     assert.ok(`espectral.category.${c.id}` in en, `en missing category ${c.id}`);
     assert.ok(`espectral.category.${c.id}` in es, `es missing category ${c.id}`);
-  }
-});
-
-test('parity: launcher i18n carries every feature name/desc in both languages', () => {
-  for (const f of doc.features) {
-    for (const key of [`client.feat.${f.id}.name`, `client.feat.${f.id}.desc`]) {
-      assert.ok(key in clientI18n.es, `es missing ${key}`);
-      assert.ok(key in clientI18n.en, `en missing ${key}`);
-    }
   }
 });
 

@@ -6,12 +6,16 @@
 //! synchronously on every `set` (tiny file).
 //!
 //! Keys in use: "lang", "discord_session", "recent_commands", "hide_hotkeys",
-//! "pip_pinned", "renderer_fallback", "renderer_gl_pending" (renderer.rs).
+//! "show_advanced" ([`SHOW_ADVANCED`]), "pip_pinned", "renderer_fallback",
+//! "renderer_gl_pending" (renderer.rs).
 
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 use serde_json::{Map, Value};
+
+/// "Opciones avanzadas" disclosures open (`Shell.show-advanced`, main.rs).
+pub const SHOW_ADVANCED: &str = "show_advanced";
 
 struct Store {
     path: PathBuf,

@@ -6,7 +6,7 @@
 // Keep the exported component name and the empty interface used by app.slint.
 
 import { Theme, T, Router, AppState, Util, AccountRow, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle,
-    Icon, Icons, Emoji, Spinner, MonogramTile, MonogramShape, Field, PageScaffold, GlassCard, Elevation } from "../../widgets.slint";
+    Icon, Icons, Emoji, Spinner, MonogramTile, MonogramShape, Field, PageScaffold, GlassCard, Elevation, Shell } from "../../widgets.slint";
 import { AccountBridge } from "api.slint";
 import { CopyFlag, LoadingRow, UploadChip, PlainInput, MsLogo } from "parts.slint";
 import { SkinAtelier } from "skin-atelier.slint";
@@ -1138,7 +1138,7 @@ component LunarCard inherits Rectangle {
                     font-weight: 700;
                     color: Theme.title-color;
                     vertical-alignment: center;
-                    overflow: elide;
+                    wrap: word-wrap;
                     min-width: 0px;
                     horizontal-stretch: 1;
                 }
@@ -1174,7 +1174,9 @@ component ForgeColumn inherits VerticalLayout {
     alignment: start;
     min-width: 0px;
     Forge { tab <=> root.tab; }
-    AdvancedClientId { open <=> root.advanced-open; }
+    // Developer option: it lives behind the launcher-wide "Opciones avanzadas"
+    // disclosure, toggled from the Settings / instance pages.
+    if Shell.show-advanced: AdvancedClientId { open <=> root.advanced-open; }
     LunarCard { }
 }
 

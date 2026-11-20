@@ -181,6 +181,11 @@ export global Shell {
     in property <float> debug-scroll;
     /// Hide the hotkey legend (Settings toggle; persisted by Rust).
     in-out property <bool> hide-hotkeys;
+    /// "Opciones avanzadas" disclosures (widgets/advanced.slint) are open.
+    /// One launcher-wide choice, closed by default; Rust persists it as the
+    /// "show_advanced" UI pref through `set-show-advanced`.
+    in-out property <bool> show-advanced;
+    callback set-show-advanced(open: bool);
 
     // toasts (src/toast.rs) — push from Rust with toast::push(), or from Slint:
     in property <[ToastItem]> toasts;

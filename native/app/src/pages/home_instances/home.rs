@@ -145,6 +145,10 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
         espectral_engine::instances::loader_offered(parse_loader(&loader), &version)
     });
     let c = ctx.clone();
+    hb.on_wiz_suite_supported(move |version, loader| {
+        espectral_engine::mods::supports_suite(c.engine(), &version, parse_loader(&loader))
+    });
+    let c = ctx.clone();
     hb.on_wiz_load_sources(move || {
         let Some(ui) = c.ui() else { return };
         if ui.global::<HomeBridge>().get_wiz_sources_loaded() {
@@ -508,6 +512,9 @@ fn wizard_opened(c: &Ctx) {
     hb.set_wiz_hue((nanos % 360) as i32);
     hb.set_wiz_game_dir("".into());
     hb.set_wiz_error("".into());
+    let (versions, suggest) = suite_coverage(c.engine());
+    hb.set_wiz_suite_versions(versions.into());
+    hb.set_wiz_suite_suggest(suggest.into());
     apply_version_filter(&ui, "", "release");
     c.call_with(
         |e| async move { e.get_config().await },
@@ -533,6 +540,29 @@ fn wizard_opened(c: &Ctx) {
         },
         |_ui, e| tracing::warn!(error = %e, "version manifest unavailable"),
     );
+}
+
+/// Where the Espectral mod exists, as the wizard prints it
+/// ("Fabric 26.3, 26.2, 1.21.11 · Forge 1.8.9"), and the newest Fabric
+/// version to suggest ("" when no Fabric jar is bundled).
+fn suite_coverage(engine: &espectral_engine::Engine) -> (String, String) {
+    let targets = espectral_engine::mods::suite_targets(engine);
+    let suggest = targets.iter().find(|(l, _)| *l == Loader::Fabric).map(|(_, v)| v.clone()).unwrap_or_default();
+    let mut groups: Vec<(Loader, Vec<&str>)> = vec![];
+    for (loader, version) in &targets {
+        match groups.last_mut() {
+            Some((l, vs)) if l == loader => vs.push(version),
+            _ => groups.push((*loader, vec![version])),
+        }
+    }
+    let name = |l: Loader| match l {
+        Loader::Fabric => "Fabric",
+        Loader::Forge => "Forge",
+        Loader::Neoforge => "NeoForge",
+        Loader::Vanilla => "Vanilla",
+    };
+    let text = groups.iter().map(|(l, vs)| format!("{} {}", name(*l), vs.join(", "))).collect::<Vec<_>>().join(" · ");
+    (text, suggest)
 }
 
 fn apply_version_filter(ui: &AppWindow, query: &str, filter: &str) {

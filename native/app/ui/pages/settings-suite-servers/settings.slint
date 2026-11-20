@@ -1,13 +1,11 @@
 // OWNER: settings-suite-servers agent. Port of src/ui/src/pages/SettingsDashboard.svelte.
 // Keep the exported component name and the empty interface used by app.slint.
 //
-// Sections: hero (+ dirty dock), appearance & language (theme / language /
-// accent + reduced motion), engine (memory / downloads / JDK), feature toggles
-// (AOT, fast boot, close-on-start, Discord RPC, fullbright), agent access (MCP
-// toggle + safety rules, config snippets, token rotation, allowlist), data
-// directory + diagnostics, about.
-
-import { Theme, T, Router, AppState, Shell, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Sticker, Field, Slider, Segmented, Toggle, Icon, Icons, Emoji, PageScaffold } from "../../widgets.slint";
+// Sections: hero (+ dirty dock), appearance (theme / language / accent +
+// reduced motion), game (memory + player-facing toggles), the shared
+// "Opciones avanzadas" disclosure (downloads / JDK / AOT + fast boot / agent
+// access / data directory + diagnostics), about.
+import { Theme, T, Router, AppState, Shell, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Sticker, Field, Slider, Segmented, Toggle, Icon, Icons, Emoji, PageScaffold, AdvancedToggle } from "../../widgets.slint";
 import { ThemeToggle } from "../../shell/top-chrome.slint";
 import { SettingsBridge } from "api.slint";
 import { PresetChip, CardHead, SectionHeader, InfoBox, SsTextField } from "parts.slint";
@@ -71,37 +69,6 @@ component Hero inherits VerticalLayout {
         VerticalLayout {
             spacing: 8px;
             horizontal-stretch: 1;
-            HorizontalLayout {
-                spacing: 12px;
-                alignment: start;
-                VerticalLayout {
-                    alignment: start;
-                    Sticker { text: T.tr("dash.badge").to-uppercase(); fill: Theme.gold; ink: Theme.on-gold; }
-                }
-                // health: the engine is in-process, so it is always "online"
-                HorizontalLayout {
-                    spacing: 8px;
-                    VerticalLayout {
-                        alignment: center;
-                        Rectangle {
-                            width: 8px;
-                            height: 8px;
-                            border-radius: 2px;
-                            background: Theme.accent-green;
-                            border-width: 2px;
-                            border-color: Theme.brand-ink;
-                        }
-                    }
-                    Text {
-                        text: T.tr("dash.health.online");
-                        color: Theme.muted;
-                        font-size: 12px;
-                        font-weight: 500;
-                        line-height-factor: 1.25;
-                        vertical-alignment: center;
-                    }
-                }
-            }
             McTitle {
                 text: T.tr("dash.title");
                 font-size: 32px;
@@ -613,7 +580,7 @@ component DownloadsCard inherits SettingCard {
                 alignment: start;
                 padding-bottom: 12px;
                 for n in [2, 4, 6, 8, 12, 16]: PresetChip {
-                    text: n + " threads";
+                    text: n;
                     active: round(SettingsBridge.concurrency) == n;
                     clicked => { SettingsBridge.concurrency = n; }
                 }
@@ -623,7 +590,7 @@ component DownloadsCard inherits SettingCard {
                 minimum: 1;
                 maximum: 16;
                 step: 1;
-                unit: "hilos";
+                unit: T.tr("settings.downloadsUnit");
                 save-text: T.tr("dash.downloads.saveBtn");
                 dirty: root.dirty;
                 saving: SettingsBridge.saving-field == "concurrency";
@@ -1049,15 +1016,15 @@ component HealthCard inherits SettingCard {
         VerticalLayout {
             spacing: 12px;
             HealthRow {
-                key: "Estado del Engine";
+                key: T.tr("dash.health.engineState");
                 VerticalLayout {
                     alignment: center;
                     Badge { text: T.tr("dash.health.online"); variant: BadgeVariant.ok; dot: true; }
                 }
             }
             HealthRow { key: T.tr("dash.health.version"); value: AppState.version != "" ? AppState.version : "—"; }
-            // The engine runs in-process (no HTTP API between UI and engine).
-            HealthRow { key: T.tr("dash.health.apiEndpoint"); value: "in-process"; }
+            // The engine runs inside the launcher (no HTTP API between UI and engine).
+            HealthRow { key: T.tr("dash.health.apiEndpoint"); value: T.tr("dash.health.inProcess"); }
         }
     }
 }
@@ -1709,6 +1676,8 @@ export component SettingsPage inherits Rectangle {
     property <bool> concurrency-dirty: SettingsBridge.cfg-loaded && round(SettingsBridge.concurrency) != SettingsBridge.cfg-concurrency;
     property <bool> jdk-dirty: SettingsBridge.cfg-loaded && SettingsBridge.jdk != SettingsBridge.cfg-jdk;
     property <bool> any-dirty: root.memory-dirty || root.concurrency-dirty || root.jdk-dirty || (SettingsBridge.cfg-loaded && (SettingsBridge.aot != SettingsBridge.cfg-aot || SettingsBridge.fastboot != SettingsBridge.cfg-fastboot || SettingsBridge.fullbright != SettingsBridge.cfg-fullbright || SettingsBridge.discord != SettingsBridge.cfg-discord));
+    /// Settings behind the disclosure that differ from their defaults.
+    property <int> advanced-changed: (SettingsBridge.cfg-concurrency != 6 ? 1 : 0) + (SettingsBridge.cfg-jdk != "" ? 1 : 0) + (!SettingsBridge.cfg-aot ? 1 : 0) + (SettingsBridge.cfg-fastboot ? 1 : 0) + (SettingsBridge.agent-enabled ? 1 : 0);
 
     PageScaffold {
         max-content-width: 1400px;
@@ -1782,10 +1751,10 @@ export component SettingsPage inherits Rectangle {
                 }
             }
 
-            // SECTION 2: engine, memory & JVM (one column)
+            // SECTION 2: game (memory + the player-facing toggles)
             VerticalLayout {
                 spacing: 16px;
-                SectionHeader { title: T.tr("dash.engine.title"); desc: T.tr("dash.engine.subtitle"); }
+                SectionHeader { title: T.tr("dash.game.title"); desc: T.tr("dash.game.subtitle"); }
                 MemoryCard {
                     dirty: root.memory-dirty;
                     error: root.memory-error;
@@ -1798,55 +1767,64 @@ export component SettingsPage inherits Rectangle {
                         }
                     }
                 }
-                DownloadsCard { dirty: root.concurrency-dirty; }
-                JdkCard { dirty: root.jdk-dirty; }
-            }
-
-            // SECTION 3: feature toggles (3 columns)
-            VerticalLayout {
-                spacing: 16px;
-                SectionHeader { title: T.tr("dash.toggles.title"); desc: T.tr("dash.toggles.subtitle"); }
-                if !root.narrow: VerticalLayout {
+                if !root.narrow: HorizontalLayout {
                     spacing: 20px;
-                    HorizontalLayout {
-                        spacing: 20px;
-                        AotCard { }
-                        FastBootCard { }
-                        CloseOnStartCard { }
-                    }
-                    HorizontalLayout {
-                        spacing: 20px;
-                        DiscordCard { }
-                        FullbrightCard { }
-                        Rectangle { horizontal-stretch: 1; preferred-width: 1px; }
-                    }
+                    CloseOnStartCard { }
+                    DiscordCard { }
+                    FullbrightCard { }
                 }
                 if root.narrow: VerticalLayout {
                     spacing: 20px;
-                    AotCard { }
-                    FastBootCard { }
                     CloseOnStartCard { }
                     DiscordCard { }
                     FullbrightCard { }
                 }
             }
 
-            // SECTION 4: agent access (MCP)
-            AgentSection { narrow: root.narrow; }
-
-            // SECTION 5: system storage & diagnostics
+            // SECTION 3: the shared "Opciones avanzadas" disclosure
             VerticalLayout {
                 spacing: 16px;
-                SectionHeader { title: T.tr("dash.data.title"); desc: T.tr("dash.data.subtitle"); }
-                if !root.narrow: HorizontalLayout {
-                    spacing: 20px;
-                    DataDirCard { narrow: root.width < 768px; }
-                    HealthCard { }
-                }
-                if root.narrow: VerticalLayout {
-                    spacing: 20px;
-                    DataDirCard { narrow: root.width < 768px; }
-                    HealthCard { }
+                AdvancedToggle { summary: T.tr("settings.advancedSummary"); changed: root.advanced-changed; }
+                if Shell.show-advanced: VerticalLayout {
+                    spacing: 36px;
+
+                    // downloads, Java & startup
+                    VerticalLayout {
+                        spacing: 16px;
+                        SectionHeader { title: T.tr("dash.engine.title"); desc: T.tr("dash.engine.subtitle"); }
+                        DownloadsCard { dirty: root.concurrency-dirty; }
+                        JdkCard { dirty: root.jdk-dirty; }
+                        if !root.narrow: HorizontalLayout {
+                            spacing: 20px;
+                            AotCard { }
+                            FastBootCard { }
+                            Rectangle { horizontal-stretch: 1; preferred-width: 1px; }
+                        }
+                        if root.narrow: VerticalLayout {
+                            spacing: 20px;
+                            AotCard { }
+                            FastBootCard { }
+                        }
+                    }
+
+                    // agent access (MCP)
+                    AgentSection { narrow: root.narrow; }
+
+                    // folders & diagnostics
+                    VerticalLayout {
+                        spacing: 16px;
+                        SectionHeader { title: T.tr("dash.data.title"); desc: T.tr("dash.data.subtitle"); }
+                        if !root.narrow: HorizontalLayout {
+                            spacing: 20px;
+                            DataDirCard { narrow: root.width < 768px; }
+                            HealthCard { }
+                        }
+                        if root.narrow: VerticalLayout {
+                            spacing: 20px;
+                            DataDirCard { narrow: root.width < 768px; }
+                            HealthCard { }
+                        }
+                    }
                 }
             }
 

@@ -9,7 +9,7 @@
 //
 // Tiles read AppState.instances directly; selection is HomeBridge.selected-instance.
 
-import { Theme, T, AppState, InstanceRow, Util, LoaderBadge, LoaderBadgeSize, Badge, BadgeVariant, Btn, BtnVariant, BtnSize, Emoji, McTitle } from "../../widgets.slint";
+import { Theme, T, AppState, Shell, InstanceRow, Util, LoaderBadge, LoaderBadgeSize, Badge, BadgeVariant, Btn, BtnVariant, BtnSize, Emoji, McTitle } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 
 export global TileArt {
@@ -130,7 +130,7 @@ export component HorizonTile inherits Rectangle {
                     alignment: center;
                     LoaderBadge { loader: root.inst.loader; version: root.inst.version; size: LoaderBadgeSize.sm; }
                 }
-                if root.inst.aot-cache-exists: VerticalLayout {
+                if Shell.show-advanced && root.inst.aot-cache-exists: VerticalLayout {
                     alignment: center;
                     Badge { text: "⚡ AOT"; variant: BadgeVariant.ok; }
                 }
