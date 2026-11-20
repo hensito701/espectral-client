@@ -1,12 +1,12 @@
 {
   "mod_id": "espectral-menu",
   "mod_name": "Espectral Menu",
-  "mod_version": "1.8.5",
+  "mod_version": "1.9.0",
   "mods": {
     "1.21.1": {
-      "filename": "espectral-brand-1.21.1-1.8.5.jar",
-      "sha1": "71087f384f9460d59f978a8c7c2d95e5a7af5b81",
-      "size": 4229,
+      "filename": "espectral-brand-1.21.1-1.9.0.jar",
+      "sha1": "d011dc7a9d11d8258be4b0d25831b9c1ac02e00e",
+      "size": 4226,
       "loaders": [
         "neoforge"
       ],
@@ -14,9 +14,9 @@
       "mod_name": "Espectral Brand"
     },
     "1.21.11": {
-      "filename": "espectral-menu-1.21.11-1.8.5.jar",
-      "sha1": "e298868ede8b70dff0049c8324779aa3aff39761",
-      "size": 933188,
+      "filename": "espectral-menu-1.21.11-1.9.0.jar",
+      "sha1": "3ca9c4887715324801483d4dfd994216c22650ab",
+      "size": 933185,
       "loaders": [
         "fabric"
       ],
@@ -24,9 +24,9 @@
       "mod_name": "Espectral Menu"
     },
     "1.8.9": {
-      "filename": "espectral-menu-1.8.9-1.8.5.jar",
-      "sha1": "047f7602239fe5047683be4813d70e37d6b4bfcc",
-      "size": 3051343,
+      "filename": "espectral-menu-1.8.9-1.9.0.jar",
+      "sha1": "f9cc8e6e01d7375cee26049a4a3fac88b4eadd43",
+      "size": 3051329,
       "loaders": [
         "forge"
       ],
@@ -34,9 +34,9 @@
       "mod_name": "Espectral Menu"
     },
     "26.2": {
-      "filename": "espectral-menu-26.2-1.8.5.jar",
-      "sha1": "350d72b7fc9f935e38b931b6a2885d30c1d9be0e",
-      "size": 959816,
+      "filename": "espectral-menu-26.2-1.9.0.jar",
+      "sha1": "10806e059a197e43f1347e884c8492ce9be9f2a6",
+      "size": 959813,
       "loaders": [
         "fabric"
       ],
@@ -44,9 +44,9 @@
       "mod_name": "Espectral Menu"
     },
     "26.3": {
-      "filename": "espectral-menu-26.3-1.8.5.jar",
-      "sha1": "95f7c843a3e5218e998188df4f6a60d4936d90a8",
-      "size": 960078,
+      "filename": "espectral-menu-26.3-1.9.0.jar",
+      "sha1": "45ea4e7819ae212c1b9d90718661d23ee4e0a5e4",
+      "size": 960075,
       "loaders": [
         "fabric"
       ],

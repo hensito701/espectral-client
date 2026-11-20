@@ -2,6 +2,27 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.9.0] - 2026-11-20
+
+### Changed
+- **A new look: dark glass.** The launcher drops the loud "poster" style (purple and gold
+  blocks, 2px borders, hard offset shadows, pixel-font titles everywhere) for the palette of
+  the in-game Espectral menu: a charcoal window lit by three soft glows (the accent, the logo's
+  purple, a cool blue) that glide to a new arrangement as you change page, translucent glass
+  panels with 1px hairlines and a faint top sheen, warm-white text, and the accent (gold by
+  default) kept for the one main action and for what is selected. The pixel font now appears
+  only in the "Espectral" wordmark. Light mode and the five accent colours follow the same
+  rules.
+- **Navigation is a floating pill.** Inicio · Mods · Cuenta · Ajustes sit in one glass pill at
+  the top; the account chip is on the right. The language and theme switches live in Ajustes,
+  and the command palette has no button anymore (Ctrl+K or "/" open it).
+- **Home is just Jugar.** The logo, a greeting and the live server line, then one glass play
+  bar: pick the instance and the account, press **Jugar**. The instance list opens from the
+  picker ("Ver todas las instancias", "Nueva instancia").
+- **Instances have their own page** (`#/instances`): every instance as a glass tile, with
+  Nueva instancia and Importar modpack. The new-instance wizard and the modpack import work
+  from any page.
+
 ## [1.8.5] - 2026-11-20
 
 ### Changed
