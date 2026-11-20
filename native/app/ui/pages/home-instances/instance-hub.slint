@@ -5,11 +5,11 @@
 import { Theme, T, Router, Shell, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, LoaderBadge, LoaderBadgeSize, ProgressBar, ProgressTone, PageScaffold, McTitle } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 import { TelemetryCapsule } from "capsule.slint";
-import { DryRunModal } from "modals.slint";
 import { HiLogView, HiLoading, HiTextField } from "common.slint";
 import { HubCard, ActionFooter, Note } from "hub-parts.slint";
 import { ConfigTab } from "hub-config.slint";
 
+/// Glass segmented tab: active = accent tint + accent edge (style guide §2).
 component HubTab inherits Rectangle {
     in property <string> icon;
     in property <string> text;
@@ -18,18 +18,17 @@ component HubTab inherits Rectangle {
     in property <bool> danger;
     callback clicked();
     property <bool> hovered: t.has-hover;
-    property <color> pill: active ? Theme.gold : hovered ? Theme.surface-up : transparent;
-    height: 36px;
+    height: 34px;
     min-width: row.preferred-width;
     border-radius: Theme.radius-pill;
-    background: self.pill;
-    border-width: 2px;
-    border-color: active ? Theme.brand-ink : hovered ? Theme.hover-border : Theme.border-solid;
-    animate background, border-color { duration: Theme.dur-fast; }
-    property <color> fg: active ? Theme.on-gold : danger ? Theme.accent-red : hovered ? Theme.text : Theme.muted;
+    background: active ? Theme.accent.with-alpha(0.14) : hovered ? Theme.surface-up : transparent;
+    border-width: active ? Theme.hairline : 0px;
+    border-color: Theme.edge-strong;
+    animate background { duration: Theme.dur-fast; }
+    property <color> fg: active ? Theme.accent-bright : danger ? Theme.accent-red : hovered ? Theme.text : Theme.muted;
     row := HorizontalLayout {
-        padding-left: 14.4px;
-        padding-right: 14.4px;
+        padding-left: 14px;
+        padding-right: 14px;
         spacing: Theme.space-2;
         VerticalLayout { alignment: center; Icon { data: root.icon; size: 16px; color: root.fg; } }
         Text { text: root.text; color: root.fg; font-size: Theme.text-sm; font-weight: 600; vertical-alignment: center; }
@@ -39,8 +38,8 @@ component HubTab inherits Rectangle {
                 height: cl.preferred-height + 4px;
                 width: cl.preferred-width + 12px;
                 border-radius: Theme.radius-xs;
-                background: root.active ? Theme.brand-ink : Theme.card-bg-soft;
-                cl := Text { text: root.count; color: root.active ? Theme.gold : Theme.muted-strong; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                background: root.active ? Theme.accent.with-alpha(0.18) : Theme.card-bg-soft;
+                cl := Text { text: root.count; color: root.active ? Theme.accent-bright : Theme.muted-strong; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
             }
         }
     }
@@ -68,7 +67,7 @@ component HubHeader inherits VerticalLayout {
                 vertical-alignment: center;
                 bt := TouchArea {
                     mouse-cursor: pointer;
-                    clicked => { Router.navigate("#/"); }
+                    clicked => { Router.navigate("#/instances"); }
                 }
             }
         }
@@ -78,7 +77,7 @@ component HubHeader inherits VerticalLayout {
             width: frow.preferred-width;
             border-radius: Theme.radius-sm;
             background: ft.has-hover ? Theme.surface-up : Theme.card-bg-soft;
-            border-width: 2px;
+            border-width: Theme.hairline;
             border-color: ft.has-hover ? Theme.hover-border : Theme.border-solid;
             frow := HorizontalLayout {
                 padding-left: 12px;
@@ -111,7 +110,7 @@ component HubHeader inherits VerticalLayout {
                     height: 32px;
                     border-radius: Theme.radius-md;
                     background: rt.has-hover ? Theme.surface-up : Theme.card-bg-soft;
-                    border-width: 2px;
+                    border-width: Theme.hairline;
                     border-color: rt.has-hover ? Theme.hover-border : Theme.border-solid;
                     Icon { data: Icons.edit; size: 15px; color: rt.has-hover ? Theme.text : Theme.muted; }
                     rt := TouchArea {
@@ -218,8 +217,8 @@ component ServersTab inherits HubCard {
                         height: 36px;
                         border-radius: Theme.radius-md;
                         background: xt.has-hover ? Theme.accent-red : Theme.accent-red.with-alpha(0.14);
-                        border-width: 2px;
-                        border-color: xt.has-hover ? Theme.brand-ink : Theme.accent-red;
+                        border-width: Theme.hairline;
+                        border-color: Theme.accent-red;
                         Icon { data: Icons.x; size: 14px; color: xt.has-hover ? #ffffff : Theme.accent-red; weight: 2.5; }
                         xt := TouchArea {
                             mouse-cursor: pointer;
@@ -274,7 +273,7 @@ component ServersTab inherits HubCard {
                 height: grid.rh;
                 border-radius: Theme.radius-md;
                 background: Theme.card-bg-soft;
-                border-width: 2px;
+                border-width: Theme.hairline;
                 border-color: Theme.border-solid;
                 VerticalLayout {
                     padding: Theme.space-3;
@@ -289,7 +288,7 @@ component ServersTab inherits HubCard {
                             width: ipl.preferred-width + 13px;
                             border-radius: Theme.radius-xs;
                             background: Theme.surface-solid;
-                            border-width: 2px;
+                            border-width: Theme.hairline;
                             border-color: Theme.border-solid;
                             ipl := Text { text: s.ip; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: Theme.text-xs; horizontal-alignment: center; vertical-alignment: center; }
                         }
@@ -376,15 +375,14 @@ component ModsTab inherits HorizontalLayout {
 component DangerTab inherits HubCard {
     title: T.tr("instance.dangerTitle");
     subtitle: T.tr("instance.dangerSubtitle");
-    large-shadow: true;
-    stroke: Theme.accent-red;
+    stroke: Theme.accent-red.with-alpha(0.4);
     fill: Theme.card-bg;
     VerticalLayout {
         spacing: Theme.space-5;
         Rectangle {
             border-radius: Theme.radius-md;
             background: Theme.accent-red.with-alpha(0.12);
-            border-width: 2px;
+            border-width: Theme.hairline;
             border-color: Theme.accent-red;
             HorizontalLayout {
                 padding-left: Theme.space-4;
@@ -431,8 +429,8 @@ component ConsoleCard inherits HubCard {
                     width: 8px;
                     height: 8px;
                     background: HomeBridge.hub-log-running ? Theme.accent-green : Theme.muted;
-                    border-width: 2px;
-                    border-color: Theme.brand-ink;
+                    border-width: Theme.hairline;
+                    border-color: Theme.border-solid;
                 }
             }
             Text { text: T.tr("instance.logTitle"); color: Theme.text; font-size: Theme.text-sm; font-weight: 700; vertical-alignment: center; }
@@ -471,7 +469,7 @@ component ConsoleCard inherits HubCard {
         height: 220px;
         border-radius: Theme.radius-md;
         background: Theme.log-bg;
-        border-width: 2px;
+        border-width: Theme.hairline;
         border-color: Theme.border-solid;
         clip: true;
         if HomeBridge.hub-log-lines.length == 0: Text {
@@ -520,7 +518,7 @@ component StateCard inherits HubCard {
             Btn {
                 variant: BtnVariant.primary;
                 text: T.tr("instance.back");
-                clicked => { Router.navigate("#/"); }
+                clicked => { Router.navigate("#/instances"); }
             }
         }
     }
@@ -553,7 +551,7 @@ export component InstanceHubPage inherits Rectangle {
                     height: 36px + 2 * 5.6px;
                     border-radius: Theme.radius-pill;
                     background: Theme.card-bg-soft;
-                    border-width: 2px;
+                    border-width: Theme.hairline;
                     border-color: Theme.border-solid;
                     tabs := HorizontalLayout {
                         x: 5.6px;
@@ -598,6 +596,4 @@ export component InstanceHubPage inherits Rectangle {
         }
         if !HomeBridge.hub-loading && HomeBridge.hub-error == "" && HomeBridge.hub-loaded: ConsoleCard { }
     }
-
-    DryRunModal { }
 }

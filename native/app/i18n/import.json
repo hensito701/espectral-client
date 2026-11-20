@@ -71,7 +71,22 @@
     "import.recent.typeMrpack": "Modpack .mrpack",
     "import.recent.typeProfile": "Perfil de {kind}",
     "import.recent.copiedSummary": "{copied} archivos copiados, {servers} servidores",
-    "import.recent.openInstance": "Ver instancia"
+    "import.recent.openInstance": "Ver instancia",
+    "import.laneB.tag": "Vanilla • FastClient • Lunar",
+    "import.mrpack.changeFile": "Cambiar archivo",
+    "import.mrpack.installDone": "INSTALACIÓN COMPLETADA",
+    "import.mrpack.linkedInstance": "INSTANCIA VINCULADA",
+    "import.pageBadge": "MIGRATION & PACKS",
+    "import.pageRoute": "#/library/import",
+    "import.profile.searching": "Buscando…",
+    "import.recent.instance": "Instancia:",
+    "import.recent.profile": "Perfil",
+    "import.result.copiedTitle": "Archivos copiados con éxito:",
+    "import.result.migrationDone": "MIGRACIÓN COMPLETADA",
+    "import.result.serversTitle": "Servidores importados:",
+    "import.result.skippedTitle": "Archivos omitidos:",
+    "import.result.target": "Destino: {name}",
+    "import.result.viewInstance": "Ver instancia {name}"
   },
   "en": {
     "import.pageTitle": "Import Center",
@@ -145,6 +160,21 @@
     "import.recent.typeMrpack": ".mrpack Modpack",
     "import.recent.typeProfile": "{kind} Profile",
     "import.recent.copiedSummary": "{copied} files copied, {servers} servers",
-    "import.recent.openInstance": "View instance"
+    "import.recent.openInstance": "View instance",
+    "import.laneB.tag": "Vanilla • FastClient • Lunar",
+    "import.mrpack.changeFile": "Change file",
+    "import.mrpack.installDone": "INSTALL COMPLETED",
+    "import.mrpack.linkedInstance": "INSTANCE LINKED",
+    "import.pageBadge": "MIGRATION & PACKS",
+    "import.pageRoute": "#/library/import",
+    "import.profile.searching": "Searching…",
+    "import.recent.instance": "Instance:",
+    "import.recent.profile": "Profile",
+    "import.result.copiedTitle": "Files copied successfully:",
+    "import.result.migrationDone": "MIGRATION COMPLETED",
+    "import.result.serversTitle": "Imported servers:",
+    "import.result.skippedTitle": "Skipped files:",
+    "import.result.target": "Destination: {name}",
+    "import.result.viewInstance": "View instance {name}"
   }
 }

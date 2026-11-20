@@ -24,14 +24,10 @@ export component MonogramTile inherits Rectangle {
     width: size;
     height: size;
     border-radius: shape == MonogramShape.circle ? size / 2 : shape == MonogramShape.rounded ? Theme.radius-md : Theme.radius-lg;
-    // Flat block: one solid hue, 2px ink border, hard 2px shadow.
-    background: Theme.hsla(hue, 0.5, 0.28, 1);
-    border-width: 2px;
-    border-color: Theme.brand-ink;
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 2px;
-    drop-shadow-offset-y: 2px;
+    // Softer glass tile: the hue tints a translucent fill, initials in text colour.
+    background: Theme.hsla(hue, 0.45, Theme.dark ? 0.30 : 0.82, 0.9);
+    border-width: Theme.hairline;
+    border-color: Theme.hsla(hue, 0.5, 0.5, 0.55);
     clip: true;
 
     // The face fills the whole tile (edge to edge); the ink outline is drawn
@@ -47,15 +43,15 @@ export component MonogramTile inherits Rectangle {
         width: 100%;
         height: 100%;
         border-radius: root.border-radius;
-        border-width: 2px;
-        border-color: Theme.brand-ink;
+        border-width: Theme.hairline;
+        border-color: Theme.glass-border;
     }
     if !root.has-avatar: Text {
         text: Util.initial(root.name);
         font-family: Theme.label-family(root.glyph-size);
         font-size: Theme.label-size(root.glyph-size);
         font-weight: 700;
-        color: Theme.hsla(root.hue, 0.9, 0.78, 1);
+        color: Theme.text;
         horizontal-alignment: center;
         vertical-alignment: center;
     }

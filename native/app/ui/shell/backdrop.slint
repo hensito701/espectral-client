@@ -1,8 +1,83 @@
-// AmbientBackdrop — the page background. The poster look is flat: one solid
-// colour (deep purple, cream in light mode), no orbs, no grid, no vignette.
+// AmbientBackdrop — the window background: charcoal (Theme.bg) with three
+// large soft glows (the accent, the logo's purple, a cool blue). The glass
+// panels above are translucent, so the glows tint them from behind.
+//
+// The glows glide to a new arrangement when the page changes (Theme.dur-glow)
+// and are otherwise still: no idle animation, so the launcher draws nothing
+// while a game is running.
 
 import { Theme } from "../theme.slint";
+import { Router, Page } from "../state.slint";
+
+component Glow inherits Rectangle {
+    in property <float> cx;
+    in property <float> cy;
+    /// Diameter as a fraction of the window's longer side.
+    in property <float> size;
+    /// Opaque colour; `strength` is its alpha at the centre.
+    in property <color> tint;
+    in property <float> strength;
+    in property <length> parent-w;
+    in property <length> parent-h;
+    property <length> d: max(root.parent-w, root.parent-h) * root.size;
+    x: root.cx * root.parent-w - root.d / 2;
+    y: root.cy * root.parent-h - root.d / 2;
+    width: root.d;
+    height: root.d;
+    background: @radial-gradient(circle, root.tint.with-alpha(root.strength) 0%, root.tint.with-alpha(root.strength * 0.45) 35%, transparent 70%);
+}
 
 export component AmbientBackdrop inherits Rectangle {
     background: Theme.bg;
+    clip: true;
+
+    // one arrangement per page group: 0 home, 1 instances, 2 library, 3 account, 4 settings
+    property <int> layout: Router.page == Page.home ? 0
+        : Router.page == Page.instances || Router.page == Page.instance ? 1
+        : Router.page == Page.mods || Router.page == Page.versions || Router.page == Page.import ? 2
+        : Router.page == Page.account ? 3
+        : 4;
+
+    property <float> ax: [0.50, 0.88, 0.12, 0.82, 0.08][root.layout];
+    property <float> ay: [1.08, 0.92, 0.98, 0.06, 0.10][root.layout];
+    property <float> bx: [0.10, 0.08, 0.86, 0.16, 0.92][root.layout];
+    property <float> by: [0.06, 0.24, 0.12, 0.92, 0.88][root.layout];
+    property <float> cx: [0.92, 0.58, 0.46, 0.52, 0.52][root.layout];
+    property <float> cy: [0.34, 0.02, 0.52, 0.46, 0.40][root.layout];
+    animate ax, ay, bx, by, cx, cy { duration: Theme.dur-glow; easing: ease-in-out; }
+
+    // accent: warm light where the main action lives
+    Glow {
+        parent-w: root.width;
+        parent-h: root.height;
+        cx: root.ax;
+        cy: root.ay;
+        size: 0.95;
+        tint: Theme.accent;
+        strength: Theme.dark ? 0.22 : 0.22;
+    }
+    // the logo's purple
+    Glow {
+        parent-w: root.width;
+        parent-h: root.height;
+        cx: root.bx;
+        cy: root.by;
+        size: 0.85;
+        tint: Theme.dark ? #6b3fa0 : #9b7fd0;
+        strength: Theme.dark ? 0.28 : 0.22;
+    }
+    // a cool counterpoint
+    Glow {
+        parent-w: root.width;
+        parent-h: root.height;
+        cx: root.cx;
+        cy: root.cy;
+        size: 0.6;
+        tint: Theme.dark ? #2f5fb0 : #8fb4e8;
+        strength: Theme.dark ? 0.14 : 0.16;
+    }
+    // a faint vignette keeps the edges calm
+    Rectangle {
+        background: @radial-gradient(circle, transparent 55%, Theme.dark ? rgba(0, 0, 0, 0.35) : rgba(0, 0, 0, 0.05) 100%);
+    }
 }

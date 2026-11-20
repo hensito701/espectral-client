@@ -3,10 +3,8 @@
 // HotkeyLegend — port of components/HotkeyLegend.svelte (not placed by the
 // Svelte app either; available for pages).
 //
-// Poster restyle: opaque ink scrim, one flat cream/purple poster card with a
-// 2px border and a hard 6px ink shadow, the gold Letterpress wordmark + a
-// tilted "CLIENT" sticker, and the brand Discord button (flat blurple pill,
-// ink border, hard purple shadow) as on espectral.uhce.top.
+// Glass restyle: the full-window glows stay visible; one floating glass card
+// holds the logo + wordmark and the sign-in options. No poster blocks.
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
@@ -14,6 +12,7 @@ import { Session, AppState } from "../state.slint";
 import { Icon, Icons } from "../widgets/icon.slint";
 import { ClientLockup, McTitle, Sticker } from "../widgets/badge.slint";
 import { Btn, BtnVariant, Spinner } from "../widgets/btn.slint";
+import { GlassCard, Elevation } from "../widgets/card.slint";
 
 component GateSuccess inherits VerticalLayout {
     alignment: center;
@@ -25,32 +24,19 @@ component GateSuccess inherits VerticalLayout {
         Rectangle {
             width: 76px;
             height: 76px;
-            // hard ink shadow block
-            Rectangle {
-                x: 4px;
-                y: 4px;
-                width: 72px;
-                height: 72px;
-                border-radius: 36px;
-                background: Theme.brand-ink;
+            border-radius: 38px;
+            background: Theme.card-bg-soft;
+            border-width: Theme.hairline;
+            border-color: Theme.glass-border;
+            clip: true;
+            if Session.has-user-avatar: Image {
+                width: 100%;
+                height: 100%;
+                source: Session.user-avatar;
+                image-fit: cover;
             }
-            Rectangle {
-                width: 76px;
-                height: 76px;
-                border-radius: 38px;
-                background: Theme.surface-solid;
-                border-width: 2px;
-                border-color: Theme.border-solid;
-                clip: true;
-                if Session.has-user-avatar: Image {
-                    width: 100%;
-                    height: 100%;
-                    source: Session.user-avatar;
-                    image-fit: cover;
-                }
-                if !Session.has-user-avatar: Icon { data: Icons.discord; filled: true; size: 34px; color: Theme.discord; }
-            }
-            // "online" pip: gold ring, ink edge
+            if !Session.has-user-avatar: Icon { data: Icons.discord; filled: true; size: 34px; color: Theme.discord; }
+            // "online" pip: green dot, glass edge
             Rectangle {
                 x: parent.width - 22px;
                 y: parent.height - 22px;
@@ -58,16 +44,16 @@ component GateSuccess inherits VerticalLayout {
                 height: 22px;
                 border-radius: 11px;
                 background: Theme.accent-green;
-                border-width: 2px;
-                border-color: Theme.brand-ink;
-                Icon { data: Icons.check; size: 13px; weight: 3; color: Theme.brand-ink; }
+                border-width: Theme.hairline;
+                border-color: Theme.border-solid;
+                Icon { data: Icons.check; size: 13px; weight: 3; color: Theme.text-inverse; }
             }
         }
     }
     HorizontalLayout {
         alignment: center;
         padding-bottom: Theme.space-3;
-        Sticker { text: T.tr("gate.badge"); tilt: -4deg; }
+        Sticker { text: T.tr("gate.badge"); }
     }
     McTitle {
         text: T.tr1("gate.success", "name", Session.user-name);
@@ -111,9 +97,9 @@ component GatePrompt inherits VerticalLayout {
         padding-bottom: Theme.space-5;
         Rectangle {
             border-radius: Theme.radius-md;
-            background: Theme.surface-solid;
-            border-width: 2px;
-            border-color: Theme.accent-red;
+            background: Theme.accent-red.with-alpha(0.10);
+            border-width: Theme.hairline;
+            border-color: Theme.accent-red.with-alpha(0.55);
             HorizontalLayout {
                 padding-top: Theme.space-2;
                 padding-bottom: Theme.space-2;
@@ -139,48 +125,34 @@ component GatePrompt inherits VerticalLayout {
     VerticalLayout {
         spacing: Theme.space-3;
         padding-bottom: Theme.space-5;
-        // brand Discord button: flat blurple pill, ink border, hard ink shadow
+        // Discord: the primary action of this view, so it keeps its solid fill
         discord-btn := Rectangle {
             property <bool> busy: Session.authenticating;
             property <bool> hovered: d-ta.has-hover && !self.busy;
-            property <length> depth: 4px;
-            height: 46px + self.depth;
+            height: 46px;
             opacity: self.busy ? 0.6 : 1;
-
-            Rectangle {
-                y: discord-btn.depth;
-                width: 100%;
-                height: 46px;
-                border-radius: Theme.radius-pill;
-                background: Theme.brand-ink;
-            }
-            Rectangle {
-                y: discord-btn.hovered ? -2px : 0px;
-                width: 100%;
-                height: 46px;
-                border-radius: Theme.radius-pill;
-                background: discord-btn.hovered ? #4752c4 : Theme.discord;
-                border-width: 2px;
-                border-color: Theme.brand-ink;
-                animate background, y { duration: Theme.dur-fast; easing: ease-out; }
-                HorizontalLayout {
+            border-radius: Theme.radius-pill;
+            background: Theme.discord;
+            border-width: Theme.hairline;
+            border-color: hovered ? Theme.edge-strong : transparent;
+            animate border-color { duration: Theme.dur-fast; }
+            HorizontalLayout {
+                alignment: center;
+                spacing: Theme.space-2;
+                if discord-btn.busy: VerticalLayout {
                     alignment: center;
-                    spacing: Theme.space-2;
-                    if discord-btn.busy: VerticalLayout {
-                        alignment: center;
-                        Spinner { size: 16px; tint: #ffffff; }
-                    }
-                    if !discord-btn.busy: VerticalLayout {
-                        alignment: center;
-                        Icon { data: Icons.discord; filled: true; size: 20px; color: #ffffff; }
-                    }
-                    Text {
-                        text: discord-btn.busy ? T.tr("gate.connecting") : T.tr("gate.discord");
-                        font-size: Theme.text-sm;
-                        font-weight: 700;
-                        color: #ffffff;
-                        vertical-alignment: center;
-                    }
+                    Spinner { size: 16px; tint: #ffffff; }
+                }
+                if !discord-btn.busy: VerticalLayout {
+                    alignment: center;
+                    Icon { data: Icons.discord; filled: true; size: 20px; color: #ffffff; }
+                }
+                Text {
+                    text: discord-btn.busy ? T.tr("gate.connecting") : T.tr("gate.discord");
+                    font-size: Theme.text-sm;
+                    font-weight: 700;
+                    color: #ffffff;
+                    vertical-alignment: center;
                 }
             }
             d-ta := TouchArea {
@@ -209,7 +181,7 @@ component GatePrompt inherits VerticalLayout {
 }
 
 export component LoginGate inherits Rectangle {
-    // Opaque ink scrim (no backdrop blur in the poster look).
+    // The backdrop glows show through the translucent scrim.
     background: Theme.backdrop;
 
     TouchArea { }
@@ -220,48 +192,40 @@ export component LoginGate inherits Rectangle {
         padding: Theme.space-6;
         HorizontalLayout {
             alignment: center;
-            card := Rectangle {
+            card := GlassCard {
+                flat: true;
+                elevation: Elevation.lg;
                 width: min(460px, root.width - 48px);
-                border-radius: Theme.radius-lg;
-                background: Theme.surface-solid;
-                border-width: 2px;
-                border-color: Theme.border-solid;
-                // hard 6px ink shadow block sitting behind the card
-                drop-shadow-color: Theme.brand-ink;
-                drop-shadow-blur: 0px;
-                drop-shadow-offset-x: 6px;
-                drop-shadow-offset-y: 6px;
-                clip: true;
+                radius: Theme.radius-lg;
+                padding-size: 0px;
+                spacing: Theme.space-5;
 
                 VerticalLayout {
-                    // poster header band: always the purple brand bar with the
-                    // logo + "Espectral / Client vX.Y" lockup (as on the site)
-                    band := Rectangle {
-                        background: Theme.topbar-bg;
-                        HorizontalLayout {
-                            padding-top: Theme.space-6;
-                            padding-bottom: Theme.space-6;
-                            spacing: Theme.space-4;
+                    alignment: center;
+                    // logo + wordmark (no poster band)
+                    HorizontalLayout {
+                        padding-top: Theme.space-6;
+                        padding-bottom: Theme.space-5;
+                        spacing: Theme.space-4;
+                        alignment: center;
+                        VerticalLayout {
                             alignment: center;
-                            VerticalLayout {
-                                alignment: center;
-                                Image {
-                                    width: 88px;
-                                    height: 88px;
-                                    source: @image-url("../assets/logo_circle.png");
-                                    image-fit: contain;
-                                }
+                            Image {
+                                width: 64px;
+                                height: 64px;
+                                source: @image-url("../assets/logo_circle.png");
+                                image-fit: contain;
                             }
-                            ClientLockup { font-size: 32px; version: AppState.version-label; }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            ClientLockup { font-size: 26px; version: AppState.version-label; }
                         }
                     }
-                    // 4px gold rule under the header band
-                    Rectangle { height: 4px; background: Theme.header-rule; }
 
                     HorizontalLayout {
                         padding-left: Theme.space-8;
                         padding-right: Theme.space-8;
-                        padding-top: Theme.space-6;
                         padding-bottom: Theme.space-6;
                         if !Session.just-authed: GatePrompt { }
                         if Session.just-authed: GateSuccess { }
@@ -289,8 +253,8 @@ export component HotkeyLegend inherits HorizontalLayout {
                 height: k.preferred-height + 6px;
                 width: k.preferred-width + 12px;
                 border-radius: Theme.radius-xs;
-                background: Theme.surface-solid;
-                border-width: 2px;
+                background: Theme.card-bg-soft;
+                border-width: Theme.hairline;
                 border-color: Theme.border-solid;
                 k := Text {
                     text: sc.key;

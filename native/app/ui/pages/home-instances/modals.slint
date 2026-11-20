@@ -48,12 +48,12 @@ component ModalHead inherits Rectangle {
             }
         }
     }
-    Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border-solid; }
+    Rectangle { y: parent.height - Theme.hairline; height: Theme.hairline; background: Theme.border-solid; }
 }
 
 component ModalFoot inherits Rectangle {
     background: Theme.card-bg-soft;
-    Rectangle { y: 0; height: 2px; background: Theme.border-solid; }
+    Rectangle { y: 0; height: Theme.hairline; background: Theme.border-solid; }
     HorizontalLayout {
         padding-left: Theme.space-6;
         padding-right: Theme.space-6;
@@ -71,6 +71,8 @@ component DryTab inherits Rectangle {
     callback clicked();
     min-width: row.preferred-width + 24px;
     height: 42px;
+    background: root.active ? Theme.accent.with-alpha(0.12) : t.has-hover ? Theme.surface-up : transparent;
+    border-radius: Theme.radius-sm;
     row := HorizontalLayout {
         x: 12px;
         spacing: 6px;
@@ -87,7 +89,8 @@ component DryTab inherits Rectangle {
     Rectangle {
         y: parent.height - 3px;
         height: 3px;
-        background: root.active ? Theme.gold : transparent;
+        border-radius: 3px;
+        background: root.active ? Theme.accent : transparent;
     }
     t := TouchArea {
         mouse-cursor: pointer;
@@ -104,7 +107,7 @@ component MonoList inherits Rectangle {
     height: min(root.max-h, items.length * row-h + 16px);
     border-radius: Theme.radius-md;
     background: Theme.log-bg;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     clip: true;
     Flickable {
@@ -175,7 +178,7 @@ component MetaCard inherits Rectangle {
     in property <string> label;
     border-radius: Theme.radius-md;
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     HorizontalLayout {
         padding-left: Theme.space-3;
@@ -238,7 +241,7 @@ export component DryRunModal inherits Rectangle {
                 if !HomeBridge.dryrun-loading && HomeBridge.dryrun-error != "": Rectangle {
                     border-radius: Theme.radius-md;
                     background: Theme.accent-red.with-alpha(0.14);
-                    border-width: 2px;
+                    border-width: Theme.hairline;
                     border-color: Theme.accent-red;
                     HorizontalLayout {
                         padding: Theme.space-3;
@@ -257,7 +260,7 @@ export component DryRunModal inherits Rectangle {
                         height: min(140px, cmd.preferred-height + 24px);
                         border-radius: Theme.radius-md;
                         background: Theme.log-bg;
-                        border-width: 2px;
+                        border-width: Theme.hairline;
                         border-color: Theme.border-solid;
                         clip: true;
                         Flickable {
@@ -291,7 +294,7 @@ export component DryRunModal inherits Rectangle {
                     if HomeBridge.dryrun-missing.length > 0: Rectangle {
                         border-radius: Theme.radius-md;
                         background: Theme.accent-red.with-alpha(0.12);
-                        border-width: 2px;
+                        border-width: Theme.hairline;
                         border-color: Theme.accent-red;
                         VerticalLayout {
                             padding: Theme.space-3;
@@ -328,7 +331,7 @@ export component DryRunModal inherits Rectangle {
                     for w in HomeBridge.dryrun-warnings: Rectangle {
                         border-radius: Theme.radius-md;
                         background: Theme.accent-alt.with-alpha(0.12);
-                        border-width: 2px;
+                        border-width: Theme.hairline;
                         border-color: Theme.accent-alt;
                         HorizontalLayout {
                             padding: Theme.space-3;

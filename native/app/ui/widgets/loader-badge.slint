@@ -32,22 +32,18 @@ export component LoaderBadge inherits Rectangle {
     horizontal-stretch: 0;
     vertical-stretch: 0;
     border-radius: Theme.radius-pill;
-    background: Theme.surface-solid;
-    border-width: 2px;
-    border-color: Theme.brand-ink;
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 2px;
-    drop-shadow-offset-y: 2px;
+    background: Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: Theme.border-solid;
 
     row := HorizontalLayout {
-        padding: root.pad;
         spacing: 0px;
+        // hairline tinted chip: the loader colour is the text + dot, not a block
         Rectangle {
             border-radius: Theme.radius-pill;
-            background: root.chip-bg;
-            border-width: 2px;
-            border-color: Theme.brand-ink;
+            background: root.chip-bg.with-alpha(0.12);
+            border-width: Theme.hairline;
+            border-color: root.chip-bg.with-alpha(0.4);
             min-width: chip-row.preferred-width;
             chip-row := HorizontalLayout {
                 padding-left: root.size == LoaderBadgeSize.sm ? 6px : root.size == LoaderBadgeSize.lg ? 10px : 8px;
@@ -63,7 +59,7 @@ export component LoaderBadge inherits Rectangle {
                         viewbox-width: 24;
                         viewbox-height: 24;
                         commands: root.icon-path;
-                        fill: #ffffff;
+                        fill: root.chip-bg;
                     }
                 }
                 Text {
@@ -72,7 +68,7 @@ export component LoaderBadge inherits Rectangle {
                     font-size: Theme.label-size(root.fs);
                     font-weight: 700;
                     letter-spacing: 0px;
-                    color: #ffffff;
+                    color: root.chip-bg;
                     vertical-alignment: center;
                 }
             }

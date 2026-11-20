@@ -19,7 +19,7 @@ component Note inherits Text {
     wrap: word-wrap;
 }
 
-/// Card head: pixel title + subtitle; the caller places trailing chips beside it.
+/// Card head: semibold title + subtitle; the caller places trailing chips beside it.
 component Head inherits VerticalLayout {
     in property <string> title;
     in property <string> subtitle;
@@ -45,7 +45,7 @@ component Head inherits VerticalLayout {
 
 component IdentityRow inherits Rectangle {
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     border-radius: Theme.radius-md;
     min-height: row.preferred-height;
@@ -264,7 +264,7 @@ export component CosmeticsSection inherits GlassCard {
             width: key-row.preferred-width;
             border-radius: Theme.radius-sm;
             background: Theme.card-bg-soft;
-            border-width: 2px;
+            border-width: Theme.hairline;
             border-color: Theme.border-solid;
             key-row := HorizontalLayout {
                 width: parent.width;
@@ -272,12 +272,10 @@ export component CosmeticsSection inherits GlassCard {
                 padding-left: 12px;
                 padding-right: 12px;
                 alignment: center;
-                // G1: a key chip is a small label; label-family keeps the
-                // pixel font only where it lands on >= 16 physical px.
+                // a key chip is a small label; the body font stays legible
                 Text {
                     text: T.tr("wardrobe.cosmetics.key");
-                    font-family: Theme.label-family(12px);
-                    font-size: Theme.label-size(12px);
+                    font-size: Theme.text-sm;
                     font-weight: 700;
                     color: Theme.title-color;
                     vertical-alignment: center;
@@ -364,7 +362,7 @@ export component HiddenSection inherits GlassCard {
                 width: hrow.preferred-width + 2px;
                 border-radius: Theme.radius-pill;
                 background: Theme.card-bg-soft;
-                border-width: 2px;
+                border-width: Theme.hairline;
                 border-color: Theme.border-solid;
                 hrow := HorizontalLayout {
                     padding-left: 12px;
@@ -393,7 +391,7 @@ export component HiddenSection inherits GlassCard {
 
 export component MinecraftDisclaimer inherits Rectangle {
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     border-radius: Theme.radius-md;
     min-height: d-row.preferred-height;

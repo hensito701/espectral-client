@@ -22,7 +22,7 @@ use crate::router::{self, Route};
 use crate::{dialogs, i18n, store, toast, util};
 use crate::{
     AppState, AppWindow, HiBgPack, HiFeature, HiOption, HiServer, HiServerDraft, HiVcMod, HomeBridge, InstanceRow,
-    Page, SelectOption, Shell,
+    Page, SelectOption,
 };
 
 const TAGLINE_MAX: usize = 40;
@@ -41,7 +41,7 @@ struct Hub {
     vc_ids: Vec<String>,
     draft: Vec<(String, String)>,
     preset_fallback: Option<slint::Timer>,
-    prev_page: Option<Page>,
+
 }
 
 thread_local! {
@@ -87,18 +87,6 @@ pub fn instance_row(i: &InstanceSummary, icon: Option<Image>) -> InstanceRow {
     }
 }
 
-fn hub_hue(s: &InstanceSummary) -> i32 {
-    match s.hue {
-        Some(h) => h.rem_euclid(360) as i32,
-        None => match s.loader {
-            espectral_engine::types::Loader::Fabric => 195,
-            espectral_engine::types::Loader::Neoforge => 25,
-            espectral_engine::types::Loader::Forge => 35,
-            espectral_engine::types::Loader::Vanilla => 160,
-        },
-    }
-}
-
 /// Apply a fresh summary (keeps the current icon unless `icon` is given).
 fn set_summary(ui: &AppWindow, s: InstanceSummary, icon: Option<Option<Image>>) {
     let hb = ui.global::<HomeBridge>();
@@ -115,9 +103,6 @@ fn set_summary(ui: &AppWindow, s: InstanceSummary, icon: Option<Option<Image>>) 
     hb.set_capture_supported(
         s.loader == espectral_engine::types::Loader::Fabric && CAPTURE_VERSIONS.contains(&s.version.as_str()),
     );
-    if ui.global::<crate::Router>().get_page() == Page::Instance {
-        ui.global::<Shell>().set_ambient_hue(hub_hue(&s));
-    }
     HUB.with(|h| h.borrow_mut().summary = Some(s));
     update_running(ui);
 }
@@ -164,7 +149,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
 
     router::on_route(|ui, route: &Route| {
-        let prev = HUB.with(|h| h.borrow_mut().prev_page.replace(route.page));
+
         if route.page == Page::Instance {
             let tab = match route.param("tab").as_deref() {
                 Some("servers") => 1,
@@ -184,10 +169,6 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
                 h.preset_fallback = None;
             });
             launchlog::set_hub_instance(ui, "");
-            // InstanceHub onDestroy removed --ambient-hue (Home sets its own)
-            if prev == Some(Page::Instance) && route.page != Page::Home {
-                ui.global::<Shell>().set_ambient_hue(160);
-            }
         }
     });
 
@@ -621,7 +602,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
                 ui.global::<HomeBridge>().set_deleting(false);
                 store::refresh_instances();
                 toast::ok(i18n::tf("instance.deleteSuccess", &[("name", &name)]));
-                router::navigate(ui, "#/");
+                router::navigate(ui, "#/instances");
             },
             |ui, e| {
                 ui.global::<HomeBridge>().set_deleting(false);

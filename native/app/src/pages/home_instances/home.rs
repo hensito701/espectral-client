@@ -46,15 +46,6 @@ pub fn parse_loader(s: &str) -> Loader {
     }
 }
 
-/// HorizonRail ambient hue (loader palette only).
-fn rail_hue(loader: &str) -> i32 {
-    match loader {
-        "fabric" => 190,
-        "neoforge" | "forge" => 24,
-        _ => 160,
-    }
-}
-
 pub fn active_username(ui: &AppWindow) -> String {
     let s = ui.global::<AppState>();
     if s.get_has_active_account() {
@@ -68,12 +59,11 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
     let hb = ui.global::<HomeBridge>();
 
-    // ---- rail ----
+    // ---- picker / rail selection ----
     let w = ui.as_weak();
     hb.on_select_instance(move |name| {
         if let Some(ui) = w.upgrade() {
-            ui.global::<HomeBridge>().set_selected_instance(name.clone());
-            apply_home_hue(&ui);
+            ui.global::<HomeBridge>().set_selected_instance(name);
         }
     });
     let w = ui.as_weak();
@@ -243,12 +233,16 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
 
     // ---- route enter ----
     router::on_route(|ui, route: &Route| {
-        if route.page == Page::Home {
-            let hb = ui.global::<HomeBridge>();
-            hb.set_greeting(greeting_bucket());
-            ensure_selection(ui);
-            apply_home_hue(ui);
-            update_servers(ui);
+        match route.page {
+            Page::Home => {
+                let hb = ui.global::<HomeBridge>();
+                hb.set_greeting(greeting_bucket());
+                ensure_selection(ui);
+                update_servers(ui);
+            }
+            // the instances grid picks its tile through the same selection
+            Page::Instances | Page::Instance => ensure_selection(ui),
+            _ => {}
         }
     });
 }
@@ -257,9 +251,8 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
 pub fn shared_changed(ui: &AppWindow) {
     ensure_selection(ui);
     if ui.global::<crate::Router>().get_page() == Page::Home {
-        apply_home_hue(ui);
+        update_servers(ui);
     }
-    update_servers(ui);
     update_capsule_running(ui);
 }
 
@@ -309,18 +302,6 @@ fn ensure_selection(ui: &AppWindow) {
             hb.set_selected_instance(first.name);
         }
     }
-}
-
-fn apply_home_hue(ui: &AppWindow) {
-    let sel = ui.global::<HomeBridge>().get_selected_instance();
-    let loader = ui
-        .global::<AppState>()
-        .get_instances()
-        .iter()
-        .find(|r| r.name == sel)
-        .map(|r| r.loader.to_string())
-        .unwrap_or_else(|| "vanilla".into());
-    ui.global::<Shell>().set_ambient_hue(rail_hue(&loader));
 }
 
 fn update_servers(ui: &AppWindow) {

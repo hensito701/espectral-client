@@ -6,7 +6,7 @@
 // (library_mods/donations.rs); rows carry i18n KEYS so a language switch
 // re-renders without a round trip.
 
-import { Theme, T, Router, AppState, GlassCard, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Sticker, Icon, Icons, Emoji } from "../../widgets.slint";
+import { Theme, T, Router, AppState, GlassCard, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Sticker, Icon, Icons, Emoji, Surface } from "../../widgets.slint";
 import { LibraryBridge, RankCard } from "api.slint";
 import { LibScroll, VText, CenterText } from "parts.slint";
 
@@ -23,12 +23,12 @@ component Capsule inherits Rectangle {
     min-width: row.preferred-width;
     horizontal-stretch: 0;
     border-radius: Theme.radius-pill;
-    background: Theme.surface-solid;
-    border-width: 2px;
+    background: Theme.card-bg-soft;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     row := HorizontalLayout {
-        padding-left: 14.4px;
-        padding-right: 14.4px;
+        padding-left: 14px;
+        padding-right: 14px;
         padding-top: 9px;
         padding-bottom: 9px;
         spacing: Theme.space-2;
@@ -36,70 +36,50 @@ component Capsule inherits Rectangle {
             alignment: center;
             Emoji { char: root.emoji; size: 15px; }
         }
-        VText { text: root.text; font-size: 13.4px; font-weight: 600; }
+        VText { text: root.text; font-size: 13px; font-weight: 600; }
     }
 }
 
-component Hero inherits Rectangle {
-    border-radius: Theme.radius-xl;
-    background: Theme.surface-solid;
-    border-width: 2px;
-    border-color: Theme.border-solid;
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 6px;
-    drop-shadow-offset-y: 6px;
-    height: col.preferred-height;
-    clip: true;
-    // gold poster band down the right edge (flat, no gradient)
-    Rectangle {
-        width: 8px;
-        height: parent.height - 2 * parent.border-width;
-        x: parent.width - self.width - parent.border-width;
-        y: parent.border-width;
-        background: Theme.gold;
-    }
-    col := HorizontalLayout {
-        padding-left: 36px;
-        padding-right: 36px;
-        VerticalLayout {
-            padding-top: 40px;
-            padding-bottom: 40px;
-            spacing: 20px;
-            HorizontalLayout {
-                spacing: Theme.space-3;
-                alignment: start;
-                VerticalLayout {
-                    alignment: center;
-                    Badge { text: T.tr("pav.heroBadge"); variant: BadgeVariant.gold; dot: true; }
-                }
-                VText { text: "ESPECTRAL CLIENT NETWORK"; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; letter-spacing: 0.8px; color: Theme.muted; }
-            }
+component Hero inherits GlassCard {
+    padding-size: 36px;
+    radius: Theme.radius-xl;
+    VerticalLayout {
+        padding-top: Theme.space-6;
+        padding-bottom: Theme.space-6;
+        spacing: 20px;
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            alignment: start;
             VerticalLayout {
-                spacing: Theme.space-2;
-                McTitle {
-                    text: T.tr("pav.heroTitle");
-                    font-size: 40px;
-                }
-                HorizontalLayout {
-                    Text {
-                        max-width: 860px;
-                        text: T.tr("pav.heroPitch");
-                        color: Theme.muted-strong;
-                        font-size: 16.3px;
-                        line-height-factor: 1.6 / 1.28;
-                        wrap: word-wrap;
-                    }
-                }
+                alignment: center;
+                Badge { text: T.tr("pav.heroBadge"); variant: BadgeVariant.gold; dot: true; }
+            }
+            VText { text: T.tr("pav.heroKicker"); font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; letter-spacing: 0.8px; color: Theme.muted; }
+        }
+        VerticalLayout {
+            spacing: Theme.space-2;
+            McTitle {
+                text: T.tr("pav.heroTitle");
+                font-size: 40px;
             }
             HorizontalLayout {
-                padding-top: Theme.space-2;
-                spacing: Theme.space-3;
-                alignment: start;
-                Capsule { emoji: "🛡️"; text: T.tr("pav.perkHighlight1"); }
-                Capsule { emoji: "⚡"; text: T.tr("pav.perkHighlight2"); }
-                Capsule { emoji: "🎮"; text: T.tr("pav.perkHighlight3"); }
+                Text {
+                    max-width: 860px;
+                    text: T.tr("pav.heroPitch");
+                    color: Theme.muted-strong;
+                    font-size: 16px;
+                    line-height-factor: 1.6 / 1.28;
+                    wrap: word-wrap;
+                }
             }
+        }
+        HorizontalLayout {
+            padding-top: Theme.space-2;
+            spacing: Theme.space-3;
+            alignment: start;
+            Capsule { emoji: "🛡️"; text: T.tr("pav.perkHighlight1"); }
+            Capsule { emoji: "⚡"; text: T.tr("pav.perkHighlight2"); }
+            Capsule { emoji: "🎮"; text: T.tr("pav.perkHighlight3"); }
         }
     }
 }
@@ -112,15 +92,14 @@ component SectionHeader inherits VerticalLayout {
     Text { text: root.subtitle; color: Theme.muted; font-size: 14.4px; wrap: word-wrap; }
 }
 
-/// Partner / channel action pill: flat ink or brand block, hard shadow.
+/// Partner / channel action pill: glass with the channel's brand colour as a
+/// hairline edge and icon tint, warm-white label (readable in both themes).
 component LinkBtn inherits Rectangle {
     in property <string> text;
     in property <string> icon: Icons.external-link;
     in property <brush> fill;
     in property <color> fg;
     in property <color> stroke: transparent;
-    /// Pixel-font label (the site's partner buttons).
-    in property <bool> pixel: false;
     /// Stretch to the parent width (stacked partner buttons).
     in property <bool> block: false;
     callback clicked();
@@ -129,29 +108,24 @@ component LinkBtn inherits Rectangle {
     height: 45px;
     min-width: block ? 0px : row.preferred-width;
     border-radius: Theme.radius-md;
-    background: fill;
-    border-width: 2px;
-    border-color: root.hovered ? Theme.gold : stroke == transparent ? Theme.brand-ink : stroke;
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 3px;
-    drop-shadow-offset-y: 3px;
-    animate border-color { duration: Theme.dur-fast; }
+    background: root.hovered ? Theme.surface-up : Theme.surface;
+    border-width: Theme.hairline;
+    border-color: root.hovered ? Theme.accent.with-alpha(0.7) : root.fill.with-alpha(0.55);
+    animate background, border-color { duration: Theme.dur-fast; }
     row := HorizontalLayout {
-        padding-left: 17.6px;
-        padding-right: 17.6px;
+        padding-left: 18px;
+        padding-right: 18px;
         spacing: Theme.space-2;
         alignment: center;
         VerticalLayout {
             alignment: center;
-            Icon { data: root.icon; size: 16px; color: root.fg; }
+            Icon { data: root.icon; size: 16px; color: root.fill; }
         }
         VText {
             text: root.text;
-            font-size: root.pixel ? Theme.pix(16px) : 14px;
-            font-family: root.pixel ? Theme.font-pixel : Theme.font-body;
+            font-size: 14px;
             font-weight: 700;
-            color: root.fg;
+            color: Theme.text;
             overflow: elide;
         }
     }
@@ -174,32 +148,24 @@ component ChannelCard inherits Rectangle {
     in property <string> action;
     in property <brush> action-fill;
     in property <color> action-fg;
-    in property <color> action-stroke: transparent;
-    /// Pixel-font partner action label (PayPal / Tebex).
-    in property <bool> action-pixel: false;
     in property <string> url;
     property <bool> hovered: touch.has-hover;
     border-radius: Theme.radius-lg;
-    background: Theme.surface-solid;
-    border-width: 2px;
+    background: Theme.card-bg;
+    border-width: Theme.hairline;
     border-color: hovered ? Theme.hover-border : Theme.border-solid;
-    drop-shadow-color: hovered ? Theme.brand-purple : Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 4px;
-    drop-shadow-offset-y: 4px;
     min-height: col.preferred-height;
     clip: true;
-    animate border-color, drop-shadow-color { duration: Theme.dur-fast; }
+    animate border-color { duration: Theme.dur-fast; }
     touch := TouchArea { }
     // partner colour rule across the top of the block
     Rectangle {
         x: root.border-width;
         y: root.border-width;
         width: root.width - 2 * root.border-width;
-        height: 4px;
-        background: root.tone;
+        height: 2px;
+        background: root.tone.with-alpha(0.85);
     }
-    // GlassCard body: 20px padding, block flow inside (no flex gaps)
     col := HorizontalLayout {
         padding-left: Theme.space-5;
         padding-right: Theme.space-5;
@@ -214,14 +180,14 @@ component ChannelCard inherits Rectangle {
                 Rectangle { horizontal-stretch: 1; }
             }
             HorizontalLayout {
-                spacing: 13.6px;
+                spacing: 14px;
                 Rectangle {
                     width: 44px;
                     height: 44px;
                     border-radius: Theme.radius-md;
-                    background: Theme.card-bg-soft;
-                    border-width: 2px;
-                    border-color: root.tone;
+                    background: root.tone.with-alpha(0.12);
+                    border-width: Theme.hairline;
+                    border-color: root.tone.with-alpha(0.5);
                     Icon { data: root.icon; size: 24px; color: root.tone; filled: root.icon-filled; }
                 }
                 VerticalLayout {
@@ -232,7 +198,7 @@ component ChannelCard inherits Rectangle {
                         text: root.title;
                         color: Theme.title-color;
                         font-family: Theme.font-title;
-                        font-size: Theme.pix(16px);
+                        font-size: Theme.text-base;
                         font-weight: 700;
                         wrap: word-wrap;
                         horizontal-stretch: 1;
@@ -250,7 +216,7 @@ component ChannelCard inherits Rectangle {
                 vertical-stretch: 1;
                 text: root.desc;
                 color: Theme.muted-strong;
-                font-size: 14.1px;
+                font-size: 14px;
                 line-height-factor: 1.55 / 1.28;
                 wrap: word-wrap;
             }
@@ -263,8 +229,7 @@ component ChannelCard inherits Rectangle {
                     text: root.action;
                     fill: root.action-fill;
                     fg: root.action-fg;
-                    stroke: root.action-stroke;
-                    pixel: root.action-pixel;
+                    stroke: Theme.glass-border;
                     clicked => { AppState.open-url(root.url); }
                 }
                 Btn {
@@ -291,8 +256,6 @@ component PaypalCard inherits ChannelCard {
     action: T.tr("pav.paypalAction");
     action-fill: #0070e0;
     action-fg: #ffffff;
-    action-stroke: Theme.brand-ink;
-    action-pixel: true;
     url: "https://paypal.me/uhcespectral";
 }
 
@@ -308,8 +271,6 @@ component TebexCard inherits ChannelCard {
     action: T.tr("pav.tebexAction");
     action-fill: #2c1a78;
     action-fg: Theme.gold;
-    action-stroke: Theme.brand-ink;
-    action-pixel: true;
     url: "https://espectral.uhce.top/donaciones";
 }
 
@@ -326,27 +287,28 @@ component DiscordCard inherits ChannelCard {
     action: T.tr("pav.discordAction");
     action-fill: Theme.discord;
     action-fg: #ffffff;
-    action-stroke: Theme.brand-ink;
     url: "https://discord.gg/espectral";
 }
 
+/// Rank category tabs: one glass segmented control (accent-tinted active).
 component CategoryTab inherits Rectangle {
     in property <string> text;
     in property <bool> active;
     callback clicked();
-    height: label.preferred-height + 16px;
+    height: 32px;
     min-width: label.preferred-width + 30px;
     horizontal-stretch: 0;
-    border-radius: Theme.radius-sm;
-    background: active ? Theme.surface-solid : transparent;
-    border-width: 2px;
-    border-color: active ? Theme.hover-border : transparent;
+    border-radius: Theme.radius-xs;
+    background: active ? Theme.accent.with-alpha(0.14) : touch.has-hover ? Theme.surface-up : transparent;
+    border-width: Theme.hairline;
+    border-color: active ? Theme.edge-strong : transparent;
     animate background, border-color { duration: Theme.dur-fast; }
     label := Text {
         text: root.text;
-        font-size: 13.8px;
-        font-weight: 600;
-        color: root.active || touch.has-hover ? Theme.text : Theme.muted;
+        font-size: 13px;
+        font-weight: root.active ? 600 : 500;
+        color: root.active ? Theme.accent-bright : touch.has-hover ? Theme.text : Theme.muted;
+        horizontal-alignment: center;
     }
     touch := TouchArea {
         mouse-cursor: pointer;
@@ -359,7 +321,7 @@ component RankSearch inherits Rectangle {
     height: 37px;
     border-radius: Theme.radius-md;
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: input.has-focus ? Theme.hover-border : Theme.border-solid;
     TouchArea {
         mouse-cursor: MouseCursor.text;
@@ -409,18 +371,18 @@ component RankCardView inherits Rectangle {
     in property <RankCard> rank;
     property <bool> hovered: touch.has-hover;
     border-radius: Theme.radius-lg;
-    background: Theme.surface-solid;
-    border-width: 2px;
+    background: Theme.card-bg;
+    border-width: Theme.hairline;
     border-color: rank.featured || hovered ? Theme.hover-border : Theme.border-solid;
-    drop-shadow-color: rank.featured || hovered ? Theme.brand-purple : Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 4px;
-    drop-shadow-offset-y: 4px;
+    // the featured tier keeps one accent edge
+    drop-shadow-blur: rank.featured ? Theme.shadow-md-blur : 0px;
+    drop-shadow-offset-y: rank.featured ? Theme.shadow-md-y : 0px;
+    drop-shadow-color: rank.featured ? Theme.shadow-md-color : transparent;
     min-height: col.preferred-height;
     clip: true;
-    animate border-color, drop-shadow-color { duration: Theme.dur-fast; }
+    animate border-color { duration: Theme.dur-fast; }
     touch := TouchArea { }
-    // border-top: 2px solid <tier>
+    // border-top: 2px tier colour
     Rectangle { y: 0; height: 2px; background: root.rank.tone; }
     col := HorizontalLayout {
         padding-left: Theme.space-6;
@@ -444,7 +406,7 @@ component RankCardView inherits Rectangle {
                     // one sticker for the highlighted tier
                     if root.rank.featured: VerticalLayout {
                         alignment: center;
-                        Sticker { text: "MVP+"; fill: Theme.gold; ink: Theme.on-gold; }
+                        Sticker { text: "MVP+"; fill: Theme.accent; }
                     }
                 }
                 HorizontalLayout {
@@ -454,7 +416,7 @@ component RankCardView inherits Rectangle {
                     VerticalLayout {
                         alignment: end;
                         padding-bottom: 5px;
-                        Text { text: T.tr(root.rank.price-key); color: Theme.title-color; font-family: Theme.font-pixel; font-size: Theme.pix(16px); }
+                        Text { text: T.tr(root.rank.price-key); color: root.rank.featured ? Theme.accent : Theme.title-color; font-family: Theme.font-title; font-size: Theme.text-base; font-weight: 700; }
                     }
                 }
                 Text {
@@ -467,7 +429,7 @@ component RankCardView inherits Rectangle {
             }
             Rectangle {
                 height: 33px;
-                Rectangle { y: 16px; height: 2px; background: Theme.border-solid; }
+                Rectangle { y: 16px; height: Theme.hairline; background: Theme.border-solid; }
             }
             // perks
             VerticalLayout {
@@ -507,28 +469,19 @@ component RankCardView inherits Rectangle {
                 spacing: Theme.space-2;
                 cta := Rectangle {
                     height: 44px;
-                    // hard shadow under the pill (box-shadow: 0 3px 0 ink)
-                    Rectangle {
-                        x: 0;
-                        y: 3px;
-                        width: parent.width;
-                        height: 41px;
-                        border-radius: Theme.radius-pill;
-                        background: Theme.brand-purple;
-                    }
                     Rectangle {
                         width: 100%;
                         height: 41px;
                         border-radius: Theme.radius-pill;
-                        background: cta-touch.has-hover ? Theme.gold-hover : Theme.gold;
+                        background: cta-touch.has-hover ? Theme.btn-fill-hover : Theme.btn-fill;
                         animate background { duration: Theme.dur-fast; }
                         HorizontalLayout {
                             alignment: center;
                             spacing: Theme.space-2;
-                            VText { text: T.tr("pav.getRank"); font-size: 14px; font-weight: 700; color: Theme.on-gold; }
+                            VText { text: T.tr("pav.getRank"); font-size: 14px; font-weight: 700; color: Theme.btn-ink; }
                             VerticalLayout {
                                 alignment: center;
-                                Icon { data: Icons.arrow-right; size: 14px; weight: 2.5; color: Theme.on-gold; }
+                                Icon { data: Icons.arrow-right; size: 14px; weight: 2.5; color: Theme.btn-ink; }
                             }
                         }
                     }
@@ -563,17 +516,17 @@ component UnbanTier inherits Rectangle {
     horizontal-stretch: 1;
     border-radius: Theme.radius-md;
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     row := HorizontalLayout {
         padding-top: Theme.space-4;
         padding-bottom: Theme.space-4;
         padding-left: 20px;
         padding-right: 20px;
-        spacing: 9.6px;
-        VText { text: "# " + root.level; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.accent-gold; }
-        VText { text: root.label; font-size: 14.4px; font-weight: 600; horizontal-stretch: 1; }
-        VText { text: root.price; font-family: Theme.font-pixel; font-size: Theme.pix(16px); color: Theme.accent; }
+        spacing: 10px;
+        VText { text: "# " + root.level; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.accent; }
+        VText { text: root.label; font-size: 14px; font-weight: 600; horizontal-stretch: 1; }
+        VText { text: root.price; font-family: Theme.font-title; font-size: Theme.text-sm; font-weight: 700; color: Theme.accent; }
     }
 }
 
@@ -583,9 +536,9 @@ component WarningBox inherits Rectangle {
     in property <bool> strict;
     height: row.preferred-height;
     border-radius: Theme.radius-md;
-    background: Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: strict ? Theme.accent-red : Theme.accent-cyan;
+    background: strict ? Theme.accent-red.with-alpha(0.08) : Theme.accent-cyan.with-alpha(0.06);
+    border-width: Theme.hairline;
+    border-color: strict ? Theme.accent-red.with-alpha(0.45) : Theme.accent-cyan.with-alpha(0.4);
     row := HorizontalLayout {
         padding-top: 13.6px;
         padding-bottom: 13.6px;
@@ -617,7 +570,7 @@ component UnbansCard inherits GlassCard {
         HorizontalLayout {
             alignment: start;
             padding-bottom: 6.4px;
-            Badge { text: "FAIR PLAY & RECOVERY"; variant: BadgeVariant.warn; dot: true; }
+            Badge { text: T.tr("pav.unbansBadge"); variant: BadgeVariant.warn; dot: true; }
         }
         McTitle { text: T.tr("pav.unbansTitle"); font-size: 24px; }
         Text { text: T.tr("pav.unbansSubtitle"); color: Theme.muted; font-size: 14.1px; wrap: word-wrap; }
@@ -635,7 +588,7 @@ component UnbansCard inherits GlassCard {
         WarningBox { emoji: "⚠️"; text: T.tr("donations.unbans.warning2"); strict: true; }
     }
     VerticalLayout {
-        Rectangle { height: 2px; background: Theme.border-solid; }
+        Rectangle { height: Theme.hairline; background: Theme.border-solid; }
         HorizontalLayout {
             padding-top: Theme.space-2;
             spacing: Theme.space-4;
@@ -659,7 +612,7 @@ component UnbansCard inherits GlassCard {
                     text: T.tr("pav.openTicketAction");
                     fill: Theme.discord;
                     fg: #ffffff;
-                    stroke: Theme.brand-ink;
+                    stroke: Theme.glass-border;
                     clicked => { AppState.open-url("https://discord.gg/espectral"); }
                 }
             }
@@ -714,14 +667,11 @@ export component DonationsPage inherits Rectangle {
                 SectionHeader { title: T.tr("pav.ranksTitle"); subtitle: T.tr("pav.ranksSubtitle"); }
                 HorizontalLayout {
                     spacing: Theme.space-4;
-                    Rectangle {
-                        horizontal-stretch: 0;
+                    Surface {
+                        soft: true;
                         min-width: tabs.preferred-width;
                         height: tabs.preferred-height;
-                        border-radius: Theme.radius-md;
-                        background: Theme.surface-solid;
-                        border-width: 2px;
-                        border-color: Theme.border-solid;
+                        border-radius: Theme.radius-sm;
                         tabs := HorizontalLayout {
                             padding: Theme.space-1;
                             spacing: Theme.space-1;
@@ -753,7 +703,7 @@ export component DonationsPage inherits Rectangle {
                 height: disc.preferred-height;
                 border-radius: Theme.radius-md;
                 background: Theme.card-bg-soft;
-                border-width: 2px;
+                border-width: Theme.hairline;
                 border-color: Theme.border-solid;
                 disc := HorizontalLayout {
                     padding-top: 13.6px;
@@ -763,7 +713,7 @@ export component DonationsPage inherits Rectangle {
                     spacing: Theme.space-3;
                     VerticalLayout {
                         alignment: start;
-                        Text { text: "ℹ️"; font-size: 17.6px; color: Theme.accent-cyan; }
+                        Icon { data: Icons.info; size: 17px; color: Theme.accent-cyan; }
                     }
                     Text {
                         horizontal-stretch: 1;

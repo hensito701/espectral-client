@@ -15,9 +15,9 @@ component StepPill inherits Rectangle {
     preferred-width: min(112px, l.preferred-width + 16px);
     height: l.preferred-height + 6px;
     border-radius: Theme.radius-pill;
-    background: active ? Theme.gold : root.done ? Theme.accent.with-alpha(0.16) : transparent;
-    border-width: active ? 2px : 0px;
-    border-color: Theme.brand-ink;
+    background: active ? Theme.accent.with-alpha(0.14) : root.done ? Theme.accent.with-alpha(0.16) : Theme.card-bg-soft;
+    border-width: active ? Theme.hairline : 0px;
+    border-color: Theme.edge-strong;
     animate background { duration: Theme.dur-fast; }
     HorizontalLayout {
         padding-left: 8px;
@@ -26,7 +26,7 @@ component StepPill inherits Rectangle {
             text: root.text;
             font-size: 11px;
             font-weight: 700;
-            color: root.active ? Theme.on-gold : root.done ? Theme.text : Theme.muted;
+            color: root.active ? Theme.accent-bright : root.done ? Theme.text : Theme.muted;
             horizontal-alignment: center;
             vertical-alignment: center;
             wrap: word-wrap;
@@ -45,12 +45,14 @@ component SegBtn inherits Rectangle {
     height: 26px;
     min-width: l.preferred-width + 20px;
     border-radius: Theme.radius-pill;
-    background: active ? Theme.card-bg : transparent;
+    background: active ? Theme.accent.with-alpha(0.14) : transparent;
+    border-width: active ? Theme.hairline : 0px;
+    border-color: Theme.edge-strong;
     l := Text {
         text: root.text;
         font-size: Theme.text-xs;
         font-weight: 600;
-        color: root.active ? Theme.title-color : Theme.muted;
+        color: root.active ? Theme.accent-bright : Theme.muted;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -67,15 +69,15 @@ component QuickVersion inherits Rectangle {
     callback clicked();
     height: 64px;
     border-radius: Theme.radius-md;
-    background: active ? Theme.gold : t.has-hover ? Theme.surface-up : Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: active ? Theme.brand-ink : t.has-hover ? Theme.hover-border : Theme.border-solid;
+    background: active ? Theme.accent.with-alpha(0.14) : t.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: active ? Theme.edge-strong : t.has-hover ? Theme.hover-border : Theme.border-solid;
     animate background, border-color { duration: Theme.dur-fast; }
     VerticalLayout {
         padding: Theme.space-3;
         alignment: center;
-        Text { text: root.tag.to-uppercase(); color: root.active ? Theme.on-gold : Theme.title-color; font-size: Theme.text-xs; font-weight: 700; letter-spacing: 0.5px; }
-        Text { text: root.value; color: root.active ? Theme.on-gold : Theme.text; font-size: Theme.text-lg; font-weight: 700; }
+        Text { text: root.tag.to-uppercase(); color: root.active ? Theme.accent-bright : Theme.title-color; font-size: Theme.text-xs; font-weight: 700; letter-spacing: 0.5px; }
+        Text { text: root.value; color: root.active ? Theme.accent-bright : Theme.text; font-size: Theme.text-lg; font-weight: 700; }
     }
     t := TouchArea {
         mouse-cursor: pointer;
@@ -95,12 +97,8 @@ component LoaderCard inherits Rectangle {
     property <bool> hovered: t.has-hover;
     border-radius: Theme.radius-lg;
     background: active ? Theme.card-bg : hovered ? Theme.surface-up : Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: active ? Theme.hover-border : hovered ? Theme.hover-border : Theme.border-solid;
-    drop-shadow-color: active ? Theme.brand-purple : transparent;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 4px;
-    drop-shadow-offset-y: 4px;
+    border-width: Theme.hairline;
+    border-color: active ? Theme.edge-strong : hovered ? Theme.hover-border : Theme.border-solid;
     animate border-color { duration: Theme.dur-fast; }
     HorizontalLayout {
         padding-left: Theme.space-4;
@@ -169,7 +167,7 @@ component StepVersions inherits VerticalLayout {
                 width: segs.preferred-width + 6px;
                 border-radius: self.height / 2;
                 background: Theme.card-bg-soft;
-                border-width: 2px;
+                border-width: Theme.hairline;
                 border-color: Theme.border-solid;
                 segs := HorizontalLayout {
                     x: 3px;
@@ -209,16 +207,16 @@ component StepVersions inherits VerticalLayout {
                 width: grid.cell-w - 4px;
                 height: 38px;
                 border-radius: Theme.radius-sm;
-                background: self.sel ? Theme.gold : vt.has-hover ? Theme.surface-up : Theme.card-bg-soft;
-                border-width: 2px;
-                border-color: self.sel ? Theme.brand-ink : vt.has-hover ? Theme.hover-border : Theme.border-solid;
+                background: self.sel ? Theme.accent.with-alpha(0.14) : vt.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+                border-width: Theme.hairline;
+                border-color: self.sel ? Theme.edge-strong : vt.has-hover ? Theme.hover-border : Theme.border-solid;
                 HorizontalLayout {
                     padding-left: 12px;
                     padding-right: 8px;
                     spacing: 4px;
                     Text {
                         text: v.id;
-                        color: cell.sel ? Theme.on-gold : Theme.text;
+                        color: cell.sel ? Theme.accent-bright : Theme.text;
                         font-size: Theme.text-sm;
                         font-weight: 700;
                         vertical-alignment: center;
@@ -335,8 +333,8 @@ component StepSettings inherits VerticalLayout {
                 width: 16px;
                 height: 16px;
                 background: Theme.hsla(HomeBridge.wiz-hue, 0.7, 0.55, 1);
-                border-width: 2px;
-                border-color: Theme.brand-ink;
+                border-width: Theme.hairline;
+                border-color: Theme.border-solid;
             }
         }
         Text {
@@ -387,7 +385,7 @@ component StepSettings inherits VerticalLayout {
     if Shell.show-advanced: Rectangle {
         border-radius: Theme.radius-md;
         background: Theme.card-bg-soft;
-        border-width: 2px;
+        border-width: Theme.hairline;
         border-color: Theme.border-solid;
         HorizontalLayout {
             padding-left: Theme.space-4;
@@ -448,8 +446,8 @@ component SuiteNote inherits Rectangle {
     callback use-suggested();
     border-radius: Theme.radius-md;
     background: Theme.accent-gold.with-alpha(0.12);
-    border-width: 2px;
-    border-color: Theme.accent-gold;
+    border-width: Theme.hairline;
+    border-color: Theme.accent-gold.with-alpha(0.5);
     HorizontalLayout {
         padding: Theme.space-3;
         spacing: Theme.space-3;
@@ -598,7 +596,7 @@ export component InstanceWizardModal inherits Rectangle {
                         width: pills.preferred-width + 12px;
                         border-radius: self.height / 2;
                         background: Theme.card-bg;
-                        border-width: 2px;
+                        border-width: Theme.hairline;
                         border-color: Theme.border-solid;
                         pills := HorizontalLayout {
                             x: 6px;
@@ -664,7 +662,7 @@ export component InstanceWizardModal inherits Rectangle {
                     if HomeBridge.wiz-error != "": Rectangle {
                         border-radius: Theme.radius-md;
                         background: Theme.accent-red.with-alpha(0.14);
-                        border-width: 2px;
+                        border-width: Theme.hairline;
                         border-color: Theme.accent-red;
                         HorizontalLayout {
                             padding: Theme.space-3;

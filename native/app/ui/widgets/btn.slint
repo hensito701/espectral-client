@@ -1,9 +1,9 @@
-// Btn — poster buttons (espectral.uhce.top):
-//   primary   flat gold pill, purple-ink label, hard 4px purple shadow below;
-//             hover goes darker gold and lifts 2px, press sinks 2px
-//   secondary 2px gold outline + gold label, fills gold on hover
-//   ghost     bare label, gold on hover
-//   danger    flat red pill with the ink shadow
+// Btn — glass buttons:
+//   primary   solid accent (gold by default), dark label — the one main action
+//   secondary dark glass with a 1px accent hairline (the in-game menu button);
+//             hover brightens the glass, the edge and the label
+//   ghost     bare label, brightens on hover
+//   danger    red hairline + red label, red tint on hover
 //
 //     Btn { text: T.tr("actions.save"); clicked => { ... } }
 //     Btn { variant: BtnVariant.secondary; size: BtnSize.sm; icon: Icons.refresh; text: "..."; }
@@ -71,76 +71,57 @@ export component Btn inherits Rectangle {
     property <length> h: size == BtnSize.sm ? 28px : size == BtnSize.lg ? 48px : 38px;
     property <length> pad: size == BtnSize.sm ? Theme.space-3 : size == BtnSize.lg ? Theme.space-6 : Theme.space-4;
     property <length> fs: font-size-override > 0 ? font-size-override : size == BtnSize.sm ? Theme.text-xs : size == BtnSize.lg ? Theme.text-base : Theme.text-sm;
-    property <bool> solid: variant == BtnVariant.primary || variant == BtnVariant.danger;
-    property <color> outline: Theme.accent-id == "oro" ? Theme.title-color : Theme.accent;
+    property <bool> solid: variant == BtnVariant.primary;
     property <color> fg: variant == BtnVariant.primary ? Theme.btn-ink
-        : variant == BtnVariant.danger ? #ffffff
-        : variant == BtnVariant.secondary ? (hovered ? Theme.btn-ink : outline)
-        : hovered ? outline : Theme.muted-strong;
-    /// Shadow depth under the filled pills (0 for outline / ghost).
-    property <length> depth: !solid ? 0px : size == BtnSize.sm ? 3px : 4px;
+        : variant == BtnVariant.danger ? Theme.accent-red
+        : variant == BtnVariant.secondary ? (hovered ? Theme.accent-bright : Theme.text)
+        : hovered ? Theme.text : Theme.muted-strong;
 
-    height: h + depth;
+    height: h;
     min-width: block ? 0px : row.preferred-width;
     preferred-width: row.preferred-width;
     horizontal-stretch: block ? 1 : 0;
-    border-radius: Theme.radius-pill;
+    border-radius: Theme.radius-md;
     opacity: enabled ? 1 : 0.45;
+    clip: true;
+    background: root.variant == BtnVariant.primary ? (root.hovered ? Theme.btn-fill-hover : Theme.btn-fill)
+        : root.variant == BtnVariant.danger ? (root.hovered ? Theme.accent-red.with-alpha(0.16) : transparent)
+        : root.variant == BtnVariant.secondary ? (root.hovered ? Theme.surface-up : Theme.surface)
+        : (root.hovered ? Theme.card-bg-soft : transparent);
+    border-width: root.variant == BtnVariant.secondary || root.variant == BtnVariant.danger ? Theme.hairline : 0px;
+    border-color: root.variant == BtnVariant.danger ? Theme.accent-red.with-alpha(root.hovered ? 0.8 : 0.5)
+        : root.hovered ? Theme.accent.with-alpha(0.7) : Theme.edge-strong;
+    animate background, border-color { duration: Theme.dur-fast; }
 
-    // hover lifts 2px off the shadow, press sinks onto it
-    property <length> lift: !interactive || !solid ? 0px : pressed ? 2px : hovered ? -2px : 0px;
-    animate lift { duration: Theme.dur-fast; easing: ease-out; }
-
-    background: transparent;
-
-    // hard shadow under the filled pills (box-shadow: 0 4px 0 purple)
-    if root.solid: Rectangle {
-        y: root.depth;
-        width: 100%;
-        height: root.h;
-        border-radius: Theme.radius-pill;
-        background: root.variant == BtnVariant.danger ? Theme.brand-ink : Theme.brand-purple;
+    // pressed: a touch darker
+    if root.pressed: Rectangle {
+        background: rgba(0, 0, 0, 0.12);
     }
 
-    face := Rectangle {
-        y: root.lift;
-        width: 100%;
-        height: root.h;
-        border-radius: Theme.radius-pill;
-        border-width: root.variant == BtnVariant.secondary ? 2px : 0px;
-        clip: true;
-        background: root.variant == BtnVariant.primary ? (root.hovered ? Theme.btn-fill-hover : Theme.btn-fill)
-            : root.variant == BtnVariant.danger ? (root.hovered ? #c81e1e : Theme.accent-red)
-            : root.variant == BtnVariant.secondary ? (root.hovered ? root.outline : transparent)
-            : transparent;
-        border-color: root.outline;
-        animate background { duration: Theme.dur-fast; }
-
-        row := HorizontalLayout {
-            padding-left: root.pad;
-            padding-right: root.pad;
-            spacing: Theme.space-2;
+    row := HorizontalLayout {
+        padding-left: root.pad;
+        padding-right: root.pad;
+        spacing: Theme.space-2;
+        alignment: center;
+        if root.loading: VerticalLayout {
             alignment: center;
-            if root.loading: VerticalLayout {
-                alignment: center;
-                Spinner { size: root.fs; tint: root.fg; }
-            }
-            if !root.loading && root.icon != "": VerticalLayout {
-                alignment: center;
-                Icon { data: root.icon; size: root.fs + 2px; color: root.fg; }
-            }
-            if !root.loading && root.emoji != "": VerticalLayout {
-                alignment: center;
-                Emoji { char: root.emoji; size: root.fs; }
-            }
-            if root.text != "": Text {
-                text: root.text;
-                color: root.fg;
-                font-size: root.fs;
-                font-weight: 700;
-                vertical-alignment: center;
-                overflow: elide;
-            }
+            Spinner { size: root.fs; tint: root.fg; }
+        }
+        if !root.loading && root.icon != "": VerticalLayout {
+            alignment: center;
+            Icon { data: root.icon; size: root.fs + 2px; color: root.fg; }
+        }
+        if !root.loading && root.emoji != "": VerticalLayout {
+            alignment: center;
+            Emoji { char: root.emoji; size: root.fs; }
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: root.fg;
+            font-size: root.fs;
+            font-weight: root.solid ? 700 : 600;
+            vertical-alignment: center;
+            overflow: elide;
         }
     }
 
@@ -166,16 +147,16 @@ export component IconBtn inherits Rectangle {
     width: size;
     height: size;
     border-radius: Theme.radius-md;
-    background: flat ? (hovered ? Theme.surface-up : transparent) : hovered ? Theme.surface-up : Theme.surface;
-    border-width: flat ? 0px : 2px;
-    border-color: hovered || active ? Theme.hover-border : Theme.border-solid;
+    background: flat ? (hovered ? Theme.card-bg-soft : transparent) : hovered ? Theme.surface-up : Theme.surface;
+    border-width: flat ? 0px : Theme.hairline;
+    border-color: hovered || active ? Theme.hover-border : Theme.glass-border;
     opacity: enabled ? 1 : 0.45;
     animate background, border-color { duration: Theme.dur-fast; }
 
     Icon {
         data: root.icon;
         size: root.icon-size;
-        color: root.hovered || root.active ? Theme.hover-border : Theme.muted-strong;
+        color: root.hovered || root.active ? Theme.accent-bright : Theme.muted-strong;
         animate color { duration: Theme.dur-fast; }
     }
 

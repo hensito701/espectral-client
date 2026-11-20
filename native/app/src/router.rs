@@ -58,7 +58,7 @@ pub fn parse(hash: &str) -> Route {
     let mut instance = String::new();
     let page = match (p0, p1) {
         ("", _) => Page::Home,
-        ("instances", "") => Page::Home,
+        ("instances", "") => Page::Instances,
         ("instances", name) => {
             instance = percent_decode(name);
             Page::Instance
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn parses_app_svelte_routes() {
         assert_eq!(parse("").page, Page::Home);
-        assert_eq!(parse("#/instances").page, Page::Home);
+        assert_eq!(parse("#/instances").page, Page::Instances);
         let r = parse("#/instances/Espectral%20default?tab=mods");
         assert_eq!(r.page, Page::Instance);
         assert_eq!(r.instance, "Espectral default");

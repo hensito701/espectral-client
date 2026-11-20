@@ -7,9 +7,9 @@
 // drawn once, positioned over a same-height slot in the flow and pinned 8px
 // below the top chrome once the slot scrolls past it (CSS position: sticky).
 
-import { Theme, T, AppState, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji } from "../../widgets.slint";
+import { Theme, T, AppState, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji, Surface } from "../../widgets.slint";
 import { LibraryBridge, VersionRow } from "api.slint";
-import { LibScroll, Chip, VText, CenterText } from "parts.slint";
+import { LibScroll, VText, CenterText } from "parts.slint";
 
 component QuickStat inherits Rectangle {
     in property <string> label;
@@ -17,13 +17,9 @@ component QuickStat inherits Rectangle {
     in property <string> tag;
     in property <BadgeVariant> tag-variant;
     border-radius: Theme.radius-lg;
-    background: Theme.surface-solid;
-    border-width: 2px;
+    background: Theme.card-bg;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 4px;
-    drop-shadow-offset-y: 4px;
     min-width: col.preferred-width;
     height: col.preferred-height;
     col := VerticalLayout {
@@ -36,6 +32,7 @@ component QuickStat inherits Rectangle {
             text: root.label.to-uppercase();
             color: Theme.muted;
             font-size: 11px;
+            font-weight: 600;
             letter-spacing: 0.44px;
         }
         HorizontalLayout {
@@ -71,7 +68,7 @@ component Controls inherits GlassCard {
             height: 40px;
             border-radius: Theme.radius-md;
             background: Theme.card-bg-soft;
-            border-width: 2px;
+            border-width: Theme.hairline;
             border-color: input.has-focus ? Theme.hover-border : Theme.border-solid;
             TouchArea {
                 mouse-cursor: MouseCursor.text;
@@ -124,58 +121,143 @@ component Controls inherits GlassCard {
                 }
             }
         }
-        HorizontalLayout {
-            spacing: Theme.space-2;
-            alignment: end;
-            VerticalLayout {
-                alignment: center;
-                Chip {
-                    text: T.tr("versions.filterAll");
-                    active: LibraryBridge.v-filter == 0;
-                    clicked => { LibraryBridge.v-set-filter(0); }
+        // segmented filter: glass pill, accent-tinted active item
+        Surface {
+            soft: true;
+            HorizontalLayout {
+                padding: 2px;
+                spacing: 2px;
+                filter-tab-0 := Rectangle {
+                    property <bool> on: LibraryBridge.v-filter == 0;
+                    height: 28px;
+                    min-width: ftx-0.preferred-width + 20px;
+                    border-radius: Theme.radius-xs;
+                    background: self.on ? Theme.accent.with-alpha(0.14) : ft-0.has-hover ? Theme.surface-up : transparent;
+                    border-width: Theme.hairline;
+                    border-color: self.on ? Theme.edge-strong : transparent;
+                    animate background, border-color { duration: Theme.dur-fast; }
+                    ftx-0 := Text {
+                        text: T.tr("versions.filterAll");
+                        font-size: Theme.text-xs;
+                        font-weight: filter-tab-0.on ? 600 : 500;
+                        color: filter-tab-0.on ? Theme.accent-bright : ft-0.has-hover ? Theme.text : Theme.muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    ft-0 := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { LibraryBridge.v-set-filter(0); }
+                    }
                 }
-            }
-            VerticalLayout {
-                alignment: center;
-                Chip {
-                    text: T.tr("versions.filterRelease");
-                    active: LibraryBridge.v-filter == 1;
-                    clicked => { LibraryBridge.v-set-filter(1); }
+                filter-tab-1 := Rectangle {
+                    property <bool> on: LibraryBridge.v-filter == 1;
+                    height: 28px;
+                    min-width: ftx-1.preferred-width + 20px;
+                    border-radius: Theme.radius-xs;
+                    background: self.on ? Theme.accent.with-alpha(0.14) : ft-1.has-hover ? Theme.surface-up : transparent;
+                    border-width: Theme.hairline;
+                    border-color: self.on ? Theme.edge-strong : transparent;
+                    animate background, border-color { duration: Theme.dur-fast; }
+                    ftx-1 := Text {
+                        text: T.tr("versions.filterRelease");
+                        font-size: Theme.text-xs;
+                        font-weight: filter-tab-1.on ? 600 : 500;
+                        color: filter-tab-1.on ? Theme.accent-bright : ft-1.has-hover ? Theme.text : Theme.muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    ft-1 := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { LibraryBridge.v-set-filter(1); }
+                    }
                 }
-            }
-            VerticalLayout {
-                alignment: center;
-                Chip {
-                    text: T.tr("versions.filterSnapshot");
-                    active: LibraryBridge.v-filter == 2;
-                    clicked => { LibraryBridge.v-set-filter(2); }
+                filter-tab-2 := Rectangle {
+                    property <bool> on: LibraryBridge.v-filter == 2;
+                    height: 28px;
+                    min-width: ftx-2.preferred-width + 20px;
+                    border-radius: Theme.radius-xs;
+                    background: self.on ? Theme.accent.with-alpha(0.14) : ft-2.has-hover ? Theme.surface-up : transparent;
+                    border-width: Theme.hairline;
+                    border-color: self.on ? Theme.edge-strong : transparent;
+                    animate background, border-color { duration: Theme.dur-fast; }
+                    ftx-2 := Text {
+                        text: T.tr("versions.filterSnapshot");
+                        font-size: Theme.text-xs;
+                        font-weight: filter-tab-2.on ? 600 : 500;
+                        color: filter-tab-2.on ? Theme.accent-bright : ft-2.has-hover ? Theme.text : Theme.muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    ft-2 := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { LibraryBridge.v-set-filter(2); }
+                    }
                 }
-            }
-            VerticalLayout {
-                alignment: center;
-                Chip {
-                    text: T.tr("versions.filterBeta");
-                    active: LibraryBridge.v-filter == 3;
-                    clicked => { LibraryBridge.v-set-filter(3); }
+                filter-tab-3 := Rectangle {
+                    property <bool> on: LibraryBridge.v-filter == 3;
+                    height: 28px;
+                    min-width: ftx-3.preferred-width + 20px;
+                    border-radius: Theme.radius-xs;
+                    background: self.on ? Theme.accent.with-alpha(0.14) : ft-3.has-hover ? Theme.surface-up : transparent;
+                    border-width: Theme.hairline;
+                    border-color: self.on ? Theme.edge-strong : transparent;
+                    animate background, border-color { duration: Theme.dur-fast; }
+                    ftx-3 := Text {
+                        text: T.tr("versions.filterBeta");
+                        font-size: Theme.text-xs;
+                        font-weight: filter-tab-3.on ? 600 : 500;
+                        color: filter-tab-3.on ? Theme.accent-bright : ft-3.has-hover ? Theme.text : Theme.muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    ft-3 := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { LibraryBridge.v-set-filter(3); }
+                    }
                 }
-            }
-            VerticalLayout {
-                alignment: center;
-                Chip {
-                    text: T.tr("versions.filterAlpha");
-                    active: LibraryBridge.v-filter == 4;
-                    clicked => { LibraryBridge.v-set-filter(4); }
+                filter-tab-4 := Rectangle {
+                    property <bool> on: LibraryBridge.v-filter == 4;
+                    height: 28px;
+                    min-width: ftx-4.preferred-width + 20px;
+                    border-radius: Theme.radius-xs;
+                    background: self.on ? Theme.accent.with-alpha(0.14) : ft-4.has-hover ? Theme.surface-up : transparent;
+                    border-width: Theme.hairline;
+                    border-color: self.on ? Theme.edge-strong : transparent;
+                    animate background, border-color { duration: Theme.dur-fast; }
+                    ftx-4 := Text {
+                        text: T.tr("versions.filterAlpha");
+                        font-size: Theme.text-xs;
+                        font-weight: filter-tab-4.on ? 600 : 500;
+                        color: filter-tab-4.on ? Theme.accent-bright : ft-4.has-hover ? Theme.text : Theme.muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    ft-4 := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { LibraryBridge.v-set-filter(4); }
+                    }
                 }
-            }
-            VerticalLayout {
-                alignment: center;
-                Chip {
-                    text: T.tr("versions.filterInstalled") + " (" + LibraryBridge.v-installed-versions + ")";
-                    active: LibraryBridge.v-filter == 5;
-                    active-bg: Theme.accent-green.with-alpha(0.18);
-                    active-border: Theme.accent-green;
-                    active-fg: Theme.accent-green;
-                    clicked => { LibraryBridge.v-set-filter(5); }
+                filter-tab-5 := Rectangle {
+                    property <bool> on: LibraryBridge.v-filter == 5;
+                    height: 28px;
+                    min-width: ftx-5.preferred-width + 20px;
+                    border-radius: Theme.radius-xs;
+                    background: self.on ? Theme.accent.with-alpha(0.14) : ft-5.has-hover ? Theme.surface-up : transparent;
+                    border-width: Theme.hairline;
+                    border-color: self.on ? Theme.edge-strong : transparent;
+                    animate background, border-color { duration: Theme.dur-fast; }
+                    ftx-5 := Text {
+                        text: T.tr("versions.filterInstalled") + " (" + LibraryBridge.v-installed-versions + ")";
+                        font-size: Theme.text-xs;
+                        font-weight: filter-tab-5.on ? 600 : 500;
+                        color: filter-tab-5.on ? Theme.accent-bright : ft-5.has-hover ? Theme.text : Theme.muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    ft-5 := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { LibraryBridge.v-set-filter(5); }
+                    }
                 }
             }
         }
@@ -204,20 +286,20 @@ component VersionRowCard inherits Rectangle {
     background: hovered ? Theme.surface-up : transparent;
     animate background { duration: Theme.dur-fast; }
     touch := TouchArea { }
-    // 2px list separator
+    // hairline list separator
     Rectangle {
-        y: root.height - 2px;
-        height: 2px;
+        y: root.height - Theme.hairline;
+        height: Theme.hairline;
         background: Theme.border-solid;
         visible: !root.last;
     }
-    // latest release / in-use version: flat gold marker on the left edge
+    // latest release / in-use version: accent marker on the left edge
     if root.entry.latest-release || root.entry.installed-in != "": Rectangle {
         x: 0;
         y: 0;
-        width: 4px;
+        width: 3px;
         height: root.height - 2px;
-        background: Theme.title-color;
+        background: Theme.accent;
     }
     content := HorizontalLayout {
         padding-left: Theme.space-4;
@@ -281,7 +363,7 @@ component VersionRowCard inherits Rectangle {
                     Rectangle {
                         border-radius: Theme.radius-xs;
                         background: Theme.card-bg-soft;
-                        border-width: 2px;
+                        border-width: Theme.hairline;
                         border-color: Theme.border-solid;
                         min-width: jdk.preferred-width + 12px;
                         height: jdk.preferred-height + 4px;
@@ -291,7 +373,7 @@ component VersionRowCard inherits Rectangle {
                             font-size: Theme.label-size(8px);
                             font-weight: 700;
                             letter-spacing: 0.18px;
-                            color: Theme.accent-gold;
+                            color: Theme.accent;
                         }
                     }
                 }
@@ -494,7 +576,7 @@ export component VersionsPage inherits Rectangle {
                     QuickStat {
                         label: T.tr("versions.latestRelease");
                         version: LibraryBridge.v-latest-release;
-                        tag: "Stable";
+                        tag: T.tr("versions.typeRelease");
                         tag-variant: BadgeVariant.ok;
                     }
                 }
@@ -503,7 +585,7 @@ export component VersionsPage inherits Rectangle {
                     QuickStat {
                         label: T.tr("versions.latestSnapshot");
                         version: LibraryBridge.v-latest-snapshot;
-                        tag: "Snap";
+                        tag: T.tr("versions.typeSnapshot");
                         tag-variant: BadgeVariant.purple;
                     }
                 }

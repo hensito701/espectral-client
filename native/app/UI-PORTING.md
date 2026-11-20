@@ -237,7 +237,7 @@ source (`account:<username>`, `library:<id>`, `file:<path>`). Pages use
 | `T` | strings: `T.tr("key")`, `T.tr1("key", "name", v)`, `T.tr2(..)`, `T.tr3(..)`; `T.lang` ("es"/"en"). |
 | `Router` | `page` (enum `Page`), `instance-name`, `query`, `route`, `serial`; `navigate("#/...")`, `back()`. |
 | `AppState` | `instances: [InstanceRow]`, `instances-loaded`, `accounts: [AccountRow]`, `active-account` + `has-active-account`, `launches: [LaunchRow]`, `running-count`, `servers: [ServerRow]`, `servers-loaded`, `version`, `data-dir`; `refresh-*()`, `open-url(url)`, `open-folder(path)`, `copy-text(text)`. |
-| `Shell` | `set-theme-mode("dark"\|"light"\|"system")`, `toggle-theme()`, `set-accent(id)`, `set-language("es"\|"en")`, `toggle-language()`, `ambient-hue` (CSS `--ambient-hue`, set it from Home/InstanceHub), `palette-open`, `account-popover-open`, `pip-log-open`, `pip-log-pinned`, `wizard-open` (Home's instance wizard; the palette sets it), `modal-depth` (Modal maintains it; hotkeys off while > 0), `hide-hotkeys`, `toast(kind, text, href)`, update CTA (`update-status`: `"idle" / "available" / "downloading" / "ready" / "error"`, `update-version`, `update-progress`, `install-update()`) driven by `src/updater.rs`. |
+| `Shell` | `set-theme-mode("dark"\|"light"\|"system")`, `toggle-theme()`, `set-accent(id)`, `set-language("es"\|"en")`, `toggle-language()`, `palette-open`, `account-popover-open`, `pip-log-open`, `pip-log-pinned`, `wizard-open` (the instance wizard, mounted globally; Home, Instances and the palette set it), `modal-depth` (Modal maintains it; hotkeys off while > 0), `hide-hotkeys`, `show-advanced` / `set-show-advanced(bool)` (the "Opciones avanzadas" disclosures; persisted), `toast(kind, text, href)`, update CTA (`update-status`: `"idle" / "available" / "downloading" / "ready" / "error"`, `update-version`, `update-progress`, `install-update()`) driven by `src/updater.rs`. |
 | `Session` | Discord: `status`, `show-gate`, `user-name`, `user-avatar`, `authenticating`, `auth-error`; `login-discord()`, `continue-anonymous()`, `logout()`. |
 | `Util` | pure helpers: `initial(name)`, `name-hue(name, hue)`, `format-bytes(n)`, `relative-time(ms-or-iso, lang)`, `format-memory(mb)`. |
 | `PaletteState` | command palette model (shell only). |
@@ -249,33 +249,40 @@ pinned). Text inputs consume `/` and Space first (same as the Svelte
 
 ---
 
-## 5. Theme — the "poster" look
+## 5. Theme — the "glass" look (1.9)
 
-The native UI follows the espectral.uhce.top house style (ops workspace
-`notes/espectral-web-style.md`), not the old Svelte glass look: flat deep
-purple + gold (cream paper + purple ink in light mode), 2px solid borders,
-hard offset shadows with no blur, pill buttons, and titles in the Minecraft
-pixel font with a one-game-pixel purple shadow. Rule of thumb: if it glows,
-blurs, shimmers, is translucent glass or fades through a gradient, make it a
-flat block with a hard shadow instead (image scrims over photos excepted).
+The native UI uses the in-game Espectral menu's palette (branding-mod
+`MenuSkin` / `SuiteTheme`), not its layout: a dark charcoal window with three
+large soft glows (accent, the logo's purple, a cool blue; `shell/backdrop.slint`,
+they glide to a new arrangement when the page changes and are otherwise still),
+translucent dark glass panels with 1px hairlines and a faint top sheen, warm
+white text and the accent used sparingly. Rules of thumb:
+
+- solid accent fill only for THE primary action of a view (Jugar, Crear…);
+- selected / active = accent tint (`accent.with-alpha(0.14)`) + `edge-strong` hairline;
+- every border is `Theme.hairline` (1px); no hard offset shadows; soft `shadow-*`
+  only on floating layers (menus, popovers, modals, the play bar);
+- floating layers over content are opaque (`surface-solid`): Slint has no
+  backdrop blur, so translucency only works over the (already soft) glows;
+- the pixel font is reserved for the "Espectral" wordmark.
 
 `ui/theme.slint` holds the tokens for both schemes and all five accents
-(`oro carmesi amatista esmeralda glaciar`; "oro" keeps the brand gold for
-primary buttons). `Theme.mode` / `Theme.accent-id` are set from the engine
-config (`theme`, `accent`) by `src/theme.rs`; `"system"` follows
-`Palette.color-scheme`.
+(`oro carmesi amatista esmeralda glaciar`, the same palettes as the mod).
+`Theme.mode` / `Theme.accent-id` are set from the engine config (`theme`,
+`accent`) by `src/theme.rs`; `"system"` follows `Palette.color-scheme`.
 
 | Token | Use |
 |---|---|
-| `bg`, `surface`/`surface-solid`, `surface-up`, `card-bg-soft`, `rail-bg`, `log-bg` | opaque page / card / raised / inset fills (the translucent names resolve to solid colours) |
-| `text`, `muted`, `muted-strong`, `title-color` | body text; gold (dark) / orange (light) titles |
-| `brand-ink`, `brand-purple` | hard-shadow ink; title / hover / button shadow purple |
-| `gold`, `gold-hover`, `on-gold`, `btn-fill(-hover)`, `btn-ink` | primary buttons and gold surfaces, purple ink on gold |
-| `border-solid`, `hover-border` | the 2px card border; gold on hover / focus / selected |
-| `shadow-{sm,md,lg}-{x,y}` (2/4/6 px), `*-blur` = 0, colours = `brand-ink` | hard shadows (or a sibling Rectangle offset by N px, as GlassCard does) |
-| `topbar-bg`, `header-rule` | the header: always purple #0C0626 with a 4px gold rule |
-| `font-body` (Space Grotesk), `font-title` / `font-display` / `font-pixel` ("Minecraft Espectral"), `font-mono` | pixel font only for titles and short labels, sizes in multiples of 8px |
-| `accent*`, `loader-*` (flat), `mode-*`, `radius-*`, `space-*`, `text-*`, `dur-*`, `hsla()` | as named |
+| `bg` | window charcoal under the glows |
+| `surface`, `card-bg`, `surface-up` | glass panel fill / hover glass |
+| `card-bg-soft`, `rail-bg` | wells and rows inside a panel |
+| `surface-solid`, `surface-up-solid`, `log-bg`, `backdrop` | opaque floating layers; modal scrim |
+| `sheen`, `glass-border`, `border-solid`, `hairline` | top highlight; 1px panel edge; 1px separators |
+| `text`, `muted-strong`, `muted`, `title-color` | warm white text; headings are warm white, not accent |
+| `accent`, `accent-bright`, `edge`, `edge-strong`/`hover-border`, `btn-fill(-hover)`, `btn-ink` | the accent; hover text; 25%/45% hairlines; the primary button |
+| `shadow-{sm,md,lg}-*` | soft dark shadows for floating layers |
+| `font-body` (Space Grotesk; headings too), `font-pixel` (wordmark only), `font-mono` | |
+| `accent-green/alt/red/cyan/purple`, `loader-*`, `mode-*`, `radius-*`, `space-*`, `text-*`, `dur-*`, `hsla()` | as named |
 
 Fonts: `ui/fonts/` holds static instances (400/500/600/700) of Space Grotesk
 (OFL) and the "Minecraft Espectral" pixel font (built by
@@ -286,17 +293,18 @@ same font the website serves; see `LICENSE-MinecraftEspectral.txt`).
 
 | Widget | Svelte | Notes |
 |---|---|---|
-| `Btn { text; variant: BtnVariant.primary\|secondary\|ghost\|danger; size: BtnSize.sm\|md\|lg; icon: Icons.x; emoji: "📦"; loading; enabled; block; clicked }` | Btn.svelte | primary = gold pill on a hard purple shadow (lifts on hover, sinks on press); secondary = gold outline; spinner |
+| `Btn { text; variant: BtnVariant.primary\|secondary\|ghost\|danger; size: BtnSize.sm\|md\|lg; icon: Icons.x; emoji: "📦"; loading; enabled; block; clicked }` | Btn.svelte | primary = solid accent (the one main action); secondary = dark glass with an accent hairline; ghost = bare label; danger = red hairline; spinner |
 | `IconBtn { icon; size; icon-size; flat; active; clicked }` | square icon buttons | |
 | `Spinner { size; tint }` | btn spinner | animates only while visible |
-| `GlassCard { title; subtitle; footer; elevation: Elevation.*; interactive; clickable; featured; flat; padding-size; spacing; clicked; <children> }` | GlassCard.svelte | the poster card: flat fill, 2px border, hard ink shadow (2/4/6px by elevation); hover lifts 2px with a gold border + purple shadow; pixel-font title |
+| `GlassCard { title; subtitle; footer; elevation: Elevation.*; interactive; clickable; featured; flat; padding-size; spacing; clicked; <children> }`, `GlassSheen { radius }` | GlassCard.svelte | translucent glass panel: 1px hairline, top sheen (`GlassSheen`), accent edge on hover/featured; soft shadow only for `Elevation.lg`/featured; `flat` = opaque |
 | `Surface { soft; solid; hoverable; clicked }` | .card-surface / .glass-row | plain container |
 | `Badge { text; variant: BadgeVariant.neutral\|ok\|warn\|err\|info\|accent\|gold\|purple\|vanilla\|fabric\|neoforge\|quilt; dot; pixel; large }` | Badge.svelte | |
 | `Kbd { text; accent }` | `<kbd class=font-pixel>` | |
-| `GradientText { text; gradient: GradientKind.*; font-size… }` | GradientText.svelte | kept for callers; draws a SOLID colour (gradient text is off-style) |
-| `McTitle { text; font-size: 16px\|24px\|32px\|48px…; ink; shadow-ink; horizontal-alignment; wrap }` | site `h1`–`h4` | pixel-font title with a one-game-pixel purple shadow; never widens its parent when wrapping |
-| `Wordmark { font-size }` | site logo | per-letter gold "Espectral" wordmark |
-| `Sticker { text; fill; ink; tilt }` | site "CLIENT" tag | tilted pixel label with a hard shadow; one per section at most |
+| `GradientText { text; gradient: GradientKind.*; font-size… }` | GradientText.svelte | solid colour per preset |
+| `McTitle { text; font-size; ink; horizontal-alignment; wrap }` | site `h1`–`h4` | semibold heading in the body font (warm white); never widens its parent when wrapping |
+| `Wordmark { font-size }`, `ClientLockup { font-size; version }` | site logo | per-letter gold pixel "Espectral" wordmark — the only pixel-font text |
+| `Sticker { text; fill; font-size }` | site "CLIENT" tag | small tinted hairline tag |
+| `AdvancedToggle { summary; changed; title }` | — | the "Opciones avanzadas" bar; pair with `if Shell.show-advanced: …` |
 | `LoaderBadge { loader; version; size: LoaderBadgeSize.*; show-icon }` | LoaderBadge.svelte | |
 | `MonogramTile { name; hue; avatar; has-avatar; size; shape: MonogramShape.tile\|rounded\|circle }` | MonogramTile.svelte | |
 | `TextField { text <=>; placeholder; icon; password; mono; clearable; has-error; field-height; pad-y; fill; focus-color; edited(t); accepted(t) }`, `TextArea` | `<input>` / `<textarea>` | focus ring; sets only `height` (never `min-height`), so it works inside layouts. `HiTextField` / `SsTextField` are thin aliases |
@@ -314,8 +322,9 @@ same font the website serves; see `LICENSE-MinecraftEspectral.txt`).
 | `Emoji { char: "🎨"; size; fallback-color }` | color emoji | Twemoji images; text-presentation symbols (⛏ ▶ ⚙ ⚛ …) render as text |
 | `PlaceholderPage` | — | delete its use when you port your page |
 
-Shell components (foundation): `TopChrome` (+ `ThemeToggle`, `LanguageToggle`),
-`AmbientBackdrop`, `ToastHost`, `CommandPalette`, `LoginGate`, `HotkeyLegend`.
+Shell components (foundation): `TopChrome` (logo + wordmark, the floating
+navigation pill, account chip; `ThemeToggle`), `AmbientBackdrop` (the glows),
+`ToastHost`, `CommandPalette` (Ctrl+K or "/"), `LoginGate`, `HotkeyLegend`.
 
 ---
 
@@ -366,8 +375,8 @@ Shell components (foundation): `TopChrome` (+ `ThemeToggle`, `LanguageToggle`),
 | pages/SettingsDashboard, components/ServerRadarCard | ui/pages/settings-suite-servers/{settings,server-radar-card}.slint | settings-suite-servers |
 | components/SkinViewer (skinview3d, three.js) | ui/skin3d/skin-view.slint + src/skin.rs + native/skin3d | skin-renderer |
 
-Routes (`router::parse`, identical to App.svelte): `#/` and `#/instances` →
-`Page.home`; `#/instances/:name` → `Page.instance` (+ `Router.instance-name`);
+Routes (`router::parse`): `#/` → `Page.home`; `#/instances` → `Page.instances`
+(every instance); `#/instances/:name` → `Page.instance` (+ `Router.instance-name`);
 `#/library/versions` (legacy `#/versions`); `#/library/import`
 (legacy `#/import`); `#/mods`; `#/account` (`?section=skin`, the wardrobe lives
 here too); `#/settings`; `#/donaciones` → `Page.donations`; anything else →

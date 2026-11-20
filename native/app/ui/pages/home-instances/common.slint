@@ -21,7 +21,7 @@ export component HiSelect inherits Rectangle {
     horizontal-stretch: 1;
     border-radius: Theme.radius-md;
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: touch.has-hover && enabled ? Theme.hover-border : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
     animate border-color { duration: Theme.dur-fast; }
@@ -57,12 +57,11 @@ export component HiSelect inherits Rectangle {
         Rectangle {
             border-radius: Theme.radius-md;
             background: Theme.surface-solid;
-            border-width: 2px;
-            border-color: Theme.border-solid;
-            drop-shadow-color: Theme.brand-ink;
-            drop-shadow-blur: 0px;
-            drop-shadow-offset-x: Theme.shadow-md-x;
+            border-width: Theme.hairline;
+            border-color: Theme.glass-border;
+            drop-shadow-blur: Theme.shadow-md-blur;
             drop-shadow-offset-y: Theme.shadow-md-y;
+            drop-shadow-color: Theme.shadow-md-color;
             clip: true;
             Flickable {
                 x: 4px;
@@ -111,8 +110,8 @@ export component HiCheck inherits Rectangle {
     height: box;
     border-radius: 3px;
     background: checked ? Theme.accent : Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: checked ? Theme.brand-ink : Theme.border-solid;
+    border-width: Theme.hairline;
+    border-color: checked ? Theme.edge-strong : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
     if root.checked: Icon { data: Icons.check; size: root.box - 3px; color: Theme.on-gold; weight: 3.5; }
     TouchArea {
@@ -194,7 +193,7 @@ export component HiChip inherits Rectangle {
     horizontal-stretch: 0;
     border-radius: self.height / 2;
     background: bg;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: border;
     lbl := Text {
         text: root.text;

@@ -1,6 +1,5 @@
 // OWNER: library-mods agent. Small building blocks shared by the library pages
-// (VersionArmory, ImportCenter, ModCatalog, MrpackModal).
-
+// (VersionArmory, ImportCenter, ModCatalog, MrpackModal, DonationsPavilion).
 import { Theme, Shell, ScrollArea } from "../../widgets.slint";
 
 /// PageScaffold twin that also reports when the viewport nears the bottom
@@ -50,25 +49,23 @@ export component LibScroll inherits Rectangle {
     }
 }
 
-/// Poster block: opaque surface, 2px border, hard 4px ink shadow (no glass).
+/// Glass panel: translucent fill, 1px hairline. The poster's opaque block with
+/// its hard ink shadow is gone; floating layers pass `Theme.surface-solid`.
 export component GlassPanel inherits Rectangle {
-    in property <brush> fill: Theme.surface-solid;
-    in property <color> stroke: Theme.border-solid;
+    in property <brush> fill: Theme.card-bg;
+    in property <color> stroke: Theme.glass-border;
     in property <length> radius: Theme.radius-lg;
     border-radius: radius;
     background: fill;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: stroke;
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 4px;
-    drop-shadow-offset-y: 4px;
 }
 
 /// Flat status dot (the poster look has no glow; the name is kept for callers).
 export component GlowDot inherits Rectangle {
     in property <color> tint: Theme.accent;
     in property <length> size: 6px;
+    /// Unused (the glass look has no glow); kept for the callers.
     in property <bool> glow: true;
     width: size;
     height: size;
@@ -98,6 +95,7 @@ export component VText inherits VerticalLayout {
 }
 
 /// Clickable pill / chip (filter chips, memory presets, instance chips base).
+/// Active state: accent tint, accent edge (never a solid gold block).
 export component Chip inherits Rectangle {
     in property <string> text;
     in property <bool> active;
@@ -107,21 +105,19 @@ export component Chip inherits Rectangle {
     in property <length> font-size: Theme.text-xs;
     in property <length> radius: Theme.radius-pill;
     /// Colors (defaults: VersionArmory .filter-chip).
-    in property <brush> idle-bg: Theme.surface-solid;
+    in property <brush> idle-bg: Theme.card-bg-soft;
     in property <brush> hover-bg: Theme.surface-up;
-    in property <brush> active-bg: Theme.accent.with-alpha(0.18);
+    in property <brush> active-bg: Theme.accent.with-alpha(0.14);
     in property <color> idle-border: Theme.border-solid;
     in property <color> hover-border: Theme.hover-border;
-    in property <color> active-border: Theme.accent;
+    in property <color> active-border: Theme.edge-strong;
     in property <color> idle-fg: Theme.muted-strong;
     in property <color> hover-fg: Theme.text;
-    in property <color> active-fg: Theme.accent;
-    in property <bool> active-glow: true;
+    in property <color> active-fg: Theme.accent-bright;
     in property <int> font-weight: 500;
     in property <int> active-weight: 600;
     /// Leading dot (ModCatalog filter chips).
     in property <color> dot-color: transparent;
-    in property <bool> dot-glow: false;
     out property <bool> hovered: touch.has-hover && enabled;
     callback clicked();
 
@@ -131,7 +127,7 @@ export component Chip inherits Rectangle {
     horizontal-stretch: 0;
     border-radius: radius;
     background: active ? active-bg : hovered ? hover-bg : idle-bg;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: active ? active-border : hovered ? hover-border : idle-border;
     opacity: enabled ? 1 : 0.5;
     animate background, border-color { duration: Theme.dur-fast; }
@@ -145,7 +141,12 @@ export component Chip inherits Rectangle {
         alignment: center;
         if root.dot-color != transparent: VerticalLayout {
             alignment: center;
-            GlowDot { tint: root.dot-color; glow: root.dot-glow; }
+            Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: root.dot-color;
+            }
         }
         Text {
             text: root.text;

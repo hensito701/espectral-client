@@ -91,9 +91,9 @@ component DropZone inherits Rectangle {
     height: col.preferred-height;
     border-radius: Theme.radius-lg;
     background: root.dragging || root.hovered ? Theme.surface-up : Theme.card-bg-soft;
-    // solid 2px block when a file is picked; dashed outline otherwise
-    border-width: root.selected && !root.dragging ? 2px : 0px;
-    border-color: root.hovered ? Theme.hover-border : Theme.accent-green;
+    // hairline when a file is picked; dashed outline otherwise
+    border-width: root.selected && !root.dragging ? Theme.hairline : 0px;
+    border-color: root.hovered ? Theme.hover-border : Theme.accent-green.with-alpha(0.6);
     animate background, border-color { duration: Theme.dur-fast; }
     if !root.selected || root.dragging: DashedBorder {
         stroke: root.dragging || root.hovered ? Theme.hover-border : Theme.border-solid;
@@ -115,8 +115,8 @@ component DropZone inherits Rectangle {
                 width: 56px;
                 height: 56px;
                 border-radius: Theme.radius-md;
-                background: Theme.surface-solid;
-                border-width: 2px;
+                background: Theme.surface;
+                border-width: Theme.hairline;
                 border-color: Theme.border-solid;
                 Emoji { char: root.dragging ? "📥" : "📦"; size: 26px; }
             }
@@ -141,7 +141,7 @@ component DropZone inherits Rectangle {
                 variant: LibraryBridge.i-file-name != "" ? BtnVariant.ghost : BtnVariant.secondary;
                 size: BtnSize.sm;
                 enabled: !root.working;
-                text: LibraryBridge.i-file-name != "" ? "Cambiar archivo" : T.tr("import.mrpack.browseButton");
+                text: LibraryBridge.i-file-name != "" ? T.tr("import.mrpack.changeFile") : T.tr("import.mrpack.browseButton");
                 clicked => { LibraryBridge.i-browse(); }
             }
         }
@@ -153,7 +153,7 @@ component FileChip inherits Rectangle {
     height: row.preferred-height;
     border-radius: Theme.radius-md;
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     row := HorizontalLayout {
         padding-top: Theme.space-2;
@@ -207,11 +207,9 @@ component MemChip inherits Chip {
     pad-y: 4px;
     radius: Theme.radius-sm;
     font-weight: 600;
-    idle-bg: Theme.surface-solid;
+    idle-bg: Theme.card-bg-soft;
     idle-border: Theme.border-solid;
     idle-fg: Theme.muted;
-    active-bg: Theme.surface-up;
-    active-glow: false;
     clicked => {
         LibraryBridge.i-memory-mb = self.mb;
         LibraryBridge.i-memory-text = self.mb > 0 ? "" + self.mb : "";
@@ -233,7 +231,7 @@ component MemoryConfig inherits VerticalLayout {
                     height: 36px;
                     border-radius: Theme.radius-md;
                     background: Theme.card-bg-soft;
-                    border-width: 2px;
+                    border-width: Theme.hairline;
                     border-color: mem.has-focus ? Theme.hover-border : Theme.border-solid;
                     opacity: root.working ? 0.5 : 1;
                     TouchArea {
@@ -283,7 +281,7 @@ component MrpackProgress inherits Rectangle {
     height: col.preferred-height;
     border-radius: Theme.radius-md;
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     col := VerticalLayout {
         padding: Theme.space-3;
@@ -335,13 +333,9 @@ component MrpackSuccess inherits VerticalLayout {
             width: 64px;
             height: 64px;
             border-radius: Theme.radius-lg;
-            background: Theme.card-bg-soft;
-            border-width: 2px;
-            border-color: Theme.accent-green;
-            drop-shadow-color: Theme.brand-ink;
-            drop-shadow-blur: 0px;
-            drop-shadow-offset-x: 4px;
-            drop-shadow-offset-y: 4px;
+            background: Theme.accent-green.with-alpha(0.12);
+            border-width: Theme.hairline;
+            border-color: Theme.accent-green.with-alpha(0.5);
             Emoji { char: "✨"; size: 32px; }
         }
     }
@@ -350,7 +344,7 @@ component MrpackSuccess inherits VerticalLayout {
         HorizontalLayout {
             alignment: center;
             Badge {
-                text: LibraryBridge.i-already-exists ? "INSTANCIA VINCULADA" : "INSTALACIÓN COMPLETADA";
+                text: LibraryBridge.i-already-exists ? T.tr("import.mrpack.linkedInstance") : T.tr("import.mrpack.installDone");
                 variant: BadgeVariant.ok;
                 large: true;
             }
@@ -411,7 +405,7 @@ component MrpackForm inherits VerticalLayout {
 component LaneA inherits GlassCard {
     padding-size: Theme.space-6;
     // content stays at the top when the sibling lane is taller (CSS grid stretch)
-    fill: Theme.surface-solid;
+    fill: Theme.card-bg;
     spacing: 0px;
     LaneHeader {
         badge: T.tr("import.laneA.badge");
@@ -442,7 +436,7 @@ component MetaPill inherits Rectangle {
     horizontal-stretch: 0;
     border-radius: Theme.radius-pill;
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     row := HorizontalLayout {
         padding-left: Theme.space-2;
@@ -465,9 +459,10 @@ component SourceCard inherits Rectangle {
     property <bool> hovered: touch.has-hover;
     height: col.preferred-height;
     border-radius: Theme.radius-md;
-    background: selected || hovered ? Theme.surface-up : Theme.surface-solid;
-    border-width: 2px;
-    border-color: selected ? (lunar ? Theme.accent-purple : Theme.accent) : hovered ? Theme.hover-border : Theme.border-solid;
+    // selected tile: accent tint + accent edge
+    background: selected ? Theme.accent.with-alpha(0.14) : hovered ? Theme.surface-up : Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: selected ? (lunar ? Theme.accent-purple.with-alpha(0.6) : Theme.edge-strong) : hovered ? Theme.hover-border : Theme.border-solid;
     animate background, border-color { duration: Theme.dur-fast; }
     touch := TouchArea {
         mouse-cursor: pointer;
@@ -512,7 +507,7 @@ component SourceCard inherits Rectangle {
                             max-width: 320px;
                             border-radius: Theme.radius-xs;
                             background: Theme.card-bg-soft;
-                            border-width: 2px;
+                            border-width: Theme.hairline;
                             border-color: Theme.border-solid;
                             min-width: min(320px, path.preferred-width + 12px);
                             height: path.preferred-height + 4px;
@@ -535,9 +530,9 @@ component SourceCard inherits Rectangle {
                     width: 20px;
                     height: 20px;
                     border-radius: 10px;
-                    border-width: 2px;
-                    border-color: root.selected ? Theme.hover-border : Theme.border-solid;
-                    background: Theme.surface-solid;
+                    border-width: Theme.hairline;
+                    border-color: root.selected ? Theme.edge-strong : Theme.border-solid;
+                    background: transparent;
                     Rectangle {
                         width: 10px;
                         height: 10px;
@@ -557,9 +552,9 @@ component SourceCard inherits Rectangle {
         if root.lunar: Rectangle {
             height: shield.preferred-height;
             border-radius: Theme.radius-sm;
-            background: Theme.card-bg-soft;
-            border-width: 2px;
-            border-color: Theme.accent-purple;
+            background: Theme.accent-purple.with-alpha(0.08);
+            border-width: Theme.hairline;
+            border-color: Theme.accent-purple.with-alpha(0.45);
             shield := HorizontalLayout {
                 padding-left: Theme.space-2;
                 padding-right: Theme.space-2;
@@ -593,8 +588,8 @@ component SourceInfoBox inherits Rectangle {
     in property <bool> retry;
     height: col.preferred-height;
     border-radius: Theme.radius-md;
-    background: Theme.surface-solid;
-    border-width: 2px;
+    background: Theme.card-bg-soft;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     col := VerticalLayout {
         padding: Theme.space-6;
@@ -642,9 +637,9 @@ component PolicyCard inherits Rectangle {
     property <bool> hovered: touch.has-hover;
     height: row.preferred-height;
     border-radius: Theme.radius-md;
-    background: active ? Theme.surface-up : hovered ? Theme.card-bg-soft : Theme.surface-solid;
-    border-width: 2px;
-    border-color: active ? Theme.hover-border : hovered ? Theme.hover-border : Theme.border-solid;
+    background: active ? Theme.accent.with-alpha(0.12) : hovered ? Theme.surface-up : Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: active ? Theme.edge-strong : hovered ? Theme.hover-border : Theme.border-solid;
     opacity: LibraryBridge.i-profile-importing ? 0.6 : 1;
     animate background, border-color { duration: Theme.dur-fast; }
     touch := TouchArea {
@@ -663,7 +658,7 @@ component PolicyCard inherits Rectangle {
                 height: 13px;
                 border-radius: 6.5px;
                 background: root.active ? Theme.accent : transparent;
-                border-width: 2px;
+                border-width: Theme.hairline;
                 border-color: root.active ? Theme.accent : Theme.border-solid;
                 if root.active: Rectangle {
                     width: 5px;
@@ -685,9 +680,9 @@ component PolicyCard inherits Rectangle {
 component NoInstancesAlert inherits Rectangle {
     height: row.preferred-height;
     border-radius: Theme.radius-md;
-    background: Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: Theme.accent-alt;
+    background: Theme.accent-alt.with-alpha(0.08);
+    border-width: Theme.hairline;
+    border-color: Theme.accent-alt.with-alpha(0.45);
     row := HorizontalLayout {
         padding: Theme.space-3;
         spacing: Theme.space-3;
@@ -725,7 +720,7 @@ component ProfileForm inherits VerticalLayout {
         spacing: Theme.space-2;
         HorizontalLayout {
             SectionLabel { text: T.tr("import.profile.sourceListTitle").to-uppercase(); horizontal-stretch: 1; vertical-alignment: center; }
-            if LibraryBridge.i-sources-loading: Badge { text: "Buscando…"; }
+            if LibraryBridge.i-sources-loading: Badge { text: T.tr("import.profile.searching"); }
         }
         if LibraryBridge.i-sources-loading: SourceInfoBox { spinner: true; text: T.tr("import.profile.loadingSources"); }
         if !LibraryBridge.i-sources-loading && LibraryBridge.i-sources-error != "": SourceInfoBox {
@@ -767,9 +762,9 @@ component ProfileForm inherits VerticalLayout {
     if LibraryBridge.i-profile-error != "": Rectangle {
         height: err.preferred-height;
         border-radius: Theme.radius-sm;
-        background: Theme.card-bg-soft;
-        border-width: 2px;
-        border-color: Theme.accent-red;
+        background: Theme.accent-red.with-alpha(0.08);
+        border-width: Theme.hairline;
+        border-color: Theme.accent-red.with-alpha(0.45);
         err := HorizontalLayout {
             padding-top: Theme.space-2;
             padding-bottom: Theme.space-2;
@@ -797,8 +792,8 @@ component StatChip inherits Rectangle {
     in property <color> tint;
     height: col.preferred-height;
     border-radius: Theme.radius-md;
-    background: Theme.surface-solid;
-    border-width: 2px;
+    background: Theme.card-bg-soft;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     col := VerticalLayout {
         padding-top: Theme.space-2;
@@ -814,8 +809,8 @@ component ResultBox inherits Rectangle {
     in property <string> title;
     height: col.preferred-height;
     border-radius: Theme.radius-md;
-    background: Theme.surface-solid;
-    border-width: 2px;
+    background: Theme.card-bg-soft;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
     col := VerticalLayout {
         padding: Theme.space-3;
@@ -831,10 +826,10 @@ component ProfileResult inherits VerticalLayout {
         spacing: Theme.space-1;
         HorizontalLayout {
             alignment: start;
-            Badge { text: "MIGRACIÓN COMPLETADA"; variant: BadgeVariant.ok; large: true; }
+            Badge { text: T.tr("import.result.migrationDone"); variant: BadgeVariant.ok; large: true; }
         }
         Text { text: T.tr("import.result.title"); color: Theme.text; font-size: Theme.text-lg; font-weight: 700; }
-        Text { text: "Destino: " + LibraryBridge.i-target; color: Theme.muted; font-size: Theme.text-xs; }
+        Text { text: T.tr1("import.result.target", "name", LibraryBridge.i-target); color: Theme.muted; font-size: Theme.text-xs; }
     }
     GridLayout {
         spacing: Theme.space-2;
@@ -844,11 +839,11 @@ component ProfileResult inherits VerticalLayout {
         }
         Row {
             StatChip { label: T.tr1("import.result.servers", "count", LibraryBridge.i-res-servers.length); value: LibraryBridge.i-res-servers.length; tint: Theme.accent-cyan; }
-            StatChip { label: "Claves de opciones"; value: LibraryBridge.i-res-options; tint: Theme.accent-gold; }
+            StatChip { label: T.tr("import.result.optionsKeys"); value: LibraryBridge.i-res-options; tint: Theme.accent-gold; }
         }
     }
     if LibraryBridge.i-res-copied.length > 0: ResultBox {
-        title: "Archivos copiados con éxito:";
+        title: T.tr("import.result.copiedTitle");
         HorizontalLayout {
             spacing: 6px;
             alignment: start;
@@ -856,7 +851,7 @@ component ProfileResult inherits VerticalLayout {
         }
     }
     if LibraryBridge.i-res-skipped.length > 0: ResultBox {
-        title: "Archivos omitidos:";
+        title: T.tr("import.result.skippedTitle");
         VerticalLayout {
             spacing: Theme.space-1;
             for sk in LibraryBridge.i-res-skipped: HorizontalLayout {
@@ -868,7 +863,7 @@ component ProfileResult inherits VerticalLayout {
         }
     }
     if LibraryBridge.i-res-servers.length > 0: ResultBox {
-        title: "Servidores importados:";
+        title: T.tr("import.result.serversTitle");
         Flickable {
             height: min(120px, srv.preferred-height);
             interactive: false;
@@ -878,11 +873,11 @@ component ProfileResult inherits VerticalLayout {
                 height: self.preferred-height;
                 spacing: 6px;
                 for s in LibraryBridge.i-res-servers: Rectangle {
-                    height: srow.preferred-height + 2px;
+                    height: srow.preferred-height + Theme.hairline;
                     background: Theme.card-bg-soft;
                     Rectangle {
-                        y: parent.height - 2px;
-                        height: 2px;
+                        y: parent.height - Theme.hairline;
+                        height: Theme.hairline;
                         background: Theme.border-solid;
                     }
                     srow := HorizontalLayout {
@@ -907,7 +902,7 @@ component ProfileResult inherits VerticalLayout {
         spacing: Theme.space-2;
         Btn {
             block: true;
-            text: "Ver instancia " + LibraryBridge.i-target;
+            text: T.tr1("import.result.viewInstance", "name", LibraryBridge.i-target);
             clicked => { LibraryBridge.i-open-instance(LibraryBridge.i-target); }
         }
         Btn {
@@ -921,12 +916,12 @@ component ProfileResult inherits VerticalLayout {
 
 component LaneB inherits GlassCard {
     padding-size: Theme.space-6;
-    fill: Theme.surface-solid;
+    fill: Theme.card-bg;
     spacing: 0px;
     LaneHeader {
         badge: T.tr("import.laneB.badge");
         badge-variant: BadgeVariant.purple;
-        tag: "Vanilla • FastClient • Lunar";
+        tag: T.tr("import.laneB.tag");
         title: T.tr("import.laneB.title");
         desc: T.tr("import.laneB.description");
     }
@@ -939,13 +934,13 @@ component LaneB inherits GlassCard {
 
 component RecentItem inherits Rectangle {
     in property <RecentImportRow> item;
-    height: row.preferred-height + 2px;
+    height: row.preferred-height + Theme.hairline;
     background: hover.has-hover ? Theme.surface-up : transparent;
     animate background { duration: Theme.dur-fast; }
     hover := TouchArea { }
     Rectangle {
-        y: root.height - 2px;
-        height: 2px;
+        y: root.height - Theme.hairline;
+        height: Theme.hairline;
         background: Theme.border-solid;
     }
     row := HorizontalLayout {
@@ -960,7 +955,7 @@ component RecentItem inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 Badge {
-                    text: root.item.is-mrpack ? T.tr("import.recent.typeMrpack") : T.tr1("import.recent.typeProfile", "kind", root.item.kind != "" ? root.item.kind : "Perfil");
+                    text: root.item.is-mrpack ? T.tr("import.recent.typeMrpack") : T.tr1("import.recent.typeProfile", "kind", root.item.kind != "" ? root.item.kind : T.tr("import.recent.profile"));
                     variant: root.item.is-mrpack ? BadgeVariant.accent : BadgeVariant.purple;
                 }
             }
@@ -970,12 +965,12 @@ component RecentItem inherits Rectangle {
             spacing: Theme.space-3;
             HorizontalLayout {
                 spacing: 6px;
-                VText { text: "Instancia:"; font-size: Theme.text-xs; color: Theme.muted; }
+                VText { text: T.tr("import.recent.instance"); font-size: Theme.text-xs; color: Theme.muted; }
                 VText {
                     text: root.item.instance + " ↗";
                     font-size: Theme.text-xs;
                     font-weight: 600;
-                    color: link.has-hover ? Theme.accent-gold : Theme.accent;
+                    color: link.has-hover ? Theme.accent-bright : Theme.accent;
                     link := TouchArea {
                         mouse-cursor: pointer;
                         clicked => { LibraryBridge.i-open-instance(root.item.instance); }
@@ -1000,13 +995,9 @@ component RecentItem inherits Rectangle {
 component RecentSection inherits Rectangle {
     height: col.preferred-height;
     border-radius: Theme.radius-lg;
-    background: Theme.surface-solid;
-    border-width: 2px;
+    background: Theme.card-bg;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 4px;
-    drop-shadow-offset-y: 4px;
     col := VerticalLayout {
         padding: Theme.space-5;
         spacing: Theme.space-3;
@@ -1056,9 +1047,9 @@ export component ImportPage inherits Rectangle {
                 alignment: start;
                 VerticalLayout {
                     alignment: center;
-                    Badge { text: "MIGRATION & PACKS"; variant: BadgeVariant.accent; }
+                    Badge { text: T.tr("import.pageBadge"); variant: BadgeVariant.accent; }
                 }
-                VText { text: "#/library/import"; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; opacity: 0.8; }
+                VText { text: T.tr("import.pageRoute"); font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; opacity: 0.8; }
             }
             McTitle {
                 text: T.tr("import.pageTitle");

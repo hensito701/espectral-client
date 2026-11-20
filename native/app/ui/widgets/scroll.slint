@@ -40,24 +40,23 @@ export component ScrollArea inherits Rectangle {
         property <length> track-h: root.height - 8px;
         property <length> thumb-h: max(32px, self.track-h * flick.height / flick.content-height);
         property <float> pos: -flick.content-y / max(1px, flick.content-height - flick.height);
-        x: root.width - 12px;
+        x: root.width - 9px;
         y: 4px;
-        width: 10px;
+        width: 6px;
         height: self.track-h;
-        // flat track so the thumb reads against the card
         Rectangle {
-            width: 8px;
+            width: 5px;
             height: parent.height;
-            x: 1px;
-            border-radius: 4px;
+            x: 0.5px;
+            border-radius: 2.5px;
             background: Theme.scrollbar-track;
         }
         thumb := Rectangle {
-            x: 1px;
-            width: 8px;
+            x: 0.5px;
+            width: 5px;
             height: bar.thumb-h;
             y: (bar.track-h - bar.thumb-h) * bar.pos;
-            border-radius: 4px;
+            border-radius: 2.5px;
             background: drag.has-hover || drag.pressed ? Theme.scrollbar-thumb-hover : Theme.scrollbar-thumb;
             animate background { duration: Theme.dur-fast; }
             drag := TouchArea {

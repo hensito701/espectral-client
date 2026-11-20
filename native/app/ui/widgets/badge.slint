@@ -1,7 +1,7 @@
-// Badge — flat chips (no glow); Kbd — the key chips (HotkeyLegend, palette
-// footer, TopChrome "/" hint) on the G1 small-label typography; GradientText —
-// kept for the callers but draws solid colour (gradient text fills are
-// off-style in the poster look).
+// Badge — hairline chips; Kbd — the key chips (HotkeyLegend, palette footer);
+// GradientText — solid colour (kept for the callers); McTitle — page and
+// card headings; Wordmark / ClientLockup — the pixel "Espectral" wordmark,
+// the one poster piece left in the glass look.
 
 import { Theme } from "../theme.slint";
 
@@ -27,7 +27,7 @@ export component Badge inherits Rectangle {
         : variant == BadgeVariant.gold ? Theme.accent-gold
         : variant == BadgeVariant.purple || variant == BadgeVariant.quilt ? Theme.accent-purple
         : variant == BadgeVariant.neoforge ? Theme.accent-alt
-        : variant == BadgeVariant.vanilla ? #ffffff
+        : variant == BadgeVariant.vanilla ? Theme.accent-green
         : Theme.muted;
     property <color> base: variant == BadgeVariant.err ? #ef4444 : variant == BadgeVariant.info || variant == BadgeVariant.fabric ? #06b6d4 : variant == BadgeVariant.purple || variant == BadgeVariant.quilt ? #a855f7 : variant == BadgeVariant.neoforge ? #f97316 : fg;
 
@@ -37,15 +37,13 @@ export component Badge inherits Rectangle {
     horizontal-stretch: 0;
     vertical-stretch: 0;
     border-radius: Theme.radius-pill;
-    border-width: 2px;
+    border-width: Theme.hairline;
     background: variant == BadgeVariant.neutral ? Theme.card-bg-soft
-        : variant == BadgeVariant.vanilla ? Theme.loader-vanilla
-        : variant == BadgeVariant.accent ? Theme.accent.with-alpha(0.2)
-        : base.with-alpha(0.16);
+        : variant == BadgeVariant.accent ? Theme.accent.with-alpha(0.14)
+        : base.with-alpha(0.12);
     border-color: variant == BadgeVariant.neutral ? Theme.border-solid
-        : variant == BadgeVariant.vanilla ? #0b7a56
-        : variant == BadgeVariant.accent ? Theme.accent
-        : base.with-alpha(0.6);
+        : variant == BadgeVariant.accent ? Theme.edge-strong
+        : base.with-alpha(0.4);
 
     row := HorizontalLayout {
         padding-left: large ? 12px : 8px;
@@ -66,11 +64,10 @@ export component Badge inherits Rectangle {
         Text {
             text: root.text;
             color: root.fg;
-            font-family: root.pixel ? Theme.label-family(8px) : Theme.font-body;
-            font-size: root.pixel ? Theme.label-size(8px) : root.large ? Theme.text-sm : Theme.text-xs;
-            // G1: small labels are bold, whether the pixel font or its body fallback.
-            font-weight: root.pixel ? 700 : 600;
-            letter-spacing: root.pixel ? 0px : 0.3px;
+            font-family: Theme.font-body;
+            font-size: root.large ? Theme.text-sm : Theme.text-xs;
+            font-weight: 600;
+            letter-spacing: 0.2px;
             vertical-alignment: center;
         }
     }
@@ -105,8 +102,7 @@ export component Kbd inherits Rectangle {
 /// Colour presets of the old GradientText (now solid colours).
 export enum GradientKind { emerald-gold, cyan-emerald, gold-amber, purple-pink, accent }
 
-/// Title text in the poster style: solid colour (the preset's main colour; the
-/// default is the title gold/orange). Gradient text fills are off-style.
+/// Solid-colour heading text (the old gradient presets).
 export component GradientText inherits Text {
     in property <GradientKind> gradient: GradientKind.emerald-gold;
     color: gradient == GradientKind.cyan-emerald ? Theme.accent-cyan
@@ -115,52 +111,34 @@ export component GradientText inherits Text {
         : Theme.title-color;
 }
 
-/// The in-game title look: Minecraft pixel font, bold, title colour, with a
-/// purple shadow one game pixel (font-size / 8) down and to the right.
-/// Use font sizes that are multiples of 8px (16, 24, 32, 40, 48, 64).
+/// Page / section heading: the body family, semibold, warm white, slightly
+/// tight tracking. (The name is kept for the callers.)
 ///
 ///     McTitle { text: T.tr("dash.title"); font-size: 32px; }
 export component McTitle inherits Rectangle {
     in property <string> text;
     in property <length> font-size: 24px;
     in property <color> ink: Theme.title-color;
-    in property <color> shadow-ink: Theme.brand-purple;
     in property <TextHorizontalAlignment> horizontal-alignment: left;
     in property <bool> wrap: true;
-    property <length> fs: Theme.pix(font-size);
-    property <length> px: fs / 8;
+    // pixel-font sizes ran large for their px value; headings read a step smaller
+    property <length> fs: round(root.font-size * 0.9 / 1px) * 1px;
 
-    // A long pixel title must never widen its parent: when it wraps, it
-    // wraps; when it doesn't, it is clipped by the layout instead.
-    min-width: root.wrap ? 0px : label.min-width + px;
-    preferred-width: label.preferred-width + px;
-    min-height: label.min-height + px;
-    preferred-height: label.preferred-height + px;
+    min-width: root.wrap ? 0px : label.min-width;
+    preferred-width: label.preferred-width;
+    min-height: label.min-height;
+    preferred-height: label.preferred-height;
     horizontal-stretch: 1;
     vertical-stretch: 0;
 
-    Text {
-        x: root.px;
-        y: root.px;
-        width: root.width - root.px;
-        height: root.height - root.px;
-        text: root.text;
-        font-family: Theme.font-title;
-        font-size: root.fs;
-        font-weight: 700;
-        color: root.shadow-ink;
-        horizontal-alignment: root.horizontal-alignment;
-        wrap: root.wrap ? word-wrap : no-wrap;
-    }
     label := Text {
-        x: 0;
-        y: 0;
-        width: root.width - root.px;
-        height: root.height - root.px;
+        width: root.width;
+        height: root.height;
         text: root.text;
         font-family: Theme.font-title;
         font-size: root.fs;
-        font-weight: 700;
+        font-weight: 600;
+        letter-spacing: root.fs >= 24px ? -0.4px : 0px;
         color: root.ink;
         horizontal-alignment: root.horizontal-alignment;
         wrap: root.wrap ? word-wrap : no-wrap;
@@ -178,8 +156,8 @@ component WordmarkLetter inherits Rectangle {
     property <length> px: fs / 8;
     width: glyph.preferred-width;
     height: glyph.preferred-height + px;
-    Text { x: root.px; y: root.px; text: root.letter; font-family: Theme.font-title; font-size: root.fs; font-weight: 700; color: Theme.brand-purple.with-alpha(0.6); }
-    glyph := Text { x: 0; y: 0; text: root.letter; font-family: Theme.font-title; font-size: root.fs; font-weight: 700; color: root.tint; }
+    Text { x: root.px; y: root.px; text: root.letter; font-family: Theme.font-pixel; font-size: root.fs; font-weight: 700; color: Theme.wordmark-shadow.with-alpha(0.6); }
+    glyph := Text { x: 0; y: 0; text: root.letter; font-family: Theme.font-pixel; font-size: root.fs; font-weight: 700; color: root.tint; }
 }
 
 /// The "Espectral" wordmark: per-letter gold gradient #FFAA00 → #FFD700 →
@@ -202,49 +180,26 @@ export component Wordmark inherits HorizontalLayout {
     WordmarkLetter { letter: "l"; tint: #ffd700; font-size: root.font-size; }
 }
 
-/// Sticker badge: small label on a flat colour with a hard shadow, tilted
-/// about -4°. Defaults to the site's green tag: #10B981 with dark ink (white
-/// on that green is too faint). One per section at most.
-///
-/// Below 16px requested the pixel font would sit under 16 physical px (G1:
-/// 1-px strokes smudge), so the label falls back to the bold body font at
-/// `label-size` and the sticker is NOT rotated: rotating 1-pixel strokes on
-/// the GPU renderer resamples them into a smudge.
+/// Small tag: tinted hairline chip (no tilt, no hard shadow in the glass look).
 export component Sticker inherits Rectangle {
     in property <string> text;
-    in property <color> fill: #10b981;
-    in property <color> ink: #07021a;
+    in property <color> fill: Theme.accent;
     in property <length> font-size: 8px;
-    in property <angle> tilt: -4deg;
-    /// 2px ink outline (the site's version tag has none).
-    in property <bool> outlined: true;
-    property <bool> small: font-size < 16px;
-    property <length> d: small ? 2px : 3px;
-    width: label.preferred-width + (small ? 10px : 16px) + d;
-    height: label.preferred-height + (small ? 6px : 8px) + d;
-    Rectangle {
-        width: root.width;
-        height: root.height;
-        transform-rotation: root.small ? 0deg : root.tilt;
-        transform-origin: { x: self.width / 2, y: self.height / 2 };
-        Rectangle { x: root.d; y: root.d; width: root.width - root.d; height: root.height - root.d; border-radius: 4px; background: Theme.brand-ink; }
-        Rectangle {
-            x: 0; y: 0;
-            width: root.width - root.d; height: root.height - root.d;
-            border-radius: 4px;
-            background: root.fill;
-            border-width: root.outlined ? 2px : 0px;
-            border-color: Theme.brand-ink;
-            label := Text {
-                text: root.text;
-                font-family: Theme.label-family(root.font-size);
-                font-size: Theme.label-size(root.font-size);
-                font-weight: 700;
-                color: root.ink;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-        }
+    width: label.preferred-width + 14px;
+    height: label.preferred-height + 6px;
+    border-radius: Theme.radius-xs;
+    background: root.fill.with-alpha(0.14);
+    border-width: Theme.hairline;
+    border-color: root.fill.with-alpha(0.45);
+    label := Text {
+        text: root.text;
+        font-family: Theme.font-body;
+        font-size: Theme.label-size(min(root.font-size, 12px) + 2px);
+        font-weight: 600;
+        letter-spacing: 0.6px;
+        color: root.fill;
+        horizontal-alignment: center;
+        vertical-alignment: center;
     }
 }
 
@@ -278,12 +233,8 @@ export component ClientLockup inherits VerticalLayout {
                 alignment: center;
                 Sticker {
                     text: root.version;
-                    fill: #10b981;
-                    ink: #07021a;
-                    tilt: -8deg;
-                    outlined: false;
-                    // the site's tag is 3/8 of the title size; 8px is the smallest crisp size
-                    font-size: max(8px, round(root.font-size * 0.375 / 8px) * 8px);
+                    fill: Theme.accent-green;
+                    font-size: max(10px, root.font-size * 0.5);
                 }
             }
         }

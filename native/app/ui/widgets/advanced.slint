@@ -29,9 +29,9 @@ export component AdvancedToggle inherits Rectangle {
     min-width: 0px;
     height: row.preferred-height;
     border-radius: Theme.radius-lg;
-    border-width: 2px;
-    border-color: ta.has-hover || root.open ? Theme.title-color.with-alpha(0.55) : Theme.border-solid;
-    background: ta.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: ta.has-hover || root.open ? Theme.hover-border : Theme.glass-border;
+    background: ta.has-hover ? Theme.surface-up : Theme.card-bg;
     animate background, border-color { duration: Theme.dur-fast; }
 
     ta := TouchArea {
@@ -52,15 +52,15 @@ export component AdvancedToggle inherits Rectangle {
                 width: 36px;
                 height: 36px;
                 border-radius: Theme.radius-md;
-                background: root.open ? Theme.gold : Theme.surface-up;
-                border-width: 2px;
-                border-color: root.open ? Theme.brand-ink : Theme.border-solid;
+                background: root.open ? Theme.accent.with-alpha(0.14) : Theme.card-bg-soft;
+                border-width: Theme.hairline;
+                border-color: root.open ? Theme.edge-strong : Theme.border-solid;
                 Icon {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
                     data: Icons.settings;
                     size: 18px;
-                    color: root.open ? Theme.on-gold : Theme.title-color;
+                    color: root.open ? Theme.accent-bright : Theme.title-color;
                 }
             }
         }

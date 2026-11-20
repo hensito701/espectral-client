@@ -51,22 +51,18 @@ export global SkinBridge {
     callback preload(source: string);
 }
 
-// Square spin toggle (skin-viewer__spin): 32px, poster chip — solid surface,
-// 2px ink border, hard 2px shadow; gold ink while spinning.
+// Square spin toggle (skin-viewer__spin): 32px glass chip with a hairline;
+// accent ink while spinning.
 component SpinButton inherits Rectangle {
     in property <bool> rotating;
     callback toggled();
     width: 32px;
     height: 32px;
     border-radius: Theme.radius-sm;
-    border-width: 2px;
-    border-color: touch.has-hover ? Theme.hover-border : Theme.brand-ink;
-    background: touch.has-hover ? Theme.surface-up : Theme.surface-solid;
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 2px;
-    drop-shadow-offset-y: 2px;
-    property <color> ink: root.rotating ? Theme.title-color : Theme.muted-strong;
+    border-width: Theme.hairline;
+    border-color: touch.has-hover ? Theme.hover-border : Theme.glass-border;
+    background: touch.has-hover ? Theme.surface-up : Theme.surface;
+    property <color> ink: root.rotating ? Theme.accent-bright : Theme.muted-strong;
 
     if root.rotating: Rectangle {
         // pause: two 3x9 bars, rx 1 (viewBox 12)

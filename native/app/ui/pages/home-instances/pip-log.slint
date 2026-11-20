@@ -6,7 +6,7 @@
 // It is the one home-instances component that is always mounted, so it also
 // hosts the AppState watchers that feed HomeBridge.shared-changed().
 
-import { Theme, T, Shell, AppState, InstanceRow, LaunchRow, ServerRow, AccountRow, Icon, Icons, Emoji } from "../../widgets.slint";
+import { Theme, T, Shell, AppState, Router, Page, InstanceRow, LaunchRow, ServerRow, AccountRow, Icon, Icons, Emoji } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 import { HiLogView } from "common.slint";
 
@@ -21,17 +21,18 @@ component ToolBtn inherits Rectangle {
     property <bool> hovered: t.has-hover && enabled;
     width: 28px;
     height: 28px;
-    border-radius: Theme.radius-xs;
-    background: active ? Theme.gold : hovered ? Theme.surface-up : transparent;
-    border-width: 2px;
-    border-color: active ? Theme.brand-ink : hovered ? Theme.hover-border : transparent;
+    border-radius: Theme.radius-sm;
+    background: active ? Theme.accent.with-alpha(0.16) : hovered ? Theme.surface-up : transparent;
+    border-width: active || hovered ? Theme.hairline : 0px;
+    border-color: active ? Theme.edge-strong : Theme.hover-border;
     opacity: enabled ? 1 : 0.5;
+    animate background, border-color { duration: Theme.dur-fast; }
     if root.icon != "": Icon {
         data: root.icon;
         size: root.icon-size;
         filled: root.filled;
         weight: root.filled ? 0 : 2;
-        color: root.active ? Theme.on-gold : root.hovered ? Theme.text : Theme.muted;
+        color: root.active ? Theme.accent-bright : root.hovered ? Theme.text : Theme.muted;
     }
     if root.emoji != "": Emoji { char: root.emoji; size: 13px; }
     t := TouchArea {
@@ -49,27 +50,26 @@ component StopChip inherits Rectangle {
     callback clicked();
     height: root.icon-only ? 20px : l.preferred-height + 8px;
     min-width: root.icon-only ? 26px : l.preferred-width + 14px;
-    border-radius: Theme.radius-xs;
-    background: Theme.accent-red;
-    border-width: 2px;
-    border-color: Theme.brand-ink;
+    border-radius: Theme.radius-sm;
+    background: Theme.accent-red.with-alpha(0.16);
+    border-width: Theme.hairline;
+    border-color: Theme.accent-red.with-alpha(0.5);
     opacity: enabled ? 1 : 0.5;
     if root.icon-only: Rectangle {
-        // Flat white sticker square (the pixel font has no stop glyph).
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         width: 8px;
         height: 8px;
-        background: #ffffff;
+        border-radius: 2px;
+        background: Theme.accent-red;
     }
     l := Text {
         visible: !root.icon-only;
         text: root.text;
-        font-family: Theme.label-family(8px);
-        font-size: Theme.label-size(8px);
+        font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.45px;
-        color: #ffffff;
+        color: Theme.accent-red;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -80,6 +80,7 @@ component StopChip inherits Rectangle {
     }
 }
 
+/// Buffer tab in the drawer's header: glass pill, accent tint when active.
 component LogTab inherits Rectangle {
     in property <string> label;
     in property <string> account;
@@ -92,9 +93,10 @@ component LogTab inherits Rectangle {
     min-width: row.preferred-width;
     horizontal-stretch: 0;
     border-radius: Theme.radius-pill;
-    background: active ? Theme.gold : hovered ? Theme.surface-up : transparent;
-    border-width: 2px;
-    border-color: active ? Theme.brand-ink : hovered ? Theme.hover-border : transparent;
+    background: active ? Theme.accent.with-alpha(0.14) : hovered ? Theme.surface-up : transparent;
+    border-width: active ? Theme.hairline : 0px;
+    border-color: Theme.edge-strong;
+    animate background { duration: Theme.dur-fast; }
     row := HorizontalLayout {
         padding-left: Theme.space-3;
         padding-right: Theme.space-3;
@@ -102,18 +104,17 @@ component LogTab inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Rectangle {
-                width: 8px;
-                height: 8px;
+                width: 7px;
+                height: 7px;
+                border-radius: 3.5px;
                 background: root.running ? Theme.accent-green : Theme.muted;
-                border-width: 2px;
-                border-color: root.active ? Theme.brand-ink : transparent;
             }
         }
         Text {
             text: root.label;
-            color: root.active ? Theme.on-gold : root.hovered ? Theme.text : Theme.muted;
+            color: root.active ? Theme.accent-bright : root.hovered ? Theme.text : Theme.muted;
             font-size: Theme.text-xs;
-            font-weight: 700;
+            font-weight: 600;
             vertical-alignment: center;
         }
         if root.agent: VerticalLayout {
@@ -122,15 +123,15 @@ component LogTab inherits Rectangle {
                 height: al.preferred-height + 2px;
                 width: al.preferred-width + 10px;
                 border-radius: Theme.radius-xs;
-                background: Theme.accent-purple;
-                border-width: 2px;
-                border-color: Theme.brand-ink;
+                background: Theme.accent-purple.with-alpha(0.18);
+                border-width: Theme.hairline;
+                border-color: Theme.accent-purple.with-alpha(0.5);
                 al := Text {
                     text: T.tr("pip.agentBadge");
                     font-size: 10px;
                     font-weight: 700;
                     letter-spacing: 0.4px;
-                    color: #ffffff;
+                    color: Theme.accent-purple;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -148,7 +149,6 @@ component LogTab inherits Rectangle {
         clicked => { root.clicked(); }
     }
 }
-
 export component PipLogDrawer inherits Rectangle {
     // ---- AppState watchers (shared data hook) ----
     property <[InstanceRow]> w-instances: AppState.instances;
@@ -166,37 +166,29 @@ export component PipLogDrawer inherits Rectangle {
     property <length> bottom-gap: Theme.statusbar-height + Theme.space-2;
 
     // ================= collapsed pill =================
-    if !root.expanded: pill := Rectangle {
+    // Hidden on Home (#/): the play bar's status line is its entry point
+    // there (Space still opens the drawer); it would overlap the bar.
+    if !root.expanded && Router.page != Page.home: pill := Rectangle {
         property <bool> hovered: pt.has-hover;
-        width: prow.preferred-width + 4px;
-        height: 36px + 4px;
+        width: prow.preferred-width;
+        height: 36px;
         x: root.width - self.width - Theme.space-4;
-        y: root.height - self.height - root.bottom-gap - (pill.hovered ? 1px : 0px);
-        background: transparent;
-        // hard ink shadow
-        Rectangle {
-            x: 4px;
-            y: 4px;
-            width: parent.width - 4px;
-            height: 36px;
-            border-radius: Theme.radius-pill;
-            background: pill.hovered ? Theme.brand-purple : Theme.brand-ink;
-        }
-        Rectangle {
-            width: parent.width - 4px;
-            height: 36px;
-            border-radius: Theme.radius-pill;
-            background: pill.hovered ? Theme.surface-up : Theme.card-bg;
-            border-width: 2px;
-            border-color: pill.hovered ? Theme.hover-border : Theme.border-solid;
-            clip: true;
-        }
+        y: root.height - self.height - root.bottom-gap;
+        border-radius: Theme.radius-pill;
+        background: pill.hovered ? Theme.surface-up : Theme.chrome-bg;
+        border-width: Theme.hairline;
+        border-color: pill.hovered ? Theme.hover-border : Theme.glass-border;
+        drop-shadow-blur: Theme.shadow-sm-blur;
+        drop-shadow-offset-y: Theme.shadow-sm-y;
+        drop-shadow-color: Theme.shadow-sm-color;
+        clip: true;
+        animate background, border-color { duration: Theme.dur-fast; }
         pt := TouchArea {
             mouse-cursor: pointer;
             clicked => { Shell.pip-log-open = true; }
         }
         prow := HorizontalLayout {
-            width: parent.width - 4px;
+            width: parent.width;
             height: 36px;
             padding-left: Theme.space-3;
             padding-right: Theme.space-3;
@@ -206,11 +198,10 @@ export component PipLogDrawer inherits Rectangle {
                 VerticalLayout {
                     alignment: center;
                     Rectangle {
-                        width: 8px;
-                        height: 8px;
+                        width: 7px;
+                        height: 7px;
+                        border-radius: 3.5px;
                         background: AppState.running-count > 0 ? Theme.accent-green : Theme.muted;
-                        border-width: 2px;
-                        border-color: Theme.brand-ink;
                     }
                 }
                 if AppState.running-count > 0: VerticalLayout {
@@ -219,15 +210,14 @@ export component PipLogDrawer inherits Rectangle {
                         height: cnt.preferred-height + 4px;
                         width: cnt.preferred-width + 10px;
                         border-radius: Theme.radius-xs;
-                        background: Theme.gold;
-                        border-width: 2px;
-                        border-color: Theme.brand-ink;
+                        background: Theme.accent.with-alpha(0.16);
+                        border-width: Theme.hairline;
+                        border-color: Theme.edge-strong;
                         cnt := Text {
                             text: AppState.running-count;
-                            font-family: Theme.label-family(8px);
-                            font-size: Theme.label-size(8px);
+                            font-size: 10px;
                             font-weight: 700;
-                            color: Theme.on-gold;
+                            color: Theme.accent-bright;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -257,8 +247,7 @@ export component PipLogDrawer inherits Rectangle {
                 }
                 Text {
                     text: "[ESPACIO]";
-                    font-family: Theme.label-family(8px);
-                    font-size: Theme.label-size(8px);
+                    font-size: 10px;
                     font-weight: 700;
                     color: Theme.muted;
                     opacity: 0.7;
@@ -280,12 +269,11 @@ export component PipLogDrawer inherits Rectangle {
         y: root.height - self.height - root.bottom-gap;
         border-radius: Theme.radius-lg;
         background: Theme.log-bg;
-        border-width: 2px;
-        border-color: Theme.border-solid;
-        drop-shadow-color: Theme.brand-ink;
-        drop-shadow-blur: 0px;
-        drop-shadow-offset-x: Theme.shadow-lg-x;
+        border-width: Theme.hairline;
+        border-color: Theme.glass-border;
+        drop-shadow-blur: Theme.shadow-lg-blur;
         drop-shadow-offset-y: Theme.shadow-lg-y;
+        drop-shadow-color: Theme.shadow-lg-color;
         clip: true;
         // swallow clicks on the panel
         TouchArea { }
@@ -296,7 +284,7 @@ export component PipLogDrawer inherits Rectangle {
             height: 44px;
             background: Theme.card-bg;
             border-width: 0px;
-            Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border-solid; }
+            Rectangle { y: parent.height - Theme.hairline; height: Theme.hairline; background: Theme.border-solid; }
             HorizontalLayout {
                 padding-left: Theme.space-2;
                 padding-right: Theme.space-2;
@@ -336,8 +324,7 @@ export component PipLogDrawer inherits Rectangle {
                     horizontal-stretch: 0;
                     Text {
                         text: T.tr1("pip.linesCount", "count", HomeBridge.log-lines.length);
-                        font-family: Theme.label-family(8px);
-                        font-size: Theme.label-size(8px);
+                        font-size: 10px;
                         font-weight: 700;
                         color: Theme.muted;
                         opacity: 0.8;

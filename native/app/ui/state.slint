@@ -5,7 +5,8 @@
 
 /// Routes (App.svelte hash router). Rust: src/router.rs parses "#/..." into these.
 export enum Page {
-    home,        // #/  (and #/instances)
+    home,        // #/
+    instances,   // #/instances           (every instance; create / import)
     instance,    // #/instances/:name     (Router.instance-name)
     versions,    // #/library/versions    (legacy #/versions)
     import,      // #/library/import      (legacy #/import)
@@ -159,9 +160,6 @@ export global Shell {
     /// "es" | "en"
     callback set-language(lang: string);
     callback toggle-language();
-
-    /// Ambient backdrop hue (CSS --ambient-hue, default 160). Home rail / instance hub set it.
-    in-out property <int> ambient-hue: 160;
 
     // overlays
     in-out property <bool> palette-open;

@@ -1,6 +1,10 @@
 // OWNER: account-wardrobe agent. Port of components/AccountPopover.svelte.
 // app.slint places it under the TopChrome account chip (top-right, 320px wide)
 // and shows it while Shell.account-popover-open (click outside / Esc close it).
+//
+// Glass look: opaque floating panel (surface-solid) with a soft shadow, 1px
+// hairlines, rows that brighten on hover. The only fills are the active
+// account's accent edge and the Microsoft partner button.
 
 import { Theme, T, Shell, Router, Util, AccountRow, Icon, Icons, Spinner, MonogramTile, MonogramShape, ScrollArea } from "../../widgets.slint";
 import { AccountBridge } from "api.slint";
@@ -9,9 +13,9 @@ import { PlainInput, MsLogo } from "parts.slint";
 component ActiveCard inherits Rectangle {
     in property <AccountRow> acc;
     border-radius: Theme.radius-md;
-    background: Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: Theme.border-solid;
+    background: Theme.accent.with-alpha(0.08);
+    border-width: Theme.hairline;
+    border-color: Theme.edge-strong;
     HorizontalLayout {
         padding: Theme.space-3;
         spacing: Theme.space-3;
@@ -35,8 +39,8 @@ component ActiveCard inherits Rectangle {
                     height: 10px;
                     border-radius: 5px;
                     background: root.acc.token-kind == "msa" ? Theme.msa-blue : Theme.mode-uhc;
-                    border-width: 2px;
-                    border-color: Theme.brand-ink;
+                    border-width: Theme.hairline;
+                    border-color: Theme.surface-solid;
                 }
             }
         }
@@ -48,17 +52,18 @@ component ActiveCard inherits Rectangle {
                 spacing: 6px;
                 alignment: start;
                 Rectangle {
-                    background: Theme.gold;
+                    background: Theme.accent.with-alpha(0.14);
+                    border-width: Theme.hairline;
+                    border-color: Theme.edge-strong;
                     border-radius: Theme.radius-xs;
                     width: active-lbl.preferred-width + 8px;
-                    height: active-lbl.preferred-height + 2px;
+                    height: active-lbl.preferred-height + 3px;
                     active-lbl := Text {
                         text: T.tr("account.active");
-                        // G1: 8px pixel font smudges; the bold body font stays legible.
-                        font-family: Theme.label-family(8px);
-                        font-size: Theme.label-size(8px);
+                        font-family: Theme.font-body;
+                        font-size: Theme.text-xs;
                         font-weight: 700;
-                        color: Theme.on-gold;
+                        color: Theme.accent-bright;
                     }
                 }
                 Text {
@@ -91,7 +96,7 @@ component SwitchItem inherits Rectangle {
     height: row.preferred-height;
     border-radius: Theme.radius-md;
     background: ta.has-hover ? Theme.surface-up : transparent;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: ta.has-hover ? Theme.hover-border : transparent;
     animate background, border-color { duration: Theme.dur-fast; }
     ta := TouchArea {
@@ -138,17 +143,17 @@ component SectionLabel inherits HorizontalLayout {
     }
     if root.count != "": Rectangle {
         background: Theme.card-bg-soft;
-        border-width: 2px;
+        border-width: Theme.hairline;
         border-color: Theme.border-solid;
         border-radius: Theme.radius-xs;
         width: cnt.preferred-width + 10px;
         height: cnt.preferred-height + 2px;
-        cnt := Text { text: root.count; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.muted; vertical-alignment: center; horizontal-alignment: center; }
+        cnt := Text { text: root.count; font-size: Theme.text-xs; font-weight: 700; color: Theme.muted; vertical-alignment: center; horizontal-alignment: center; }
     }
 }
 
-/// Footer action: Microsoft = partner pill (#00A4EF fill, ink border, hard
-/// shadow); everything else = poster secondary chip.
+/// Footer action: Microsoft = partner pill (#00A4EF fill, 1px edge);
+/// everything else = a glass row.
 component FooterBtn inherits Rectangle {
     in property <string> text;
     in property <bool> msa;
@@ -156,31 +161,17 @@ component FooterBtn inherits Rectangle {
     height: 36px;
     border-radius: Theme.radius-pill;
     property <bool> hot: ta.has-hover;
-    property <length> depth: 3px;
-    // hard ink shadow block
-    Rectangle {
-        y: root.depth;
-        width: 100%;
-        height: root.height - root.depth;
-        border-radius: Theme.radius-pill;
-        background: Theme.brand-ink;
-    }
-    face := Rectangle {
-        width: 100%;
-        height: root.height - root.depth;
-        border-radius: Theme.radius-pill;
-        border-width: 2px;
-        border-color: root.hot ? Theme.brand-ink : root.msa ? Theme.brand-ink : Theme.border-solid;
-        background: root.msa ? Theme.msa-blue : root.hot ? Theme.gold : Theme.surface;
-        animate background, border-color { duration: Theme.dur-fast; }
-    }
+    background: root.msa ? (root.hot ? #1fb4f5 : Theme.msa-blue) : (root.hot ? Theme.surface-up : Theme.surface);
+    border-width: Theme.hairline;
+    border-color: root.msa ? (Theme.dark ? rgba(255, 255, 255, 0.22) : rgba(0, 0, 0, 0.22)) : (root.hot ? Theme.hover-border : Theme.border-solid);
+    animate background, border-color { duration: Theme.dur-fast; }
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
     HorizontalLayout {
         width: 100%;
-        height: root.height - root.depth;
+        height: 100%;
         padding-left: 12px;
         padding-right: 12px;
         spacing: Theme.space-2;
@@ -188,13 +179,13 @@ component FooterBtn inherits Rectangle {
         VerticalLayout {
             alignment: center;
             if root.msa: MsLogo { size: 16px; }
-            if !root.msa: Icon { data: Icons.user; size: 16px; color: root.hot ? Theme.on-gold : Theme.text; }
+            if !root.msa: Icon { data: Icons.user; size: 16px; color: root.hot ? Theme.accent-bright : Theme.text; }
         }
         Text {
             text: root.text;
             font-size: Theme.text-xs;
             font-weight: 700;
-            color: root.msa ? #ffffff : root.hot ? Theme.on-gold : Theme.text;
+            color: root.msa ? #ffffff : root.hot ? Theme.accent-bright : Theme.text;
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
@@ -225,9 +216,9 @@ component AddForm inherits VerticalLayout {
             width: 38px;
             height: 38px;
             border-radius: Theme.radius-md;
-            background: self.enabled ? Theme.gold : Theme.surface-up;
-            border-width: 2px;
-            border-color: Theme.brand-ink;
+            background: self.enabled ? Theme.accent : Theme.surface-up;
+            border-width: Theme.hairline;
+            border-color: self.enabled ? Theme.edge-strong : transparent;
             opacity: self.enabled ? (add-ta.has-hover ? 0.85 : 1) : 0.35;
             if AccountBridge.popover-creating: Spinner { size: 14px; tint: Theme.on-gold; }
             if !AccountBridge.popover-creating: Icon { data: Icons.plus; size: 16px; weight: 2.5; color: Theme.on-gold; }
@@ -251,13 +242,12 @@ export component AccountPopover inherits Rectangle {
     height: col.preferred-height;
     border-radius: Theme.radius-lg;
     background: Theme.surface-solid;
-    border-width: 2px;
-    border-color: Theme.border-solid;
-    // opaque card, hard 6px ink shadow (poster)
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 6px;
-    drop-shadow-offset-y: 6px;
+    border-width: Theme.hairline;
+    border-color: Theme.glass-border;
+    // floating layer: opaque + soft shadow
+    drop-shadow-color: Theme.shadow-lg-color;
+    drop-shadow-blur: Theme.shadow-lg-blur;
+    drop-shadow-offset-y: Theme.shadow-lg-y;
     clip: true;
 
     init => { AccountBridge.popover-opened(); }
@@ -278,18 +268,18 @@ export component AccountPopover inherits Rectangle {
                 VerticalLayout {
                     alignment: center;
                     Rectangle {
-                        width: 8px;
-                        height: 8px;
-                        background: Theme.gold;
-                        border-width: 2px;
-                        border-color: Theme.brand-ink;
+                        width: 7px;
+                        height: 7px;
+                        border-radius: 3.5px;
+                        background: Theme.accent;
                     }
                 }
                 Text {
                     text: T.tr("account.profileTitle").to-uppercase();
                     font-family: Theme.font-title;
-                    font-size: Theme.pix(16px);
+                    font-size: Theme.text-sm;
                     font-weight: 700;
+                    letter-spacing: 0.5px;
                     color: Theme.title-color;
                     horizontal-stretch: 1;
                     vertical-alignment: center;
@@ -298,7 +288,7 @@ export component AccountPopover inherits Rectangle {
                     width: 26px;
                     height: 26px;
                     border-radius: Theme.radius-sm;
-                    border-width: 2px;
+                    border-width: Theme.hairline;
                     border-color: close-ta.has-hover ? Theme.hover-border : transparent;
                     background: close-ta.has-hover ? Theme.surface-up : transparent;
                     Icon { data: Icons.x; size: 16px; color: close-ta.has-hover ? Theme.title-color : Theme.muted; }
@@ -309,7 +299,7 @@ export component AccountPopover inherits Rectangle {
                 }
             }
         }
-        Rectangle { height: 2px; background: Theme.border-solid; }
+        Rectangle { height: Theme.hairline; background: Theme.border-solid; }
 
         // ---- body ----
         VerticalLayout {
@@ -362,7 +352,7 @@ export component AccountPopover inherits Rectangle {
         }
 
         // ---- footer ----
-        Rectangle { height: 2px; background: Theme.border-solid; }
+        Rectangle { height: Theme.hairline; background: Theme.border-solid; }
         Rectangle {
             background: Theme.card-bg-soft;
             VerticalLayout {

@@ -1,15 +1,15 @@
-// OWNER: home-instances agent. Port of components/HorizonRail.svelte +
-// HorizonTile.svelte (compact density: 280 x 260 tiles, always on).
+// OWNER: home-instances agent. The instance tiles of #/instances (was
+// HorizonRail.svelte + HorizonTile.svelte; Home no longer shows a rail).
 //
-// Poster look: each tile is a flat colour block in the instance's hue, 2px
-// border and a hard 4px ink shadow. Hover lifts one step and turns the border
-// gold with a purple shadow; selection keeps the gold border. No glass, no
-// gradients, no grid texture, no glow: the version watermark and the monogram
-// are flat low-contrast pixel-font glyphs.
+// Glass look: each tile is a glass card — icon/monogram, name, loader badge,
+// memory/mods chips — with the instance hue as a subtle tint wash and a
+// colour strip along the top, never a solid colour block or giant pixel
+// numerals. The selected tile takes the accent edge (style guide §2).
 //
 // Tiles read AppState.instances directly; selection is HomeBridge.selected-instance.
 
-import { Theme, T, AppState, Shell, InstanceRow, Util, LoaderBadge, LoaderBadgeSize, Badge, BadgeVariant, Btn, BtnVariant, BtnSize, Emoji, McTitle } from "../../widgets.slint";
+import { Theme, T, AppState, Shell, InstanceRow, Util, LoaderBadge, LoaderBadgeSize, Badge, BadgeVariant, Btn, BtnVariant, BtnSize, Icon, Icons, McTitle } from "../../widgets.slint";
+import { GlassSheen } from "../../widgets/card.slint";
 import { HomeBridge } from "api.slint";
 
 export global TileArt {
@@ -21,31 +21,27 @@ export global TileArt {
     public pure function loader-hue(loader: string) -> int {
         return loader == "fabric" ? 190 : (loader == "neoforge" || loader == "forge") ? 24 : loader == "quilt" ? 280 : 160;
     }
-    /// The tile body: one flat, opaque colour block from the instance hue.
-    public pure function block(hue: int, loader: string) -> color {
-        return hue >= 0 ? Theme.hsla(hue, 0.7, 0.34, 1) : Theme.hsla(TileArt.loader-hue(loader), 0.7, 0.34, 1);
-    }
-    /// The big ghost glyph: a lighter flat tint of the same hue (no alpha).
-    public pure function glyph(hue: int, loader: string) -> color {
-        return hue >= 0 ? Theme.hsla(hue, 0.62, 0.5, 1) : Theme.hsla(TileArt.loader-hue(loader), 0.62, 0.5, 1);
+    /// The instance hue resolved (instance hue, else the loader's).
+    public pure function hue-of(hue: int, loader: string) -> int {
+        return hue >= 0 ? hue : TileArt.loader-hue(loader);
     }
 }
 
-/// Flat ink chip on the colour block.
+/// Tiny chip under the name (memory / mods).
 component TileChip inherits Rectangle {
     in property <string> text;
     height: l.preferred-height + 6px;
     min-width: l.preferred-width + 12px;
     horizontal-stretch: 0;
     border-radius: Theme.radius-xs;
-    background: #1f1252;
-    border-width: 2px;
-    border-color: #3a2488;
+    background: Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: Theme.border-solid;
     l := Text {
         text: root.text;
-        color: #ffffff;
+        color: Theme.muted-strong;
         font-size: 11px;
-        font-weight: 700;
+        font-weight: 600;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -58,144 +54,115 @@ export component HorizonTile inherits Rectangle {
     callback open();
 
     property <string> loader: inst.loader.to-lowercase();
-    property <color> tile-accent: TileArt.accent(loader);
-    property <color> block-color: TileArt.block(inst.hue, loader);
-    property <color> glyph-color: TileArt.glyph(inst.hue, loader);
+    property <int> tile-hue: TileArt.hue-of(inst.hue, loader);
     property <bool> hovered: touch.has-hover;
     property <bool> running: inst.running;
     property <bool> hot: selected || hovered;
-    property <length> depth: 4px;
-    property <length> lift: selected ? -2px : hovered ? -2px : 0px;
-    animate lift { duration: Theme.dur-med; easing: ease-out; }
 
     width: 280px;
-    height: 260px;
-    background: transparent;
-
-    // hard shadow block (6px purple when selected, 4px ink otherwise)
-    shadow := Rectangle {
-        x: root.depth + (root.selected ? 2px : 0px);
-        y: root.depth + (root.selected ? 2px : 0px);
-        width: root.width - root.depth - (root.selected ? 2px : 0px);
-        height: root.height - root.depth - (root.selected ? 2px : 0px);
-        border-radius: Theme.radius-tile;
-        background: root.hot ? Theme.brand-purple : Theme.brand-ink;
-        animate background { duration: Theme.dur-fast; }
+    height: 190px;
+    border-radius: Theme.radius-tile;
+    background: Theme.card-bg;
+    border-width: Theme.hairline;
+    border-color: root.selected ? Theme.edge-strong : root.hovered ? Theme.hover-border : Theme.glass-border;
+    clip: true;
+    animate background, border-color { duration: Theme.dur-fast; }
+    // selected: faint accent wash; hovered: slightly brighter glass
+    if root.selected: Rectangle {
+        background: Theme.accent.with-alpha(0.08);
+    }
+    if root.hovered && !root.selected: Rectangle {
+        background: Theme.surface-up;
     }
 
-    face := Rectangle {
-        y: root.lift;
-        width: root.width - root.depth;
-        height: root.height - root.depth;
-        border-radius: Theme.radius-tile;
-        background: root.block-color;
-        border-width: 2px;
-        border-color: root.hot ? Theme.hover-border : Theme.brand-ink;
-        clip: true;
-        animate border-color { duration: Theme.dur-fast; }
+    GlassSheen {
+        width: 100%;
+        height: 100%;
+        radius: root.border-radius;
+    }
 
-        // big ghost monogram (flat pixel glyph, top right)
-        Text {
-            x: parent.width - self.width + 6px;
-            y: -10px;
-            text: Util.initial(root.inst.name);
-            font-family: Theme.font-pixel;
-            font-size: Theme.pix(96px);
-            color: root.glyph-color;
-            opacity: 0.38;
-        }
-        // version watermark (flat pixel glyph, above the caption band)
-        Text {
-            x: 14px;
-            y: caption.y - self.height - 6px;
-            text: root.inst.version;
-            font-family: Theme.font-pixel;
-            font-size: Theme.pix(32px);
-            color: root.glyph-color;
-            opacity: 0.45;
-        }
-        // ---- header row (inset by the 2px border) ----
+    // instance hue: a faint wash over the glass + a colour strip along the top
+    Rectangle {
+        background: @linear-gradient(180deg, Theme.hsla(root.tile-hue, 0.5, 0.5, 0.16) 0%, transparent 55%);
+    }
+    Rectangle {
+        y: 0;
+        height: 3px;
+        background: @linear-gradient(90deg, transparent 0%, Theme.hsla(root.tile-hue, 0.6, 0.55, root.hot ? 0.9 : 0.6) 18%, Theme.hsla(root.tile-hue, 0.6, 0.55, root.hot ? 0.9 : 0.6) 82%, transparent 100%);
+    }
+
+    VerticalLayout {
+        padding: Theme.space-4;
+        spacing: Theme.space-2;
+        alignment: start;
         HorizontalLayout {
-            x: 2px;
-            y: 2px;
-            width: parent.width - 4px;
-            height: 44px;
-            padding-left: Theme.space-3;
-            padding-right: Theme.space-3;
-            spacing: Theme.space-2;
-            alignment: space-between;
-            HorizontalLayout {
-                spacing: Theme.space-2;
-                VerticalLayout {
-                    alignment: center;
-                    LoaderBadge { loader: root.inst.loader; version: root.inst.version; size: LoaderBadgeSize.sm; }
+            spacing: Theme.space-3;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: Theme.radius-md;
+                    background: Theme.hsla(root.tile-hue, 0.35, 0.35, 0.35);
+                    border-width: Theme.hairline;
+                    border-color: Theme.border-solid;
+                    clip: true;
+                    if root.inst.has-icon: Image { width: 100%; height: 100%; source: root.inst.icon; image-fit: cover; image-rendering: pixelated; }
+                    if !root.inst.has-icon: Text {
+                        text: Util.initial(root.inst.name);
+                        font-size: Theme.text-xl;
+                        font-weight: 700;
+                        color: Theme.hsla(root.tile-hue, 0.6, Theme.dark ? 0.72 : 0.4, 1);
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
                 }
-                if Shell.show-advanced && root.inst.aot-cache-exists: VerticalLayout {
-                    alignment: center;
-                    Badge { text: "⚡ AOT"; variant: BadgeVariant.ok; }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 3px;
+                horizontal-stretch: 1;
+                min-width: 0;
+                Text {
+                    text: root.inst.name;
+                    color: Theme.text;
+                    font-size: Theme.text-base;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    LoaderBadge { loader: root.inst.loader; version: root.inst.version; size: LoaderBadgeSize.sm; }
                 }
             }
             if root.running: VerticalLayout {
                 alignment: center;
                 Rectangle {
-                    width: 10px;
-                    height: 10px;
-                    background: #22c55e;
-                    border-width: 2px;
-                    border-color: #07021a;
+                    width: 9px;
+                    height: 9px;
+                    border-radius: 4.5px;
+                    background: Theme.accent-green;
                 }
             }
         }
-
-        // ---- caption band (flat ink block under the colour block) ----
-        // A vertical layout stacks the rule and the text, so the loader-hue
-        // rule can never land on the instance name.
-        caption := Rectangle {
-            x: 2px;
-            y: parent.height - self.height - 2px;
-            width: parent.width - 4px;
-            height: capcol.preferred-height;
-            background: #07021a;
-            capcol := VerticalLayout {
-                padding: 0px;
-                spacing: 0px;
-                // loader-hue rule on the caption's top edge, gold when hot
-                Rectangle {
-                    height: 3px;
-                    background: root.hot ? Theme.gold : root.tile-accent;
-                }
-                VerticalLayout {
-                    width: parent.width;
-                    padding-left: Theme.space-3;
-                    padding-right: Theme.space-3;
-                    padding-top: Theme.space-2;
-                    padding-bottom: Theme.space-3;
-                    spacing: Theme.space-2;
-                    alignment: end;
-                    HorizontalLayout {
-                        spacing: Theme.space-2;
-                        alignment: start;
-                        TileChip { text: Util.format-memory(root.inst.memory-mb > 0 ? root.inst.memory-mb : 3072); }
-                        if root.inst.mod-count > 0: TileChip {
-                            text: T.tr2("home.tileModsActive", "enabled", root.inst.enabled-mod-count, "total", root.inst.mod-count);
-                        }
-                    }
-                    Text {
-                        text: root.inst.name;
-                        color: #ffffff;
-                        font-size: Theme.text-lg;
-                        font-weight: 700;
-                        overflow: elide;
-                    }
-                    Text {
-                        text: T.tr("home.tileDoubleClickHint");
-                        color: root.hot ? Theme.gold : #d8cdf5;
-                        font-size: 11px;
-                        font-weight: 500;
-                        overflow: elide;
-                    }
-                }
+        Rectangle { height: 2px; }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            TileChip { text: Util.format-memory(root.inst.memory-mb > 0 ? root.inst.memory-mb : 3072); }
+            if root.inst.mod-count > 0: TileChip {
+                text: T.tr2("home.tileModsActive", "enabled", root.inst.enabled-mod-count, "total", root.inst.mod-count);
             }
+            if Shell.show-advanced && root.inst.aot-cache-exists: TileChip { text: "⚡ AOT"; }
+        }
+        Rectangle { horizontal-stretch: 1; vertical-stretch: 1; }
+        Text {
+            text: root.selected ? T.tr("home.tileSelected") : T.tr("home.tileDoubleClickHint");
+            color: root.selected ? Theme.accent-bright : Theme.muted;
+            font-size: 11px;
+            font-weight: 500;
+            overflow: elide;
         }
     }
 
@@ -207,71 +174,49 @@ export component HorizonTile inherits Rectangle {
 }
 
 
-/// "+ Crear Nueva Instancia" end tile (2px border, gold on hover).
+/// "+ Crear Nueva Instancia" end tile (glass well, accent on hover).
 export component AddTile inherits Rectangle {
     callback clicked();
     property <bool> hovered: t.has-hover;
-    property <length> lift: hovered ? -2px : 0px;
-    property <length> depth: 4px;
-    animate lift { duration: Theme.dur-med; easing: ease-out; }
     width: 280px;
-    height: 260px;
-    background: transparent;
-
-    // hard shadow
-    Rectangle {
-        x: root.depth;
-        y: root.depth;
-        width: root.width - root.depth;
-        height: root.height - root.depth;
-        border-radius: Theme.radius-tile;
-        background: root.hovered ? Theme.brand-purple : Theme.brand-ink;
-        animate background { duration: Theme.dur-fast; }
-    }
-    face := Rectangle {
-        y: root.lift;
-        width: root.width - root.depth;
-        height: root.height - root.depth;
-        border-radius: Theme.radius-tile;
-        background: Theme.card-bg-soft;
-        border-width: 2px;
-        border-color: root.hovered ? Theme.hover-border : Theme.border-solid;
-        animate border-color, background { duration: Theme.dur-fast; }
-        VerticalLayout {
+    height: 190px;
+    border-radius: Theme.radius-tile;
+    background: root.hovered ? Theme.surface-up : Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: root.hovered ? Theme.hover-border : Theme.border-solid;
+    animate border-color, background { duration: Theme.dur-fast; }
+    VerticalLayout {
+        alignment: center;
+        spacing: Theme.space-3;
+        HorizontalLayout {
             alignment: center;
-            spacing: Theme.space-3;
-            HorizontalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 48px;
-                    height: 48px;
-                    border-radius: Theme.radius-md;
-                    background: root.hovered ? Theme.gold : Theme.card-bg;
-                    border-width: 2px;
-                    border-color: root.hovered ? Theme.brand-ink : Theme.border-solid;
-                    Text {
-                        text: "+";
-                        font-family: Theme.font-pixel;
-                        font-size: Theme.pix(24px);
-                        color: root.hovered ? Theme.on-gold : Theme.muted-strong;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: Theme.radius-pill;
+                background: root.hovered ? Theme.accent.with-alpha(0.16) : Theme.card-bg;
+                border-width: Theme.hairline;
+                border-color: root.hovered ? Theme.edge-strong : Theme.border-solid;
+                Icon {
+                    data: Icons.plus;
+                    size: 20px;
+                    weight: 2.2;
+                    color: root.hovered ? Theme.accent-bright : Theme.muted;
                 }
             }
-            Text {
-                text: T.tr("home.tileCreateNew");
-                color: Theme.text;
-                font-size: Theme.text-base;
-                font-weight: 700;
-                horizontal-alignment: center;
-            }
-            Text {
-                text: T.tr("home.tileCreateNewHint");
-                color: Theme.muted;
-                font-size: Theme.text-xs;
-                horizontal-alignment: center;
-            }
+        }
+        Text {
+            text: T.tr("home.tileCreateNew");
+            color: Theme.text;
+            font-size: Theme.text-base;
+            font-weight: 600;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: T.tr("home.tileCreateNewHint");
+            color: Theme.muted;
+            font-size: Theme.text-xs;
+            horizontal-alignment: center;
         }
     }
     t := TouchArea {
@@ -282,23 +227,21 @@ export component AddTile inherits Rectangle {
 
 component SkeletonTile inherits Rectangle {
     width: 280px;
-    height: 260px;
+    height: 190px;
     border-radius: Theme.radius-tile;
     background: Theme.card-bg-soft;
-    border-width: 2px;
+    border-width: Theme.hairline;
     border-color: Theme.border-solid;
 }
 
 component EmptyRail inherits Rectangle {
     callback create();
     border-radius: Theme.radius-lg;
-    background: Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: Theme.border-solid;
-    drop-shadow-color: Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: Theme.shadow-md-x;
-    drop-shadow-offset-y: Theme.shadow-md-y;
+    background: Theme.card-bg;
+    border-width: Theme.hairline;
+    border-color: Theme.glass-border;
+    clip: true;
+    GlassSheen { width: 100%; height: 100%; radius: root.border-radius; }
     min-height: 280px;
     HorizontalLayout {
         padding-left: Theme.space-8;
@@ -311,11 +254,19 @@ component EmptyRail inherits Rectangle {
             HorizontalLayout {
                 alignment: center;
                 padding-bottom: Theme.space-1;
-                Emoji { char: "🎮"; size: 48px; }
+                Rectangle {
+                    width: 56px;
+                    height: 56px;
+                    border-radius: Theme.radius-pill;
+                    background: Theme.card-bg-soft;
+                    border-width: Theme.hairline;
+                    border-color: Theme.border-solid;
+                    Icon { data: Icons.package; size: 24px; color: Theme.muted; }
+                }
             }
             McTitle {
                 text: T.tr("home.noInstancesTitle");
-                font-size: 32px;
+                font-size: 28px;
                 horizontal-alignment: center;
             }
             HorizontalLayout {
@@ -343,66 +294,49 @@ component EmptyRail inherits Rectangle {
     }
 }
 
+/// The instances wrap: tiles in rows of ~280px (was a horizontal rail; the
+/// page is now dedicated to instances so a grid reads better than a rail).
 export component HorizonRail inherits Rectangle {
     callback open-wizard();
     property <int> count: AppState.instances.length;
     property <bool> loading: !AppState.instances-loaded && count == 0;
-    // rail padding 16px 40px inside a 16px-padded wrapper
-    property <length> content-w: count * (280px + Theme.space-6) + 280px + 80px;
-    property <bool> overflowing: content-w > root.width + 8px;
+    property <int> cols: max(1, floor((root.width + Theme.space-4) / (280px + Theme.space-4)));
+    property <length> cw: (root.width - (root.cols - 1) * Theme.space-4) / root.cols;
+    property <int> rows: ceil((root.count + 1) / root.cols);
+    property <length> tile-h: 190px;
 
-    height: count == 0 && !loading ? 280px + 32px + 32px : 260px + 64px;
+    height: root.loading ? root.tile-h
+        : root.count == 0 ? 344px
+        : root.rows * root.tile-h + max(0, root.rows - 1) * Theme.space-4;
 
-    if root.loading: HorizontalLayout {
-        padding-left: 40px;
-        padding-top: 32px;
-        padding-bottom: 32px;
-        spacing: Theme.space-6;
-        alignment: start;
-        SkeletonTile { }
-        SkeletonTile { }
-        SkeletonTile { }
-        SkeletonTile { }
+    if root.loading: grid-load := Rectangle {
+        for c in [0, 1, 2, 3]: SkeletonTile {
+            x: mod(c, root.cols) * (root.cw + Theme.space-4);
+            width: root.cw;
+        }
     }
 
     if !root.loading && root.count == 0: HorizontalLayout {
-        padding-left: Theme.space-6;
-        padding-right: Theme.space-6;
-        padding-top: Theme.space-8;
-        padding-bottom: Theme.space-8;
         EmptyRail { create => { root.open-wizard(); } }
     }
 
-    if !root.loading && root.count > 0: rail := Rectangle {
-        clip: true;
-        property <length> max-off: max(0px, root.content-w - self.width);
-        property <length> off: 0px;
-        animate off { duration: Theme.dur-fast; easing: ease-out; }
-        // vertical wheel -> horizontal scroll (only when the rail overflows; tiles reject wheel events)
-        TouchArea {
-            scroll-event(e) => {
-                if !root.overflowing { return reject; }
-                let d = abs(e.delta-y / 1px) > abs(e.delta-x / 1px) ? e.delta-y : e.delta-x;
-                rail.off = clamp(rail.off - d * 1.5, 0px, rail.max-off);
-                return accept;
-            }
+    if !root.loading && root.count > 0: Rectangle {
+        for inst[i] in AppState.instances: HorizonTile {
+            x: mod(i, root.cols) * (root.cw + Theme.space-4);
+            y: floor(i / root.cols) * (root.tile-h + Theme.space-4);
+            width: root.cw;
+            height: root.tile-h;
+            inst: inst;
+            selected: inst.name == HomeBridge.selected-instance;
+            select => { HomeBridge.select-instance(inst.name); }
+            open => { HomeBridge.open-instance(inst.name); }
         }
-        HorizontalLayout {
-            x: -rail.off;
-            width: max(parent.width, root.content-w);
-            padding-left: 40px;
-            padding-right: 40px;
-            padding-top: 32px;
-            padding-bottom: 32px;
-            spacing: Theme.space-6;
-            alignment: start;
-            for inst in AppState.instances: HorizonTile {
-                inst: inst;
-                selected: inst.name == HomeBridge.selected-instance;
-                select => { HomeBridge.select-instance(inst.name); }
-                open => { HomeBridge.open-instance(inst.name); }
-            }
-            AddTile { clicked => { root.open-wizard(); } }
+        AddTile {
+            x: mod(root.count, root.cols) * (root.cw + Theme.space-4);
+            y: floor(root.count / root.cols) * (root.tile-h + Theme.space-4);
+            width: root.cw;
+            height: root.tile-h;
+            clicked => { root.open-wizard(); }
         }
     }
 }

@@ -1,44 +1,39 @@
-// TopChrome — the poster header of espectral.uhce.top: always the purple
-// brand bar #0C0626 with a 4px gold rule underneath, in both themes. It sets
-// its own dark colours (Bar), so its contents read the same in light mode.
+// TopChrome — no header bar: the logo + pixel wordmark on the left, the
+// navigation as a floating glass pill in the centre (Inicio · Mods · Cuenta ·
+// settings), the update CTA and the account chip on the right. Everything
+// sits on the backdrop glows; the page scrolls underneath.
 // The account popover itself is owned by account-wardrobe
 // (pages/account-wardrobe/account-popover.slint) and placed by app.slint.
+// The command palette has no button: Ctrl+K or "/" opens it.
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
 import { Router, Page, AppState, Shell } from "../state.slint";
 import { Icon, Icons } from "../widgets/icon.slint";
-import { Kbd, ClientLockup } from "../widgets/badge.slint";
+import { Wordmark } from "../widgets/badge.slint";
+import { GlassSheen } from "../widgets/card.slint";
 import { MonogramTile, MonogramShape } from "../widgets/monogram.slint";
 
-/// The header's fixed dark palette (does not follow the theme).
-global Bar {
-    out property <color> text: #f6f1ff;
-    out property <color> muted: #b7a6e8;
-    out property <color> chip: #1f1252;
-    out property <color> chip-hover: #2a1a66;
-    out property <color> border: #3a2488;
-    out property <color> gold: #ffd700;
-    out property <color> active-bg: #3b2a12;
-}
-
-/// Text nav pill ("Inicio · Servidores · …"), gold when current.
+/// One entry of the navigation pill; the current page gets a lit glass chip.
 component NavLink inherits Rectangle {
     in property <string> label;
     in property <bool> active;
     callback clicked();
     property <bool> hovered: ta.has-hover;
-    height: 34px;
-    min-width: label-text.preferred-width + 24px;
-    preferred-width: label-text.preferred-width + 24px;
+    height: 32px;
+    min-width: label-text.preferred-width + 28px;
+    preferred-width: label-text.preferred-width + 28px;
     horizontal-stretch: 0;
     border-radius: Theme.radius-pill;
-    background: active ? Bar.active-bg : transparent;
+    background: active ? (Theme.dark ? rgba(255, 255, 255, 0.09) : rgba(0, 0, 0, 0.07)) : hovered ? Theme.card-bg-soft : transparent;
+    border-width: active ? Theme.hairline : 0px;
+    border-color: Theme.edge;
+    animate background { duration: Theme.dur-fast; }
     label-text := Text {
         text: root.label;
         font-size: Theme.text-sm;
-        font-weight: 600;
-        color: root.active || root.hovered ? Bar.gold : Bar.text;
+        font-weight: root.active ? 600 : 500;
+        color: root.active ? Theme.text : root.hovered ? Theme.text : Theme.muted;
         horizontal-alignment: center;
         vertical-alignment: center;
         animate color { duration: Theme.dur-fast; }
@@ -49,19 +44,19 @@ component NavLink inherits Rectangle {
     }
 }
 
+/// Small square glass button (settings gear, theme toggle).
 component ChromeSquare inherits Rectangle {
     callback clicked();
     in property <string> tooltip;
-    /// Drawn on the purple header (fixed dark colours) instead of the page.
-    in property <bool> on-bar: false;
+    in property <bool> active;
     out property <bool> hovered: ta.has-hover;
-    width: 34px;
-    height: 34px;
-    border-radius: Theme.radius-md;
-    background: on-bar ? (hovered ? Bar.chip-hover : Bar.chip) : (hovered ? Theme.surface-up : Theme.surface);
-    border-width: 2px;
-    border-color: hovered ? (on-bar ? Bar.gold : Theme.hover-border) : (on-bar ? Bar.border : Theme.border-solid);
-    animate background, border-color { duration: Theme.dur-fast; }
+    width: 32px;
+    height: 32px;
+    border-radius: Theme.radius-pill;
+    background: active ? (Theme.dark ? rgba(255, 255, 255, 0.09) : rgba(0, 0, 0, 0.07)) : hovered ? Theme.card-bg-soft : transparent;
+    border-width: active ? Theme.hairline : 0px;
+    border-color: Theme.edge;
+    animate background { duration: Theme.dur-fast; }
     @children
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -69,292 +64,226 @@ component ChromeSquare inherits Rectangle {
     }
 }
 
-/// ThemeToggle.svelte (moon in dark, sun in light).
+/// Theme switch (moon in dark, sun in light). Used by Settings.
 export component ThemeToggle inherits ChromeSquare {
     tooltip: Theme.dark ? T.tr("themeToggle.toLight") : T.tr("themeToggle.toDark");
     clicked => { Shell.toggle-theme(); }
     Icon {
         data: Theme.dark ? Icons.moon : Icons.sun;
         size: 16px;
-        color: root.hovered ? (root.on-bar ? Bar.gold : Theme.hover-border) : (root.on-bar ? Bar.muted : Theme.muted-strong);
+        color: root.hovered ? Theme.accent-bright : Theme.muted-strong;
     }
 }
 
-/// LanguageToggle.svelte (pill variant: shows the TARGET language).
-export component LanguageToggle inherits ChromeSquare {
-    tooltip: T.lang == "es" ? T.tr("lang.toEn") : T.tr("lang.toEs");
-    clicked => { Shell.toggle-language(); }
-    Text {
-        text: T.lang == "es" ? "EN" : "ES";
-        // G1: an 8px pixel label sits on 1-px strokes; body font below 16 physical px.
-        font-family: Theme.label-family(8px);
-        font-size: Theme.label-size(8px);
-        font-weight: 700;
-        color: root.hovered ? (root.on-bar ? Bar.gold : Theme.hover-border) : (root.on-bar ? Bar.text : Theme.muted-strong);
-        horizontal-alignment: center;
-        vertical-alignment: center;
+/// A glass pill container (navigation, account chip).
+component GlassPill inherits Rectangle {
+    in property <bool> hot;
+    border-radius: Theme.radius-pill;
+    background: Theme.chrome-bg;
+    border-width: Theme.hairline;
+    border-color: hot ? Theme.hover-border : Theme.glass-border;
+    drop-shadow-blur: Theme.shadow-sm-blur;
+    drop-shadow-offset-y: Theme.shadow-sm-y;
+    drop-shadow-color: Theme.shadow-sm-color;
+    clip: true;
+    animate border-color { duration: Theme.dur-fast; }
+    GlassSheen {
+        width: 100%;
+        height: 100%;
+        radius: root.height / 2;
     }
+    @children
 }
 
 export component TopChrome inherits Rectangle {
     height: Theme.topbar-height;
     background: Theme.topbar-bg;
 
-    // 4px gold rule (part of the bar's height)
-    Rectangle { y: parent.height - 4px; height: 4px; background: Theme.header-rule; }
-
-    HorizontalLayout {
-        padding-left: Theme.space-6;
-        padding-right: Theme.space-6;
-        padding-bottom: 4px;
-        spacing: 0px;
-
-        // ---- brand: logo + the site's "Espectral / Client vX.Y" lockup ----
-        brand := Rectangle {
-            horizontal-stretch: 0;
-            min-width: brand-row.preferred-width;
-            property <bool> hovered: brand-ta.has-hover;
-            brand-row := HorizontalLayout {
-                y: brand.hovered ? -1px : 0px;
-                spacing: Theme.space-3;
+    // ---- brand: logo + pixel wordmark (left) ----
+    brand := Rectangle {
+        x: Theme.space-6;
+        y: (root.height - self.height) / 2;
+        width: brand-row.preferred-width;
+        height: brand-row.preferred-height;
+        brand-row := HorizontalLayout {
+            spacing: Theme.space-3;
+            VerticalLayout {
                 alignment: center;
-                VerticalLayout {
-                    alignment: center;
-                    Image {
-                        width: 44px;
-                        height: 44px;
-                        // 96px copy: the 256px original aliases when drawn this small.
-                        source: @image-url("../assets/logo_circle_96.png");
-                        image-fit: contain;
-                    }
+                Image {
+                    width: 34px;
+                    height: 34px;
+                    // 96px copy: the 256px original aliases when drawn this small.
+                    source: @image-url("../assets/logo_circle_96.png");
+                    image-fit: contain;
                 }
-                ClientLockup { font-size: 16px; version: AppState.version-label; }
             }
-            brand-ta := TouchArea {
-                mouse-cursor: pointer;
+            if root.width >= 1000px: VerticalLayout {
+                alignment: center;
+                Wordmark { font-size: 16px; }
+            }
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { Router.navigate("#/"); }
+        }
+    }
+
+    // ---- navigation pill (centre) ----
+    nav := GlassPill {
+        width: nav-row.preferred-width;
+        height: 44px;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        nav-row := HorizontalLayout {
+            padding: 6px;
+            spacing: 2px;
+            NavLink {
+                label: T.tr("nav.home");
+                active: Router.page == Page.home || Router.page == Page.instances || Router.page == Page.instance;
                 clicked => { Router.navigate("#/"); }
             }
+            NavLink {
+                label: T.tr("nav.mods");
+                active: Router.page == Page.mods || Router.page == Page.versions || Router.page == Page.import;
+                clicked => { Router.navigate("#/mods"); }
+            }
+            NavLink {
+                label: T.tr("nav.account");
+                active: Router.page == Page.account;
+                clicked => { Router.navigate("#/account"); }
+            }
+            VerticalLayout {
+                alignment: center;
+                padding-left: 4px;
+                padding-right: 4px;
+                Rectangle { width: Theme.hairline; height: 16px; background: Theme.border-solid; }
+            }
+            ChromeSquare {
+                tooltip: T.tr("nav.settings");
+                active: Router.page == Page.settings || Router.page == Page.donations;
+                clicked => { Router.navigate("#/settings"); }
+                Icon {
+                    data: Icons.settings;
+                    size: 16px;
+                    color: parent.hovered || parent.active ? Theme.text : Theme.muted;
+                }
+            }
         }
+    }
 
-        // ---- nav: Inicio · Mods · Cuenta (Armario, Servidores and Cliente now
-        // live inside Cuenta / in-game via the Espectral Suite) ----
-        HorizontalLayout {
-            horizontal-stretch: 1;
+    // ---- actions (right): update CTA + account chip ----
+    actions := HorizontalLayout {
+        x: root.width - self.width - Theme.space-6;
+        y: (root.height - self.height) / 2;
+        width: self.preferred-width;
+        height: 44px;
+        spacing: Theme.space-2;
+
+        // Update CTA (renders only when a signed update exists): accent pill
+        if Shell.update-status != "idle": VerticalLayout {
             alignment: center;
-            spacing: Theme.space-1;
-            padding-left: Theme.space-4;
-            padding-right: Theme.space-4;
-            VerticalLayout {
-                alignment: center;
-                NavLink {
-                    label: T.tr("nav.home");
-                    active: Router.page == Page.home || Router.page == Page.instance;
-                    clicked => { Router.navigate("#/"); }
+            upd := Rectangle {
+                property <bool> busy: Shell.update-status != "available";
+                height: 32px;
+                min-width: upd-row.preferred-width;
+                border-radius: Theme.radius-pill;
+                background: upd-ta.has-hover && !upd.busy ? Theme.btn-fill-hover : Theme.btn-fill;
+                clip: true;
+                if upd.busy: Rectangle {
+                    x: 0;
+                    width: parent.width * Shell.update-progress;
+                    background: Theme.btn-fill-hover;
                 }
-            }
-            VerticalLayout {
-                alignment: center;
-                NavLink {
-                    label: T.tr("nav.mods");
-                    active: Router.page == Page.mods || Router.page == Page.versions || Router.page == Page.import;
-                    clicked => { Router.navigate("#/mods"); }
+                upd-row := HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: Theme.space-2;
+                    if !upd.busy: VerticalLayout {
+                        alignment: center;
+                        Icon { data: Icons.download; size: 14px; color: Theme.btn-ink; }
+                    }
+                    Text {
+                        text: !upd.busy ? T.tr1("update.badge", "version", Shell.update-version)
+                            : Shell.update-status == "downloading" ? (Shell.update-progress > 0 ? T.tr1("update.progress", "pct", round(Shell.update-progress * 100)) : T.tr("update.working"))
+                            : T.tr("update.installing");
+                        font-size: Theme.text-xs;
+                        font-weight: 700;
+                        color: Theme.btn-ink;
+                        vertical-alignment: center;
+                    }
                 }
-            }
-            VerticalLayout {
-                alignment: center;
-                NavLink {
-                    label: T.tr("nav.account");
-                    active: Router.page == Page.account;
-                    clicked => { Router.navigate("#/account"); }
+                upd-ta := TouchArea {
+                    enabled: !upd.busy;
+                    mouse-cursor: pointer;
+                    clicked => { Shell.install-update(); }
                 }
             }
         }
 
-        // ---- actions ----
-        HorizontalLayout {
-            horizontal-stretch: 0;
-            spacing: Theme.space-2;
-            alignment: end;
-
-            // Update CTA (renders only when a signed update exists): gold pill
-            if Shell.update-status != "idle": VerticalLayout {
-                alignment: center;
-                upd := Rectangle {
-                    property <bool> busy: Shell.update-status != "available";
-                    height: 32px;
-                    min-width: upd-row.preferred-width;
-                    border-radius: Theme.radius-pill;
-                    background: upd-ta.has-hover && !upd.busy ? Theme.gold-hover : Theme.gold;
-                    clip: true;
-                    if upd.busy: Rectangle {
-                        x: 0;
-                        width: parent.width * Shell.update-progress;
-                        background: Theme.gold-hover;
-                    }
-                    upd-row := HorizontalLayout {
-                        padding-left: 14px;
-                        padding-right: 14px;
-                        spacing: Theme.space-2;
-                        if !upd.busy: VerticalLayout {
-                            alignment: center;
-                            Icon { data: Icons.download; size: 14px; color: Theme.on-gold; }
+        // Account chip: glass pill with the avatar
+        chip := GlassPill {
+            property <bool> active: Shell.account-popover-open;
+            hot: chip-ta.has-hover || self.active;
+            min-width: chip-row.preferred-width;
+            chip-row := HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 14px;
+                spacing: Theme.space-2;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 30px;
+                        height: 30px;
+                        border-radius: 15px;
+                        background: Theme.card-bg-soft;
+                        if AppState.has-active-account: MonogramTile {
+                            name: AppState.active-account.username;
+                            hue: AppState.active-account.monogram-hue;
+                            avatar: AppState.active-account.avatar;
+                            has-avatar: AppState.active-account.has-avatar;
+                            size: 30px;
+                            shape: MonogramShape.circle;
                         }
-                        Text {
-                            text: !upd.busy ? T.tr1("update.badge", "version", Shell.update-version)
-                                : Shell.update-status == "downloading" ? (Shell.update-progress > 0 ? T.tr1("update.progress", "pct", round(Shell.update-progress * 100)) : T.tr("update.working"))
-                                : T.tr("update.installing");
-                            font-size: Theme.text-xs;
-                            font-weight: 700;
-                            color: Theme.on-gold;
-                            vertical-alignment: center;
+                        if !AppState.has-active-account: Icon {
+                            data: Icons.plus;
+                            size: 14px;
+                            color: Theme.accent;
                         }
-                    }
-                    upd-ta := TouchArea {
-                        enabled: !upd.busy;
-                        mouse-cursor: pointer;
-                        clicked => { Shell.install-update(); }
+                        Rectangle {
+                            x: parent.width - 8px;
+                            y: parent.height - 8px;
+                            width: 9px;
+                            height: 9px;
+                            border-radius: 4.5px;
+                            border-width: 2px;
+                            border-color: Theme.surface-solid;
+                            background: !AppState.has-active-account ? Theme.muted : AppState.active-account.token-kind == "msa" ? Theme.msa-blue : Theme.accent-green;
+                        }
                     }
                 }
-            }
-
-            // Command palette trigger
-            VerticalLayout {
-                alignment: center;
-                cmd := Rectangle {
-                    property <bool> hovered: cmd-ta.has-hover;
-                    height: 34px;
-                    min-width: cmd-row.preferred-width;
-                    border-radius: Theme.radius-md;
-                    background: self.hovered ? Bar.chip-hover : Bar.chip;
-                    border-width: 2px;
-                    border-color: self.hovered ? Bar.gold : Bar.border;
-                    animate background, border-color { duration: Theme.dur-fast; }
-                    cmd-row := HorizontalLayout {
-                        padding-left: 10px;
-                        padding-right: 10px;
-                        spacing: Theme.space-2;
-                        VerticalLayout {
-                            alignment: center;
-                            Icon { data: Icons.search; size: 14px; color: cmd.hovered ? Bar.gold : Bar.muted; }
-                        }
-                        if root.width >= 1100px: Text {
-                            text: T.tr("command.action");
-                            font-size: Theme.text-xs;
-                            font-weight: 600;
-                            color: cmd.hovered ? Bar.text : Bar.muted;
-                            vertical-alignment: center;
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            Kbd { text: "/"; accent: true; }
-                        }
-                    }
-                    cmd-ta := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { Shell.palette-open = true; }
-                    }
+                Text {
+                    text: AppState.has-active-account ? AppState.active-account.username : T.tr("nav.noAccount");
+                    font-size: Theme.text-sm;
+                    font-weight: 600;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    max-width: 150px;
                 }
-            }
-
-            VerticalLayout {
-                alignment: center;
-                LanguageToggle { on-bar: true; }
-            }
-            VerticalLayout {
-                alignment: center;
-                ThemeToggle { on-bar: true; }
-            }
-            VerticalLayout {
-                alignment: center;
-                ChromeSquare {
-                    on-bar: true;
-                    tooltip: T.tr("nav.settings");
-                    clicked => { Router.navigate("#/settings"); }
+                VerticalLayout {
+                    alignment: center;
                     Icon {
-                        data: Icons.settings;
-                        size: 16px;
-                        color: parent.hovered || Router.page == Page.settings ? Bar.gold : Bar.muted;
+                        data: Icons.chevron-down;
+                        size: 12px;
+                        color: Theme.muted;
+                        transform-rotation: chip.active ? 180deg : 0deg;
+                        animate transform-rotation { duration: Theme.dur-fast; }
                     }
                 }
             }
-
-            // Account chip: gold pill (the site's "Discord" button slot)
-            VerticalLayout {
-                alignment: center;
-                chip := Rectangle {
-                    property <bool> hovered: chip-ta.has-hover;
-                    property <bool> active: Shell.account-popover-open;
-                    height: 38px;
-                    min-width: chip-row.preferred-width;
-                    border-radius: 19px;
-                    background: self.hovered || self.active ? Theme.gold-hover : Theme.gold;
-                    animate background { duration: Theme.dur-fast; }
-                    chip-row := HorizontalLayout {
-                        padding-left: 4px;
-                        padding-right: 12px;
-                        spacing: Theme.space-2;
-                        VerticalLayout {
-                            alignment: center;
-                            Rectangle {
-                                width: 30px;
-                                height: 30px;
-                                border-radius: 15px;
-                                background: Bar.chip;
-                                border-width: 2px;
-                                border-color: Theme.on-gold;
-                                if AppState.has-active-account: MonogramTile {
-                                    name: AppState.active-account.username;
-                                    hue: AppState.active-account.monogram-hue;
-                                    avatar: AppState.active-account.avatar;
-                                    has-avatar: AppState.active-account.has-avatar;
-                                    size: 30px;
-                                    shape: MonogramShape.circle;
-                                }
-                                if !AppState.has-active-account: Text {
-                                    text: "+";
-                                    font-family: Theme.font-pixel;
-                                    font-size: Theme.pix(16px);
-                                    color: Bar.gold;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
-                                Rectangle {
-                                    x: parent.width - 8px;
-                                    y: parent.height - 8px;
-                                    width: 9px;
-                                    height: 9px;
-                                    border-radius: 4.5px;
-                                    border-width: 2px;
-                                    border-color: Theme.on-gold;
-                                    background: !AppState.has-active-account ? Bar.muted : AppState.active-account.token-kind == "msa" ? Theme.msa-blue : Theme.mode-uhc;
-                                }
-                            }
-                        }
-                        Text {
-                            text: AppState.has-active-account ? AppState.active-account.username : T.tr("nav.noAccount");
-                            font-size: Theme.text-xs;
-                            font-weight: 700;
-                            color: Theme.on-gold;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            max-width: 150px;
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            Icon {
-                                data: Icons.chevron-down;
-                                size: 12px;
-                                color: Theme.on-gold;
-                                transform-rotation: chip.active ? 180deg : 0deg;
-                                animate transform-rotation { duration: Theme.dur-fast; }
-                            }
-                        }
-                    }
-                    chip-ta := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { Shell.account-popover-open = !Shell.account-popover-open; }
-                    }
-                }
+            chip-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Shell.account-popover-open = !Shell.account-popover-open; }
             }
         }
     }

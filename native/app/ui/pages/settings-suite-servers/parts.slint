@@ -1,13 +1,13 @@
 // OWNER: settings-suite-servers agent. Small building blocks shared by the
 // Settings page (not exported to other groups).
 //
-// Poster look: flat blocks, 2px borders, hard offset shadows, pixel-font card
-// titles (16px, title colour). No glass, glow or gradient.
+// Glass look: translucent wells, 1px hairlines, warm-white titles; the accent
+// marks only the selected state.
 
 import { Theme, Icon, TextField, McTitle } from "../../widgets.slint";
 
-/// `.preset-chip`: flat pill, 2px border; the active one is a gold pill with
-/// purple ink and a hard 3px ink shadow.
+/// `.preset-chip`: glass pill; the active one is an accent-tinted pill with a
+/// strong accent edge (no solid gold, no shadow).
 export component PresetChip inherits Rectangle {
     in property <string> text;
     in property <bool> active;
@@ -17,20 +17,16 @@ export component PresetChip inherits Rectangle {
     min-width: lbl.preferred-width + 24px + 4px;
     horizontal-stretch: 0;
     border-radius: self.height / 2;
-    background: active ? Theme.gold : ta.has-hover ? Theme.surface-up-solid : Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: active ? Theme.brand-ink : ta.has-hover ? Theme.hover-border : Theme.border-solid;
-    drop-shadow-color: active ? Theme.brand-purple : transparent;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 3px;
-    drop-shadow-offset-y: 3px;
+    background: active ? Theme.accent.with-alpha(0.14) : ta.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: active ? Theme.edge-strong : ta.has-hover ? Theme.hover-border : Theme.border-solid;
     opacity: enabled ? 1 : 0.5;
     animate background, border-color { duration: Theme.dur-fast; }
     lbl := Text {
         text: root.text;
         font-size: 12.8px;
         font-weight: root.active ? 700 : 500;
-        color: root.active ? Theme.on-gold : ta.has-hover ? Theme.text : Theme.muted;
+        color: root.active ? Theme.accent-bright : ta.has-hover ? Theme.text : Theme.muted;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -49,8 +45,7 @@ component WarnBadge inherits Rectangle {
     horizontal-stretch: 0;
     border-radius: self.height / 2;
     background: Theme.accent-alt.with-alpha(0.14);
-    border-width: 2px;
-    border-color: Theme.accent-alt.with-alpha(0.5);
+    border-width: Theme.hairline;
     row := HorizontalLayout {
         padding-left: 8px;
         padding-right: 8px;
@@ -76,8 +71,8 @@ component WarnBadge inherits Rectangle {
     }
 }
 
-/// `.card-head`: pixel title (+ optional badge) and muted description on the
-/// left, slot on the right.
+/// `.card-head`: semibold title (+ optional badge) and muted description on
+/// the left, slot on the right.
 export component CardHead inherits HorizontalLayout {
     in property <string> title;
     in property <string> desc;
@@ -95,7 +90,7 @@ export component CardHead inherits HorizontalLayout {
                 text: root.title;
                 color: Theme.title-color;
                 font-family: Theme.font-title;
-                font-size: Theme.pix(16px);
+                font-size: Theme.text-base;
                 font-weight: 700;
                 line-height-factor: 1.25;
                 vertical-alignment: center;
@@ -117,7 +112,7 @@ export component CardHead inherits HorizontalLayout {
     @children
 }
 
-/// `.section-header`: h2 in the pixel font (24px, title colour) + muted description.
+/// `.section-header`: h2 + muted description.
 export component SectionHeader inherits VerticalLayout {
     in property <string> title;
     in property <string> desc;
@@ -149,9 +144,7 @@ export component InfoBox inherits Rectangle {
     in property <length> pad-y: 12px;
     in property <bool> top-icon: true;
     border-radius: Theme.radius-md;
-    background: Theme.card-bg-soft;
-    border-width: 2px;
-    border-color: Theme.border-solid;
+    border-width: Theme.hairline;
     inner := HorizontalLayout {
         padding-left: root.pad-x;
         padding-right: root.pad-x;

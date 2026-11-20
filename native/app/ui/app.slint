@@ -27,8 +27,12 @@ import { LoginGate } from "shell/login-gate.slint";
 
 // ---- page groups (each owned by one agent) ----
 import { HomePage } from "pages/home-instances/home.slint";
+import { InstancesPage } from "pages/home-instances/instances.slint";
 import { InstanceHubPage } from "pages/home-instances/instance-hub.slint";
 import { PipLogDrawer } from "pages/home-instances/pip-log.slint";
+import { InstanceWizardModal } from "pages/home-instances/wizard.slint";
+import { DryRunModal } from "pages/home-instances/modals.slint";
+import { MrpackModal } from "pages/library-mods/mrpack-modal.slint";
 import { VersionsPage } from "pages/library-mods/versions.slint";
 import { ImportPage } from "pages/library-mods/import.slint";
 import { ModsPage } from "pages/library-mods/mods.slint";
@@ -100,6 +104,7 @@ export component AppWindow inherits Window {
             height: parent.height - Theme.topbar-height;
 
             if Router.page == Page.home: HomePage { }
+            if Router.page == Page.instances: InstancesPage { }
             if Router.page == Page.instance: InstanceHubPage { }
             if Router.page == Page.versions: VersionsPage { }
             if Router.page == Page.import: ImportPage { }
@@ -131,6 +136,20 @@ export component AppWindow inherits Window {
                 x: parent.width - self.width - 16px;
                 y: Theme.topbar-height + 9px;
             }
+        }
+
+        // ---- home-instances modals: wizard / mrpack import / dry-run are
+        // global so Home, Instances and the palette can all open them. The
+        // layer has explicit geometry (like the page viewport) so the dialogs'
+        // window-size caps never feed back into the window's layout. ----
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            InstanceWizardModal { }
+            MrpackModal { }
+            DryRunModal { }
         }
 
         CommandPalette {

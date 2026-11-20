@@ -133,7 +133,10 @@
     "donations.unbans.third": "A partir del 3.º ban",
     "donations.unbans.thirdPrice": "30 USD",
     "donations.unbans.warning1": "La donación no brindará ningún futuro rango y será solo para quitar el ban. Los baneos permanentes pueden ser irrevocables o tener un costo mayor. Nos reservamos el derecho de aceptar cualquier donación.",
-    "donations.unbans.warning2": "Esta propuesta no se malentienda: es una forma de sacar provecho de gente que hace trampas. No proponemos un servidor pay-to-win. Nos reservamos el derecho de aceptar donaciones — baneos por toxicidad y reincidentes probablemente no puedan ser revocados."
+    "donations.unbans.warning2": "Esta propuesta no se malentienda: es una forma de sacar provecho de gente que hace trampas. No proponemos un servidor pay-to-win. Nos reservamos el derecho de aceptar donaciones — baneos por toxicidad y reincidentes probablemente no puedan ser revocados.",
+    "pav.heroKicker": "ESPECTRAL CLIENT NETWORK",
+    "pav.unbansBadge": "FAIR PLAY & RECOVERY",
+    "pav.wardrobeLink": "Equípalo en el Vestidor"
   },
   "en": {
     "pav.title": "Donations Pavilion",
@@ -269,6 +272,9 @@
     "donations.unbans.third": "From the 3rd ban on",
     "donations.unbans.thirdPrice": "30 USD",
     "donations.unbans.warning1": "The donation does not grant any future rank and is only to remove the ban. Permanent bans may be irrevocable or cost more. We reserve the right to accept any donation.",
-    "donations.unbans.warning2": "Don't get this wrong: it's a way to profit from cheaters. We are not proposing a pay-to-win server. We reserve the right to accept donations — bans for toxicity and repeat offenders probably cannot be revoked."
+    "donations.unbans.warning2": "Don't get this wrong: it's a way to profit from cheaters. We are not proposing a pay-to-win server. We reserve the right to accept donations — bans for toxicity and repeat offenders probably cannot be revoked.",
+    "pav.heroKicker": "ESPECTRAL CLIENT NETWORK",
+    "pav.unbansBadge": "FAIR PLAY & RECOVERY",
+    "pav.wardrobeLink": "Equip it in the Wardrobe"
   }
 }

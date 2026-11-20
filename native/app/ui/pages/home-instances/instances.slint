@@ -1,0 +1,54 @@
+// InstancesPage (#/instances) — every instance as a tile, with "new
+// instance" and "import modpack". Home keeps only the picker in its play bar;
+// this is where instances are browsed and managed.
+
+import { Theme, T, AppState, Shell, PageScaffold, McTitle, Btn, BtnVariant, Icons } from "../../widgets.slint";
+import { HorizonRail } from "horizon.slint";
+import { LibraryBridge } from "../library-mods/api.slint";
+
+export component InstancesPage inherits Rectangle {
+    PageScaffold {
+        width: root.width;
+        height: root.height;
+        content-padding: Theme.space-8;
+        content-padding-top: Theme.space-4;
+        content-padding-bottom: Theme.space-12;
+        spacing: Theme.space-6;
+
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                spacing: 2px;
+                McTitle { text: T.tr("home.instancesRailTitle"); font-size: 32px; }
+                Text {
+                    text: AppState.instances.length > 0 ? T.tr1("home.instancesSubtitle", "count", AppState.instances.length) : T.tr("home.instancesSubtitleEmpty");
+                    color: Theme.muted;
+                    font-size: Theme.text-sm;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    emoji: "📦";
+                    text: T.tr("home.importModpack");
+                    clicked => { LibraryBridge.mrpack-open = true; }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    icon: Icons.plus;
+                    text: T.tr("home.newInstance");
+                    clicked => { Shell.wizard-open = true; }
+                }
+            }
+        }
+
+        HorizonRail {
+            open-wizard => { Shell.wizard-open = true; }
+        }
+    }
+}

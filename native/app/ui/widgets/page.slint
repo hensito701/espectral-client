@@ -77,8 +77,8 @@ export component PageHeader inherits VerticalLayout {
         wrap: word-wrap;
     }
     if root.divider: Rectangle {
-        height: 18px;
-        Rectangle { y: 16px; height: 2px; background: Theme.border-solid; }
+        height: Theme.space-4;
+        Rectangle { y: self.height - Theme.hairline; height: Theme.hairline; background: Theme.border-solid; }
     }
 }
 

@@ -59,7 +59,9 @@
     "mods.exploreTitle": "Los más descargados",
     "mods.showMore": "Mostrar más",
     "mods.searchHint": "Busca mods compatibles con {loader} {version}",
-    "mods.viewDetails": "Ver detalles"
+    "mods.viewDetails": "Ver detalles",
+    "mods.perfPending": "{count} pendientes",
+    "mods.emptyHint": "Instala el conjunto de rendimiento o explora Modrinth para añadir mods."
   },
   "en": {
     "mods.title": "Mod Catalog",
@@ -121,6 +123,8 @@
     "mods.exploreTitle": "Most downloaded",
     "mods.showMore": "Show more",
     "mods.searchHint": "Search mods compatible with {loader} {version}",
-    "mods.viewDetails": "View details"
+    "mods.viewDetails": "View details",
+    "mods.perfPending": "{count} pending",
+    "mods.emptyHint": "Install the performance set or browse Modrinth to add mods."
   }
 }

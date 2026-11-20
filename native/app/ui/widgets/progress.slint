@@ -21,7 +21,7 @@ export component ProgressBar inherits VerticalLayout {
     in property <bool> show-value: false;
 
     property <float> pct: max > 0 ? clamp(value / max, 0, 1) : 0;
-    // Flat poster fill: one colour per tone (no gradient, no glow).
+    // Accent / tone fill on a hairline glass track.
     property <brush> fill: tone == ProgressTone.cyan ? Theme.accent-cyan
         : tone == ProgressTone.gold ? Theme.accent-gold
         : tone == ProgressTone.purple ? Theme.accent-purple
@@ -50,10 +50,10 @@ export component ProgressBar inherits VerticalLayout {
     }
 
     track := Rectangle {
-        height: root.thickness == ProgressThickness.sm ? 6px : root.thickness == ProgressThickness.lg ? 14px : 10px;
+        height: root.thickness == ProgressThickness.sm ? 6px : root.thickness == ProgressThickness.lg ? 12px : 8px;
         border-radius: self.height / 2;
         background: Theme.card-bg-soft;
-        border-width: 2px;
+        border-width: Theme.hairline;
         border-color: Theme.border-solid;
         clip: true;
 

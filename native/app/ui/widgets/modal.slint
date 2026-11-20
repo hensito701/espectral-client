@@ -21,11 +21,12 @@ import { Shell } from "../state.slint";
 import { IconBtn, Btn, BtnVariant } from "btn.slint";
 import { Icons } from "icon.slint";
 import { McTitle } from "badge.slint";
+import { GlassSheen } from "card.slint";
 
 export component ModalFooter inherits Rectangle {
     in property <LayoutAlignment> alignment: end;
-    // top divider
-    Rectangle { y: 0; height: 2px; background: Theme.border-solid; }
+    // top hairline
+    Rectangle { y: 0; height: Theme.hairline; background: Theme.border-solid; }
     HorizontalLayout {
         padding-top: Theme.space-4;
         padding-bottom: Theme.space-4;
@@ -54,6 +55,11 @@ export component Modal inherits Rectangle {
     // Fills its parent when placed outside a layout (direct child of the page's
     // root Rectangle, after the page content).
     background: Theme.backdrop;
+    // Fills its parent: app.slint mounts the global modals in a full-window
+    // layer with explicit geometry, so the card's caps below (which read the
+    // modal's size) never feed back into the window's layout constraints.
+    width: 100%;
+    height: 100%;
 
     changed open => {
         if open {
@@ -93,14 +99,19 @@ export component Modal inherits Rectangle {
             preferred-height: root.dialog-height > 0px ? root.dialog-height : body.preferred-height;
             border-radius: Theme.radius-lg;
             background: Theme.surface-solid;
-            border-width: 2px;
-            border-color: Theme.border-solid;
-            // hard 6px ink shadow (poster block, no blur)
-            drop-shadow-color: Theme.brand-ink;
-            drop-shadow-blur: 0px;
-            drop-shadow-offset-x: 6px;
-            drop-shadow-offset-y: 6px;
+            border-width: Theme.hairline;
+            border-color: Theme.glass-border;
+            // soft shadow below (floating layer)
+            drop-shadow-blur: Theme.shadow-lg-blur;
+            drop-shadow-offset-y: Theme.shadow-lg-y;
+            drop-shadow-color: Theme.shadow-lg-color;
             clip: true;
+
+            GlassSheen {
+                width: 100%;
+                height: 100%;
+                radius: Theme.radius-lg;
+            }
 
             // swallow clicks on the card
             TouchArea { }
@@ -139,7 +150,7 @@ export component Modal inherits Rectangle {
                             }
                         }
                     }
-                    Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border-solid; }
+                    Rectangle { y: parent.height - Theme.hairline; height: Theme.hairline; background: Theme.border-solid; }
                 }
                 @children
             }

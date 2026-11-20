@@ -31,21 +31,28 @@ component Radio inherits HorizontalLayout {
     spacing: Theme.space-1;
     opacity: enabled ? 1 : 0.5;
     VerticalLayout {
-        alignment: center;
-        Rectangle {
-            width: 14px;
-            height: 14px;
-            border-radius: 7px;
-            border-width: 2px;
-            border-color: root.checked ? Theme.brand-ink : Theme.muted;
-            background: root.checked ? Theme.gold : Theme.card-bg;
-            TouchArea {
-                enabled: root.enabled;
-                mouse-cursor: pointer;
-                clicked => { root.clicked(); }
+            alignment: center;
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border-width: Theme.hairline;
+                border-color: root.checked ? Theme.accent : Theme.muted;
+                if root.checked: Rectangle {
+                    x: 4px;
+                    y: 4px;
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: Theme.accent;
+                }
+                TouchArea {
+                    enabled: root.enabled;
+                    mouse-cursor: pointer;
+                    clicked => { root.clicked(); }
+                }
             }
         }
-    }
     Text {
         text: root.text;
         font-size: Theme.text-sm;
@@ -77,20 +84,15 @@ component Stage inherits VerticalLayout {
     }
     if root.source != "": HorizontalLayout {
         alignment: start;
-        // flat poster panel behind the 3D render (no glow, no radial floor);
-        // C4: the panel hugs the viewer and the column is start-aligned, so
-        // viewer sits left and the controls right, both top-aligned.
+        // glass panel behind the 3D render; the panel hugs the viewer and the
+        // column is start-aligned, so viewer sits left and controls right.
         Rectangle {
             width: stage-view.width + 2 * Theme.space-4;
             height: stage-view.height + 2 * Theme.space-4;
             background: Theme.card-bg-soft;
-            border-width: 2px;
+            border-width: Theme.hairline;
             border-color: Theme.border-solid;
             border-radius: Theme.radius-lg;
-            drop-shadow-color: Theme.brand-ink;
-            drop-shadow-blur: 0px;
-            drop-shadow-offset-x: 4px;
-            drop-shadow-offset-y: 4px;
             stage-view := SkinView {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
@@ -343,13 +345,9 @@ component SkinCard inherits Rectangle {
     in property <bool> offline;
     border-radius: Theme.radius-md;
     min-width: 0px;
-    border-width: 2px;
-    border-color: AccountBridge.preview-id == entry.id ? Theme.hover-border : Theme.border-solid;
-    background: Theme.card-bg;
-    drop-shadow-color: AccountBridge.preview-id == entry.id ? Theme.brand-purple : Theme.brand-ink;
-    drop-shadow-blur: 0px;
-    drop-shadow-offset-x: 3px;
-    drop-shadow-offset-y: 3px;
+    border-width: Theme.hairline;
+    border-color: AccountBridge.preview-id == entry.id ? Theme.edge-strong : Theme.border-solid;
+    background: AccountBridge.preview-id == entry.id ? Theme.accent.with-alpha(0.08) : Theme.card-bg;
     VerticalLayout {
         padding: Theme.space-3;
         spacing: Theme.space-2;
@@ -361,7 +359,7 @@ component SkinCard inherits Rectangle {
                 width: 150px;
                 height: 112px;
                 border-radius: Theme.radius-sm;
-                border-width: 2px;
+                border-width: Theme.hairline;
                 border-color: Theme.border-solid;
                 clip: true;
                 SkinView {
@@ -505,7 +503,7 @@ component AtelierBody inherits VerticalLayout {
     VerticalLayout {
         padding-top: Theme.space-4;
         min-width: 0px;
-        Rectangle { height: 2px; background: Theme.border-solid; }
+        Rectangle { height: Theme.hairline; background: Theme.border-solid; }
         Gallery { offline: root.offline; min-width: 0px; }
     }
 }

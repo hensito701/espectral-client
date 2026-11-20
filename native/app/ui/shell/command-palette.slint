@@ -6,6 +6,7 @@ import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
 import { Shell, PaletteState, PaletteItem } from "../state.slint";
 import { Kbd } from "../widgets/badge.slint";
+import { Icon, Icons } from "../widgets/icon.slint";
 import { Emoji } from "../widgets/emoji.slint";
 
 component PaletteRow inherits Rectangle {
@@ -19,9 +20,10 @@ component PaletteRow inherits Rectangle {
 
     height: 50px;
     border-radius: Theme.radius-md;
-    background: active ? Theme.btn-fill : ta.has-hover ? Theme.surface-up : transparent;
-    border-width: 2px;
-    border-color: active ? Theme.brand-ink : ta.has-hover ? Theme.hover-border : transparent;
+    // selected / hovered rows: accent tint + edge, no solid gold block
+    background: active ? Theme.accent.with-alpha(0.14) : ta.has-hover ? Theme.surface-up : transparent;
+    border-width: active ? Theme.hairline : 0px;
+    border-color: Theme.edge-strong;
 
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -39,13 +41,13 @@ component PaletteRow inherits Rectangle {
                 width: 28px;
                 height: 28px;
                 border-radius: Theme.radius-sm;
-                background: active ? Theme.brand-ink : Theme.surface-solid;
-                border-width: 2px;
-                border-color: active ? Theme.brand-ink : Theme.border-solid;
+                background: active ? Theme.accent.with-alpha(0.14) : Theme.card-bg-soft;
+                border-width: Theme.hairline;
+                border-color: active ? Theme.edge-strong : Theme.border-solid;
                 Emoji {
                     char: root.item.icon-kind == "instance" ? "⛏" : root.item.icon-kind == "play" ? "▶" : root.item.icon-kind == "stop" ? "⏹" : root.item.icon-kind == "nav" ? "◈" : root.item.icon-kind == "wizard" ? "✦" : root.item.icon-kind == "folder" ? "📁" : root.item.icon-kind == "theme" ? "◐" : root.item.icon-kind == "lang" ? "🌐" : root.item.icon-kind == "logs" ? "📋" : "⚙";
                     size: 15px;
-                    fallback-color: active ? Theme.btn-fill : root.icon-fg;
+                    fallback-color: active ? Theme.accent-bright : root.icon-fg;
                 }
             }
         }
@@ -55,15 +57,15 @@ component PaletteRow inherits Rectangle {
             Text {
                 text: root.item.title;
                 font-size: Theme.text-sm;
-                font-weight: 700;
-                color: active ? Theme.btn-ink : Theme.text;
+                font-weight: 600;
+                color: active ? Theme.accent-bright : Theme.text;
                 overflow: elide;
             }
             Text {
                 text: root.item.description;
                 font-size: Theme.text-xs;
-                color: active ? Theme.btn-ink : Theme.muted;
-                opacity: active ? 0.75 : 1;
+                color: active ? Theme.accent-bright : Theme.muted;
+                opacity: active ? 0.8 : 1;
                 overflow: elide;
             }
         }
@@ -73,16 +75,16 @@ component PaletteRow inherits Rectangle {
                 height: badge-text.preferred-height + 6px;
                 min-width: badge-text.preferred-width + 12px;
                 border-radius: Theme.radius-xs;
-                background: active ? Theme.brand-ink : Theme.card-bg-soft;
-                border-width: 2px;
-                border-color: active ? Theme.brand-ink : Theme.border-solid;
+                background: active ? Theme.accent.with-alpha(0.14) : Theme.card-bg-soft;
+                border-width: Theme.hairline;
+                border-color: active ? Theme.edge-strong : Theme.border-solid;
                 badge-text := Text {
                     text: root.item.badge;
                     // G1: 8px pixel type lands on 1-px strokes; body font below 16 physical px.
                     font-family: Theme.label-family(8px);
                     font-size: Theme.label-size(8px);
                     font-weight: 700;
-                    color: active ? Theme.btn-fill : root.badge-fg;
+                    color: active ? Theme.accent-bright : root.badge-fg;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -115,13 +117,12 @@ export component CommandPalette inherits Rectangle {
         height: col.preferred-height;
         border-radius: Theme.radius-lg;
         background: Theme.surface-solid;
-        border-width: 2px;
-        border-color: Theme.border-solid;
-        // hard 6px ink shadow (poster block, no blur)
-        drop-shadow-color: Theme.brand-ink;
-        drop-shadow-blur: 0px;
-        drop-shadow-offset-x: 6px;
-        drop-shadow-offset-y: 6px;
+        border-width: Theme.hairline;
+        border-color: Theme.glass-border;
+        // soft shadow below the floating panel
+        drop-shadow-blur: Theme.shadow-lg-blur;
+        drop-shadow-offset-y: Theme.shadow-lg-y;
+        drop-shadow-color: Theme.shadow-lg-color;
         clip: true;
 
         TouchArea { }
@@ -136,13 +137,10 @@ export component CommandPalette inherits Rectangle {
                     padding-left: Theme.space-5;
                     padding-right: Theme.space-5;
                     spacing: Theme.space-3;
-                    Text {
-                        text: ">";
-                        font-family: Theme.font-mono;
-                        font-size: Theme.text-xl;
-                        font-weight: 700;
-                        color: Theme.title-color;
-                        vertical-alignment: center;
+                    Icon {
+                        data: Icons.search;
+                        size: Theme.text-xl;
+                        color: Theme.muted;
                     }
                     Rectangle {
                         horizontal-stretch: 1;
@@ -201,7 +199,7 @@ export component CommandPalette inherits Rectangle {
                             width: esc-t.preferred-width + 12px;
                             border-radius: Theme.radius-xs;
                             background: Theme.surface-solid;
-                            border-width: 2px;
+                            border-width: Theme.hairline;
                             border-color: Theme.border-solid;
                             esc-t := Text {
                                 text: "ESC";
@@ -216,7 +214,7 @@ export component CommandPalette inherits Rectangle {
                         }
                     }
                 }
-                Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border-solid; }
+                Rectangle { y: parent.height - Theme.hairline; height: Theme.hairline; background: Theme.border-solid; }
             }
 
             // body
@@ -227,7 +225,7 @@ export component CommandPalette inherits Rectangle {
                 padding-right: Theme.space-4;
                 spacing: Theme.space-1;
                 alignment: center;
-                Text { text: "⌨"; font-size: 32px; color: Theme.muted; opacity: 0.6; horizontal-alignment: center; }
+                Icon { data: Icons.search; size: 32px; color: Theme.muted; opacity: 0.6; }
                 Text {
                     text: T.tr1("command.noResults", "query", PaletteState.empty-query);
                     font-size: Theme.text-sm;
@@ -282,7 +280,7 @@ export component CommandPalette inherits Rectangle {
             // footer
             Rectangle {
                 background: Theme.card-bg-soft;
-                Rectangle { y: 0; height: 2px; background: Theme.border-solid; }
+                Rectangle { y: 0; height: Theme.hairline; background: Theme.border-solid; }
                 HorizontalLayout {
                     padding-top: Theme.space-3;
                     padding-bottom: Theme.space-3;
@@ -333,5 +331,4 @@ export component CommandPalette inherits Rectangle {
             list.content-y = list.height - bottom - Theme.space-3;
         }
     }
-
 }
