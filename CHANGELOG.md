@@ -2,6 +2,53 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.8.5] - 2026-11-20
+
+### Changed
+- **Simple by default.** Players said the launcher felt "too complicated": every page showed
+  every knob at once. Each page now shows what a player needs, and the rest sits behind one
+  **Opciones avanzadas** bar. Opening it anywhere opens it everywhere, and it stays open
+  after a restart. When something inside is not on its default value (your own Java, a custom
+  game folder…), the closed bar shows a "Personalizadas: N" badge, so nothing changes out of
+  sight. Nothing was removed: every option is still there with the same behaviour.
+  - **Ajustes:** Apariencia, then *Juego* (memory, close the launcher when the game starts,
+    show on Discord, maximum brightness). Downloads, Java, startup optimisations, agent access
+    and folders/diagnostics are in the advanced section.
+  - **Instance page:** Version, Memory, Appearance and the in-game Suite. Game folder, capture
+    tools, Java, AOT and copying options from another instance are in the advanced section.
+    The launch bar shows only the Play button; *Prueba de arranque* (was "Dry-Run") and the
+    AOT chips appear with the advanced options.
+  - **New instance:** step 3 asks only for name and memory; the custom game folder and
+    importing options are in the advanced section. Release versions no longer each carry a
+    "release" badge, and step 2 is now called *Plataforma*, as on the instance page.
+  - **Cuenta:** the Microsoft Client ID setting appears only with the advanced options.
+- **Plain words.** Jargon in titles and descriptions was rewritten across Ajustes, the instance
+  page, the wizard and Cuenta, in Spanish and English: "Centro de Control y Ajustes" →
+  "Ajustes", "Memoria RAM por Defecto" → "Memoria para el juego", "Concurrencia de Descargas" →
+  "Descargas simultáneas", "Entorno Java (JVM)" → "Java (JDK)",
+  "Forja de Identidades" → "Añadir cuenta", "Directorio de Cuentas" → "Tus cuentas",
+  "Perfil Offline" / "Microsoft OAuth" → "Sin conexión" / "Microsoft", "Skin Atelier" →
+  "Tu skin", "Lunar Token Shield" → "¿Vienes de Lunar o del launcher oficial?", and the home
+  greeting no longer advertises "AOT FastBoot".
+- **Suite features in Spanish.** The instance page listed the in-game features (Fullbright,
+  No Fog…) in English even with the launcher in Spanish; they now use the player's language,
+  and the zoom key reads "Z" instead of `key.keyboard.z`.
+
+### Fixed
+- **The instance page shows the saved Java override.** The per-instance "use another Java"
+  field was always empty when the page opened, even with an override saved.
+- **Ajustes no longer describes a stack the launcher stopped using.** About said "Tauri 2 ·
+  Svelte 5 · Node 24" and Diagnóstico talked about a "local Node microservice"; the launcher is
+  a native Rust + Slint app with its engine running inside it.
+
+### Added
+- **The new-instance wizard says when a version has no Espectral features.** Zoom, fullbright,
+  no fog and the Right Shift menu come from our own mod, which only exists for some versions
+  (today Fabric 1.21.11, 26.2, 26.3 and Forge 1.8.9). Picking anything else (Fabric 1.21.8,
+  vanilla, NeoForge…) now shows a note listing where the features are, with a one-click
+  "Use Fabric <newest>" button. Players were creating 1.21.x instances, finding no zoom or
+  fullbright and installing replacement mods from Modrinth by hand.
+
 ## [1.8.4] - 2026-11-14
 
 ### Fixed
