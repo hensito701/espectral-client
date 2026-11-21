@@ -17,7 +17,7 @@ members = ["engine", "app", "ui", "skin3d"]
 
 [workspace.package]
 # Mirrors package.json "version"; the in-app updater compares it with latest.json.
-version = "1.9.1"
+version = "1.9.2"
 edition = "2021"
 license = "GPL-3.0-only"
 rust-version = "1.80"
@@ -84,6 +84,7 @@ windows-sys = { version = "0.59", features = [
   "Win32_System_Pipes",
   "Win32_System_ProcessStatus",
   "Win32_System_SystemInformation",
+  "Win32_System_Registry",
   "Win32_System_Threading",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",

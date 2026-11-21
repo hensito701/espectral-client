@@ -28,6 +28,10 @@ export global Theme {
     out property <bool> dark: mode == "system" ? Palette.color-scheme != ColorScheme.light : mode != "light";
     /// Window scale factor (1.25 at Windows "125 %"). Set by Rust; `pix` needs it.
     in property <float> ui-scale: 1;
+    /// The window is real glass: transparent, with Windows 11's acrylic (the
+    /// blurred desktop) behind it. Set by Rust on Windows 11 22H2+ with
+    /// OpenGL; elsewhere the backdrop stays opaque charcoal.
+    in property <bool> glass: false;
 
     // ---- surfaces ------------------------------------------------------------
     /// Window base under the glows (MenuSkin.BASE).

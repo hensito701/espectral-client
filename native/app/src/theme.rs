@@ -62,7 +62,31 @@ pub fn set_ui_scale(ui: &AppWindow, scale: f32) {
     tracing::info!("[ui] display scale factor {scale}");
     ui.global::<Theme>().set_ui_scale(scale);
     set_logos(ui);
+    sync_window_theme(ui); // the window exists by its first size event
     crate::store::refresh_instances();
+}
+
+/// The window is glass (transparent over Windows 11's acrylic; see
+/// `renderer::select_glass`).
+pub fn set_glass(ui: &AppWindow) {
+    ui.global::<Theme>().set_glass(true);
+}
+
+/// Glass window: tint the acrylic with the launcher's theme, not Windows'
+/// (a light acrylic under the dark launcher washes it out). "system" leaves
+/// it to Windows, which is what the launcher follows then too.
+fn sync_window_theme(ui: &AppWindow) {
+    use slint::winit_030::{winit::window::Theme as WindowTheme, WinitWindowAccessor};
+    let t = ui.global::<Theme>();
+    if !t.get_glass() {
+        return;
+    }
+    let theme = match t.get_mode().as_str() {
+        "light" => Some(WindowTheme::Light),
+        "dark" => Some(WindowTheme::Dark),
+        _ => None,
+    };
+    ui.window().with_winit_window(|w| w.set_theme(theme));
 }
 
 /// Drawn sizes (logical px) of the round logo: header, login screen, Home.
@@ -80,6 +104,7 @@ fn set_logos(ui: &AppWindow) {
 fn set_mode(ctx: &Ctx, mode: String) {
     if let Some(ui) = ctx.ui() {
         ui.global::<Theme>().set_mode(SharedString::from(mode.as_str()));
+        sync_window_theme(&ui);
     }
     ctx.fire(move |e| async move { e.set_theme(&mode).await });
 }

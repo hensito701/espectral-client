@@ -87,8 +87,11 @@ component LogTab inherits Rectangle {
     in property <bool> running;
     in property <bool> agent;
     in property <bool> active;
+    /// Finished launches get an × that drops their log.
+    in property <bool> closable;
     callback clicked();
-    property <bool> hovered: t.has-hover;
+    callback close();
+    property <bool> hovered: t.has-hover || xt.has-hover;
     height: 28px;
     min-width: row.preferred-width;
     horizontal-stretch: 0;
@@ -99,7 +102,7 @@ component LogTab inherits Rectangle {
     animate background { duration: Theme.dur-fast; }
     row := HorizontalLayout {
         padding-left: Theme.space-3;
-        padding-right: Theme.space-3;
+        padding-right: root.closable ? Theme.space-1 : Theme.space-3;
         spacing: Theme.space-2;
         VerticalLayout {
             alignment: center;
@@ -144,10 +147,30 @@ component LogTab inherits Rectangle {
             font-weight: 500;
             vertical-alignment: center;
         }
+        if root.closable: VerticalLayout {
+            alignment: center;
+            xbox := Rectangle {
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                background: xt.has-hover ? Theme.surface-up : transparent;
+                Icon { data: Icons.x; size: 12px; weight: 2; color: xt.has-hover ? Theme.text : Theme.muted; }
+            }
+        }
     }
     t := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+    // above the tab's own TouchArea; covers the × at the row's right end
+    xt := TouchArea {
+        x: root.width - Theme.space-1 - 20px;
+        y: (root.height - 20px) / 2;
+        width: root.closable ? 20px : 0px;
+        height: 20px;
+        enabled: root.closable;
+        mouse-cursor: pointer;
+        clicked => { root.close(); }
     }
 }
 export component PipLogDrawer inherits Rectangle {
@@ -292,31 +315,41 @@ export component PipLogDrawer inherits Rectangle {
                 padding-left: Theme.space-2;
                 padding-right: Theme.space-2;
                 spacing: Theme.space-2;
-                // tabs
+                // tabs: scroll sideways when they don't fit, so the actions
+                // on the right always stay on screen
                 Rectangle {
                     horizontal-stretch: 1;
-                    max-width: panel.width * 0.6;
-                    clip: true;
-                    HorizontalLayout {
-                        spacing: Theme.space-1;
-                        alignment: start;
-                        if HomeBridge.log-tabs.length == 0: VerticalLayout {
-                            alignment: center;
-                            LogTab {
-                                label: T.tr("pip.title");
-                                active: true;
-                                running: false;
+                    min-width: 0px;
+                    preferred-width: 0px;
+                    Flickable {
+                        width: parent.width;
+                        height: parent.height;
+                        content-width: max(self.width, tabrow.preferred-width);
+                        content-height: self.height;
+                        tabrow := HorizontalLayout {
+                            height: parent.height;
+                            spacing: Theme.space-1;
+                            alignment: start;
+                            if HomeBridge.log-tabs.length == 0: VerticalLayout {
+                                alignment: center;
+                                LogTab {
+                                    label: T.tr("pip.title");
+                                    active: true;
+                                    running: false;
+                                }
                             }
-                        }
-                        for tab in HomeBridge.log-tabs: VerticalLayout {
-                            alignment: center;
-                            LogTab {
-                                label: tab.label;
-                                account: tab.account;
-                                running: tab.running;
-                                agent: tab.agent;
-                                active: tab.key == HomeBridge.log-active-key;
-                                clicked => { HomeBridge.log-select(tab.key); }
+                            for tab in HomeBridge.log-tabs: VerticalLayout {
+                                alignment: center;
+                                LogTab {
+                                    label: tab.label;
+                                    account: tab.account;
+                                    running: tab.running;
+                                    agent: tab.agent;
+                                    active: tab.key == HomeBridge.log-active-key;
+                                    closable: !tab.running;
+                                    clicked => { HomeBridge.log-select(tab.key); }
+                                    close => { HomeBridge.log-close(tab.key); }
+                                }
                             }
                         }
                     }

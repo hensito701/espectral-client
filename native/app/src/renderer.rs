@@ -46,6 +46,8 @@ const LOW_MEMORY_LIMIT_BYTES: u64 = 9_126_805_504;
 pub struct Renderer {
     /// OpenGL, chosen by the launcher: a failure may switch to software.
     pub can_fall_back: bool,
+    /// The window is transparent over Windows 11's acrylic ([`select_glass`]).
+    pub glass: bool,
 }
 /// True when a PC's RAM is known and at or below [`LOW_MEMORY_LIMIT_BYTES`].
 fn is_low_memory_pc(total_bytes: u64) -> bool {
@@ -57,11 +59,50 @@ fn select_software() -> Result<(), slint::PlatformError> {
     slint::BackendSelector::new().backend_name("winit".into()).renderer_name("software".into()).select()
 }
 
+/// Windows 11 22H2: the first build where DWM draws a system backdrop
+/// (`DWMWA_SYSTEMBACKDROP_TYPE`) behind a window.
+#[cfg(windows)]
+const GLASS_MIN_BUILD: u32 = 22621;
+
+/// OpenGL with a transparent window over the acrylic backdrop (the blurred
+/// desktop) on Windows 11 22H2+. Elsewhere, or when Slint refuses, false and
+/// the default OpenGL window (opaque) is used. Software can't do it: its
+/// Windows surface has no alpha.
+fn select_glass() -> bool {
+    #[cfg(windows)]
+    {
+        use slint::winit_030::winit::platform::windows::{BackdropType, WindowAttributesExtWindows};
+        let build = espectral_engine::platform::windows_build();
+        if build < GLASS_MIN_BUILD {
+            tracing::info!("[renderer] no glass window (Windows build {build} < {GLASS_MIN_BUILD})");
+            return false;
+        }
+        let selected = slint::BackendSelector::new()
+            .backend_name("winit".into())
+            .renderer_name("femtovg".into())
+            .with_winit_window_attributes_hook(|a| {
+                a.with_transparent(true).with_system_backdrop(BackdropType::TransientWindow)
+            })
+            .select();
+        match selected {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!("[renderer] glass window unavailable ({e}); opaque window");
+                false
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 /// Pick the renderer before the first window exists (prefs must be loaded).
 pub fn select() -> Renderer {
     if let Some(backend) = std::env::var_os("SLINT_BACKEND") {
         tracing::info!("[renderer] SLINT_BACKEND={} (set outside the launcher)", backend.to_string_lossy());
-        return Renderer { can_fall_back: false };
+        return Renderer { can_fall_back: false, glass: false };
     }
     if let Some(pending) = prefs::get_str(PENDING_PREF) {
         if pending == VERSION {
@@ -80,20 +121,21 @@ pub fn select() -> Renderer {
             match select_software() {
                 Ok(()) => {
                     tracing::info!("[renderer] software (low-memory PC: {gb:.1} GB RAM)");
-                    return Renderer { can_fall_back: false };
+                    return Renderer { can_fall_back: false, glass: false };
                 }
                 Err(e) => tracing::warn!("[renderer] software renderer unavailable ({e}); trying OpenGL"),
             }
         }
-        tracing::info!("[renderer] OpenGL (femtovg)");
-        return Renderer { can_fall_back: true };
+        let glass = select_glass();
+        tracing::info!("[renderer] OpenGL (femtovg){}", if glass { ", glass window" } else { "" });
+        return Renderer { can_fall_back: true, glass };
     };
     let reason = fallback.get("reason").and_then(Value::as_str).unwrap_or("unknown");
     match select_software() {
         Ok(()) => tracing::info!("[renderer] software (OpenGL failed on this PC: {reason})"),
         Err(e) => tracing::warn!("[renderer] software renderer unavailable ({e}); using the default"),
     }
-    Renderer { can_fall_back: false }
+    Renderer { can_fall_back: false, glass: false }
 }
 
 /// OpenGL start: arm the "never drew a frame" marker; the first rendered

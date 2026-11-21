@@ -319,6 +319,34 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
         }
     });
     let w = ui.as_weak();
+    hb.on_log_close(move |key| {
+        ST.with(|s| {
+            let mut s = s.borrow_mut();
+            let k = key.as_str();
+            // A running launch keeps its log: only its game exiting ends it.
+            s.bufs.retain(|b| b.key != k || b.running);
+            if s.buf(k).is_some() {
+                return;
+            }
+            if s.active.as_deref() == Some(k) {
+                s.active = None;
+            }
+            // sync() refills a view only when its target changes; empty the
+            // ones that showed this log so a view with no target goes blank.
+            if s.pip_key.as_deref() == Some(k) {
+                s.pip.set_vec(Vec::new());
+                s.pip_key = None;
+            }
+            if s.hub_key.as_deref() == Some(k) {
+                s.hub.set_vec(Vec::new());
+                s.hub_key = None;
+            }
+        });
+        if let Some(ui) = w.upgrade() {
+            sync(&ui);
+        }
+    });
+    let w = ui.as_weak();
     hb.on_log_clear(move || {
         clear_active();
         if let Some(ui) = w.upgrade() {

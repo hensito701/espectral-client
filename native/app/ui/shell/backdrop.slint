@@ -1,6 +1,8 @@
 // AmbientBackdrop — the window background: charcoal (Theme.bg) with three
 // large soft glows (the accent, the logo's purple, a cool blue). The glass
-// panels above are translucent, so the glows tint them from behind.
+// panels above are translucent, so the glows tint them from behind. On a glass
+// window (Theme.glass) the charcoal is a translucent tint over Windows'
+// acrylic, so the blurred desktop shows through.
 //
 // The glows glide to a new arrangement when the page changes (Theme.dur-glow)
 // and are otherwise still: no idle animation, so the launcher draws nothing
@@ -28,7 +30,7 @@ component Glow inherits Rectangle {
 }
 
 export component AmbientBackdrop inherits Rectangle {
-    background: Theme.bg;
+    background: Theme.glass ? Theme.bg.with-alpha(Theme.dark ? 0.45 : 0.5) : Theme.bg;
     clip: true;
 
     // one arrangement per page group: 0 home, 1 instances, 2 library, 3 account, 4 settings

@@ -56,6 +56,20 @@ pub fn total_memory_bytes() -> u64 {
     }
 }
 
+/// The Windows build number (22621 = Windows 11 22H2); 0 off Windows or when
+/// unknown. Read from the registry: `GetVersionEx` reports Windows 8 to an
+/// exe without a compatibility manifest.
+pub fn windows_build() -> u32 {
+    #[cfg(windows)]
+    {
+        imp::windows_build()
+    }
+    #[cfg(not(windows))]
+    {
+        0
+    }
+}
+
 /// True when a process with `pid` exists (JS `process.kill(pid, 0)` probe).
 pub fn is_pid_alive(pid: u32) -> bool {
     if pid == 0 {
@@ -168,8 +182,35 @@ mod imp {
 #[cfg(windows)]
 mod imp {
     use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
     use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
     use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    pub fn windows_build() -> u32 {
+        let wide = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+        let key = wide("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion");
+        let name = wide("CurrentBuildNumber");
+        let mut buf = [0u16; 32];
+        let mut len = std::mem::size_of_val(&buf) as u32;
+        // SAFETY: NUL-terminated names; `len` is the buffer size in bytes and
+        // RRF_RT_REG_SZ makes the API NUL-terminate what it writes.
+        let rc = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                key.as_ptr(),
+                name.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                buf.as_mut_ptr().cast(),
+                &mut len,
+            )
+        };
+        if rc != 0 {
+            return 0;
+        }
+        let chars = (len as usize / 2).min(buf.len());
+        String::from_utf16_lossy(&buf[..chars]).trim_end_matches('\0').trim().parse().unwrap_or(0)
+    }
 
     pub fn total_memory_bytes() -> u64 {
         // SAFETY: MEMORYSTATUSEX is plain data; dwLength must be set first.

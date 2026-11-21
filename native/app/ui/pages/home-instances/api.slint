@@ -195,6 +195,8 @@ export global HomeBridge {
     /// Bumped on every append to the visible buffer (views scroll to the bottom).
     in-out property <int> log-serial;
     callback log-select(key: string);
+    /// Drop a finished launch's log (its tab's ×).
+    callback log-close(key: string);
     callback log-clear();
     callback log-copy();
     callback log-stop();

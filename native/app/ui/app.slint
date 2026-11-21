@@ -57,7 +57,7 @@ export component AppWindow inherits Window {
     preferred-height: 800px;
     min-width: 960px;
     min-height: 640px;
-    background: Theme.bg;
+    background: Theme.glass ? transparent : Theme.bg;
     default-font-family: Theme.font-body;
     default-font-size: Theme.text-md;
 
