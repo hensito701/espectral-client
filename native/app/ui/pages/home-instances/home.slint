@@ -1,11 +1,13 @@
 // OWNER: home-instances agent. The 1.9 Home: almost empty, built around Jugar.
-// A quiet stage (logo + soft accent glow, one greeting line, the live-server
-// MOTD line) and, centred at the bottom, the floating glass play bar
-// (TelemetryCapsule with picker: the instance dropdown opens above it).
+// One centred column: logo + soft accent glow, the greeting with the
+// player's head, the live-server MOTD line and the floating glass play bar
+// (TelemetryCapsule with picker: the instance dropdown opens above it). The
+// bar sits in the column, not at the window's bottom edge, so it stays
+// clickable when the window's bottom is behind the taskbar.
 // The instance rail lives on #/instances; the wizard / mrpack / dry-run
 // modals are mounted by app.slint so every page can open them.
 
-import { Theme, T, AppState, Router, Page } from "../../widgets.slint";
+import { Theme, T, AppState, Router, Page, Shell, MonogramTile, MonogramShape } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 import { TelemetryCapsule } from "capsule.slint";
 
@@ -43,23 +45,20 @@ component ServerLine inherits HorizontalLayout {
 export component HomePage inherits Rectangle {
     property <string> player: AppState.has-active-account ? AppState.active-account.username : "Jugador";
 
-    // ---- stage: logo + greeting + server line ----
-    stage := VerticalLayout {
-        x: 0;
-        y: 0;
-        width: root.width;
-        height: max(0px, root.height - bar-wrap.height - Theme.space-8);
+    VerticalLayout {
         alignment: center;
         spacing: Theme.space-3;
+        padding-left: Theme.space-6;
+        padding-right: Theme.space-6;
         HorizontalLayout {
             alignment: center;
             Rectangle {
-                width: 260px;
-                height: 260px;
+                width: 220px;
+                height: 220px;
                 // soft accent glow behind the logo (backdrop.slint's radial)
                 Rectangle {
-                    x: -30px;
-                    y: -30px;
+                    x: -50px;
+                    y: -50px;
                     width: 320px;
                     height: 320px;
                     background: @radial-gradient(circle, Theme.accent.with-alpha(0.20) 0%, Theme.accent.with-alpha(0.08) 40%, transparent 70%);
@@ -76,6 +75,18 @@ export component HomePage inherits Rectangle {
         }
         HorizontalLayout {
             alignment: center;
+            spacing: Theme.space-2;
+            if AppState.has-active-account: VerticalLayout {
+                alignment: center;
+                MonogramTile {
+                    name: AppState.active-account.username;
+                    hue: AppState.active-account.monogram-hue;
+                    avatar: AppState.active-account.avatar;
+                    has-avatar: AppState.active-account.has-avatar;
+                    size: 26px;
+                    shape: MonogramShape.rounded;
+                }
+            }
             Text {
                 text: HomeBridge.greeting == 0 ? T.tr1("home.greetingMorning", "name", root.player)
                     : HomeBridge.greeting == 1 ? T.tr1("home.greetingAfternoon", "name", root.player)
@@ -83,29 +94,29 @@ export component HomePage inherits Rectangle {
                 color: Theme.muted-strong;
                 font-size: Theme.text-lg;
                 font-weight: 500;
-                horizontal-alignment: center;
+                vertical-alignment: center;
             }
         }
         HorizontalLayout {
             alignment: center;
             ServerLine { }
         }
-    }
-
-    // ---- the floating play bar ----
-    bar-wrap := Rectangle {
-        x: 0;
-        y: root.height - self.height - Theme.space-8;
-        width: root.width;
-        height: 88px;
+        Rectangle { height: Theme.space-6; }
+        // ---- the floating play bar ----
         HorizontalLayout {
             alignment: center;
-            TelemetryCapsule {
+            bar := TelemetryCapsule {
                 instance-name: HomeBridge.selected-instance;
                 picker: true;
                 floating: true;
                 width: min(760px, root.width - 2 * Theme.space-6);
+                height: 88px;
             }
         }
     }
+
+    // Tell the launch-log drawer where the bar is (window coordinates).
+    property <length> bar-top: bar.absolute-position.y;
+    changed bar-top => { Shell.home-bar-top = self.bar-top; }
+    init => { Shell.home-bar-top = self.bar-top; }
 }

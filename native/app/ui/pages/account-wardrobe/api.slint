@@ -3,8 +3,8 @@
 // Rust side: native/app/src/pages/account_wardrobe.rs (+ account_wardrobe/*.rs).
 //
 // Pages: AccountPage (account-vault.slint, #/account — accounts, Skin Atelier,
-// Espectral identity, Discord, supporter badges, cosmetics pointer and hidden
-// players) and AccountPopover (account-popover.slint).
+// Espectral identity, Discord, supporter badges) and AccountPopover
+// (account-popover.slint).
 
 import { AccountRow } from "../../state.slint";
 
@@ -147,17 +147,14 @@ export global AccountBridge {
 
     // =====================================================================
     // Espectral identity of the ACTIVE account (identity card of #/account):
-    // Minecraft ownership proof, Discord link, supporter flags and the hidden
-    // players list. The wardrobe page is gone; this follows the active account.
+    // Minecraft ownership proof, Discord link and supporter flags. The
+    // wardrobe page is gone; this follows the active account.
     // =====================================================================
     /// Identity loaded and known for the account on the pedestal.
     in property <bool> identity-available;
     in property <EspectralIdentity> identity;
     in property <bool> identity-loading: true;
     in property <string> identity-load-error;
-    in property <[string]> identity-hidden;
-    in property <string> identity-hidden-error;
-    in property <int> identity-hidden-serial;
     in property <bool> identity-verifying;
     in property <bool> identity-refreshing;
     in property <bool> identity-linking;
@@ -168,8 +165,6 @@ export global AccountBridge {
     callback identity-link();
     callback identity-cancel-link();
     callback identity-unlink();
-    callback identity-add-hidden(name: string);
-    callback identity-remove-hidden(name: string);
 
     /// First n characters (Slint strings have no substring()).
     pure callback truncate(text: string, n: int) -> string;

@@ -1,0 +1,24 @@
+// SelectableText — display text the mouse can select and Ctrl+C can copy.
+// Slint `Text` cannot be selected; this is a read-only TextInput styled like a
+// Text: no border, no background, same font/color/wrap knobs.
+//
+//     SelectableText { text: root.version; font-size: 13.6px; font-weight: 600; }
+//     SelectableText { text: T.tr("..."); color: Theme.muted; multi-line: true; }
+
+import { Theme } from "../theme.slint";
+
+export component SelectableText inherits TextInput {
+    /// false = one line that scrolls horizontally (TextInput has no elide);
+    /// true = word-wrap at the layout width.
+    in property <bool> multi-line: false;
+    in property <color> text-color: Theme.text;
+
+    read-only: true;
+    single-line: !root.multi-line;
+    wrap: root.multi-line ? word-wrap : no-wrap;
+    font-family: Theme.font-body;
+    color: root.text-color;
+    selection-background-color: Theme.accent.with-alpha(0.3);
+    selection-foreground-color: Theme.text;
+    accessible-role: AccessibleRole.text;
+}

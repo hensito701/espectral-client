@@ -924,11 +924,9 @@ mod tests {
             env(e.put_cosmetics("ffffffffffffffffffffffffffffffff", CosmeticsPatch::default()).await),
             (404, "NOT_FOUND".into())
         );
-        let patch =
-            CosmeticsPatch { share: Some(false), hidden_players: Some(vec!["Griefer_1".into()]), ..Default::default() };
+        let patch = CosmeticsPatch { share: Some(false), ..Default::default() };
         let out = e.put_cosmetics(&crate::accounts::offline_uuid("Cos"), patch).await.unwrap();
         assert!(!out.share);
-        assert_eq!(out.hidden_players, ["Griefer_1"]);
         // without verified flags, mvp items are refused
         let mut lo = IndexMap::new();
         lo.insert("espalda".to_string(), Some("alas_eco".to_string()));
@@ -936,7 +934,7 @@ mod tests {
         assert_eq!(env(e.put_cosmetics(&flat, patch).await), (400, "FLAG_REQUIRED".into()));
         assert!(!crate::cosmetics::share_enabled(&e, &flat).unwrap());
         let wire = serde_json::to_value(e.get_cosmetics().await.unwrap()).unwrap();
-        assert_eq!(wire["accounts"][&flat]["hidden_players"], json!(["Griefer_1"]));
+        assert_eq!(wire["accounts"][&flat]["share"], json!(false));
         assert!(wire["catalog"]["items"].as_array().unwrap().len() >= 10);
     }
 

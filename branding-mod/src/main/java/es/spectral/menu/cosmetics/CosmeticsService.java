@@ -13,7 +13,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -58,9 +57,9 @@ public final class CosmeticsService {
 
     /** Snapshot of the launcher-written state file. */
     public record Own(UUID uuid, GrantVerifier.Grant grant, String grantJws, boolean share,
-            Loadout loadout, Set<String> hiddenPlayers, boolean emotes) {
+            Loadout loadout, boolean emotes) {
         static final Own EMPTY =
-                new Own(null, null, null, false, Loadout.EMPTY, Set.of(), false);
+                new Own(null, null, null, false, Loadout.EMPTY, false);
     }
 
     /** Idempotent: makes sure the state-file/bridge daemon is running. */
@@ -213,8 +212,9 @@ public final class CosmeticsService {
 
     /**
      * Parses {@code espectral-cosmetics.json}
-     * ({schema,uuid,grant,share,loadout,hidden_players,emotes}). A bad grant
-     * becomes {@code null}; the loadout is filtered against the grant's flags.
+     * ({schema,uuid,grant,share,loadout,emotes}; unknown keys are ignored).
+     * A bad grant becomes {@code null}; the loadout is filtered against the
+     * grant's flags.
      */
     private static Own parseOwn(String content) {
         try {
@@ -244,15 +244,9 @@ public final class CosmeticsService {
             }
             Set<String> flags = grant != null ? grant.flags() : Set.of();
             Loadout loadout = Catalog.get().filter(Catalog.get().fromMap(bySlot), flags);
-            Set<String> hidden = new HashSet<>();
-            if (root.has("hidden_players") && root.get("hidden_players").isJsonArray()) {
-                for (JsonElement e : root.getAsJsonArray("hidden_players")) {
-                    if (e.isJsonPrimitive()) hidden.add(e.getAsString().toLowerCase(Locale.ROOT));
-                }
-            }
             boolean emotes = !root.has("emotes")
                     || (root.get("emotes").isJsonPrimitive() && root.get("emotes").getAsBoolean());
-            return new Own(uuid, grant, grantJws, share, loadout, hidden, emotes);
+            return new Own(uuid, grant, grantJws, share, loadout, emotes);
         } catch (Exception e) {
             LOGGER.debug("cosmetics state parse failed: {}", e.getMessage());
             return Own.EMPTY;

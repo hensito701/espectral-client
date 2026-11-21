@@ -5,7 +5,7 @@
 //! **Owner: game-launch.** Status: PORTED.
 //!
 //! Argv order is fixed and covered by the tests below (ported from
-//! tests/launch.test.mjs, preferences.test.mjs, personalization.test.mjs and
+//! tests/launch.test.mjs, personalization.test.mjs and
 //! multi-instance.test.mjs).
 //!
 //! Notes / deliberate differences:
@@ -1030,89 +1030,6 @@ pub fn library_stats(libraries: &[Value]) -> LibraryStats {
     s
 }
 
-// ---------------------------------------------------------------------------
-// Pre-launch file work
-// ---------------------------------------------------------------------------
-
-/// options.txt round-trip (import.mjs parseOptionsTxt/setOptionKey/writeOptionsTxt).
-struct OptionsTxt {
-    header: Option<String>,
-    /// (key, value, raw) — raw None = re-serialize `key:value`.
-    entries: Vec<(Option<String>, Option<String>, Option<String>)>,
-    eol: &'static str,
-}
-
-impl OptionsTxt {
-    fn parse(src: &str) -> Self {
-        let eol = if src.contains("\r\n") { "\r\n" } else { "\n" };
-        let mut header = None;
-        let mut entries = Vec::new();
-        for line in src.split('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)) {
-            if line.is_empty() {
-                continue;
-            }
-            if header.is_none()
-                && line.starts_with("version:")
-                && line.len() > 8
-                && line[8..].bytes().all(|b| b.is_ascii_digit())
-            {
-                header = Some(line.to_string());
-                continue;
-            }
-            match line.find(':') {
-                Some(i) if i > 0 => {
-                    entries.push((Some(line[..i].to_string()), Some(line[i + 1..].to_string()), Some(line.to_string())))
-                }
-                _ => entries.push((None, None, Some(line.to_string()))),
-            }
-        }
-        OptionsTxt { header, entries, eol }
-    }
-
-    fn set(&mut self, key: &str, value: &str) {
-        if let Some(e) = self.entries.iter_mut().find(|e| e.0.as_deref() == Some(key)) {
-            e.1 = Some(value.to_string());
-            e.2 = None;
-        } else {
-            self.entries.push((Some(key.to_string()), Some(value.to_string()), None));
-        }
-    }
-
-    fn write(&self) -> String {
-        let mut parts: Vec<String> = Vec::new();
-        if let Some(h) = &self.header {
-            parts.push(h.clone());
-        }
-        for (k, v, raw) in &self.entries {
-            match raw {
-                Some(r) => parts.push(r.clone()),
-                None => parts.push(format!("{}:{}", k.as_deref().unwrap_or(""), v.as_deref().unwrap_or(""))),
-            }
-        }
-        if parts.is_empty() {
-            String::new()
-        } else {
-            parts.join(self.eol) + self.eol
-        }
-    }
-}
-
-/// Integrated-client QoL seeded into options.txt before the game starts:
-/// `fullbright_on_launch` -> `gamma:1.0` (vanilla's maximum). Fabric gets its
-/// fullbright from the gamma-utils mod, so it is skipped there. Never fails a
-/// launch (errors are logged).
-pub fn apply_launch_preferences(engine: &Engine, instance: &InstanceMeta, game_dir: Option<&Path>) {
-    if instance.loader == Loader::Fabric || !engine.config().is_true("fullbright_on_launch") {
-        return;
-    }
-    let dir = game_dir.map(Path::to_path_buf).unwrap_or_else(|| engine.paths().instance_dir(&instance.name));
-    let path = dir.join("options.txt");
-    let mut parsed = OptionsTxt::parse(&std::fs::read_to_string(&path).unwrap_or_default());
-    parsed.set("gamma", "1.0");
-    if let Err(e) = std::fs::write(&path, parsed.write()) {
-        tracing::warn!("[launch] could not apply launch preferences: {e}");
-    }
-}
 
 /// Run-dir decision: a custom `game_dir` wins (mkdir -p unless dry run; no
 /// per-account split); otherwise a non-active account gets
@@ -1573,8 +1490,6 @@ pub async fn resolve_launch(
         }
         let _ = crate::mods::ensure_branding_seeded(engine, instance).await;
         phase("branding");
-        apply_launch_preferences(engine, instance, Some(&game_dir));
-        phase("prefs");
         tolerate("seed_client_config", crate::client::seed_client_config(engine, &instance.name))?;
         // The game reads <gameDir>/config/espectral-client.json; mirror the
         // canonical file on EVERY profile launch so later toggles reach it.
@@ -2530,53 +2445,6 @@ mod tests {
             json!({ "name": "c:d:2", "rules": [{ "action": "allow", "os": { "name": "nonexistent" } }] }),
         ];
         assert_eq!(library_stats(&libs), LibraryStats { jars: 1, skipped_natives: 1, skipped_rules: 1 });
-    }
-
-    // --- preferences.test.mjs ----------------------------------------------
-
-    fn options_path(e: &Engine) -> PathBuf {
-        e.paths().instance_dir("testinst").join("options.txt")
-    }
-
-    #[test]
-    fn fullbright_seeds_gamma_and_keeps_other_keys() {
-        let (_d, e) = temp_engine();
-        let i = inst("testinst");
-        e.config().set("fullbright_on_launch", json!(true));
-        std::fs::create_dir_all(options_path(&e).parent().unwrap()).unwrap();
-        std::fs::write(options_path(&e), "version:1343\nkey_forward.0:true\n").unwrap();
-        apply_launch_preferences(&e, &i, None);
-        assert_eq!(std::fs::read_to_string(options_path(&e)).unwrap(), "version:1343\nkey_forward.0:true\ngamma:1.0\n");
-
-        std::fs::remove_file(options_path(&e)).unwrap();
-        apply_launch_preferences(&e, &i, None);
-        assert_eq!(std::fs::read_to_string(options_path(&e)).unwrap(), "gamma:1.0\n");
-
-        std::fs::write(options_path(&e), "version:1343\ngamma:0.5\nkey_forward.0:true\n").unwrap();
-        apply_launch_preferences(&e, &i, None);
-        assert_eq!(std::fs::read_to_string(options_path(&e)).unwrap(), "version:1343\ngamma:1.0\nkey_forward.0:true\n");
-        // CRLF files keep their EOL.
-        std::fs::write(options_path(&e), "version:1343\r\ngamma:0.5\r\n").unwrap();
-        apply_launch_preferences(&e, &i, None);
-        assert_eq!(std::fs::read_to_string(options_path(&e)).unwrap(), "version:1343\r\ngamma:1.0\r\n");
-    }
-
-    #[test]
-    fn fullbright_off_or_fabric_leaves_options_untouched() {
-        let (_d, e) = temp_engine();
-        let i = inst("testinst");
-        e.config().set("fullbright_on_launch", json!(false));
-        apply_launch_preferences(&e, &i, None);
-        assert!(!options_path(&e).exists());
-        std::fs::create_dir_all(options_path(&e).parent().unwrap()).unwrap();
-        let before = "version:1343\ngamma:0.5\nkey_forward.0:true\n";
-        std::fs::write(options_path(&e), before).unwrap();
-        apply_launch_preferences(&e, &i, None);
-        assert_eq!(std::fs::read_to_string(options_path(&e)).unwrap(), before);
-        e.config().set("fullbright_on_launch", json!(true));
-        let fabric = InstanceMeta { name: "testinst".into(), loader: Loader::Fabric, ..Default::default() };
-        apply_launch_preferences(&e, &fabric, None);
-        assert_eq!(std::fs::read_to_string(options_path(&e)).unwrap(), before);
     }
 
     // --- personalization.test.mjs (selectGameDir) --------------------------

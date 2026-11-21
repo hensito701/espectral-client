@@ -187,9 +187,11 @@ export component PipLogDrawer inherits Rectangle {
     property <bool> expanded: Shell.pip-log-open;
     changed expanded => { if !root.expanded { HomeBridge.log-collapsed(); } }
 
-    // On Home the drawer opens above the play bar (88px tall, 32px from the
-    // bottom in home.slint) so a pinned log never covers Jugar.
-    property <length> bottom-gap: Router.page == Page.home ? 88px + Theme.space-8 + Theme.space-2 : Theme.statusbar-height + Theme.space-2;
+    // On Home the drawer opens above the play bar (home.slint reports its top
+    // edge) so a pinned log never covers Jugar.
+    property <length> bottom-gap: Router.page == Page.home && Shell.home-bar-top > 0
+        ? root.height - Shell.home-bar-top + Theme.space-2
+        : Theme.statusbar-height + Theme.space-2;
 
     // ================= collapsed pill =================
     // Hidden on Home (#/): the play bar's status line is its entry point

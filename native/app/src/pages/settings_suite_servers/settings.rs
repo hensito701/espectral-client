@@ -99,9 +99,6 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
                 patch.close_on_game_start = Some(on);
                 ("settings.flash.closeOnStartOn", "settings.flash.closeOnStartOff")
             }
-            // The engine whitelist (JS sanitizeConfigPatch too) has no
-            // fullbright_on_launch: the PATCH is a no-op, exactly like the Svelte UI.
-            "fullbright" => ("settings.flash.fullbrightOn", "settings.flash.fullbrightOff"),
             _ => return,
         };
         let text = i18n::t(if on { on_key } else { off_key });
@@ -216,7 +213,6 @@ fn apply_config(ui: &AppWindow, cfg: &AppConfig, reset: bool) {
     b.set_cfg_jdk(SharedString::from(cfg.jdk_path_override.as_deref().unwrap_or("")));
     b.set_cfg_aot(cfg.aot_auto_train);
     b.set_cfg_fastboot(cfg.fast_boot);
-    b.set_cfg_fullbright(cfg.fullbright_on_launch);
     b.set_cfg_discord(cfg.discord_enabled);
     b.set_cfg_data_dir(SharedString::from(cfg.data_dir.as_str()));
     b.set_cfg_loaded(true);
@@ -234,7 +230,6 @@ fn reset_drafts_from_cfg(ui: &AppWindow) {
     b.set_jdk(b.get_cfg_jdk());
     b.set_aot(b.get_cfg_aot());
     b.set_fastboot(b.get_cfg_fastboot());
-    b.set_fullbright(b.get_cfg_fullbright());
     b.set_discord(b.get_cfg_discord());
 }
 

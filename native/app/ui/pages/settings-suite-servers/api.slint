@@ -37,7 +37,6 @@ export global SettingsBridge {
     in property <string> cfg-jdk;
     in property <bool> cfg-aot: true;
     in property <bool> cfg-fastboot;
-    in property <bool> cfg-fullbright;
     in property <bool> cfg-discord: true;
     in property <string> cfg-data-dir;
     // form drafts (reset from the config by Rust on load / reset)
@@ -46,12 +45,11 @@ export global SettingsBridge {
     in-out property <string> jdk;
     in-out property <bool> aot: true;
     in-out property <bool> fastboot;
-    in-out property <bool> fullbright;
     in-out property <bool> discord: true;
     in-out property <bool> close-on-start;
     in-out property <bool> reduced-motion;
     // busy flags
-    /// "" | "memory" | "concurrency" | "jdk" | "aot" | "fastboot" | "fullbright" | "discord" | "closeOnStart"
+    /// "" | "memory" | "concurrency" | "jdk" | "aot" | "fastboot" | "discord" | "closeOnStart"
     in property <string> saving-field;
     in property <bool> saving-all;
     in property <bool> saving-motion;
@@ -71,7 +69,7 @@ export global SettingsBridge {
     callback save-memory-auto();
     callback save-concurrency(int);
     callback save-jdk(string);
-    /// field: "aot" | "fastboot" | "fullbright" | "discord" | "closeOnStart"
+    /// field: "aot" | "fastboot" | "discord" | "closeOnStart"
     callback save-flag(string, bool);
     callback save-all();
     callback reset-all();

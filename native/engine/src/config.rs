@@ -57,7 +57,6 @@ pub fn default_config() -> Map<String, Value> {
         "download_concurrency": 6,
         "fast_boot": false,
         "aot_auto_train": true,
-        "fullbright_on_launch": false,
         "jdk_path_override": null,
         "discord_enabled": true,
         "close_on_game_start": false,
@@ -401,7 +400,6 @@ impl ConfigStore {
                     .unwrap_or(6),
                 aot_auto_train: json_truthy(c.get("aot_auto_train")),
                 fast_boot: c.get("fast_boot") == Some(&Value::Bool(true)),
-                fullbright_on_launch: c.get("fullbright_on_launch") == Some(&Value::Bool(true)),
                 jdk_path_override: c.get("jdk_path_override").and_then(Value::as_str).map(str::to_string),
                 discord_enabled: c.get("discord_enabled") != Some(&Value::Bool(false)),
                 data_dir,
@@ -491,7 +489,6 @@ mod tests {
                 "discord_enabled",
                 "download_concurrency",
                 "fast_boot",
-                "fullbright_on_launch",
                 "jdk_path_override",
                 "recommended_memory_mb",
                 "reduced_motion",
@@ -503,10 +500,10 @@ mod tests {
     fn app_config_coerces_flags_to_strict_booleans() {
         let (_d, s) = store();
         s.save(obj(json!({ "fullbright_on_launch": 1, "fast_boot": 1 })));
-        assert!(!s.app_config().fullbright_on_launch);
+        // fullbright_on_launch was dropped with the launcher setting; an old
+        // config.json still carries it — unknown keys must load untouched.
         assert!(!s.app_config().fast_boot);
         s.save(obj(json!({ "fullbright_on_launch": true, "fast_boot": true })));
-        assert!(s.app_config().fullbright_on_launch);
         assert!(s.app_config().fast_boot);
     }
 

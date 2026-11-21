@@ -5,7 +5,7 @@
 // reduced motion), game (memory + player-facing toggles), the shared
 // "Opciones avanzadas" disclosure (downloads / JDK / AOT + fast boot / agent
 // access / data directory + diagnostics), about.
-import { Theme, T, Router, AppState, Shell, Util, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Field, Slider, Segmented, Toggle, Icon, Icons, Emoji, PageScaffold, AdvancedToggle } from "../../widgets.slint";
+import { Theme, T, Router, AppState, Shell, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Field, Slider, Segmented, Toggle, Icon, Icons, Emoji, PageScaffold, AdvancedToggle, SelectableText } from "../../widgets.slint";
 import { ThemeToggle } from "../../shell/top-chrome.slint";
 import { GlassSheen } from "../../widgets/card.slint";
 import { SettingsBridge } from "api.slint";
@@ -496,7 +496,7 @@ component MemoryCard inherits SettingCard {
         CardHead {
             title: T.tr("dash.memory.title");
             badge: root.dirty ? T.tr("dash.unsavedBadge") : "";
-            desc: T.tr1("settings.memoryDefault", "mem", Util.format-memory(round(SettingsBridge.memory))) + " — " + T.tr("dash.memory.desc");
+            desc: T.tr("dash.memory.desc");
             VerticalLayout {
                 alignment: start;
                 RamBadge { value: round(SettingsBridge.memory / 1024 * 10) / 10; }
@@ -827,16 +827,6 @@ component DiscordCard inherits ToggleCard {
     toggled(v) => { SettingsBridge.save-flag("discord", v); }
 }
 
-component FullbrightCard inherits ToggleCard {
-    badge: T.tr("dash.fullbright.badge");
-    badge-variant: BadgeVariant.gold;
-    heading: T.tr("dash.fullbright.title");
-    desc: T.tr("dash.fullbright.desc");
-    checked <=> SettingsBridge.fullbright;
-    busy: SettingsBridge.saving-field == "fullbright";
-    toggled(v) => { SettingsBridge.save-flag("fullbright", v); }
-}
-
 // ---- data dir + diagnostics ----------------------------------------------------------
 
 component SubfolderChip inherits Rectangle {
@@ -1017,7 +1007,7 @@ component AboutMeta inherits VerticalLayout {
     min-width: 0px;
     alignment: start;
     Text { text: root.key; font-size: 12px; color: Theme.muted; line-height-factor: 1.25; font-weight: 500; }
-    if root.value != "": Text { text: root.value; font-size: 13.6px; font-weight: 600; color: Theme.text; line-height-factor: 1.25; wrap: word-wrap; }
+    if root.value != "": SelectableText { text: root.value; font-size: 13.6px; font-weight: 600; text-color: Theme.text; multi-line: true; }
     @children
 }
 
@@ -1083,7 +1073,7 @@ component AboutLeft inherits VerticalLayout {
             font-size: 24px;
         }
     }
-    Text { text: T.tr("dash.about.tagline"); font-size: 14.4px; color: Theme.muted; line-height-factor: 1.09; wrap: word-wrap; }
+    SelectableText { text: T.tr("dash.about.tagline"); font-size: 14.4px; text-color: Theme.muted; multi-line: true; }
     VerticalLayout {
         padding-top: 12px;
         spacing: 12px;
@@ -1654,7 +1644,7 @@ export component SettingsPage inherits Rectangle {
     property <bool> memory-dirty: SettingsBridge.cfg-loaded && root.mem != SettingsBridge.cfg-memory && root.memory-error == "";
     property <bool> concurrency-dirty: SettingsBridge.cfg-loaded && round(SettingsBridge.concurrency) != SettingsBridge.cfg-concurrency;
     property <bool> jdk-dirty: SettingsBridge.cfg-loaded && SettingsBridge.jdk != SettingsBridge.cfg-jdk;
-    property <bool> any-dirty: root.memory-dirty || root.concurrency-dirty || root.jdk-dirty || (SettingsBridge.cfg-loaded && (SettingsBridge.aot != SettingsBridge.cfg-aot || SettingsBridge.fastboot != SettingsBridge.cfg-fastboot || SettingsBridge.fullbright != SettingsBridge.cfg-fullbright || SettingsBridge.discord != SettingsBridge.cfg-discord));
+    property <bool> any-dirty: root.memory-dirty || root.concurrency-dirty || root.jdk-dirty || (SettingsBridge.cfg-loaded && (SettingsBridge.aot != SettingsBridge.cfg-aot || SettingsBridge.fastboot != SettingsBridge.cfg-fastboot || SettingsBridge.discord != SettingsBridge.cfg-discord));
     /// Settings behind the disclosure that differ from their defaults.
     property <int> advanced-changed: (SettingsBridge.cfg-concurrency != 6 ? 1 : 0) + (SettingsBridge.cfg-jdk != "" ? 1 : 0) + (!SettingsBridge.cfg-aot ? 1 : 0) + (SettingsBridge.cfg-fastboot ? 1 : 0) + (SettingsBridge.agent-enabled ? 1 : 0);
 
@@ -1750,13 +1740,11 @@ export component SettingsPage inherits Rectangle {
                     spacing: 20px;
                     CloseOnStartCard { }
                     DiscordCard { }
-                    FullbrightCard { }
                 }
                 if root.narrow: VerticalLayout {
                     spacing: 20px;
                     CloseOnStartCard { }
                     DiscordCard { }
-                    FullbrightCard { }
                 }
             }
 

@@ -4,7 +4,7 @@
 //! * [`vault`]: accounts (shared by the page and the popover), offline forge,
 //!   Microsoft device flow, avatars, client id, Skin Atelier.
 //! * [`identity`]: Espectral identity of the pedestal account — Minecraft
-//!   verification, Discord link, supporter flags, hidden players.
+//!   verification, Discord link, supporter flags.
 
 use slint::ComponentHandle;
 
@@ -29,11 +29,6 @@ pub(crate) fn valid_offline_name(name: &str) -> bool {
     (2..=16).contains(&name.len()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// `^[A-Za-z0-9_]{3,16}$` (hidden players).
-pub(crate) fn valid_mc_name(name: &str) -> bool {
-    (3..=16).contains(&name.len()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
 /// The message the Svelte UI showed for a failed call (`e.message`).
 pub(crate) fn err_msg(e: &espectral_engine::EngineError) -> String {
     e.envelope().message
@@ -50,8 +45,5 @@ mod tests {
         assert!(!valid_offline_name("a"));
         assert!(!valid_offline_name("bad name"));
         assert!(!valid_offline_name("seventeen_chars_x"));
-        assert!(valid_mc_name("Notch"));
-        assert!(!valid_mc_name("ab"));
-        assert!(!valid_mc_name("ñandu"));
     }
 }

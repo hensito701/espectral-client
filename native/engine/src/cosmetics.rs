@@ -6,14 +6,15 @@
 //! **Owner: accounts-skins.** Status: PORTED.
 //!
 //! State file: `{ schema: 1, accounts: { <flat uuid>: { share, emotes,
-//! loadout: {slot: itemId|null}, hidden_players: [names] } } }` — sharing and
-//! emotes default ON.
+//! loadout: {slot: itemId|null} } } }` — sharing and emotes default ON.
+//! Unknown keys (e.g. `hidden_players` written by older versions) are
+//! tolerated on load and dropped on the next save.
 //!
-//! The mod file (`{ schema:1, uuid, grant|null, share, loadout,
-//! hidden_players, emotes }`) is written on every launch and on every PUT;
-//! its loadout is SANITIZED against the currently valid grant — a dead or
-//! forged grant writes `grant: null` and an empty loadout. The stored loadout
-//! (user intent) is never mutated by sanitization.
+//! The mod file (`{ schema:1, uuid, grant|null, share, loadout, emotes }`) is
+//! written on every launch and on every PUT; its loadout is SANITIZED against
+//! the currently valid grant — a dead or forged grant writes `grant: null`
+//! and an empty loadout. The stored loadout (user intent) is never mutated by
+//! sanitization.
 //!
 //! Cross-cluster seams (identity-discord): the grant + validity come from
 //! [`grant_view`] (`identity::flags_info`), presence republish goes through
@@ -37,7 +38,6 @@ use crate::identity::normalize_uuid;
 use crate::types::{CosmeticItem, CosmeticsAccountState, CosmeticsCatalog};
 
 pub const STATE_SCHEMA: u32 = 1;
-pub const MAX_HIDDEN: usize = 200;
 
 const CATALOG_JSON: &str = include_str!("../data/cosmetics-catalog.json");
 
@@ -96,19 +96,18 @@ pub struct AccountCosmetics {
     pub emotes: bool,
     /// Only equipped slots (catalog order); stored nulls are omitted.
     pub loadout: IndexMap<String, Option<String>>,
-    pub hidden_players: Vec<String>,
 }
 
 impl Default for AccountCosmetics {
     fn default() -> Self {
         // Sharing defaults ON (product decision 2026-10-24).
-        AccountCosmetics { share: true, emotes: true, loadout: IndexMap::new(), hidden_players: vec![] }
+        AccountCosmetics { share: true, emotes: true, loadout: IndexMap::new() }
     }
 }
 
 impl AccountCosmetics {
     fn to_stored(&self) -> Value {
-        json!({ "share": self.share, "emotes": self.emotes, "loadout": self.loadout, "hidden_players": self.hidden_players })
+        json!({ "share": self.share, "emotes": self.emotes, "loadout": self.loadout })
     }
 }
 
@@ -135,10 +134,6 @@ pub fn get_cosmetics_state(engine: &Engine, uuid: &str) -> AccountCosmetics {
                 }
             }
         }
-    }
-    if let Some(Value::Array(h)) = raw.get("hidden_players") {
-        out.hidden_players =
-            h.iter().filter_map(Value::as_str).filter(|s| !s.is_empty()).take(MAX_HIDDEN).map(str::to_string).collect();
     }
     out
 }
@@ -293,7 +288,6 @@ pub fn cosmetics_doc(engine: &Engine, uuid: &str, view: &GrantView) -> Value {
         "grant": if valid { view.grant.clone().map(Value::from).unwrap_or(Value::Null) } else { Value::Null },
         "share": state.share,
         "loadout": loadout,
-        "hidden_players": state.hidden_players,
         "emotes": state.emotes,
     })
 }
@@ -422,10 +416,6 @@ pub fn rewrite_for_running(engine: &Engine, uuid: &str) {
     }
 }
 
-fn player_name_ok(n: &str) -> bool {
-    crate::accounts::is_valid_username(n)
-}
-
 /// Validate + apply a PUT /api/cosmetics/:uuid patch (raw JSON body, JS
 /// validation codes). `flags` are the caller's verified flags. Side effects:
 /// persist, presence share sync (when share/loadout changed), rewrite the mod
@@ -439,7 +429,7 @@ pub fn patch_cosmetics(engine: &Engine, uuid: &str, patch: &Value, flags: &[Stri
     let unknown: Vec<&str> = p
         .keys()
         .map(String::as_str)
-        .filter(|k| !matches!(*k, "share" | "loadout" | "hidden_players" | "emotes"))
+        .filter(|k| !matches!(*k, "share" | "loadout" | "emotes"))
         .collect();
     if !unknown.is_empty() {
         return Err(EngineError::bad_request("BAD_PATCH", format!("unknown fields: {}", unknown.join(", "))));
@@ -452,30 +442,6 @@ pub fn patch_cosmetics(engine: &Engine, uuid: &str, patch: &Value, flags: &[Stri
     if let Some(v) = p.get("emotes") {
         current.emotes =
             v.as_bool().ok_or_else(|| EngineError::bad_request("BAD_EMOTES", "emotes must be a boolean"))?;
-    }
-    if let Some(v) = p.get("hidden_players") {
-        let bad = || {
-            EngineError::bad_request(
-                "BAD_HIDDEN",
-                format!("hidden_players must be an array of at most {MAX_HIDDEN} names"),
-            )
-        };
-        let arr = v.as_array().filter(|a| a.len() <= MAX_HIDDEN).ok_or_else(bad)?;
-        let mut names: IndexSet<String> = IndexSet::new();
-        for n in arr {
-            match n.as_str() {
-                Some(s) if player_name_ok(s) => {
-                    names.insert(s.to_string());
-                }
-                _ => {
-                    return Err(EngineError::bad_request(
-                        "BAD_HIDDEN",
-                        "hidden player names must match /^[A-Za-z0-9_]{1,16}$/",
-                    ))
-                }
-            }
-        }
-        current.hidden_players = names.into_iter().collect();
     }
     if let Some(v) = p.get("loadout") {
         current.loadout = validate_loadout(v, flags)?;
@@ -500,7 +466,6 @@ pub fn cosmetics_account_view(engine: &Engine, uuid: &str, flags: &[String]) -> 
     CosmeticsAccountState {
         share: state.share,
         loadout: state.loadout,
-        hidden_players: state.hidden_players,
         emotes: state.emotes,
         flags: flags.to_vec(),
     }
@@ -747,7 +712,7 @@ mod tests {
         patch_cosmetics(
             &e,
             UUID,
-            &json!({ "share": true, "loadout": { "espalda": "alas_eco", "cuello": "panuelo_forajido" }, "hidden_players": ["Griefer_1"] }),
+            &json!({ "share": true, "loadout": { "espalda": "alas_eco", "cuello": "panuelo_forajido" } }),
             &mvp(),
         )
         .unwrap();
@@ -769,10 +734,9 @@ mod tests {
             doc["loadout"],
             json!({ "espalda": "alas_eco", "cuello": "panuelo_forajido", "cabeza": null, "elitros": null })
         );
-        assert_eq!(doc["hidden_players"], json!(["Griefer_1"]));
         assert_eq!(
             doc.as_object().unwrap().keys().collect::<Vec<_>>(),
-            ["schema", "uuid", "grant", "share", "loadout", "hidden_players", "emotes"]
+            ["schema", "uuid", "grant", "share", "loadout", "emotes"]
         );
 
         // invalid / expired grant -> grant null + empty loadout; prefs survive
@@ -782,7 +746,6 @@ mod tests {
         assert_eq!(doc["grant"], Value::Null);
         assert!(doc["loadout"].as_object().unwrap().values().all(Value::is_null));
         assert_eq!(doc["share"], true);
-        assert_eq!(doc["hidden_players"], json!(["Griefer_1"]));
 
         // the contract fn never fails and (unverified account) writes the dead-grant doc
         write_cosmetics_file(&e, UUID, &game_dir, None).unwrap();
@@ -841,14 +804,9 @@ mod tests {
         assert_eq!(code(patch_cosmetics(&e, u2, &json!([1]), &[])), "BAD_PATCH");
         assert_eq!(code(patch_cosmetics(&e, u2, &json!({ "share": "yes" }), &[])), "BAD_SHARE");
         assert_eq!(code(patch_cosmetics(&e, u2, &json!({ "emotes": 1 }), &[])), "BAD_EMOTES");
-        assert_eq!(code(patch_cosmetics(&e, u2, &json!({ "hidden_players": ["not a name!"] }), &[])), "BAD_HIDDEN");
-        assert_eq!(code(patch_cosmetics(&e, u2, &json!({ "hidden_players": "x" }), &[])), "BAD_HIDDEN");
         assert_eq!(code(patch_cosmetics(&e, "nope", &json!({}), &[])), "BAD_UUID");
-        let out =
-            patch_cosmetics(&e, u2, &json!({ "share": true, "emotes": false, "hidden_players": ["A", "A", "B"] }), &[])
-                .unwrap();
+        let out = patch_cosmetics(&e, u2, &json!({ "share": true, "emotes": false }), &[]).unwrap();
         assert!(out.share && !out.emotes);
-        assert_eq!(out.hidden_players, ["A", "B"]);
         // persisted in the JS layout
         let raw: Value = serde_json::from_str(&std::fs::read_to_string(cosmetics_path(&e)).unwrap()).unwrap();
         assert_eq!(raw["schema"], 1);
@@ -856,7 +814,7 @@ mod tests {
         assert!(!share_enabled(&e, UUID).is_err());
         assert!(share_enabled(&e, u2).unwrap());
         // dashed uuid normalizes to the same record
-        assert_eq!(get_cosmetics_state(&e, "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF").hidden_players, ["A", "B"]);
+        assert_eq!(get_cosmetics_state(&e, "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF").emotes, false);
     }
 
     #[test]
@@ -870,7 +828,6 @@ mod tests {
         let s = get_cosmetics_state(&e, UUID);
         assert!(s.share && !s.emotes);
         assert_eq!(s.loadout, lo(&[("espalda", Some("alas_eco"))]));
-        assert_eq!(s.hidden_players, ["a"]);
         let v = serde_json::to_value(cosmetics_account_view(&e, UUID, &mvp())).unwrap();
         assert_eq!(v["loadout"], json!({ "espalda": "alas_eco" }));
         assert_eq!(v["flags"], json!(["supporter", "mvp"]));

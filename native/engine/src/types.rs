@@ -461,7 +461,6 @@ pub struct AppConfig {
     pub download_concurrency: u32,
     pub aot_auto_train: bool,
     pub fast_boot: bool,
-    pub fullbright_on_launch: bool,
     pub jdk_path_override: Option<String>,
     pub discord_enabled: bool,
     pub data_dir: String,
@@ -1274,7 +1273,6 @@ pub struct CosmeticsAccountState {
     pub share: bool,
     /// slot -> item id | null
     pub loadout: IndexMap<String, Option<String>>,
-    pub hidden_players: Vec<String>,
     pub emotes: bool,
     pub flags: Vec<String>,
 }
@@ -1294,8 +1292,6 @@ pub struct CosmeticsPatch {
     pub share: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loadout: Option<IndexMap<String, Option<String>>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hidden_players: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emotes: Option<bool>,
 }

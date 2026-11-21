@@ -11,7 +11,7 @@ import { AccountBridge } from "api.slint";
 import { GlassSheen } from "../../widgets/card.slint";
 import { CopyFlag, LoadingRow, UploadChip, PlainInput, MsLogo } from "parts.slint";
 import { SkinAtelier } from "skin-atelier.slint";
-import { CosmeticsSection, HiddenSection, IdentitySection, MinecraftDisclaimer } from "identity.slint";
+import { IdentitySection, MinecraftDisclaimer } from "identity.slint";
 
 // ---------------------------------------------------------------------------
 // hero
@@ -882,8 +882,9 @@ component MsAlert inherits Rectangle {
     }
 }
 
-/// Partner-style pill for the Microsoft sign-in (#00A4EF fill, 1px edge,
-/// no shadow) — the third-party brand button of the style guide.
+/// Microsoft's own sign-in style adapted to glass: dark fill (#2F2F2F) with
+/// white text on the dark theme, white fill with dark text on light, a 1px
+/// neutral hairline and the four-colour logo — the third-party brand button.
 component MsPartnerBtn inherits Rectangle {
     in property <string> text;
     in property <bool> loading: false;
@@ -897,7 +898,7 @@ component MsPartnerBtn inherits Rectangle {
     border-radius: Theme.radius-pill;
     border-width: Theme.hairline;
     border-color: Theme.dark ? rgba(255, 255, 255, 0.22) : rgba(0, 0, 0, 0.22);
-    background: root.hot ? #1fb4f5 : Theme.msa-blue;
+    background: Theme.dark ? (root.hot ? #3d3d3d : #2f2f2f) : (root.hot ? #f2f2f2 : #ffffff);
     animate background { duration: Theme.dur-fast; }
     HorizontalLayout {
         height: 48px;
@@ -905,7 +906,7 @@ component MsPartnerBtn inherits Rectangle {
         spacing: Theme.space-2;
         if root.loading: VerticalLayout {
             alignment: center;
-            Spinner { size: 16px; tint: #ffffff; }
+            Spinner { size: 16px; tint: Theme.dark ? #ffffff : #1b1b1b; }
         }
         if !root.loading: VerticalLayout {
             alignment: center;
@@ -913,7 +914,7 @@ component MsPartnerBtn inherits Rectangle {
         }
         Text {
             text: root.text;
-            color: #ffffff;
+            color: Theme.dark ? #ffffff : #1b1b1b;
             font-size: Theme.text-base;
             font-weight: 700;
             vertical-alignment: center;
@@ -1211,10 +1212,8 @@ export component AccountPage inherits Rectangle {
             }
         }
         // Espectral identity of the active account: what the old Armario page
-        // held (verification, Discord, ranks, cosmetics pointer, hidden players).
+        // held (verification, Discord, ranks).
         IdentitySection { min-width: 0px; }
-        CosmeticsSection { min-width: 0px; }
-        HiddenSection { min-width: 0px; }
         MinecraftDisclaimer { min-width: 0px; }
     }
 

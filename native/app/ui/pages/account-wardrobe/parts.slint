@@ -4,8 +4,8 @@
 import { Theme, Icon, Icons, Spinner } from "../../widgets.slint";
 import { AccountBridge } from "api.slint";
 
-/// Plain styled single-line input (popover add-input, hidden-players input,
-/// gallery rename) — TextField has a fixed fill; these need their own.
+/// Plain styled single-line input (popover add-input, gallery rename) —
+/// TextField has a fixed fill; these need their own.
 export component PlainInput inherits Rectangle {
     in-out property <string> text <=> input.text;
     in property <string> placeholder;

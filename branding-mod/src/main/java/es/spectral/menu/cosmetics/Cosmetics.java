@@ -1,12 +1,9 @@
 package es.spectral.menu.cosmetics;
 
-import java.util.Locale;
-import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FontDescription;
 import net.minecraft.network.chat.MutableComponent;
@@ -46,13 +43,11 @@ public final class Cosmetics {
     // ---------------------------------------------------------------
     // Entitlements / state
     // ---------------------------------------------------------------
-
     /**
      * Verified loadout for {@code uuid}, or {@code null} when nothing may
-     * render: the cosmetics feature is off, the player is hidden by
-     * {@code hidden_players}, or they carry no verified grant. Own player uses
-     * the launcher-written loadout (filtered the same way). Callers still skip
-     * invisible/spectator wearers themselves.
+     * render: the cosmetics feature is off, or they carry no verified grant.
+     * Own player uses the launcher-written loadout (filtered the same way).
+     * Callers still skip invisible/spectator wearers themselves.
      */
     public static Loadout loadoutFor(UUID uuid) {
         if (uuid == null || !feature(FEATURE_COSMETICS)) return null;
@@ -66,7 +61,7 @@ public final class Cosmetics {
             if (!ownMatches(uuid, own)) return null;
             return own.grant() != null ? ownSlots(own.loadout(), state) : null;
         }
-        if (!state.others || hidden(uuid)) return null;
+        if (!state.others) return null;
         GrantVerifier.Grant grant = CosmeticsService.peerGrant(uuid);
         if (grant == null) return null;
         Loadout loadout = CosmeticsService.peerLoadout(uuid);
@@ -118,7 +113,6 @@ public final class Cosmetics {
             CosmeticsService.Own own = CosmeticsService.own();
             return ownMatches(uuid, own) && own.share();
         }
-        if (hidden(uuid)) return false;
         return CosmeticsService.peerPresent(uuid);
     }
 
@@ -247,21 +241,6 @@ public final class Cosmetics {
      */
     private static boolean ownMatches(UUID uuid, CosmeticsService.Own own) {
         return own.uuid() != null && own.uuid().equals(uuid);
-    }
-
-    /**
-     * The viewer hid this player (case-insensitive {@code hidden_players}
-     * match against the vanilla tab-list name).
-     */
-    private static boolean hidden(UUID uuid) {
-        Set<String> hidden = CosmeticsService.own().hiddenPlayers();
-        if (hidden.isEmpty()) return false;
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null || minecraft.getConnection() == null) return false;
-        PlayerInfo info = minecraft.getConnection().getPlayerInfo(uuid);
-        if (info == null || info.getProfile() == null) return false;
-        String name = info.getProfile().name();
-        return name != null && hidden.contains(name.toLowerCase(Locale.ROOT));
     }
 
     /**

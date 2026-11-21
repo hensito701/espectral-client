@@ -153,8 +153,8 @@ component SectionLabel inherits HorizontalLayout {
     }
 }
 
-/// Footer action: Microsoft = partner pill (#00A4EF fill, 1px edge);
-/// everything else = a glass row.
+/// Footer action: Microsoft = its own sign-in style adapted to glass (dark
+/// #2F2F2F fill on the dark theme, white on light); everything else = a glass row.
 component FooterBtn inherits Rectangle {
     in property <string> text;
     in property <bool> msa;
@@ -162,7 +162,9 @@ component FooterBtn inherits Rectangle {
     height: 36px;
     border-radius: Theme.radius-pill;
     property <bool> hot: ta.has-hover;
-    background: root.msa ? (root.hot ? #1fb4f5 : Theme.msa-blue) : (root.hot ? Theme.surface-up : Theme.surface);
+    background: root.msa
+        ? (Theme.dark ? (root.hot ? #3d3d3d : #2f2f2f) : (root.hot ? #f2f2f2 : #ffffff))
+        : (root.hot ? Theme.surface-up : Theme.surface);
     border-width: Theme.hairline;
     border-color: root.msa ? (Theme.dark ? rgba(255, 255, 255, 0.22) : rgba(0, 0, 0, 0.22)) : (root.hot ? Theme.hover-border : Theme.border-solid);
     animate background, border-color { duration: Theme.dur-fast; }
@@ -186,7 +188,7 @@ component FooterBtn inherits Rectangle {
             text: root.text;
             font-size: Theme.text-xs;
             font-weight: 700;
-            color: root.msa ? #ffffff : root.hot ? Theme.accent-bright : Theme.text;
+            color: root.msa ? (Theme.dark ? #ffffff : #1b1b1b) : root.hot ? Theme.accent-bright : Theme.text;
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
