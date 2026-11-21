@@ -28,6 +28,7 @@
 //! | GET    /api/import/sources                             | [`Engine::import_sources`] |
 //! | POST   /api/instances/:name/import                     | [`Engine::import_profile`] |
 //! | GET    /api/servers                                    | [`Engine::server_statuses`] |
+//! | GET    /api/news (native-only, no JS route)              | [`Engine::fetch_news`] |
 //! | GET    /api/instances/:name/client                     | [`Engine::get_client_info`] |
 //! | PATCH  /api/instances/:name/client                     | [`Engine::patch_client`] |
 //!
@@ -38,7 +39,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -58,6 +59,8 @@ use super::{DeletedReply, PathReply, QueuedReply};
 /// inject the import roots so nothing touches the real network or home dir.
 #[derive(Debug, Clone)]
 pub struct ContentSettings {
+    /// #noticias feed export (BalasGPT bot); news.rs FETCH_TIMEOUT applies.
+    pub news_url: String,
     /// mods.mjs MODRINTH_API.
     pub modrinth_api: String,
     /// servers.mjs status API base (`<base>/3/<host>`).
@@ -86,6 +89,7 @@ pub struct ContentSettings {
 impl Default for ContentSettings {
     fn default() -> Self {
         ContentSettings {
+            news_url: crate::news::NEWS_API.to_string(),
             modrinth_api: crate::mods::MODRINTH_API.to_string(),
             mcsrvstat_api: crate::servers::MCSRVSTAT_API.to_string(),
             pack_file_hosts: crate::mrpack::PACK_FILE_HOSTS.iter().map(|s| s.to_string()).collect(),
@@ -116,6 +120,8 @@ pub struct ContentState {
     /// servers.mjs cache: host -> (fetched_at ms, status).
     pub(crate) server_status: Mutex<HashMap<String, (i64, ServerStatus)>>,
     /// reqwest client that never follows redirects (mrpack pack-file host checks).
+    /// news.rs memo: (Instant, shaped feed) for MEMO_TTL dedup.
+    pub(crate) news_memo: Mutex<Option<(Instant, crate::news::NewsFeed)>>,
     pub(crate) no_redirect_client: OnceLock<reqwest::Client>,
 }
 
@@ -272,6 +278,14 @@ impl Engine {
     pub async fn list_instances(&self) -> EngineResult<Vec<InstanceSummary>> {
         let list = crate::instances::list_instances(self).await?;
         Ok(list.into_iter().map(|s| self.with_running(s)).collect())
+    }
+
+    /// The "Novedades" feed: #noticias via `ContentSettings::news_url`
+    /// (`ESPECTRAL_NEWS_URL` env wins; `file://` reads a local document).
+    /// `force` skips the short in-memory dedup. On fetch failure the result
+    /// comes from `<data>/news-cache.json` with `stale` set; no cache = error.
+    pub async fn fetch_news(&self, force: bool) -> EngineResult<crate::news::NewsFeed> {
+        crate::news::fetch_news(self, force).await
     }
 
     /// POST /api/instances -> InstanceSummary (409 INVALID_NAME / ALREADY_EXISTS /

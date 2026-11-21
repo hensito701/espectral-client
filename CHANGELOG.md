@@ -4,6 +4,14 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 
 ## [1.9.3] - 2026-11-21
 
+### Added
+- **Novedades.** A "Novedades" button in the top bar opens a panel with the latest posts from
+  the Discord #noticias channel: title (the post's `#` heading, or its first paragraph), date,
+  and a preview image; click a post to read it whole with its pictures, or open it in Discord.
+  A red dot marks posts you haven't seen, and Home shows the newest one as a "Nuevo: …" line.
+  After a launcher update, the first card lists what changed in that version. Posts are cached,
+  so the panel still shows the last ones offline.
+
 ### Changed
 - **Jugar sits higher.** Home is one centred column: logo, greeting, server line and the play
   bar right under them, so the bar stays clickable when the bottom of the window is behind the

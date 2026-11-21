@@ -1,0 +1,32 @@
+{
+  "es": {
+    "news.title": "Novedades",
+    "news.button": "Novedades",
+    "news.untitled": "Publicación",
+    "news.newPrefix": "Nuevo:",
+    "news.viewDiscord": "Ver en Discord",
+    "news.viewAll": "Ver todo en Discord",
+    "news.failed": "No se pudieron cargar las novedades",
+    "news.retry": "Reintentar",
+    "news.empty": "Aún no hay novedades",
+    "news.launcherTag": "Launcher",
+    "news.updateTitle": "Espectral Client {version}",
+    "news.updateAuthor": "Launcher",
+    "news.close": "Cerrar"
+  },
+  "en": {
+    "news.title": "News",
+    "news.button": "News",
+    "news.untitled": "Post",
+    "news.newPrefix": "New:",
+    "news.viewDiscord": "View on Discord",
+    "news.viewAll": "View all on Discord",
+    "news.failed": "The news could not be loaded",
+    "news.retry": "Retry",
+    "news.empty": "No news yet",
+    "news.launcherTag": "Launcher",
+    "news.updateTitle": "Espectral Client {version}",
+    "news.updateAuthor": "Launcher",
+    "news.close": "Close"
+  }
+}

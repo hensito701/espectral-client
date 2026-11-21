@@ -1,0 +1,58 @@
+// NewsBridge — the "Novedades" feed (Discord #noticias, exported by the
+// BalasGPT bot at espectral.uhce.top/config/api/news) plus the launcher's own
+// "what's new" card after an update. Rust: src/news.rs. UI: pages/news/.
+
+/// One picture of a post. `image` stays empty until the post is expanded
+/// (Rust downloads and shrinks it then); `width`/`height` are the source
+/// size, so the UI can reserve the right aspect ratio before it loads.
+export struct NewsImage {
+    image: image,
+    loaded: bool,
+    width: int,
+    height: int,
+}
+
+export struct NewsPost {
+    id: string,
+    /// First `#` heading of the post, else its first paragraph.
+    title: string,
+    /// The rest of the text (light markdown already flattened to plain text).
+    body: string,
+    author: string,
+    /// RFC 3339; format with Util.relative-time(created-at, T.lang).
+    created-at: string,
+    /// Discord message link ("" for the launcher update card).
+    url: string,
+    images: [NewsImage],
+    /// The launcher's own "Espectral Client <version>" card after an update.
+    launcher-update: bool,
+    /// Newer than what the player has seen.
+    unread: bool,
+}
+
+export global NewsBridge {
+    /// Newest first; the launcher update card (if any) first of all.
+    in property <[NewsPost]> posts;
+    /// First fetch in flight and nothing cached yet.
+    in property <bool> loading;
+    /// The last fetch failed and there is nothing cached to show.
+    in property <bool> failed;
+    /// Something newer than the player has seen (top-bar dot, Home line).
+    in property <bool> has-unread;
+    /// Title of the newest unread post ("" when none) for the Home line.
+    in property <string> latest-unread-title;
+    /// The #noticias channel link ("Ver todo en Discord").
+    in property <string> channel-url;
+
+    /// The drawer is open. The UI sets it; Rust watches `opened()`.
+    in-out property <bool> open;
+    /// Id of the expanded post ("" = none).
+    in-out property <string> expanded-id;
+
+    /// The drawer was opened: mark everything seen.
+    callback opened();
+    /// A post was expanded: load its images.
+    callback expand(id: string);
+    /// Retry after a failure.
+    callback refresh();
+}

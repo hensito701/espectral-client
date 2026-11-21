@@ -34,6 +34,7 @@ mod bridge;
 mod dialogs;
 mod i18n;
 mod logging;
+mod news;
 mod pages;
 mod palette;
 mod prefs;
@@ -258,6 +259,7 @@ fn run_ui(
         });
     }
     pages::init_all(&ctx, &ui);
+    news::init(&ctx, &ui, shot.is_none());
     bridge::start_event_pump(&ctx);
 
     if let Some(s) = shot {
@@ -395,6 +397,11 @@ fn run_screenshot(ctx: &Ctx, ui: &AppWindow, s: screenshot::ShotArgs) {
             "wizard" => shell.set_wizard_open(true),
             "account" => shell.set_account_popover_open(true),
             "pip" => shell.set_pip_log_open(true),
+            "news" => {
+                let news = ui.global::<NewsBridge>();
+                news.set_open(true);
+                news.invoke_opened();
+            }
             _ => {}
         }
     }

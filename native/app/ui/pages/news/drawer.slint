@@ -1,0 +1,377 @@
+// NewsDrawer — the "Novedades" feed (Discord #noticias via NewsBridge). OWNER: news.
+// app.slint mounts it under the TopChrome (above the page viewport and the
+// launch-log drawer): a right-side floating panel that slides in over a
+// click-outside layer. Esc closes it via app.slint's global hotkey scope.
+//
+// Cards: collapsed = title (2 lines) + author · relative time + a 120px
+// preview of the first image; expanded (only one at a time, via
+// NewsBridge.expanded-id) = body + every image at its aspect ratio + the
+// Discord link. The launcher-update card carries an accent edge + "Launcher"
+// tag.
+
+import { Theme, T, AppState, Util, Icon, Icons, Btn, BtnVariant, BtnSize, ScrollArea } from "../../widgets.slint";
+import { NewsBridge, NewsPost, NewsImage } from "api.slint";
+
+/// Placeholder card shown while the first fetch is in flight.
+component SkeletonCard inherits Rectangle {
+    height: 84px;
+    border-radius: Theme.radius-md;
+    background: Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: Theme.border-solid;
+    VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2;
+        Rectangle { height: 12px; width: 65%; border-radius: 6px; background: Theme.surface-up; }
+        Rectangle { height: 10px; width: 40%; border-radius: 5px; background: Theme.surface-up; opacity: 0.7; }
+        Rectangle { height: 10px; width: 85%; border-radius: 5px; background: Theme.surface-up; opacity: 0.4; }
+    }
+}
+
+/// One post: collapsed preview or the expanded read (title, body, images, link).
+component NewsCard inherits Rectangle {
+    in property <NewsPost> post;
+    property <bool> expanded: NewsBridge.expanded-id == post.id;
+    property <bool> hovered: ta.has-hover;
+    /// Width available to the card's inner content (images size to it).
+    property <length> content-w: root.width - 2 * Theme.space-3;
+
+    height: col.preferred-height;
+    border-radius: Theme.radius-md;
+    background: root.hovered ? Theme.surface-up : Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: post.launcher-update ? Theme.edge-strong : root.hovered ? Theme.hover-border : Theme.border-solid;
+    animate background, border-color { duration: Theme.dur-fast; }
+    clip: true;
+    // whole-card toggle below the content so the inner Discord link can
+    // still take its own clicks
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            if root.expanded {
+                NewsBridge.expanded-id = "";
+            } else {
+                NewsBridge.expanded-id = root.post.id;
+                NewsBridge.expand(root.post.id);
+            }
+        }
+    }
+
+
+    col := VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2;
+
+        // ---- title row (+ Launcher tag on the update card) ----
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            if post.launcher-update: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    height: tag.preferred-height + 4px;
+                    width: tag.preferred-width + 10px;
+                    border-radius: Theme.radius-xs;
+                    background: Theme.accent.with-alpha(0.16);
+                    border-width: Theme.hairline;
+                    border-color: Theme.edge-strong;
+                    tag := Text {
+                        text: T.tr("news.launcherTag");
+                        font-size: Theme.text-xs;
+                        font-weight: 700;
+                        color: Theme.accent-bright;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            Text {
+                text: post.title != "" ? post.title : T.tr("news.untitled");
+                font-size: Theme.text-sm;
+                font-weight: 600;
+                color: Theme.text;
+                wrap: word-wrap;
+                overflow: elide;
+                height: min(self.preferred-height, Theme.text-sm * 1.4 * 2);
+                horizontal-stretch: 1;
+                vertical-alignment: top;
+            }
+            if post.unread: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 3.5px;
+                    background: Theme.accent;
+                }
+            }
+        }
+
+        // ---- meta: author · relative time ----
+        Text {
+            text: post.author + " · " + Util.relative-time(post.created-at, T.lang);
+            font-size: Theme.text-xs;
+            font-weight: 500;
+            color: Theme.muted;
+            overflow: elide;
+        }
+
+        // ---- collapsed: first image preview ----
+        if !root.expanded && post.images.length > 0: Rectangle {
+            height: 120px;
+            border-radius: Theme.radius-sm;
+            background: Theme.card-bg-soft;
+            border-width: Theme.hairline;
+            border-color: Theme.border-solid;
+            clip: true;
+            if post.images[0].loaded: Image {
+                width: 100%;
+                height: 100%;
+                source: post.images[0].image;
+                image-fit: cover;
+            }
+            if !post.images[0].loaded: Icon {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                data: Icons.image;
+                size: 20px;
+                color: Theme.muted;
+                opacity: 0.6;
+            }
+        }
+
+        // ---- expanded: body + every image + Discord link ----
+        if root.expanded && post.body != "": Text {
+            text: post.body;
+            font-size: Theme.text-sm;
+            font-weight: 400;
+            color: Theme.text;
+            wrap: word-wrap;
+            line-height-factor: 1.45 / 1.28;
+        }
+        if root.expanded: VerticalLayout {
+            spacing: Theme.space-2;
+            for img in post.images: Rectangle {
+                height: min(root.content-w * img.height / max(1, img.width), 520px);
+                border-radius: Theme.radius-sm;
+                background: Theme.card-bg-soft;
+                border-width: Theme.hairline;
+                border-color: Theme.border-solid;
+                clip: true;
+                if img.loaded: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: img.image;
+                    image-fit: cover;
+                }
+                if !img.loaded: Icon {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    data: Icons.image;
+                    size: 20px;
+                    color: Theme.muted;
+                    opacity: 0.6;
+                }
+            }
+        }
+        if root.expanded && post.url != "": HorizontalLayout {
+            spacing: 6px;
+            padding-top: 2px;
+            VerticalLayout {
+                alignment: center;
+                Icon {
+                    data: Icons.external-link;
+                    size: 12px;
+                    color: link-ta.has-hover ? Theme.accent-bright : Theme.accent;
+                }
+            }
+            Text {
+                text: T.tr("news.viewDiscord") + " ↗";
+                font-size: Theme.text-xs;
+                font-weight: 600;
+                color: link-ta.has-hover ? Theme.accent-bright : Theme.accent;
+                vertical-alignment: center;
+            }
+            link-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { AppState.open-url(root.post.url); }
+            }
+        }
+    }
+
+}
+
+export component NewsDrawer inherits Rectangle {
+    // click-outside layer: only while open (fades don't block the page)
+    if NewsBridge.open: TouchArea {
+        clicked => { NewsBridge.open = false; }
+    }
+
+    panel := Rectangle {
+        width: min(400px, root.width * 0.4);
+        height: root.height - Theme.topbar-height - 2 * Theme.space-4;
+        x: NewsBridge.open ? root.width - self.width - Theme.space-4 : root.width;
+        y: Theme.topbar-height + Theme.space-4;
+        opacity: NewsBridge.open ? 1 : 0;
+        animate x { duration: Theme.dur-med; easing: ease-out; }
+        animate opacity { duration: Theme.dur-fast; }
+        border-radius: Theme.radius-lg;
+        background: Theme.surface-solid;
+        border-width: Theme.hairline;
+        border-color: Theme.glass-border;
+        drop-shadow-blur: Theme.shadow-lg-blur;
+        drop-shadow-offset-y: Theme.shadow-lg-y;
+        drop-shadow-color: Theme.shadow-lg-color;
+        clip: true;
+
+        // swallow clicks (the click-outside layer is underneath)
+        TouchArea { }
+
+        VerticalLayout {
+            // ---- header ----
+            Rectangle {
+                background: Theme.card-bg-soft;
+                HorizontalLayout {
+                    padding-left: Theme.space-4;
+                    padding-right: Theme.space-4;
+                    padding-top: Theme.space-3;
+                    padding-bottom: Theme.space-3;
+                    spacing: Theme.space-2;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 7px;
+                            height: 7px;
+                            border-radius: 3.5px;
+                            background: Theme.accent;
+                        }
+                    }
+                    Text {
+                        text: T.tr("news.title").to-uppercase();
+                        font-family: Theme.font-title;
+                        font-size: Theme.text-sm;
+                        font-weight: 700;
+                        letter-spacing: 0.5px;
+                        color: Theme.title-color;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        width: 26px;
+                        height: 26px;
+                        border-radius: Theme.radius-sm;
+                        border-width: Theme.hairline;
+                        border-color: close-ta.has-hover ? Theme.hover-border : transparent;
+                        background: close-ta.has-hover ? Theme.surface-up : transparent;
+                        Icon { data: Icons.x; size: 16px; color: close-ta.has-hover ? Theme.title-color : Theme.muted; }
+                        close-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { NewsBridge.open = false; }
+                        }
+                    }
+                }
+                Rectangle { y: parent.height - Theme.hairline; height: Theme.hairline; background: Theme.border-solid; }
+            }
+
+            // ---- body ----
+            ScrollArea {
+                vertical-stretch: 1;
+                gutter: Theme.space-2;
+                VerticalLayout {
+                    padding: Theme.space-3;
+                    spacing: Theme.space-2;
+
+                    if NewsBridge.loading && NewsBridge.posts.length == 0: VerticalLayout {
+                        spacing: Theme.space-2;
+                        SkeletonCard { }
+                        SkeletonCard { }
+                        SkeletonCard { }
+                    }
+
+                    if NewsBridge.failed && NewsBridge.posts.length == 0: VerticalLayout {
+                        padding-top: Theme.space-8;
+                        padding-bottom: Theme.space-8;
+                        spacing: Theme.space-3;
+                        alignment: center;
+                        HorizontalLayout {
+                            alignment: center;
+                            Icon { data: Icons.alert-circle; size: 28px; color: Theme.muted; opacity: 0.7; }
+                        }
+                        Text {
+                            text: T.tr("news.failed");
+                            font-size: Theme.text-sm;
+                            font-weight: 500;
+                            color: Theme.muted-strong;
+                            horizontal-alignment: center;
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            Btn {
+                                variant: BtnVariant.secondary;
+                                size: BtnSize.sm;
+                                icon: Icons.refresh;
+                                text: T.tr("news.retry");
+                                clicked => { NewsBridge.refresh(); }
+                            }
+                        }
+                    }
+
+                    if !NewsBridge.loading && !NewsBridge.failed && NewsBridge.posts.length == 0: VerticalLayout {
+                        padding-top: Theme.space-8;
+                        padding-bottom: Theme.space-8;
+                        spacing: Theme.space-3;
+                        alignment: center;
+                        HorizontalLayout {
+                            alignment: center;
+                            Icon { data: Icons.megaphone; size: 28px; color: Theme.muted; opacity: 0.7; }
+                        }
+                        Text {
+                            text: T.tr("news.empty");
+                            font-size: Theme.text-sm;
+                            font-weight: 500;
+                            color: Theme.muted;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    for post in NewsBridge.posts: NewsCard {
+                        post: post;
+                    }
+                }
+            }
+
+            // ---- footer ----
+            Rectangle {
+                background: Theme.card-bg-soft;
+                Rectangle { y: 0; height: Theme.hairline; background: Theme.border-solid; }
+                HorizontalLayout {
+                    padding-top: Theme.space-3;
+                    padding-bottom: Theme.space-3;
+                    padding-left: Theme.space-4;
+                    padding-right: Theme.space-4;
+                    spacing: 6px;
+                    alignment: center;
+                    VerticalLayout {
+                        alignment: center;
+                        Icon {
+                            data: Icons.external-link;
+                            size: 12px;
+                            color: foot-ta.has-hover ? Theme.accent-bright : Theme.muted;
+                        }
+                    }
+                    Text {
+                        text: T.tr("news.viewAll") + " ↗";
+                        font-size: Theme.text-xs;
+                        font-weight: 600;
+                        color: foot-ta.has-hover ? Theme.accent-bright : Theme.muted-strong;
+                        vertical-alignment: center;
+                    }
+                }
+                foot-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    enabled: NewsBridge.channel-url != "";
+                    clicked => { AppState.open-url(NewsBridge.channel-url); }
+                }
+            }
+        }
+    }
+}

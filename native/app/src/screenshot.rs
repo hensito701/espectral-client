@@ -9,7 +9,7 @@
 //!
 //! Options: --theme dark|light|system  --lang es|en  --accent <id>
 //!          --size 1280x800  --wait 1500  --scroll <px>
-//!          --open palette|wizard|account|pip|gate|advanced   (repeatable;
+//!          --open palette|wizard|account|pip|gate|news|advanced   (repeatable;
 //!                 advanced = "Opciones avanzadas" disclosures open)
 //!          --query <text>   (palette query, with --open palette)
 //!          --click X,Y      (logical px; press + release, then pump 400 ms; repeatable)

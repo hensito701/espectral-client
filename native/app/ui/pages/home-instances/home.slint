@@ -9,6 +9,7 @@
 
 import { Theme, T, AppState, Router, Page, Shell, MonogramTile, MonogramShape } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
+import { NewsBridge } from "../news/api.slint";
 import { TelemetryCapsule } from "capsule.slint";
 
 /// The live-server line: status dot + host + MOTD, muted.
@@ -100,6 +101,37 @@ export component HomePage inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             ServerLine { }
+        }
+        // ---- "Nuevo: …" — newest unread post; opens the news drawer ----
+        if NewsBridge.latest-unread-title != "": HorizontalLayout {
+            alignment: center;
+            news-pill := Rectangle {
+                width: min(news-label.preferred-width + 2 * Theme.space-4, 520px);
+                height: 30px;
+                border-radius: Theme.radius-pill;
+                background: news-ta.has-hover ? Theme.accent.with-alpha(0.16) : Theme.accent.with-alpha(0.10);
+                border-width: Theme.hairline;
+                border-color: Theme.edge-strong;
+                animate background { duration: Theme.dur-fast; }
+                news-label := Text {
+                    width: min(self.preferred-width, parent.width - 2 * Theme.space-4);
+                    x: (parent.width - self.width) / 2;
+                    text: T.tr("news.newPrefix") + " " + NewsBridge.latest-unread-title + " →";
+                    font-size: Theme.text-xs;
+                    font-weight: 600;
+                    color: Theme.accent;
+                    overflow: elide;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                news-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        NewsBridge.open = true;
+                        NewsBridge.opened();
+                    }
+                }
+            }
         }
         Rectangle { height: Theme.space-6; }
         // ---- the floating play bar ----

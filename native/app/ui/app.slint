@@ -40,6 +40,8 @@ import { DonationsPage } from "pages/library-mods/donations.slint";
 import { AccountPage } from "pages/account-wardrobe/account-vault.slint";
 import { AccountPopover } from "pages/account-wardrobe/account-popover.slint";
 import { SettingsPage } from "pages/settings-suite-servers/settings.slint";
+import { NewsDrawer } from "pages/news/drawer.slint";
+import { NewsBridge } from "pages/news/api.slint";
 
 // ---- globals visible from Rust ----
 export { Theme, T, Page, Router, AppState, Shell, Session, Util, PaletteState }
@@ -48,6 +50,7 @@ export { HomeBridge } from "pages/home-instances/api.slint";
 export { LibraryBridge } from "pages/library-mods/api.slint";
 export { AccountBridge } from "pages/account-wardrobe/api.slint";
 export { SettingsBridge } from "pages/settings-suite-servers/api.slint";
+export { NewsBridge, NewsPost, NewsImage } from "pages/news/api.slint";
 export { SkinBridge, SkinFrameRequest } from "skin3d/skin-view.slint";
 
 export component AppWindow inherits Window {
@@ -75,6 +78,7 @@ export component AppWindow inherits Window {
             if Session.show-gate || Session.just-authed { return reject; }
             if e.text == Key.Escape {
                 if Shell.palette-open { Shell.palette-open = false; return accept; }
+                if NewsBridge.open { NewsBridge.open = false; return accept; }
                 if Shell.account-popover-open { Shell.account-popover-open = false; return accept; }
                 if Shell.pip-log-open && !Shell.pip-log-pinned { Shell.pip-log-open = false; return accept; }
                 return reject;
@@ -115,6 +119,13 @@ export component AppWindow inherits Window {
         }
 
         PipLogDrawer {
+            width: 100%;
+            height: 100%;
+        }
+
+        // news drawer: above the pages + launch log, below the top chrome so
+        // its buttons stay usable while the drawer is open
+        NewsDrawer {
             width: 100%;
             height: 100%;
         }

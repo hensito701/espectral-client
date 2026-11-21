@@ -9,6 +9,7 @@
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
 import { Router, Page, AppState, Shell } from "../state.slint";
+import { NewsBridge } from "../pages/news/api.slint";
 import { Icon, Icons } from "../widgets/icon.slint";
 import { Wordmark } from "../widgets/badge.slint";
 import { GlassSheen } from "../widgets/card.slint";
@@ -221,6 +222,63 @@ export component TopChrome inherits Rectangle {
                     enabled: !upd.busy;
                     mouse-cursor: pointer;
                     clicked => { Shell.install-update(); }
+                }
+            }
+        }
+
+        // Novedades pill: opens the news drawer; red dot while there is
+        // something unread. Icon-only on narrow windows.
+        VerticalLayout {
+            alignment: center;
+            npill := GlassPill {
+                property <bool> active: NewsBridge.open;
+                hot: npill-ta.has-hover || self.active;
+                height: 32px;
+                min-width: npill-row.preferred-width;
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: 100%;
+                    height: 100%;
+                    visible: npill.active;
+                    background: Theme.accent.with-alpha(0.14);
+                }
+                npill-row := HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: root.width >= 1100px ? 14px : 12px;
+                    spacing: Theme.space-2;
+                    VerticalLayout {
+                        alignment: center;
+                        Icon {
+                            data: Icons.megaphone;
+                            size: 14px;
+                            color: npill.active ? Theme.accent-bright : npill-ta.has-hover ? Theme.text : Theme.muted-strong;
+                        }
+                    }
+                    if root.width >= 1100px: Text {
+                        text: T.tr("news.button");
+                        font-size: Theme.text-xs;
+                        font-weight: 600;
+                        color: npill.active ? Theme.accent-bright : npill-ta.has-hover ? Theme.text : Theme.muted-strong;
+                        vertical-alignment: center;
+                    }
+                }
+                if NewsBridge.has-unread: Rectangle {
+                    x: parent.width - 9px;
+                    y: 3px;
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 3.5px;
+                    border-width: 1.5px;
+                    border-color: Theme.surface-solid;
+                    background: Theme.accent-red;
+                }
+                npill-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        NewsBridge.open = !NewsBridge.open;
+                        if NewsBridge.open { NewsBridge.opened(); }
+                    }
                 }
             }
         }

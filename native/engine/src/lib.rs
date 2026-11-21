@@ -61,6 +61,7 @@ pub mod import;
 pub mod instances;
 pub mod mods;
 pub mod mrpack;
+pub mod news;
 pub mod servers;
 
 // ---- accounts-skins --------------------------------------------------------
