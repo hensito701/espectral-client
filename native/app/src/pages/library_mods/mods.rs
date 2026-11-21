@@ -551,13 +551,13 @@ pub fn group_digits(n: u64, lang: Lang) -> String {
 
 fn toggle(filename: String) {
     let Some(c) = super::ctx() else { return };
-    let (target, next, name) = with(|s| {
+    let (target, next, name, installed) = with(|s| {
         let target = s.target.clone();
         let Some(m) = s.mods.iter_mut().find(|m| m.filename == filename) else {
-            return (target, None, String::new());
+            return (target, None, String::new(), true);
         };
         m.enabled = !m.enabled;
-        (target, Some(m.enabled), display_name(&m.filename, m.project_slug.as_deref()))
+        (target, Some(m.enabled), display_name(&m.filename, m.project_slug.as_deref()), m.installed)
     });
     let Some(next) = next else { return };
     if let Some(ui) = win() {
@@ -569,6 +569,10 @@ fn toggle(filename: String) {
         move |e| async move { e.set_mod_enabled(&target, &filename, next).await },
         move |_ui, _r| {
             toast::ok(format!("{name} {}", i18n::t(if next { "mods.enabled" } else { "mods.disabled" })));
+            // A pinned mod that wasn't on disk was just downloaded: re-list it.
+            if !installed {
+                load_mods();
+            }
         },
         move |ui, err| {
             with(|s| {

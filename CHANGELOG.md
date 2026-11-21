@@ -15,6 +15,12 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 - **Copyable About text.** The name, version and "made with" values in Acerca de can be
   selected and copied.
 
+### Fixed
+- **"mod not found" when turning on a disabled mod.** When the recommended set moved to newer
+  builds (Sodium 0.9.1 → 0.9.2), Mods listed the new builds as switched-off mods although the
+  old ones were installed, and their switch failed. Those rows are gone; a recommended mod that
+  really isn't installed downloads when you turn it on.
+
 ### Removed
 - **"Brillo máximo al jugar"** setting: the Suite's Fullbright does this in game.
 - **Hidden players** ("Jugadores ocultos"): the launcher, engine and the in-game mod no longer

@@ -697,7 +697,7 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
     let mut on_disk: Vec<String> = read_names(&mods_dir).into_iter().filter(|f| is_mod_file(f)).collect();
     on_disk.sort();
     let mut entries = vec![];
-    for file in on_disk {
+    for file in on_disk.clone() {
         let disabled = file.ends_with(".jar.disabled");
         let base = if disabled { file[..file.len() - ".disabled".len()].to_string() } else { file.clone() };
         let abs = mods_dir.join(&file);
@@ -722,8 +722,24 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
         });
     }
     let seen: HashSet<String> = entries.iter().filter_map(|e| e.version_id.clone()).collect();
-    for p in &pins {
-        if seen.contains(&p.version_id) {
+    // A pin whose project is already on disk as another build (the set moved
+    // from sodium 0.9.1 to 0.9.2) is not a missing mod: listing it as a
+    // disabled row offered a switch for a file that doesn't exist.
+    let missing: Vec<&Pin> = pins.iter().filter(|p| !seen.contains(&p.version_id)).collect();
+    let present_projects = if missing.is_empty() {
+        None
+    } else {
+        let jars: Vec<String> = on_disk.iter().filter(|f| !f.ends_with(".disabled")).cloned().collect();
+        installed_project_ids(engine, &mods_dir, &jars).await
+    };
+    for p in missing {
+        // By sha1 through Modrinth; the filename guess only when that lookup
+        // is unavailable (offline).
+        let on_disk_build = match &present_projects {
+            Some(ids) => ids.contains(&p.project_id),
+            None => on_disk.iter().any(|f| is_filename_for_slug(f, &p.slug)),
+        };
+        if on_disk_build {
             continue;
         }
         let meta = meta_of(&p.version_id);
@@ -780,6 +796,10 @@ pub async fn set_mod_enabled(
     let (src, dst) = if enabled { (&disabled, &jar) } else { (&jar, &disabled) };
     let (src_exists, dst_exists) = (src.exists(), dst.exists());
     if !src_exists && !dst_exists {
+        // A pinned mod listed as not installed: turning it on downloads it.
+        if enabled && install_missing_pin(engine, &instance, &mods_dir, &format!("{base}.jar")).await? {
+            return Ok(format!("{base}.jar"));
+        }
         return Err(code_err(404, "mod_not_found", format!("mod not found: {filename}")));
     }
     if src_exists {
@@ -789,6 +809,38 @@ pub async fn set_mod_enabled(
         std::fs::rename(src, dst)?;
     }
     Ok(format!("{base}.jar"))
+}
+
+/// Download the pinned build of this version whose file is `fname` into
+/// `mods_dir`; false when no pin has that file.
+async fn install_missing_pin(
+    engine: &Engine,
+    instance: &InstanceMeta,
+    mods_dir: &Path,
+    fname: &str,
+) -> EngineResult<bool> {
+    let pins = pins_for_version(engine, &instance.version).await.unwrap_or_default();
+    // Only pins whose slug appears in the file name (ignoring separators:
+    // `ferritecore-…jar` is `ferrite-core`) cost a version lookup; any other
+    // name is a plain 404 without touching the network.
+    let squash = |t: &str| t.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+    let wanted = squash(fname);
+    for p in pins.iter().filter(|p| wanted.contains(&squash(&p.slug))) {
+        let Ok(meta) = version_meta(engine, &p.version_id).await else { continue };
+        let Some(file) = primary_file(&meta) else { continue };
+        if file_name(file) != fname {
+            continue;
+        }
+        let name = safe_download_name(file)?;
+        let item = DownloadItem::new(s(file, "url").unwrap_or_default(), mods_dir.join(&name))
+            .sha1(file_sha1(file))
+            .size(file.get("size").and_then(Value::as_u64))
+            .event(ProgressChannel::Mod, ProgressEvent::for_instance(&instance.name).filename(&name).index(0).total(1));
+        engine.http().download_all(vec![item], DownloadAllOptions::default()).await?;
+        tracing::info!("[mods] installed pinned {name} in {}", instance.name);
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -2456,6 +2508,41 @@ mod tests {
         assert!(mods.join("x.jar").exists());
         let err = set_mod_enabled(&e, "toggle", "nope.jar", true).await.unwrap_err();
         assert_eq!((err.status(), err.raw_code()), (404, Some("mod_not_found")));
+    }
+
+    /// The set moved to a newer build of a mod the instance already has: that
+    /// pin is not listed as a switched-off row (its switch had no file and
+    /// failed with "mod not found"). A pin that really is missing still is,
+    /// and turning it on downloads it.
+    #[tokio::test]
+    async fn superseded_pins_are_hidden_and_missing_pins_install_on_enable() {
+        let pins = pins_by_version("1.21.11").unwrap();
+        let old = pins.iter().find(|p| p.slug == "sodium").unwrap();
+        let missing = pins.iter().find(|p| p.slug == "lithium").unwrap();
+        let scratch = tempfile::tempdir().unwrap();
+        std::fs::write(scratch.path().join("old.jar"), "old sodium build").unwrap();
+        let old_hash = crate::download::sha1_file(&scratch.path().join("old.jar")).await.unwrap();
+
+        let srv = MockServer::start(fake_modrinth(json!({}), json!({}), json!({}))).await;
+        let cdn = srv.url("/cdn");
+        let pinned = json!({
+            missing.version_id.clone(): modrinth_version("lithium", &missing.version_id, json!([]), &format!("{cdn}/lithium.jar")),
+        });
+        let server = MockServer::start(fake_modrinth(json!({}), pinned, json!({ old_hash: old.project_id.clone() }))).await;
+        let (_d, e) = engine_with(Some(&server));
+        let mods = write_instance(&e, "superseded", "1.21.11", "fabric");
+        std::fs::copy(scratch.path().join("old.jar"), mods.join("sodium-fabric-0.0.1.jar")).unwrap();
+
+        let rows = list_mods(&e, "superseded").await.unwrap();
+        assert!(
+            !rows.iter().any(|r| !r.installed && r.project_slug.as_deref() == Some("sodium")),
+            "superseded sodium pin listed: {rows:?}"
+        );
+        let row = rows.iter().find(|r| !r.installed && r.project_slug.as_deref() == Some("lithium")).unwrap();
+        assert_eq!(row.filename, "lithium-1.0.0.jar");
+
+        assert_eq!(set_mod_enabled(&e, "superseded", &row.filename, true).await.unwrap(), "lithium-1.0.0.jar");
+        assert_eq!(std::fs::read_to_string(mods.join("lithium-1.0.0.jar")).unwrap(), "jar:lithium.jar");
     }
 
     fn modrinth_version(project: &str, version: &str, deps: Value, file_url: &str) -> Value {
