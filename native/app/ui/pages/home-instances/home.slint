@@ -7,7 +7,8 @@
 // The instance rail lives on #/instances; the wizard / mrpack / dry-run
 // modals are mounted by app.slint so every page can open them.
 
-import { Theme, T, AppState, Router, Page, Shell, MonogramTile, MonogramShape } from "../../widgets.slint";
+import { Theme, T, AppState, Router, Page, Shell, MonogramTile, MonogramShape, Icon, Icons } from "../../widgets.slint";
+import { Backdrop } from "../../state.slint";
 import { HomeBridge } from "api.slint";
 import { NewsBridge } from "../news/api.slint";
 import { TelemetryCapsule } from "capsule.slint";
@@ -40,6 +41,45 @@ component ServerLine inherits HorizontalLayout {
         vertical-alignment: center;
         overflow: elide;
         max-width: 480px;
+    }
+}
+/// Round glass button at a Home edge: previous / next launcher picture.
+component BackdropArrow inherits Rectangle {
+    in property <string> icon;
+    callback clicked();
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+    background: ta.has-hover ? Theme.surface-up : Theme.surface;
+    border-width: Theme.hairline;
+    border-color: ta.has-hover ? Theme.edge-strong : Theme.glass-border;
+    animate background, border-color { duration: Theme.dur-fast; }
+    Icon {
+        data: root.icon;
+        size: 18px;
+        color: ta.has-hover ? Theme.accent-bright : Theme.muted-strong;
+        animate color { duration: Theme.dur-fast; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// One dot of the picture indicator under the arrows; clickable.
+component BackdropDot inherits Rectangle {
+    in property <bool> current;
+    in property <string> key;
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: root.current ? (Theme.dark ? #f2f2f2 : Theme.accent)
+        : ta.has-hover ? Theme.muted-strong.with-alpha(0.7)
+        : Theme.muted.with-alpha(0.45);
+    animate background { duration: Theme.dur-fast; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Backdrop.select(root.key); }
     }
 }
 
@@ -144,6 +184,30 @@ export component HomePage inherits Rectangle {
                 width: min(760px, root.width - 2 * Theme.space-6);
                 height: 88px;
             }
+        }
+    }
+    // ---- launcher-picture arrows (image mode only, >= 2 pictures) ----
+    if Backdrop.mode == "image" && Backdrop.items.length >= 2: BackdropArrow {
+        x: Theme.space-6;
+        y: (root.height - self.height) / 2;
+        icon: Icons.chevron-left;
+        clicked => { Backdrop.prev(); }
+    }
+    if Backdrop.mode == "image" && Backdrop.items.length >= 2: BackdropArrow {
+        x: root.width - self.width - Theme.space-6;
+        y: (root.height - self.height) / 2;
+        icon: Icons.chevron-right;
+        clicked => { Backdrop.next(); }
+    }
+    // dots: one per picture, centred just above the bottom edge (the play
+    // bar sits higher, inside the centred column, so they never collide)
+    if Backdrop.mode == "image" && Backdrop.items.length >= 2: HorizontalLayout {
+        x: (root.width - self.preferred-width) / 2;
+        y: root.height - self.preferred-height - Theme.space-4;
+        spacing: 7px;
+        for item in Backdrop.items: BackdropDot {
+            key: item.key;
+            current: item.key == Backdrop.current;
         }
     }
 

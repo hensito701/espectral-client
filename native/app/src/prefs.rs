@@ -6,7 +6,8 @@
 //! synchronously on every `set` (tiny file).
 //!
 //! Keys in use: "lang", "discord_session", "recent_commands", "hide_hotkeys",
-//! "show_advanced" ([`SHOW_ADVANCED`]), "pip_pinned", "renderer_fallback",
+//! "show_advanced" ([`SHOW_ADVANCED`]), "pip_pinned", "backdrop.mode",
+//! "backdrop.current" (backdrop.rs), "renderer_fallback",
 //! "renderer_gl_pending" (renderer.rs).
 
 use std::path::PathBuf;

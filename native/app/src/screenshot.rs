@@ -8,7 +8,7 @@
 //! frame with the software renderer and writes it as PNG.
 //!
 //! Options: --theme dark|light|system  --lang es|en  --accent <id>
-//!          --size 1280x800  --wait 1500  --scroll <px>
+//!          --backdrop image|glass  --size 1280x800  --wait 1500  --scroll <px>
 //!          --open palette|wizard|account|pip|gate|news|advanced   (repeatable;
 //!                 advanced = "Opciones avanzadas" disclosures open)
 //!          --query <text>   (palette query, with --open palette)
@@ -35,6 +35,9 @@ pub struct ShotArgs {
     pub theme: Option<String>,
     pub lang: Option<String>,
     pub accent: Option<String>,
+    /// --backdrop image|glass: the launcher's background mode for the shot
+    /// (default "image" — the deterministic builtin:1 picture).
+    pub backdrop: Option<String>,
     pub width: u32,
     pub height: u32,
     pub wait_ms: u64,
@@ -65,6 +68,7 @@ impl ShotArgs {
             theme: None,
             lang: None,
             accent: None,
+            backdrop: None,
             width: 1280,
             height: 800,
             wait_ms: 1500,
@@ -80,6 +84,7 @@ impl ShotArgs {
                 "--theme" => s.theme = v,
                 "--lang" => s.lang = v,
                 "--accent" => s.accent = v,
+                "--backdrop" => s.backdrop = v,
                 "--wait" => s.wait_ms = v.and_then(|x| x.parse().ok()).unwrap_or(s.wait_ms),
                 "--scroll" => s.scroll = v.and_then(|x| x.parse().ok()).unwrap_or(0.0),
                 "--open" => s.open.extend(v),

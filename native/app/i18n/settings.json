@@ -129,6 +129,13 @@
     "settings.theme.dark": "Oscuro",
     "settings.theme.light": "Claro",
     "settings.theme.system": "Sistema",
+    "settings.backdrop.title": "Fondo del launcher",
+    "settings.backdrop.desc": "Elige el fondo del launcher: tus imágenes o el cristal líquido de siempre.",
+    "settings.backdrop.modeImages": "Imágenes",
+    "settings.backdrop.modeGlass": "Cristal líquido",
+    "settings.backdrop.add": "Añadir imagen",
+    "settings.backdrop.hint": "Las flechas de Inicio también cambian el fondo.",
+    "settings.backdrop.glassNote": "En este PC el cristal se ve sin transparencia (necesita Windows 11).",
     "settings.version": "Versión",
     "settings.web": "Web"
   },
@@ -262,6 +269,13 @@
     "settings.theme.dark": "Dark",
     "settings.theme.light": "Light",
     "settings.theme.system": "System",
+    "settings.backdrop.title": "Launcher background",
+    "settings.backdrop.desc": "Pick the launcher's background: your pictures or the usual liquid glass.",
+    "settings.backdrop.modeImages": "Images",
+    "settings.backdrop.modeGlass": "Liquid glass",
+    "settings.backdrop.add": "Add image",
+    "settings.backdrop.hint": "The Home arrows change the background too.",
+    "settings.backdrop.glassNote": "On this PC glass shows without transparency (needs Windows 11).",
     "settings.version": "Version",
     "settings.web": "Web"
   }

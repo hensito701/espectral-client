@@ -5,6 +5,11 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
 ## [1.9.3] - 2026-11-21
 
 ### Added
+- **Background pictures.** The launcher now shows a picture behind everything, shaded like the
+  in-game Espectral menu (darker edges and top/bottom shade, a little dimmer outside Home so
+  lists stay readable). Five Espectral screenshots ship with it; the arrows on Home move between
+  them, and Ajustes → Apariencia → Fondo del launcher lets you pick one, add your own pictures,
+  or go back to the liquid-glass look.
 - **Novedades.** A "Novedades" button in the top bar opens a panel with the latest posts from
   the Discord #noticias channel: title (the post's `#` heading, or its first paragraph), date,
   and a preview image; click a post to read it whole with its pictures, or open it in Discord.

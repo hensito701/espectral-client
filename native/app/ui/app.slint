@@ -9,7 +9,7 @@
 
 import { Theme } from "theme.slint";
 import { T } from "i18n.slint";
-import { Page, Router, AppState, Shell, Session, Util, PaletteState } from "state.slint";
+import { Page, Router, AppState, Shell, Session, Util, PaletteState, Backdrop } from "state.slint";
 
 import "fonts/SpaceGrotesk-Regular.ttf";
 import "fonts/SpaceGrotesk-Medium.ttf";
@@ -45,7 +45,7 @@ import { NewsBridge } from "pages/news/api.slint";
 
 // ---- globals visible from Rust ----
 export { Theme, T, Page, Router, AppState, Shell, Session, Util, PaletteState }
-export { InstanceRow, AccountRow, LaunchRow, ServerRow, ToastKind, ToastItem, PaletteItem } from "state.slint";
+export { InstanceRow, AccountRow, LaunchRow, ServerRow, ToastKind, ToastItem, PaletteItem, Backdrop, BackdropItem } from "state.slint";
 export { HomeBridge } from "pages/home-instances/api.slint";
 export { LibraryBridge } from "pages/library-mods/api.slint";
 export { AccountBridge } from "pages/account-wardrobe/api.slint";
@@ -60,7 +60,9 @@ export component AppWindow inherits Window {
     preferred-height: 800px;
     min-width: 960px;
     min-height: 640px;
-    background: Theme.glass ? transparent : Theme.bg;
+    // transparent only while the backdrop is the code-drawn glass over
+    // Windows' acrylic; a picture backdrop paints every pixel itself
+    background: Theme.glass && Backdrop.mode == "glass" ? transparent : Theme.bg;
     default-font-family: Theme.font-body;
     default-font-size: Theme.text-md;
 

@@ -1,15 +1,24 @@
-// AmbientBackdrop — the window background: charcoal (Theme.bg) with three
-// large soft glows (the accent, the logo's purple, a cool blue). The glass
-// panels above are translucent, so the glows tint them from behind. On a glass
-// window (Theme.glass) the charcoal is a translucent tint over Windows'
-// acrylic, so the blurred desktop shows through.
+// AmbientBackdrop — the window background. Two modes (Backdrop.mode):
+//
+//   "image" (default): the player's picture, cover-fit, with the in-game
+//   Espectral menu's shading — a header shade, a footer vignette, a soft
+//   radial edge vignette and a uniform veil so the glass cards stay
+//   readable. The veil is a dim in dark mode, a light wash in light mode,
+//   and is stronger on the dense pages than on Home (it glides between the
+//   two values when the page changes). No picture yet: plain Theme.bg.
+//
+//   "glass": charcoal (Theme.bg) with three large soft glows (the accent,
+//   the logo's purple, a cool blue). The glass panels above are translucent,
+//   so the glows tint them from behind. On a glass window (Theme.glass) the
+//   charcoal is a translucent tint over Windows' acrylic, so the blurred
+//   desktop shows through.
 //
 // The glows glide to a new arrangement when the page changes (Theme.dur-glow)
 // and are otherwise still: no idle animation, so the launcher draws nothing
 // while a game is running.
 
 import { Theme } from "../theme.slint";
-import { Router, Page } from "../state.slint";
+import { Router, Page, Backdrop } from "../state.slint";
 
 component Glow inherits Rectangle {
     in property <float> cx;
@@ -30,7 +39,19 @@ component Glow inherits Rectangle {
 }
 
 export component AmbientBackdrop inherits Rectangle {
-    background: Theme.glass ? Theme.bg.with-alpha(Theme.dark ? 0.45 : 0.5) : Theme.bg;
+    /// Cover-fit picture on, code-drawn glows off.
+    property <bool> picture: Backdrop.mode == "image" && Backdrop.has-image;
+    /// Uniform veil over the picture: a dim in dark mode (25% on Home, 55%
+    /// on the dense pages), a Theme.bg wash in light mode (55% / 75%). The
+    /// alpha glides when the page changes.
+    property <float> veil: Theme.dark
+        ? (Router.page == Page.home ? 0.25 : 0.55)
+        : (Router.page == Page.home ? 0.55 : 0.75);
+    animate veil { duration: Theme.dur-glow; easing: ease-in-out; }
+
+    background: Backdrop.mode == "glass" && Theme.glass
+        ? Theme.bg.with-alpha(Theme.dark ? 0.45 : 0.5)
+        : Theme.bg;
     clip: true;
 
     // one arrangement per page group: 0 home, 1 instances, 2 library, 3 account, 4 settings
@@ -49,17 +70,17 @@ export component AmbientBackdrop inherits Rectangle {
     animate ax, ay, bx, by, cx, cy { duration: Theme.dur-glow; easing: ease-in-out; }
 
     // accent: warm light where the main action lives
-    Glow {
+    if Backdrop.mode == "glass": Glow {
         parent-w: root.width;
         parent-h: root.height;
         cx: root.ax;
         cy: root.ay;
         size: 0.95;
         tint: Theme.accent;
-        strength: Theme.dark ? 0.22 : 0.22;
+        strength: 0.22;
     }
     // the logo's purple
-    Glow {
+    if Backdrop.mode == "glass": Glow {
         parent-w: root.width;
         parent-h: root.height;
         cx: root.bx;
@@ -69,7 +90,7 @@ export component AmbientBackdrop inherits Rectangle {
         strength: Theme.dark ? 0.28 : 0.22;
     }
     // a cool counterpoint
-    Glow {
+    if Backdrop.mode == "glass": Glow {
         parent-w: root.width;
         parent-h: root.height;
         cx: root.cx;
@@ -79,7 +100,47 @@ export component AmbientBackdrop inherits Rectangle {
         strength: Theme.dark ? 0.14 : 0.16;
     }
     // a faint vignette keeps the edges calm
-    Rectangle {
+    if Backdrop.mode == "glass": Rectangle {
         background: @radial-gradient(circle, transparent 55%, Theme.dark ? rgba(0, 0, 0, 0.35) : rgba(0, 0, 0, 0.05) 100%);
+    }
+
+    // ---- picture mode: cover-fit art + the in-game menu's shading ----
+    if root.picture: Image {
+        width: 100%;
+        height: 100%;
+        source: Backdrop.image;
+        image-fit: cover;
+    }
+    if root.picture: Rectangle {
+        // uniform veil (animated `veil` alpha): dim in dark, wash in light
+        background: Theme.dark ? rgba(0, 0, 0, root.veil) : Theme.bg.with-alpha(root.veil);
+    }
+    if root.picture: Rectangle {
+        // header shade: 40px, black 55% -> 0 (MenuSkin header)
+        y: 0;
+        height: 40px;
+        background: @linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, transparent 100%);
+    }
+    if root.picture: Rectangle {
+        // footer vignette: from 55% of the height down, black 0 -> 65%
+        y: root.height * 0.55;
+        height: root.height * 0.45;
+        background: @linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, Theme.dark ? 0.65 : 0.30) 100%);
+    }
+    if root.picture: Rectangle {
+        // soft radial edge vignette: clear centre -> ~45% black corners
+        background: @radial-gradient(circle, transparent 55%, rgba(0, 0, 0, Theme.dark ? 0.45 : 0.18) 100%);
+    }
+    // Home: a soft dark pool behind the centre column (greeting, server line,
+    // "Nuevo" pill) so text reads over bright spots in the picture — the
+    // in-game title screen's scrim does the same for its buttons.
+    if root.picture && Theme.dark: Rectangle {
+        width: 1000px;
+        height: 1000px;
+        x: (root.width - self.width) / 2;
+        y: root.height * 0.58 - self.height / 2;
+        opacity: Router.page == Page.home ? 1 : 0;
+        animate opacity { duration: Theme.dur-glow; easing: ease-in-out; }
+        background: @radial-gradient(circle, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.22) 30%, transparent 60%);
     }
 }

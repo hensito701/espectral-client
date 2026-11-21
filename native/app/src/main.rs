@@ -30,6 +30,7 @@
 // crate, kept separate so edits here do not recompile the generated module.
 pub use espectral_client_ui::*;
 
+mod backdrop;
 mod bridge;
 mod dialogs;
 mod i18n;
@@ -231,6 +232,7 @@ fn run_ui(
         shot.as_ref().and_then(|s| s.lang.as_deref()).and_then(i18n::Lang::parse).unwrap_or_else(i18n::initial_lang),
     );
     theme::init(&ctx, &ui);
+    backdrop::init(&ctx, &ui);
     if renderer.is_some_and(|r| r.glass) {
         theme::set_glass(&ui);
     }
@@ -388,6 +390,7 @@ fn run_screenshot(ctx: &Ctx, ui: &AppWindow, s: screenshot::ShotArgs) {
     } else if let Some(a) = &s.accent {
         ui.global::<Theme>().set_accent_id(a.as_str().into());
     }
+    backdrop::apply_for_shot(ctx, ui, s.backdrop.as_deref());
     ui.show().expect("show");
     router::navigate(ui, &s.route);
     let shell = ui.global::<Shell>();

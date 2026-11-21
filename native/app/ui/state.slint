@@ -270,3 +270,40 @@ export global PaletteState {
     callback execute(index: int);
     callback opened();
 }
+
+/// One launcher background picture (Settings grid / Home arrows).
+export struct BackdropItem {
+    /// "builtin:<n>" for the shipped pictures, "custom:<file name>" for the
+    /// player's own (kept in <data dir>/launcher-backgrounds/).
+    key: string,
+    /// Small preview for the Settings grid (empty until decoded).
+    thumb: image,
+    custom: bool,
+}
+
+/// The launcher's background (src/backdrop.rs). Two modes:
+/// "image" (default): a picture, cover-fit, with the in-game menu's shading;
+/// "glass": the code-drawn glows, over Windows 11's acrylic when the window
+/// is glass (Theme.glass).
+export global Backdrop {
+    /// "image" | "glass".
+    in property <string> mode: "image";
+    /// The current picture, full size (empty while loading / in glass mode).
+    in property <image> image;
+    in property <bool> has-image;
+    /// Every selectable picture: the shipped ones first, then the player's.
+    in property <[BackdropItem]> items;
+    /// Key of the selected picture.
+    in property <string> current;
+
+    callback set-mode(mode: string);
+    /// Home arrows: previous / next picture (wraps around).
+    callback prev();
+    callback next();
+    /// Settings grid: pick this picture.
+    callback select(key: string);
+    /// Settings: add pictures from disk (file dialog).
+    callback add-custom();
+    /// Settings: delete one of the player's pictures.
+    callback remove(key: string);
+}
