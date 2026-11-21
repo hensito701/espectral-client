@@ -87,8 +87,9 @@ component InstanceChip inherits Rectangle {
         }
         VText {
             text: root.tag;
-            font-size: 11px;
+            font-size: Theme.text-xs;
             color: Theme.muted;
+            font-weight: 500;
         }
         if root.selected: VerticalLayout {
             alignment: center;
@@ -465,8 +466,9 @@ component ModEntryRow inherits Rectangle {
                 if root.entry.slug != "": VText {
                     text: root.entry.slug;
                     font-family: Theme.font-mono;
-                    font-size: 11px;
+                    font-size: Theme.text-xs;
                     color: Theme.muted;
+                    font-weight: 500;
                 }
             }
             HorizontalLayout {
@@ -479,11 +481,13 @@ component ModEntryRow inherits Rectangle {
                     color: Theme.muted;
                     opacity: 0.85;
                     overflow: elide;
+                    font-weight: 500;
                 }
                 if root.entry.meta != "": Text {
                     text: root.entry.meta;
                     font-size: Theme.text-xs;
                     color: Theme.muted;
+                    font-weight: 500;
                 }
             }
             if root.entry.requires != "" || root.entry.required-by != "": HorizontalLayout {
@@ -621,11 +625,13 @@ component Pill inherits Rectangle {
             font-family: Theme.font-mono;
             font-size: Theme.text-xs;
             color: root.pill.installed ? Theme.text : Theme.muted;
+            font-weight: 500;
         }
         if root.pill.requires != "": VText {
             text: root.pill.requires;
             font-size: Theme.text-xs;
             color: Theme.muted;
+            font-weight: 500;
         }
     }
 }
@@ -706,6 +712,7 @@ component PresetsPane inherits VerticalLayout {
                 text: T.tr1("mods.installTarget", "name", LibraryBridge.m-target != "" ? LibraryBridge.m-target : "—");
                 font-size: Theme.text-xs;
                 color: Theme.muted;
+                font-weight: 500;
                 overflow: elide;
             }
             VerticalLayout {
@@ -799,6 +806,7 @@ component SearchHeader inherits GlassCard {
             font-family: Theme.font-mono;
             font-size: Theme.text-xs;
             color: Theme.muted;
+            font-weight: 500;
         }
     }
 }
@@ -858,6 +866,7 @@ component ResultCard inherits GlassCard {
                     text: T.tr1("mods.downloads", "count", root.card.downloads);
                     font-size: Theme.text-xs;
                     color: Theme.muted;
+                    font-weight: 500;
                 }
             }
         }
@@ -917,7 +926,7 @@ component ResultCard inherits GlassCard {
             padding-top: Theme.space-1;
             spacing: Theme.space-1;
             alignment: start;
-            VText { text: T.tr("mods.optionalDeps"); font-size: Theme.text-xs; color: Theme.muted; }
+            VText { text: T.tr("mods.optionalDeps"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
             for opt in root.card.optional: VerticalLayout {
                 alignment: center;
                 Btn {

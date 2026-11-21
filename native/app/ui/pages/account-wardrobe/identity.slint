@@ -16,6 +16,7 @@ import { LoadingRow, PlainInput } from "parts.slint";
 component Note inherits Text {
     font-size: Theme.text-xs;
     color: Theme.muted;
+    font-weight: 500;
     wrap: word-wrap;
 }
 
@@ -35,6 +36,7 @@ component Head inherits VerticalLayout {
         text: root.subtitle;
         font-size: Theme.text-xs;
         color: Theme.muted;
+        font-weight: 500;
         wrap: word-wrap;
     }
 }
@@ -90,6 +92,7 @@ component VerifyRow inherits IdentityRow {
             text: T.tr1("wardrobe.identity.grantExp", "time", T.lang == "en" ? root.acc.grant-exp-en : root.acc.grant-exp-es);
             font-size: Theme.text-xs;
             color: Theme.muted;
+            font-weight: 500;
             vertical-alignment: center;
         }
     }
@@ -149,6 +152,7 @@ component DiscordRow inherits IdentityRow {
             text: T.tr("wardrobe.discord.linking");
             font-size: Theme.text-xs;
             color: Theme.muted;
+            font-weight: 500;
             vertical-alignment: center;
         }
         if AccountBridge.identity-linking: VerticalLayout {
@@ -405,6 +409,7 @@ export component MinecraftDisclaimer inherits Rectangle {
             font-size: Theme.text-xs;
             letter-spacing: 0.24px;
             color: Theme.muted;
+            font-weight: 500;
             horizontal-alignment: center;
             wrap: word-wrap;
         }

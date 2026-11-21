@@ -31,7 +31,7 @@ component QuickStat inherits Rectangle {
         Text {
             text: root.label.to-uppercase();
             color: Theme.muted;
-            font-size: 11px;
+            font-size: Theme.text-xs;
             font-weight: 600;
             letter-spacing: 0.44px;
         }
@@ -271,8 +271,9 @@ component Controls inherits GlassCard {
             vertical-alignment: center;
             text: T.tr2("versions.showingCount", "shown", LibraryBridge.v-rows.length, "total", LibraryBridge.v-filtered);
             color: Theme.muted;
-            font-size: 11px;
+            font-size: Theme.text-xs;
             font-family: Theme.font-mono;
+            font-weight: 500;
         }
     }
 }
@@ -402,6 +403,7 @@ component VersionRowCard inherits Rectangle {
                 color: Theme.muted;
                 font-size: Theme.text-xs;
                 font-family: Theme.font-mono;
+                font-weight: 500;
             }
             VerticalLayout {
                 alignment: center;
@@ -517,6 +519,7 @@ component Matrix inherits VerticalLayout {
             color: Theme.muted;
             font-size: Theme.text-xs;
             font-family: Theme.font-mono;
+            font-weight: 500;
         }
     }
 }
@@ -554,6 +557,7 @@ export component VersionsPage inherits Rectangle {
                         color: Theme.muted;
                         font-size: Theme.text-xs;
                         font-family: Theme.font-mono;
+                        font-weight: 500;
                     }
                 }
                 McTitle {

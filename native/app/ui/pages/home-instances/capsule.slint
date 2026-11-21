@@ -99,7 +99,7 @@ component AccountItem inherits Rectangle {
         if root.msa: Text {
             text: "MSA";
             color: Theme.accent;
-            font-size: 10px;
+            font-size: Theme.text-xs;
             font-weight: 700;
             vertical-alignment: center;
         }
@@ -132,7 +132,7 @@ component InstanceItem inherits Rectangle {
                 border-radius: Theme.radius-sm;
                 background: Theme.card-bg-soft;
                 clip: true;
-                if inst.has-icon: Image { width: 100%; height: 100%; source: inst.icon; image-fit: cover; image-rendering: pixelated; }
+                if inst.has-icon: Image { width: 100%; height: 100%; source: inst.icon; image-fit: cover; image-rendering: inst.icon.width <= 32 ? ImageRendering.pixelated : ImageRendering.smooth; }
                 if !inst.has-icon: Text {
                     text: Util.initial(inst.name);
                     font-size: Theme.text-sm;
@@ -158,7 +158,8 @@ component InstanceItem inherits Rectangle {
             Text {
                 text: (inst.loader == "" ? "vanilla" : inst.loader) + " · " + inst.version;
                 color: Theme.muted;
-                font-size: 11px;
+                font-size: Theme.text-xs;
+                font-weight: 500;
                 overflow: elide;
             }
         }
@@ -215,7 +216,8 @@ component InstFace inherits Rectangle {
     visible: root.inst.name == root.target;
     width: 100%;
     height: 100%;
-    if root.inst.has-icon: Image { width: 100%; height: 100%; source: root.inst.icon; image-fit: cover; image-rendering: pixelated; }
+    // Nearest-neighbour only for small pixel art; store.rs shrinks big icons to size.
+    if root.inst.has-icon: Image { width: 100%; height: 100%; source: root.inst.icon; image-fit: cover; image-rendering: root.inst.icon.width <= 32 ? ImageRendering.pixelated : ImageRendering.smooth; }
     if !root.inst.has-icon: Text {
         text: Util.initial(root.inst.name);
         font-size: Theme.text-lg;
@@ -234,6 +236,7 @@ component InstMeta inherits Text {
     text: (root.inst.loader == "" ? "Vanilla" : root.inst.loader == "fabric" ? "Fabric" : root.inst.loader == "neoforge" ? "NeoForge" : root.inst.loader == "forge" ? "Forge" : root.inst.loader == "quilt" ? "Quilt" : root.inst.loader) + " " + root.inst.version;
     color: Theme.muted;
     font-size: Theme.text-xs;
+    font-weight: 500;
     horizontal-alignment: left;
 }
 
@@ -412,8 +415,9 @@ export component TelemetryCapsule inherits Rectangle {
                         x: -8px;
                         y: -self.height - 12px;
                         width: 300px;
-                        // header 26 + rule 1 + n*44 + rule 1 + 2*32 + padding 16 + gaps
-                        height: min(392px, 90px + AppState.instances.length * 44px);
+                        // padding 16 + header 28 + list (n*44, max 268) + rule 1
+                        // + 2 links * 32 + 4 gaps * 2
+                        height: 117px + min(268px, AppState.instances.length * 44px);
                         close-policy: close-on-click-outside;
                         pop := Rectangle {
                             border-radius: Theme.radius-lg;
@@ -428,12 +432,12 @@ export component TelemetryCapsule inherits Rectangle {
                                 padding: 8px;
                                 spacing: 2px;
                                 Rectangle {
-                                    height: 26px;
+                                    height: 28px;
                                     Text {
                                         x: 8px;
                                         text: T.tr("home.capsuleSelectInstance").to-uppercase();
                                         color: Theme.muted;
-                                        font-size: 10px;
+                                        font-size: Theme.text-xs;
                                         font-weight: 700;
                                         letter-spacing: 0.6px;
                                         vertical-alignment: center;
@@ -521,7 +525,7 @@ export component TelemetryCapsule inherits Rectangle {
                             Text {
                                 text: AppState.has-active-account && AppState.active-account.token-kind == "msa" ? "Microsoft" : "Offline";
                                 color: Theme.muted;
-                                font-size: 11px;
+                                font-size: Theme.text-xs;
                                 font-weight: 500;
                             }
                         }
@@ -538,8 +542,8 @@ export component TelemetryCapsule inherits Rectangle {
                         x: 0;
                         y: -self.height - 12px;
                         width: 248px;
-                        // 8px padding (x2) + 26px label + 41px link row + n * (36px item) + gaps
-                        height: 87px + AppState.accounts.length * 40px;
+                        // 8px padding (x2) + 28px label + 41px link row + n * (36px item) + gaps
+                        height: 89px + AppState.accounts.length * 40px;
                         close-policy: close-on-click-outside;
                         accpop := Rectangle {
                             border-radius: Theme.radius-lg;
@@ -554,7 +558,7 @@ export component TelemetryCapsule inherits Rectangle {
                                 padding: 8px;
                                 spacing: 4px;
                                 Rectangle {
-                                    height: 26px;
+                                    height: 28px;
                                     Text {
                                         x: 8px;
                                         y: 6px;
@@ -619,7 +623,7 @@ export component TelemetryCapsule inherits Rectangle {
                             aot-chip := Rectangle {
                                 property <string> kind: HomeBridge.aot-chip-kind;
                                 property <color> fg: kind == "ok" ? Theme.accent-green : kind == "warn" ? Theme.accent-alt : Theme.muted;
-                                height: chip.preferred-height + 8px;
+                                height: chip.preferred-height + 10px;
                                 min-width: chip.preferred-width + 6px;
                                 border-radius: Theme.radius-xs;
                                 border-width: Theme.hairline;
@@ -639,7 +643,7 @@ export component TelemetryCapsule inherits Rectangle {
                                     Text {
                                         text: T.tr(HomeBridge.aot-chip-key);
                                         color: aot-chip.fg;
-                                        font-size: 10px;
+                                        font-size: Theme.text-xs;
                                         font-weight: 700;
                                         horizontal-alignment: center;
                                         vertical-alignment: center;

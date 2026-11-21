@@ -35,11 +35,11 @@ component HubTab inherits Rectangle {
         if root.count != "": VerticalLayout {
             alignment: center;
             Rectangle {
-                height: cl.preferred-height + 4px;
+                height: cl.preferred-height + 6px;
                 width: cl.preferred-width + 12px;
                 border-radius: Theme.radius-xs;
                 background: root.active ? Theme.accent.with-alpha(0.18) : Theme.card-bg-soft;
-                cl := Text { text: root.count; color: root.active ? Theme.accent-bright : Theme.muted-strong; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                cl := Text { text: root.count; color: root.active ? Theme.accent-bright : Theme.muted-strong; font-size: Theme.text-xs; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
             }
         }
     }
@@ -293,7 +293,7 @@ component ServersTab inherits HubCard {
                             ipl := Text { text: s.ip; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: Theme.text-xs; horizontal-alignment: center; vertical-alignment: center; }
                         }
                     }
-                    if s.motd != "": Text { text: s.motd; color: Theme.muted; font-size: Theme.text-xs; overflow: elide; }
+                    if s.motd != "": Text { text: s.motd; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; overflow: elide; }
                 }
             }
         }
@@ -445,6 +445,7 @@ component ConsoleCard inherits HubCard {
                 text: HomeBridge.hub-log-lines.length + " líneas";
                 color: Theme.muted;
                 font-size: Theme.text-xs;
+                font-weight: 500;
                 vertical-alignment: center;
             }
         }
@@ -477,6 +478,7 @@ component ConsoleCard inherits HubCard {
             color: Theme.muted;
             font-size: Theme.text-xs;
             font-family: Theme.font-mono;
+            font-weight: 500;
             font-italic: true;
             horizontal-alignment: center;
             vertical-alignment: center;

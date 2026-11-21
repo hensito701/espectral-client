@@ -2,6 +2,21 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.9.1] - 2026-11-21
+
+### Fixed
+- **Sharper text.** 1.9's body font (Space Grotesk) carried a do-nothing hinting stub, which
+  kept the renderer's autohinter off, so letters fell between screen pixels and looked soft,
+  worst at 125% scaling. With the stub removed, letters snap to whole pixels. Nothing is
+  smaller than 12px anymore, small grey text is one weight heavier, and the grey is a touch
+  lighter.
+- **Crisper logo and wordmark.** The round logo is shrunk to its exact on-screen size for
+  your display instead of being scaled down by the graphics card, and the "Espectral" wordmark
+  in the header is bigger and sits on whole pixels (3 screen pixels per font pixel at 125%).
+- **Smooth instance and mod icons.** Instance icons were drawn with hard pixel edges even when
+  they were smooth art; only small pixel-art icons keep that now. Instance, Modrinth and
+  menu-background thumbnails are shrunk to their drawn size with a high-quality filter.
+
 ## [1.9.0] - 2026-11-20
 
 ### Changed

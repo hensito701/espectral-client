@@ -268,16 +268,16 @@ export component Tabs inherits Rectangle {
                     if item.badge != "": VerticalLayout {
                         alignment: center;
                         Rectangle {
-                            height: 18px;
-                            min-width: 18px;
+                            height: 20px;
+                            min-width: 20px;
                             preferred-width: bl.preferred-width + 10px;
-                            border-radius: 9px;
+                            border-radius: 10px;
                             background: active ? Theme.accent.with-alpha(0.14) : Theme.card-bg-soft;
                             border-width: Theme.hairline;
                             border-color: active ? Theme.edge-strong : Theme.border-solid;
                             bl := Text {
                                 text: item.badge;
-                                font-size: 11px;
+                                font-size: Theme.text-xs;
                                 font-weight: 700;
                                 color: active ? Theme.accent-bright : Theme.muted;
                                 horizontal-alignment: center;

@@ -1,7 +1,7 @@
 //! Modrinth project icons (cdn.modrinth.com): fetched with the engine's HTTP
-//! client on the tokio runtime, decoded + downscaled off the UI thread
-//! (png/jpeg/webp/gif → at most 88×88, the 44px tile at 2×), turned into a
-//! `slint::Image` on the UI thread and kept in a small in-memory LRU.
+//! client on the tokio runtime, decoded + shrunk off the UI thread
+//! (png/jpeg/webp/gif → the 44px tile in physical pixels, so it is drawn 1:1),
+//! turned into a `slint::Image` on the UI thread and kept in a small LRU.
 
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
@@ -11,11 +11,12 @@ use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 use crate::bridge::Ctx;
 use crate::AppWindow;
 
-/// Decoded icons kept in memory (88×88 RGBA ≈ 30 KB each → ≈ 4 MB max).
+/// Decoded icons kept in memory (≤ 88×88 RGBA ≈ 30 KB each → ≈ 4 MB max).
 const CAPACITY: usize = 128;
 /// Icons bigger than this are skipped (MonogramTile fallback).
 const MAX_BYTES: usize = 4 * 1024 * 1024;
-const EDGE: u32 = 88;
+/// Drawn size of the icon tile (logical px).
+const TILE: f32 = 44.0;
 
 struct Lru {
     entries: VecDeque<(String, Image)>,
@@ -102,20 +103,19 @@ async fn fetch(engine: &espectral_engine::Engine, url: &str) -> Option<Vec<u8>> 
     (bytes.len() <= MAX_BYTES).then(|| bytes.to_vec())
 }
 
-/// Decode any supported format and fit it in EDGE×EDGE (keeps aspect ratio).
+/// Decode any supported format and shrink it to the tile's physical size
+/// (keeps aspect ratio; 2× the tile until the display scale is known).
 pub fn decode(bytes: &[u8]) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
-    let img = image::load_from_memory(bytes).ok()?;
-    let img = if img.width() > EDGE || img.height() > EDGE {
-        img.resize(EDGE, EDGE, image::imageops::FilterType::Triangle)
-    } else {
-        img
-    };
-    let rgba = img.to_rgba8();
+    let rgba = image::load_from_memory(bytes).ok()?.to_rgba8();
     let (w, h) = rgba.dimensions();
     if w == 0 || h == 0 {
         return None;
     }
-    Some(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(rgba.as_raw(), w, h))
+    let edge = match crate::theme::phys(TILE) {
+        0 => (TILE * 2.0) as u32,
+        e => e,
+    };
+    Some(crate::util::fit(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(rgba.as_raw(), w, h), edge))
 }
 
 #[cfg(test)]

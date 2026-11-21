@@ -33,6 +33,7 @@ component ServerLine inherits HorizontalLayout {
         text: HomeBridge.motd-text != "" ? "· " + HomeBridge.motd-text : "· " + T.tr("home.motdDefault");
         color: Theme.muted;
         font-size: Theme.text-xs;
+        font-weight: 500;
         vertical-alignment: center;
         overflow: elide;
         max-width: 480px;
@@ -68,7 +69,7 @@ export component HomePage inherits Rectangle {
                     y: (parent.height - self.height) / 2;
                     width: 120px;
                     height: 120px;
-                    source: @image-url("../../assets/logo_circle.png");
+                    source: AppState.logo-lg.width > 0 ? AppState.logo-lg : @image-url("../../assets/logo_circle.png");
                     image-fit: contain;
                 }
             }

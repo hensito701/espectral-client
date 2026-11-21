@@ -47,6 +47,7 @@ component VersionCard inherits HubCard {
             text: T.tr("instance.vcShowSnapshots");
             color: Theme.muted;
             font-size: Theme.text-xs;
+            font-weight: 500;
             vertical-alignment: center;
         }
     }
@@ -131,7 +132,7 @@ component MemoryCard inherits HubCard {
             spacing: Theme.space-2;
             HorizontalLayout {
                 Text { text: Util.format-memory(HomeBridge.hub-memory); color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; horizontal-stretch: 1; vertical-alignment: center; }
-                Text { text: "1 GB – 16 GB"; color: Theme.muted; font-size: Theme.text-xs; vertical-alignment: center; }
+                Text { text: "1 GB – 16 GB"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
             }
             Slider {
                 minimum: 1024;
@@ -322,7 +323,7 @@ component AotCard inherits HubCard {
                 spacing: 4px;
                 MicroLabel { text: T.tr("instance.aotProofLabel"); }
                 if HomeBridge.aot-proof-ok: HorizontalLayout { alignment: start; Badge { text: T.tr("instance.aotProofOk"); variant: BadgeVariant.accent; } }
-                if !HomeBridge.aot-proof-ok: Text { text: T.tr("instance.aotProofNone"); color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+                if !HomeBridge.aot-proof-ok: Text { text: T.tr("instance.aotProofNone"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
             }
         }
         CheckRow {
@@ -359,7 +360,7 @@ component BgTile inherits Rectangle {
     in property <bool> has-thumb;
     callback pick();
     callback remove();
-    height: 68px + 26px + (none ? 0px : 24px);
+    height: 68px + 26px + (none ? 0px : 26px);
     border-radius: Theme.radius-md;
     background: Theme.card-bg-soft;
     border-width: Theme.hairline;
@@ -385,12 +386,12 @@ component BgTile inherits Rectangle {
     if root.frames != "": Rectangle {
         x: 5.6px;
         y: 5.6px;
-        height: fl.preferred-height + 3px;
+        height: fl.preferred-height + 5px;
         width: fl.preferred-width + 11px;
         border-radius: 4px;
         background: Theme.surface-solid;
         border-width: Theme.hairline;
-        fl := Text { text: root.frames; color: Theme.muted-strong; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+        fl := Text { text: root.frames; color: Theme.muted-strong; font-size: Theme.text-xs; horizontal-alignment: center; vertical-alignment: center; }
     }
     TouchArea {
         y: 0;
@@ -399,11 +400,11 @@ component BgTile inherits Rectangle {
         clicked => { root.pick(); }
     }
     if !root.none: Rectangle {
-        y: parent.height - 24px;
-        height: 24px;
+        y: parent.height - 26px;
+        height: 26px;
         background: dt.has-hover ? Theme.accent-red : Theme.surface-solid;
         Rectangle { y: 0; height: Theme.hairline; background: dt.has-hover ? Theme.border-solid : Theme.border-solid; }
-        Text { text: T.tr("perso.bgDelete"); color: dt.has-hover ? #ffffff : Theme.muted; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+        Text { text: T.tr("perso.bgDelete"); color: dt.has-hover ? #ffffff : Theme.muted; font-size: Theme.text-xs; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
         dt := TouchArea {
             mouse-cursor: pointer;
             clicked => { root.remove(); }
@@ -515,6 +516,7 @@ component AppearanceCard inherits HubCard {
                     text: HomeBridge.tagline.character-count + "/40";
                     color: HomeBridge.tagline.character-count > 40 ? Theme.accent-red : Theme.muted;
                     font-size: Theme.text-xs;
+                    font-weight: 500;
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
@@ -670,6 +672,7 @@ component OptionsCard inherits HubCard {
                     text: T.tr1("instance.optionsCount", "count", HomeBridge.options-count);
                     color: Theme.muted;
                     font-size: Theme.text-xs;
+                    font-weight: 500;
                     TouchArea {
                         mouse-cursor: pointer;
                         clicked => { root.show-preview = !root.show-preview; }
@@ -750,12 +753,13 @@ component SuiteCard inherits HubCard {
                     alignment: center;
                     spacing: 2px;
                     Text { text: f.name; color: Theme.text; font-size: Theme.text-sm; font-weight: 600; overflow: elide; }
-                    Text { text: f.desc; color: Theme.muted; font-size: Theme.text-xs; overflow: elide; }
-                    if f.keybind != "": Text { text: T.tr1("instance.keybind", "key", f.keybind); color: Theme.accent-alt; font-size: 11.2px; font-weight: 700; }
+                    Text { text: f.desc; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; overflow: elide; }
+                    if f.keybind != "": Text { text: T.tr1("instance.keybind", "key", f.keybind); color: Theme.accent-alt; font-size: Theme.text-xs; font-weight: 700; }
                     Text {
                         text: (f.enabled ? T.tr("instance.featureEnabled") : T.tr("instance.featureDisabled")) + (HomeBridge.suite-enabled ? "" : " · " + T.tr("client.suppressed"));
                         color: Theme.muted;
                         font-size: Theme.text-xs;
+                        font-weight: 500;
                     }
                 }
                 VerticalLayout {

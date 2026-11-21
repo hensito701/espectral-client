@@ -17,6 +17,7 @@ component CardHead inherits VerticalLayout {
         text: root.subtitle;
         color: Theme.muted;
         font-size: Theme.text-xs;
+        font-weight: 500;
         wrap: word-wrap;
     }
 }
@@ -26,7 +27,7 @@ component CardFoot inherits VerticalLayout {
     padding-top: Theme.space-3;
     spacing: Theme.space-3;
     Rectangle { height: Theme.hairline; background: Theme.border-solid; }
-    Text { text: root.text; color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+    Text { text: root.text; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
 }
 
 /// Glass card (InstanceHub cards) with overridable border / fill.
@@ -130,7 +131,7 @@ export component Inset inherits Rectangle {
 /// Uppercase micro label (spec-label / stat-label).
 export component MicroLabel inherits Text {
     color: Theme.muted;
-    font-size: 11px;
+    font-size: Theme.text-xs;
     font-weight: 700;
     letter-spacing: 0.56px;
 }
@@ -169,7 +170,7 @@ export component CheckRow inherits Rectangle {
             horizontal-stretch: 1;
             spacing: 3px;
             Text { text: root.title; color: Theme.text; font-size: Theme.text-sm; font-weight: 600; wrap: word-wrap; }
-            Text { text: root.hint; color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+            Text { text: root.hint; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
         }
         @children
     }
@@ -179,7 +180,8 @@ export component CheckRow inherits Rectangle {
 export component Note inherits Text {
     in property <bool> hint;
     color: hint ? Theme.muted : Theme.accent-green;
-    font-size: hint ? 11.5px : Theme.text-xs;
+    font-size: Theme.text-xs;
+    font-weight: 500;
     wrap: word-wrap;
 }
 

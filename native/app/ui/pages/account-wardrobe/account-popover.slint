@@ -85,6 +85,7 @@ component ActiveCard inherits Rectangle {
                 text: T.tr("account.lastUsed") + ": " + Util.relative-time(root.acc.last-used, T.lang);
                 font-size: Theme.text-xs;
                 color: Theme.muted;
+                font-weight: 500;
             }
         }
     }
@@ -118,7 +119,7 @@ component SwitchItem inherits Rectangle {
             alignment: center;
             horizontal-stretch: 1;
             Text { text: root.acc.username; font-size: Theme.text-sm; font-weight: 600; color: Theme.text; overflow: elide; }
-            Text { text: root.acc.token-kind == "msa" ? "Microsoft" : "Offline"; font-size: Theme.text-xs; color: Theme.muted; }
+            Text { text: root.acc.token-kind == "msa" ? "Microsoft" : "Offline"; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
         }
         VerticalLayout {
             alignment: center;

@@ -31,7 +31,7 @@ component ModalHead inherits Rectangle {
                     Badge { text: root.badge; variant: BadgeVariant.accent; }
                 }
             }
-            Text { text: root.subtitle; color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+            Text { text: root.subtitle; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
         }
         VerticalLayout {
             alignment: center;
@@ -126,6 +126,7 @@ component MonoList inherits Rectangle {
                 color: root.numbered ? Theme.muted : Theme.accent;
                 font-size: Theme.text-xs;
                 font-family: Theme.font-mono;
+                font-weight: 500;
                 vertical-alignment: center;
             }
             Text {
@@ -187,7 +188,7 @@ component MetaCard inherits Rectangle {
             padding-top: Theme.space-3;
             padding-bottom: Theme.space-3;
             spacing: 6px;
-            Text { text: root.label.to-uppercase(); color: Theme.muted; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+            Text { text: root.label.to-uppercase(); color: Theme.muted; font-size: Theme.text-xs; font-weight: 600; letter-spacing: 0.5px; }
             @children
         }
     }

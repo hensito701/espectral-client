@@ -67,7 +67,7 @@ export global Theme {
     // ---- text ----------------------------------------------------------------
     out property <color> text: dark ? #e8e6e1 : #16181c;
     out property <color> text-inverse: dark ? #0b0d10 : #f7f6f3;
-    out property <color> muted: dark ? #9aa0a8 : #5d636c;
+    out property <color> muted: dark ? #a8aeb8 : #5d636c;
     out property <color> muted-strong: dark ? #c9cdd3 : #33373e;
 
     // ---- accent palette (SuiteTheme.Palette; follows accent-id + scheme) ------
@@ -174,13 +174,19 @@ export global Theme {
     pure public function pix(size: length) -> length {
         Math.max(1, Math.ceil(size * ui-scale / 8px - 0.5)) * 8px / ui-scale
     }
+    /// `v` rounded to whole physical pixels on this display. The pixel font
+    /// blurs when it lands between pixels.
+    pure public function snap(v: length) -> length {
+        Math.round(v * ui-scale / 1px) * 1px / ui-scale
+    }
     /// Short labels (badges, chips, key hints): the body font.
     pure public function label-family(size: length) -> string {
         font-body
     }
-    /// Size to pair with `label-family(size)`: at least 10px.
+    /// Size to pair with `label-family(size)`: at least 12px. Smaller
+    /// proportional text turns to grey smudge on the OpenGL renderer.
     pure public function label-size(size: length) -> length {
-        Math.max(size, 10px)
+        Math.max(size, 12px)
     }
     out property <length> text-xs: 12px;
     out property <length> text-sm: 14px;

@@ -66,7 +66,7 @@ component StopChip inherits Rectangle {
     l := Text {
         visible: !root.icon-only;
         text: root.text;
-        font-size: 11px;
+        font-size: Theme.text-xs;
         font-weight: 700;
         letter-spacing: 0.45px;
         color: Theme.accent-red;
@@ -120,7 +120,7 @@ component LogTab inherits Rectangle {
         if root.agent: VerticalLayout {
             alignment: center;
             Rectangle {
-                height: al.preferred-height + 2px;
+                height: al.preferred-height + 4px;
                 width: al.preferred-width + 10px;
                 border-radius: Theme.radius-xs;
                 background: Theme.accent-purple.with-alpha(0.18);
@@ -128,7 +128,7 @@ component LogTab inherits Rectangle {
                 border-color: Theme.accent-purple.with-alpha(0.5);
                 al := Text {
                     text: T.tr("pip.agentBadge");
-                    font-size: 10px;
+                    font-size: Theme.text-xs;
                     font-weight: 700;
                     letter-spacing: 0.4px;
                     color: Theme.accent-purple;
@@ -140,7 +140,8 @@ component LogTab inherits Rectangle {
         if root.account != "": Text {
             text: "(" + root.account + ")";
             color: Theme.muted;
-            font-size: 11px;
+            font-size: Theme.text-xs;
+            font-weight: 500;
             vertical-alignment: center;
         }
     }
@@ -209,7 +210,7 @@ export component PipLogDrawer inherits Rectangle {
                 if AppState.running-count > 0: VerticalLayout {
                     alignment: center;
                     Rectangle {
-                        height: cnt.preferred-height + 4px;
+                        height: cnt.preferred-height + 6px;
                         width: cnt.preferred-width + 10px;
                         border-radius: Theme.radius-xs;
                         background: Theme.accent.with-alpha(0.16);
@@ -217,7 +218,7 @@ export component PipLogDrawer inherits Rectangle {
                         border-color: Theme.edge-strong;
                         cnt := Text {
                             text: AppState.running-count;
-                            font-size: 10px;
+                            font-size: Theme.text-xs;
                             font-weight: 700;
                             color: Theme.accent-bright;
                             horizontal-alignment: center;
@@ -249,7 +250,7 @@ export component PipLogDrawer inherits Rectangle {
                 }
                 Text {
                     text: "[ESPACIO]";
-                    font-size: 10px;
+                    font-size: Theme.text-xs;
                     font-weight: 700;
                     color: Theme.muted;
                     opacity: 0.7;
@@ -326,7 +327,7 @@ export component PipLogDrawer inherits Rectangle {
                     horizontal-stretch: 0;
                     Text {
                         text: T.tr1("pip.linesCount", "count", HomeBridge.log-lines.length);
-                        font-size: 10px;
+                        font-size: Theme.text-xs;
                         font-weight: 700;
                         color: Theme.muted;
                         opacity: 0.8;
@@ -415,6 +416,7 @@ export component PipLogDrawer inherits Rectangle {
                     color: Theme.muted;
                     font-family: Theme.font-mono;
                     font-size: 12px;
+                    font-weight: 500;
                     font-italic: true;
                     vertical-alignment: center;
                 }

@@ -144,7 +144,8 @@ pub fn refresh_instances() {
             let mut icons = Vec::with_capacity(list.len());
             for i in &list {
                 let icon = if i.has_icon {
-                    e.instance_icon(&i.name).await.ok().and_then(|b| util::decode_png(&b))
+                    // Shrunk to the largest tile (hub header, 48px) so it is drawn 1:1.
+                    e.instance_icon(&i.name).await.ok().and_then(|b| util::decode_png(&b)).map(|b| util::fit(b, crate::theme::phys(48.0)))
                 } else {
                     None
                 };

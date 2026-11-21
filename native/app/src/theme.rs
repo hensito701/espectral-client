@@ -2,10 +2,24 @@
 //! FOUNDATION-OWNED. Source of truth: the engine config (`theme`, `accent`),
 //! exactly like the Svelte UI which mirrored them to the engine.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use slint::{ComponentHandle, SharedString};
 
 use crate::bridge::Ctx;
-use crate::{AppWindow, Shell, Theme};
+use crate::util;
+use crate::{AppState, AppWindow, Shell, Theme};
+
+/// The window's scale factor (f32 bits), readable off the UI thread; 0 until
+/// the window reports it.
+static UI_SCALE: AtomicU32 = AtomicU32::new(0);
+
+/// `logical` px in physical pixels on this display, rounded up: the size to
+/// shrink an image to so it is drawn 1:1 (see [`util::fit`]). 0 (= don't
+/// shrink) until the scale is known.
+pub fn phys(logical: f32) -> u32 {
+    (logical * f32::from_bits(UI_SCALE.load(Ordering::Relaxed))).ceil() as u32
+}
 
 /// Apply the persisted theme/accent and wire Shell.set-theme-mode / toggle-theme / set-accent.
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
@@ -39,13 +53,28 @@ pub fn apply(ui: &AppWindow, mode: &str, accent: &str) {
     t.set_accent_id(SharedString::from(accent));
 }
 
-/// Tell the theme the window's scale factor (`Theme.pix` snaps the pixel font to it).
+/// Tell the theme the window's scale factor (`Theme.pix` snaps the pixel font
+/// to it), then redo the images sized for it: the logos and instance icons.
 pub fn set_ui_scale(ui: &AppWindow, scale: f32) {
-    let t = ui.global::<Theme>();
-    if t.get_ui_scale() != scale {
-        tracing::info!("[ui] display scale factor {scale}");
-        t.set_ui_scale(scale);
+    if UI_SCALE.swap(scale.to_bits(), Ordering::Relaxed) == scale.to_bits() {
+        return;
     }
+    tracing::info!("[ui] display scale factor {scale}");
+    ui.global::<Theme>().set_ui_scale(scale);
+    set_logos(ui);
+    crate::store::refresh_instances();
+}
+
+/// Drawn sizes (logical px) of the round logo: header, login screen, Home.
+const LOGO_SIZES: [f32; 3] = [34.0, 64.0, 120.0];
+
+fn set_logos(ui: &AppWindow) {
+    let Some(logo) = util::decode_png(include_bytes!("../ui/assets/logo_circle.png")) else { return };
+    let [sm, md, lg] = LOGO_SIZES.map(|px| util::to_image(util::fit(logo.clone(), phys(px))));
+    let s = ui.global::<AppState>();
+    s.set_logo_sm(sm);
+    s.set_logo_md(md);
+    s.set_logo_lg(lg);
 }
 
 fn set_mode(ctx: &Ctx, mode: String) {

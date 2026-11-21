@@ -102,7 +102,7 @@ export component TopChrome inherits Rectangle {
     // ---- brand: logo + pixel wordmark (left) ----
     brand := Rectangle {
         x: Theme.space-6;
-        y: (root.height - self.height) / 2;
+        y: Theme.snap((root.height - self.height) / 2);
         width: brand-row.preferred-width;
         height: brand-row.preferred-height;
         brand-row := HorizontalLayout {
@@ -112,14 +112,19 @@ export component TopChrome inherits Rectangle {
                 Image {
                     width: 34px;
                     height: 34px;
-                    // 96px copy: the 256px original aliases when drawn this small.
-                    source: @image-url("../assets/logo_circle_96.png");
+                    source: AppState.logo-sm.width > 0 ? AppState.logo-sm : @image-url("../assets/logo_circle.png");
                     image-fit: contain;
                 }
             }
-            if root.width >= 1000px: VerticalLayout {
-                alignment: center;
-                Wordmark { font-size: 16px; }
+            // 20px lands on 24 physical px at 125% (3 screen pixels per font
+            // pixel); `snap` keeps its top edge on a whole pixel.
+            if root.width >= 1000px: Rectangle {
+                width: wordmark.preferred-width;
+                wordmark := Wordmark {
+                    font-size: 20px;
+                    y: Theme.snap((parent.height - self.preferred-height) / 2);
+                    height: self.preferred-height;
+                }
             }
         }
         TouchArea {

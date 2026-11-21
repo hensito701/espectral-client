@@ -115,6 +115,12 @@ export global AppState {
     in property <string> version-label;
     /// Engine data dir (config.data_dir).
     in property <string> data-dir;
+    /// The round logo shrunk to its drawn size in physical pixels (theme.rs
+    /// LOGO_SIZES): header 34px, login 64px, Home 120px. Empty until the
+    /// display scale is known; callers fall back to the PNG.
+    in property <image> logo-sm;
+    in property <image> logo-md;
+    in property <image> logo-lg;
     in property <[InstanceRow]> instances;
     /// false until the first list_instances() answered.
     in property <bool> instances-loaded;

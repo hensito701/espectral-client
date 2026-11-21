@@ -190,6 +190,41 @@ pub fn decode_png(bytes: &[u8]) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
     Some(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&rgba, w, h))
 }
 
+/// Shrink `buf` to fit in `edge`×`edge` (aspect kept) with Lanczos3; smaller
+/// images come back untouched, so small pixel art stays exact.
+///
+/// The OpenGL renderer samples images bilinearly with no mipmaps, so a big
+/// image drawn small aliases and blurs. Shrink to the drawn size in physical
+/// pixels ([`crate::theme::phys`]) and it is drawn 1:1. Filtering runs on
+/// premultiplied alpha so transparent edges don't pick up a dark fringe.
+pub fn fit(buf: SharedPixelBuffer<Rgba8Pixel>, edge: u32) -> SharedPixelBuffer<Rgba8Pixel> {
+    let (w, h) = (buf.width(), buf.height());
+    if edge == 0 || w.max(h) <= edge {
+        return buf;
+    }
+    let scale = f64::from(edge) / f64::from(w.max(h));
+    let nw = ((f64::from(w) * scale).round() as u32).clamp(1, edge);
+    let nh = ((f64::from(h) * scale).round() as u32).clamp(1, edge);
+    let mut px = buf.as_bytes().to_vec();
+    for p in px.as_chunks_mut::<4>().0 {
+        let a = u16::from(p[3]);
+        for c in &mut p[..3] {
+            *c = ((u16::from(*c) * a + 127) / 255) as u8;
+        }
+    }
+    let Some(img) = image::RgbaImage::from_raw(w, h, px) else { return buf };
+    let mut out = image::imageops::resize(&img, nw, nh, image::imageops::FilterType::Lanczos3);
+    for p in out.pixels_mut() {
+        let a = u16::from(p[3]);
+        if a > 0 && a < 255 {
+            for c in &mut p.0[..3] {
+                *c = ((u16::from(*c) * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
+    }
+    SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(out.as_raw(), nw, nh)
+}
+
 /// Pixel buffer -> Image (UI thread).
 pub fn to_image(buf: SharedPixelBuffer<Rgba8Pixel>) -> Image {
     Image::from_rgba8(buf)
@@ -251,5 +286,28 @@ mod tests {
         assert!(decode_png(&png_header_only(100_000, 100_000)).is_none());
         assert!(decode_png(&png_header_only(16_384, 16_384)).is_none());
         assert!(decode_png(&png_header_only(8192, 8192)).is_none(), "over the pixel budget");
+    }
+
+    /// A round logo has transparent black corners; filtering straight alpha
+    /// would mix that black into the white edge (dark halo on the glass).
+    #[test]
+    fn fit_shrinks_without_dark_fringe() {
+        let (w, h) = (256u32, 128u32);
+        let mut px = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let inside = (x as i32 - 128).pow(2) + (y as i32 - 64).pow(2) < 60 * 60;
+                px.extend_from_slice(if inside { &[255, 255, 255, 255] } else { &[0, 0, 0, 0] });
+            }
+        }
+        let out = fit(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&px, w, h), 43);
+        assert_eq!((out.width(), out.height()), (43, 22));
+        for p in out.as_slice() {
+            if p.a >= 32 {
+                assert!(p.r >= 240 && p.g >= 240 && p.b >= 240, "dark fringe: {p:?}");
+            }
+        }
+        let small = SharedPixelBuffer::<Rgba8Pixel>::new(16, 16);
+        assert_eq!(fit(small, 43).width(), 16, "smaller images stay exact");
     }
 }

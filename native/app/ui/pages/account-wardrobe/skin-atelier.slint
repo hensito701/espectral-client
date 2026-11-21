@@ -20,6 +20,7 @@ component Note inherits Text {
 component Hint inherits Text {
     font-size: Theme.text-xs;
     color: Theme.muted;
+    font-weight: 500;
     wrap: word-wrap;
 }
 
@@ -388,6 +389,7 @@ component SkinCard inherits Rectangle {
                 text: root.entry.variant == "slim" ? T.tr("vault.skin.variantSlim") : T.tr("vault.skin.variantClassic");
                 font-size: Theme.text-xs;
                 color: Theme.muted;
+                font-weight: 500;
             }
             CardButtons { entry: root.entry; offline: root.offline; }
         }

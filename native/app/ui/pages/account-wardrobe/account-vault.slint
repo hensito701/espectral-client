@@ -127,6 +127,7 @@ component PedestalMeta inherits HorizontalLayout {
                     font-family: Theme.font-mono;
                     font-size: Theme.text-xs;
                     color: Theme.muted;
+                    font-weight: 500;
                 }
             }
             Rectangle {
@@ -226,7 +227,7 @@ component Pedestal inherits Rectangle {
                 alignment: start;
                 height: 19px;
                 Text { text: "✦"; color: Theme.accent; font-size: Theme.text-xs; vertical-alignment: center; }
-                Text { text: T.tr("vault.heroSkinHint"); color: Theme.muted; font-size: Theme.text-xs; vertical-alignment: center; }
+                Text { text: T.tr("vault.heroSkinHint"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
             }
             if root.has: PedestalMeta { acc: root.acc; }
             if !root.has: Text {
@@ -259,7 +260,7 @@ component SectionHead inherits HorizontalLayout {
             min-width: 0px;
             horizontal-stretch: 0;
         }
-        Text { text: root.sub; font-size: Theme.text-xs; color: Theme.muted; }
+        Text { text: root.sub; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
     }
     VerticalLayout {
         alignment: center;
@@ -339,7 +340,7 @@ component AvatarEdit inherits VerticalLayout {
     property <bool> busy: AccountBridge.avatar-busy == acc.username;
     spacing: Theme.space-2;
     Rectangle { height: Theme.hairline; background: Theme.border-solid; }
-    Text { text: T.tr("vault.avatarTitle"); font-size: Theme.text-xs; color: Theme.muted; }
+    Text { text: T.tr("vault.avatarTitle"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
     HorizontalLayout {
         spacing: 6px;
         alignment: start;
@@ -496,6 +497,7 @@ component AccountCard inherits Rectangle {
                             font-family: Theme.font-mono;
                             font-size: Theme.text-xs;
                             color: Theme.muted;
+                            font-weight: 500;
                             vertical-alignment: center;
                         }
                     }
@@ -513,6 +515,7 @@ component AccountCard inherits Rectangle {
                         text: T.tr1("vault.cardLastUsed", "time", root.acc.last-used != "" ? Util.relative-time(root.acc.last-used, T.lang) : T.tr("vault.cardNever"));
                         font-size: Theme.text-xs;
                         color: Theme.muted;
+                        font-weight: 500;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
@@ -869,7 +872,7 @@ component MsAlert inherits Rectangle {
                 VerticalLayout { alignment: center; Icon { data: Icons.clock; size: 14px; color: Theme.accent-alt; } }
                 Text { text: T.tr("vault.msaPending"); color: Theme.accent-alt; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; horizontal-stretch: 1; }
             }
-            if root.pending: Text { text: T.tr("vault.msaPendingHint"); color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+            if root.pending: Text { text: T.tr("vault.msaPendingHint"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
             if !root.pending: HorizontalLayout {
                 spacing: Theme.space-2;
                 VerticalLayout { alignment: start; Icon { data: Icons.alert-triangle; size: 14px; color: Theme.accent-red; } }
@@ -1121,6 +1124,7 @@ component LunarCard inherits Rectangle {
                 text: T.tr("vault.lunarShieldDesc");
                 font-size: Theme.text-xs;
                 color: Theme.muted;
+                font-weight: 500;
                 wrap: word-wrap;
             }
             HorizontalLayout {

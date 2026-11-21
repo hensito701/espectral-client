@@ -24,7 +24,7 @@ component StepPill inherits Rectangle {
         padding-right: 8px;
         l := Text {
             text: root.text;
-            font-size: 11px;
+            font-size: Theme.text-xs;
             font-weight: 700;
             color: root.active ? Theme.accent-bright : root.done ? Theme.text : Theme.muted;
             horizontal-alignment: center;
@@ -321,7 +321,7 @@ component StepSettings inherits VerticalLayout {
                 alignment: end;
                 spacing: 4px;
                 Text { text: Util.format-memory(root.memory); color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; vertical-alignment: center; }
-                Text { text: "(" + root.memory + " MB)"; color: Theme.muted; font-size: Theme.text-xs; vertical-alignment: center; }
+                Text { text: "(" + root.memory + " MB)"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
             }
         }
     }
@@ -341,6 +341,7 @@ component StepSettings inherits VerticalLayout {
             text: T.tr("home.wizardHueNote");
             color: Theme.muted;
             font-size: Theme.text-xs;
+            font-weight: 500;
             vertical-alignment: center;
             wrap: word-wrap;
             horizontal-stretch: 1;
@@ -421,7 +422,7 @@ component StepSettings inherits VerticalLayout {
                 }
                 if root.import-enabled: VerticalLayout {
                     spacing: 6px;
-                    Text { text: T.tr("home.wizardImportSource") + ":"; color: Theme.muted; font-size: Theme.text-xs; }
+                    Text { text: T.tr("home.wizardImportSource") + ":"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; }
                     if HomeBridge.wiz-sources.length > 0: HiSelect {
                         options: HomeBridge.wiz-sources;
                         current-index <=> root.source-index;
@@ -431,6 +432,7 @@ component StepSettings inherits VerticalLayout {
                         color: Theme.muted;
                         font-size: Theme.text-xs;
                         font-italic: true;
+                        font-weight: 500;
                     }
                 }
             }
@@ -586,7 +588,7 @@ export component InstanceWizardModal inherits Rectangle {
                     alignment: center;
                     spacing: 2px;
                     McTitle { text: T.tr("home.wizardTitle"); font-size: 24px; horizontal-stretch: 0; }
-                    Text { text: T.tr("home.wizardSubtitle"); color: Theme.muted; font-size: Theme.text-xs; wrap: word-wrap; }
+                    Text { text: T.tr("home.wizardSubtitle"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
                 }
                 VerticalLayout {
                     alignment: center;

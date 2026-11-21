@@ -714,7 +714,7 @@ fn load(ui: &AppWindow, name: &str) {
             let (detail, jvm, client) = tokio::join!(e.get_instance_detail(&n), e.jvm_info(), e.get_client_info(&n));
             let detail = detail?;
             let icon = if detail.summary.has_icon {
-                e.instance_icon(&n).await.ok().and_then(|b| util::decode_png(&b))
+                e.instance_icon(&n).await.ok().and_then(|b| util::decode_png(&b)).map(|b| util::fit(b, crate::theme::phys(48.0)))
             } else {
                 None
             };
@@ -1267,7 +1267,7 @@ fn upload_icon() {
                 .ok_or_else(|| EngineError::bad_request("BAD_IMAGE", "PNG encode failed".to_string()))?;
             e.upload_instance_icon(&name, &url).await?;
             let d = e.get_instance_detail(&name).await?;
-            let icon = e.instance_icon(&name).await.ok().and_then(|b| util::decode_png(&b));
+            let icon = e.instance_icon(&name).await.ok().and_then(|b| util::decode_png(&b)).map(|b| util::fit(b, crate::theme::phys(48.0)));
             Ok(Some((d, icon)))
         },
         |ui, r| {
@@ -1304,7 +1304,7 @@ fn refresh_bg_packs() {
                     .await
                     .ok()
                     .and_then(|b| util::decode_png(&b))
-                    .map(|b| shrink(&b, 240).unwrap_or(b)); // thumbnails only: keep RAM low
+                    .map(|b| util::fit(b, 240)); // thumbnails only: keep RAM low
                 out.push((p, thumb));
             }
             Ok(out)
@@ -1334,25 +1334,6 @@ fn refresh_bg_packs() {
             hb.set_bg_error(msg(&e).into());
         },
     );
-}
-
-/// Nearest-neighbour downscale of a pixel buffer to fit `max` px.
-fn shrink(b: &SharedPixelBuffer<Rgba8Pixel>, max: u32) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
-    let (w, h) = (b.width(), b.height());
-    if w.max(h) <= max {
-        return Some(b.clone());
-    }
-    let scale = max as f64 / w.max(h) as f64;
-    let (nw, nh) = (((w as f64 * scale) as u32).max(1), ((h as f64 * scale) as u32).max(1));
-    let mut out = SharedPixelBuffer::<Rgba8Pixel>::new(nw, nh);
-    let src = b.as_slice();
-    let dst = out.make_mut_slice();
-    for y in 0..nh {
-        for x in 0..nw {
-            dst[(y * nw + x) as usize] = src[((y * h / nh) * w + x * w / nw) as usize];
-        }
-    }
-    Some(out)
 }
 
 fn select_bg(id: String) {

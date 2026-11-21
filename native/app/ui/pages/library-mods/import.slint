@@ -66,7 +66,7 @@ component LaneHeader inherits VerticalLayout {
             alignment: center;
             Badge { text: root.badge; variant: root.badge-variant; }
         }
-        VText { text: root.tag; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; }
+        VText { text: root.tag; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
     }
     McTitle {
         text: root.title;
@@ -448,7 +448,7 @@ component MetaPill inherits Rectangle {
             alignment: center;
             Emoji { char: root.emoji; size: 11px; }
         }
-        VText { text: root.text; font-size: 11px; color: Theme.muted; }
+        VText { text: root.text; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
     }
 }
 
@@ -516,9 +516,10 @@ component SourceCard inherits Rectangle {
                                 width: parent.width - 12px;
                                 text: root.src.path;
                                 font-family: Theme.font-mono;
-                                font-size: 11px;
+                                font-size: Theme.text-xs;
                                 color: Theme.muted;
                                 overflow: elide;
+                                font-weight: 500;
                             }
                         }
                     }
@@ -570,7 +571,7 @@ component SourceCard inherits Rectangle {
                     alignment: center;
                     Text {
                         text: T.tr("import.profile.lunarTokenShield");
-                        font-size: 11px;
+                        font-size: Theme.text-xs;
                         font-weight: 500;
                         color: Theme.accent-purple;
                         wrap: word-wrap;
@@ -672,7 +673,7 @@ component PolicyCard inherits Rectangle {
             horizontal-stretch: 1;
             spacing: 2px;
             Text { text: root.title; color: Theme.text; font-size: Theme.text-xs; font-weight: 600; wrap: word-wrap; }
-            Text { text: root.desc; color: Theme.muted; font-size: 11px; line-height-factor: 1.4 / 1.28; wrap: word-wrap; }
+            Text { text: root.desc; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; line-height-factor: 1.4 / 1.28; wrap: word-wrap; }
         }
     }
 }
@@ -800,7 +801,7 @@ component StatChip inherits Rectangle {
         padding-bottom: Theme.space-2;
         padding-left: Theme.space-3;
         padding-right: Theme.space-3;
-        Text { text: root.label; color: Theme.muted; font-size: 11px; overflow: elide; }
+        Text { text: root.label; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; overflow: elide; }
         Text { text: root.value; color: root.tint; font-size: Theme.text-lg; font-weight: 700; font-family: Theme.font-mono; }
     }
 }
@@ -829,7 +830,7 @@ component ProfileResult inherits VerticalLayout {
             Badge { text: T.tr("import.result.migrationDone"); variant: BadgeVariant.ok; large: true; }
         }
         Text { text: T.tr("import.result.title"); color: Theme.text; font-size: Theme.text-lg; font-weight: 700; }
-        Text { text: T.tr1("import.result.target", "name", LibraryBridge.i-target); color: Theme.muted; font-size: Theme.text-xs; }
+        Text { text: T.tr1("import.result.target", "name", LibraryBridge.i-target); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; }
     }
     GridLayout {
         spacing: Theme.space-2;
@@ -857,8 +858,8 @@ component ProfileResult inherits VerticalLayout {
             for sk in LibraryBridge.i-res-skipped: HorizontalLayout {
                 spacing: Theme.space-1;
                 alignment: start;
-                Text { text: sk.file; font-family: Theme.font-mono; font-size: 11px; color: Theme.muted; }
-                Text { text: "(" + sk.reason + ")"; font-size: 11px; color: Theme.muted; opacity: 0.8; overflow: elide; }
+                Text { text: sk.file; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
+                Text { text: "(" + sk.reason + ")"; font-size: Theme.text-xs; color: Theme.muted; opacity: 0.8; overflow: elide; font-weight: 500; }
             }
         }
     }
@@ -887,7 +888,7 @@ component ProfileResult inherits VerticalLayout {
                         padding-right: Theme.space-2;
                         spacing: Theme.space-2;
                         VText { text: s.name != "" ? s.name : s.ip; font-size: Theme.text-xs; font-weight: 600; }
-                        VText { text: s.ip; font-family: Theme.font-mono; font-size: 11px; color: Theme.muted; horizontal-stretch: 1; }
+                        VText { text: s.ip; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; horizontal-stretch: 1; font-weight: 500; }
                         if s.has-icon: VerticalLayout {
                             alignment: center;
                             Badge { text: T.tr("import.result.hasIcon"); variant: BadgeVariant.accent; }
@@ -951,7 +952,7 @@ component RecentItem inherits Rectangle {
         spacing: Theme.space-4;
         HorizontalLayout {
             spacing: Theme.space-2;
-            VText { text: root.item.time; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; }
+            VText { text: root.item.time; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
             VerticalLayout {
                 alignment: center;
                 Badge {
@@ -965,7 +966,7 @@ component RecentItem inherits Rectangle {
             spacing: Theme.space-3;
             HorizontalLayout {
                 spacing: 6px;
-                VText { text: T.tr("import.recent.instance"); font-size: Theme.text-xs; color: Theme.muted; }
+                VText { text: T.tr("import.recent.instance"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
                 VText {
                     text: root.item.instance + " ↗";
                     font-size: Theme.text-xs;
@@ -1013,6 +1014,7 @@ component RecentSection inherits Rectangle {
                 text: LibraryBridge.i-recent.length + " " + (LibraryBridge.i-recent.length == 1 ? "registro" : "registros");
                 font-size: Theme.text-xs;
                 color: Theme.muted;
+                font-weight: 500;
             }
         }
         if LibraryBridge.i-recent.length == 0: VerticalLayout {
@@ -1049,7 +1051,7 @@ export component ImportPage inherits Rectangle {
                     alignment: center;
                     Badge { text: T.tr("import.pageBadge"); variant: BadgeVariant.accent; }
                 }
-                VText { text: T.tr("import.pageRoute"); font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; opacity: 0.8; }
+                VText { text: T.tr("import.pageRoute"); font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; opacity: 0.8; font-weight: 500; }
             }
             McTitle {
                 text: T.tr("import.pageTitle");
