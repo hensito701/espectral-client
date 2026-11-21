@@ -293,7 +293,9 @@ export component PipLogDrawer inherits Rectangle {
     if root.expanded: panel := Rectangle {
         width: clamp(root.width * 0.52, 520px, 840px);
         height: max(240px, min(root.height * 0.36, root.height * 0.40));
-        x: root.width - self.width - Theme.space-4;
+        // On Home it also stays left of the background arrow (44px at the
+        // right edge, home.slint) so the arrow remains clickable.
+        x: root.width - self.width - (Router.page == Page.home ? Theme.space-6 + 44px + Theme.space-4 : Theme.space-4);
         y: root.height - self.height - root.bottom-gap;
         border-radius: Theme.radius-lg;
         background: Theme.log-bg;
