@@ -2,6 +2,26 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.9.3] - 2026-11-21
+
+### Changed
+- **Jugar sits higher.** Home is one centred column: logo, greeting, server line and the play
+  bar right under them, so the bar stays clickable when the bottom of the window is behind the
+  taskbar. The greeting shows your skin's head next to your name.
+- **Microsoft sign-in button** is dark (light in the light theme) instead of bright blue, so
+  the Microsoft logo no longer blends into it.
+- **Simpler settings copy.** The memory card just says "En automático se adapta a tu PC", and
+  "Cerrar el launcher al entrar al juego" says it frees RAM instead of quoting a number.
+- **Copyable About text.** The name, version and "made with" values in Acerca de can be
+  selected and copied.
+
+### Removed
+- **"Brillo máximo al jugar"** setting: the Suite's Fullbright does this in game.
+- **Hidden players** ("Jugadores ocultos"): the launcher, engine and the in-game mod no longer
+  keep or apply a list of players whose badge and cosmetics you don't see. Old lists on disk
+  are ignored.
+- The **Cosméticos** card on the account page (cosmetics are chosen in game, in the Suite).
+
 ## [1.9.2] - 2026-11-21
 
 ### Changed
