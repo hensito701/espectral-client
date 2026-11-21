@@ -1,12 +1,12 @@
 {
   "mod_id": "espectral-menu",
   "mod_name": "Espectral Menu",
-  "mod_version": "1.9.0",
+  "mod_version": "1.9.1",
   "mods": {
     "1.21.1": {
-      "filename": "espectral-brand-1.21.1-1.9.0.jar",
-      "sha1": "d011dc7a9d11d8258be4b0d25831b9c1ac02e00e",
-      "size": 4226,
+      "filename": "espectral-brand-1.21.1-1.9.1.jar",
+      "sha1": "cb0b53fb66aa2da54dd46e1654bc01d57a989e86",
+      "size": 4228,
       "loaders": [
         "neoforge"
       ],
@@ -14,9 +14,9 @@
       "mod_name": "Espectral Brand"
     },
     "1.21.11": {
-      "filename": "espectral-menu-1.21.11-1.9.0.jar",
-      "sha1": "3ca9c4887715324801483d4dfd994216c22650ab",
-      "size": 933185,
+      "filename": "espectral-menu-1.21.11-1.9.1.jar",
+      "sha1": "94e9636d2bb968192b57a15fdb9a016b7b729885",
+      "size": 933186,
       "loaders": [
         "fabric"
       ],
@@ -24,9 +24,9 @@
       "mod_name": "Espectral Menu"
     },
     "1.8.9": {
-      "filename": "espectral-menu-1.8.9-1.9.0.jar",
-      "sha1": "f9cc8e6e01d7375cee26049a4a3fac88b4eadd43",
-      "size": 3051329,
+      "filename": "espectral-menu-1.8.9-1.9.1.jar",
+      "sha1": "b9dc8c94b336c728efe1bd29fb8b01f2983a04db",
+      "size": 3051342,
       "loaders": [
         "forge"
       ],
@@ -34,8 +34,8 @@
       "mod_name": "Espectral Menu"
     },
     "26.2": {
-      "filename": "espectral-menu-26.2-1.9.0.jar",
-      "sha1": "10806e059a197e43f1347e884c8492ce9be9f2a6",
+      "filename": "espectral-menu-26.2-1.9.1.jar",
+      "sha1": "0ec36388451842ccd5944d06d7d0ab5c236ee9ce",
       "size": 959813,
       "loaders": [
         "fabric"
@@ -44,9 +44,9 @@
       "mod_name": "Espectral Menu"
     },
     "26.3": {
-      "filename": "espectral-menu-26.3-1.9.0.jar",
-      "sha1": "45ea4e7819ae212c1b9d90718661d23ee4e0a5e4",
-      "size": 960075,
+      "filename": "espectral-menu-26.3-1.9.1.jar",
+      "sha1": "1a36239d1d540f0ddb8baf34617850494b2acbce",
+      "size": 960076,
       "loaders": [
         "fabric"
       ],
