@@ -2,6 +2,19 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.9.2] - 2026-11-21
+
+### Changed
+- **Real glass on Windows 11.** The launcher window is now see-through: Windows draws its
+  acrylic (your desktop, blurred) behind it, and the launcher's charcoal and glows sit on top as
+  a tint. The acrylic follows the launcher's light or dark theme. Needs Windows 11 22H2 or
+  newer and the normal (OpenGL) renderer; elsewhere the window stays solid charcoal as before.
+
+### Fixed
+- **Launch log with many games.** With several launches the log's tabs pushed its buttons
+  (pin, collapse, stop) off the panel, so it could not be closed. The tabs now scroll sideways
+  and the buttons always stay visible; a finished launch's tab has an × that drops its log.
+
 ## [1.9.1] - 2026-11-21
 
 ### Fixed
