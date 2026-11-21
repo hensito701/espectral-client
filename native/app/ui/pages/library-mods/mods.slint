@@ -6,7 +6,7 @@
 // when the query is empty), tracks mod-progress events and loads the result
 // icons from cdn.modrinth.com through the engine HTTP client (LRU cache).
 
-import { Theme, T, AppState, Router, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji, ProgressBar, ProgressThickness, MonogramTile, MonogramShape, LoaderBadge, LoaderBadgeSize, Toggle } from "../../widgets.slint";
+import { Theme, T, AppState, Router, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji, ProgressBar, ProgressThickness, MonogramTile, MonogramShape, LoaderBadge, LoaderBadgeSize, Toggle, SelectableText } from "../../widgets.slint";
 import { LibraryBridge, ModRow, ModrinthCard, PinnedPill } from "api.slint";
 import { LibScroll, GlassPanel, GlowDot, VText, StatePanel, CenterText } from "parts.slint";
 
@@ -35,7 +35,7 @@ component CatalogHeader inherits HorizontalLayout {
             font-size: 32px;
         }
         Rectangle { height: Theme.space-1; }
-        Text {
+        SelectableText {
             min-height: 22px;
             vertical-alignment: center;
             text: T.tr("mods.subhead");
@@ -112,7 +112,7 @@ component InstanceStrip inherits GlassCard {
         spacing: Theme.space-2;
         HorizontalLayout {
             spacing: Theme.space-2;
-            VText {
+            SelectableText {
                 text: T.tr("mods.instance").to-uppercase();
                 font-size: Theme.text-xs;
                 font-weight: 600;
@@ -139,7 +139,7 @@ component InstanceStrip inherits GlassCard {
         if AppState.instances.length == 0: HorizontalLayout {
             padding-top: Theme.space-2;
             padding-bottom: Theme.space-2;
-            VText {
+            SelectableText {
                 text: T.tr("mods.noInstances");
                 color: Theme.muted;
                 horizontal-stretch: 1;
@@ -195,7 +195,7 @@ component ProgressDeck inherits GlassCard {
                 font-size: 13px;
                 overflow: elide;
             }
-            VText {
+            SelectableText {
                 text: LibraryBridge.m-progress-done + " / " + LibraryBridge.m-progress-total;
                 font-family: Theme.label-family(8px);
                 font-size: Theme.label-size(8px);
@@ -483,7 +483,7 @@ component ModEntryRow inherits Rectangle {
                     overflow: elide;
                     font-weight: 500;
                 }
-                if root.entry.meta != "": Text {
+                if root.entry.meta != "": SelectableText {
                     text: root.entry.meta;
                     font-size: Theme.text-xs;
                     color: Theme.muted;
@@ -514,7 +514,7 @@ component LoadingPanel inherits StatePanel {
         alignment: center;
         ModSpinner { }
     }
-    CenterText { text: root.text; }
+    SelectableText { text: root.text; horizontal-alignment: center; wrap: word-wrap; }
 }
 
 component ErrorBanner inherits GlassPanel {
@@ -533,7 +533,7 @@ component ErrorBanner inherits GlassPanel {
         if root.retry: VText { text: "!"; color: Theme.accent-red; font-weight: 700; }
         VerticalLayout {
             alignment: center;
-            Text {
+            SelectableText {
                 text: root.text;
                 color: Theme.accent-red;
                 font-size: Theme.text-md;
@@ -561,13 +561,15 @@ component EmptyPanel inherits StatePanel {
         alignment: center;
         Emoji { char: root.emoji; size: 32px; }
     }
-    CenterText {
+    SelectableText {
         text: root.title;
         color: Theme.text;
         font-size: Theme.text-xl;
         font-weight: 700;
+        horizontal-alignment: center;
+        wrap: word-wrap;
     }
-    CenterText { text: root.hint; }
+    SelectableText { text: root.hint; horizontal-alignment: center; wrap: word-wrap; }
     if root.show-cta: HorizontalLayout {
         alignment: center;
         Btn {
@@ -620,14 +622,14 @@ component Pill inherits Rectangle {
             alignment: center;
             GlowDot { size: 5px; tint: root.pill.installed ? Theme.accent-green : Theme.muted; }
         }
-        VText {
+        SelectableText {
             text: root.pill.slug;
             font-family: Theme.font-mono;
             font-size: Theme.text-xs;
             color: root.pill.installed ? Theme.text : Theme.muted;
             font-weight: 500;
         }
-        if root.pill.requires != "": VText {
+        if root.pill.requires != "": SelectableText {
             text: root.pill.requires;
             font-size: Theme.text-xs;
             color: Theme.muted;
@@ -652,7 +654,7 @@ component PresetsPane inherits VerticalLayout {
             VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: center;
-                Text { text: LibraryBridge.m-preset-note; color: Theme.text; font-size: Theme.text-md; wrap: word-wrap; }
+                SelectableText { text: LibraryBridge.m-preset-note; color: Theme.text; font-size: Theme.text-md; wrap: word-wrap; }
             }
         }
     }
@@ -677,8 +679,8 @@ component PresetsPane inherits VerticalLayout {
             }
             VerticalLayout {
                 alignment: center;
-                Text { text: T.tr("mods.performance"); font-size: Theme.text-base; font-weight: 700; color: Theme.text; }
-                Text { text: T.tr1("mods.performanceCount", "count", LibraryBridge.m-pinned.length); font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.muted; }
+                SelectableText { text: T.tr("mods.performance"); font-size: Theme.text-base; font-weight: 700; color: Theme.text; }
+                SelectableText { text: T.tr1("mods.performanceCount", "count", LibraryBridge.m-pinned.length); font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.muted; }
             }
             Rectangle { horizontal-stretch: 1; }
             VerticalLayout {
@@ -689,7 +691,7 @@ component PresetsPane inherits VerticalLayout {
         }
         HorizontalLayout {
             padding-bottom: Theme.space-3;
-            Text {
+            SelectableText {
                 text: T.tr("mods.performanceDesc");
                 color: Theme.muted;
                 font-size: 13px;
@@ -779,7 +781,7 @@ component SearchHeader inherits GlassCard {
                 alignment: center;
                 Icon { data: ModIcons.modrinth; size: 20px; filled: true; color: Theme.accent-green; }
             }
-            VText {
+            SelectableText {
                 text: T.tr("mods.modrinthTab");
                 font-family: Theme.label-family(8px);
                 font-size: Theme.label-size(8px);
@@ -801,7 +803,7 @@ component SearchHeader inherits GlassCard {
                 }
             }
         }
-        if LibraryBridge.m-has-target && LibraryBridge.m-sel-version != "": Text {
+        if LibraryBridge.m-has-target && LibraryBridge.m-sel-version != "": SelectableText {
             text: T.tr2("mods.searchHint", "loader", LibraryBridge.m-sel-loader, "version", LibraryBridge.m-sel-version);
             font-family: Theme.font-mono;
             font-size: Theme.text-xs;
@@ -862,7 +864,7 @@ component ResultCard inherits GlassCard {
                     color: Theme.text;
                     overflow: elide;
                 }
-                Text {
+                SelectableText {
                     text: T.tr1("mods.downloads", "count", root.card.downloads);
                     font-size: Theme.text-xs;
                     color: Theme.muted;
@@ -893,7 +895,7 @@ component ResultCard inherits GlassCard {
             if !root.card.installed && root.card.conflict != "": VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: center;
-                Text {
+                SelectableText {
                     text: T.tr1("mods.conflictWarn", "mods", root.card.conflict);
                     font-size: Theme.text-xs;
                     color: Theme.accent-alt;
@@ -926,7 +928,7 @@ component ResultCard inherits GlassCard {
             padding-top: Theme.space-1;
             spacing: Theme.space-1;
             alignment: start;
-            VText { text: T.tr("mods.optionalDeps"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
+            SelectableText { text: T.tr("mods.optionalDeps"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
             for opt in root.card.optional: VerticalLayout {
                 alignment: center;
                 Btn {
@@ -984,7 +986,7 @@ component ModrinthPane inherits VerticalLayout {
             alignment: center;
             GlowDot { tint: Theme.accent; }
         }
-        VText { text: T.tr("mods.exploreTitle"); font-size: 15px; font-weight: 700; }
+        SelectableText { text: T.tr("mods.exploreTitle"); font-size: 15px; font-weight: 700; }
     }
     if LibraryBridge.m-has-results && LibraryBridge.m-results.length > 0: ResultsGrid { }
     if LibraryBridge.m-has-results && LibraryBridge.m-has-more: HorizontalLayout {

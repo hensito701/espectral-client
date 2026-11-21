@@ -2,7 +2,7 @@
 // Glass look: HubCard is the GlassCard recipe (translucent fill, 1px hairline,
 // top sheen), the one soft shadow is reserved for floating layers only.
 
-import { Theme, T, Icon, Icons, McTitle } from "../../widgets.slint";
+import { Theme, T, Icon, Icons, McTitle, SelectableText } from "../../widgets.slint";
 import { GlassSheen } from "../../widgets/card.slint";
 
 component CardHead inherits VerticalLayout {
@@ -13,7 +13,7 @@ component CardHead inherits VerticalLayout {
         text: root.title;
         font-size: 16px;
     }
-    if root.subtitle != "": Text {
+    if root.subtitle != "": SelectableText {
         text: root.subtitle;
         color: Theme.muted;
         font-size: Theme.text-xs;
@@ -27,7 +27,7 @@ component CardFoot inherits VerticalLayout {
     padding-top: Theme.space-3;
     spacing: Theme.space-3;
     Rectangle { height: Theme.hairline; background: Theme.border-solid; }
-    Text { text: root.text; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
+    SelectableText { text: root.text; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
 }
 
 /// Glass card (InstanceHub cards) with overridable border / fill.
@@ -129,7 +129,7 @@ export component Inset inherits Rectangle {
 }
 
 /// Uppercase micro label (spec-label / stat-label).
-export component MicroLabel inherits Text {
+export component MicroLabel inherits SelectableText {
     color: Theme.muted;
     font-size: Theme.text-xs;
     font-weight: 700;
@@ -177,7 +177,7 @@ export component CheckRow inherits Rectangle {
 }
 
 /// Feedback line (options-feedback / options-hint).
-export component Note inherits Text {
+export component Note inherits SelectableText {
     in property <bool> hint;
     color: hint ? Theme.muted : Theme.accent-green;
     font-size: Theme.text-xs;

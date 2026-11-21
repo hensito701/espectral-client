@@ -1,7 +1,7 @@
 // OWNER: home-instances agent. Port of components/InstanceWizardModal.svelte:
 // 3 steps (version, loader, name + memory + options) driven by Shell.wizard-open.
 
-import { Theme, T, Shell, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, LoaderBadge, LoaderBadgeSize, Field, Slider, Modal, Emoji, McTitle, AdvancedToggle } from "../../widgets.slint";
+import { Theme, T, Shell, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, LoaderBadge, LoaderBadgeSize, Field, Slider, Modal, Emoji, McTitle, AdvancedToggle, SelectableText } from "../../widgets.slint";
 import { HomeBridge, HiVersion } from "api.slint";
 import { HiSelect, HiCheck, HiTextField } from "common.slint";
 
@@ -320,8 +320,8 @@ component StepSettings inherits VerticalLayout {
                 min-width: 120px;
                 alignment: end;
                 spacing: 4px;
-                Text { text: Util.format-memory(root.memory); color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; vertical-alignment: center; }
-                Text { text: "(" + root.memory + " MB)"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
+                SelectableText { text: Util.format-memory(root.memory); color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; vertical-alignment: center; }
+                SelectableText { text: "(" + root.memory + " MB)"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
             }
         }
     }
@@ -337,7 +337,7 @@ component StepSettings inherits VerticalLayout {
                 border-color: Theme.border-solid;
             }
         }
-        Text {
+        SelectableText {
             text: T.tr("home.wizardHueNote");
             color: Theme.muted;
             font-size: Theme.text-xs;
@@ -422,12 +422,12 @@ component StepSettings inherits VerticalLayout {
                 }
                 if root.import-enabled: VerticalLayout {
                     spacing: 6px;
-                    Text { text: T.tr("home.wizardImportSource") + ":"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; }
+                    SelectableText { text: T.tr("home.wizardImportSource") + ":"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; }
                     if HomeBridge.wiz-sources.length > 0: HiSelect {
                         options: HomeBridge.wiz-sources;
                         current-index <=> root.source-index;
                     }
-                    if HomeBridge.wiz-sources.length == 0: Text {
+                    if HomeBridge.wiz-sources.length == 0: SelectableText {
                         text: "Buscando launchers instalados...";
                         color: Theme.muted;
                         font-size: Theme.text-xs;
@@ -457,7 +457,7 @@ component SuiteNote inherits Rectangle {
             alignment: start;
             Emoji { char: "💡"; size: 16px; }
         }
-        Text {
+        SelectableText {
             text: T.tr2("home.wizardSuiteMissing", "combo", root.combo, "versions", HomeBridge.wiz-suite-versions);
             color: Theme.text;
             font-size: Theme.text-sm;
@@ -588,7 +588,7 @@ export component InstanceWizardModal inherits Rectangle {
                     alignment: center;
                     spacing: 2px;
                     McTitle { text: T.tr("home.wizardTitle"); font-size: 24px; horizontal-stretch: 0; }
-                    Text { text: T.tr("home.wizardSubtitle"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
+                    SelectableText { text: T.tr("home.wizardSubtitle"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
                 }
                 VerticalLayout {
                     alignment: center;
@@ -670,7 +670,7 @@ export component InstanceWizardModal inherits Rectangle {
                             padding: Theme.space-3;
                             spacing: Theme.space-2;
                             Emoji { char: "⚠️"; size: 16px; }
-                            Text { text: HomeBridge.wiz-error; color: Theme.accent-red; font-size: Theme.text-sm; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
+                            SelectableText { text: HomeBridge.wiz-error; color: Theme.accent-red; font-size: Theme.text-sm; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
                         }
                     }
                     if root.step >= 2 && root.version != "" && !HomeBridge.wiz-suite-supported(root.version, root.loader): SuiteNote {

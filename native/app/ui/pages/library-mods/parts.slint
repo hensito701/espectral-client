@@ -1,6 +1,6 @@
 // OWNER: library-mods agent. Small building blocks shared by the library pages
 // (VersionArmory, ImportCenter, ModCatalog, MrpackModal, DonationsPavilion).
-import { Theme, Shell, ScrollArea } from "../../widgets.slint";
+import { Theme, Shell, ScrollArea, SelectableText } from "../../widgets.slint";
 
 /// PageScaffold twin that also reports when the viewport nears the bottom
 /// (infinite scroll: VersionArmory sentinel, Modrinth explore paging).
@@ -92,6 +92,14 @@ export component VText inherits VerticalLayout {
         letter-spacing: root.letter-spacing;
         overflow: root.overflow;
     }
+}
+
+/// Small uppercase section label (mono tracking, muted).
+export component SectionLabel inherits SelectableText {
+    color: Theme.muted;
+    font-size: Theme.text-xs;
+    font-weight: 600;
+    letter-spacing: 0.6px;
 }
 
 /// Clickable pill / chip (filter chips, memory presets, instance chips base).

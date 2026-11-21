@@ -16,7 +16,7 @@
 // scrolled out of the window), so a paused or off-screen viewer costs 0% CPU.
 // Still frames (paused, not dragging) are rendered with 2x2 antialiasing.
 
-import { Theme } from "../theme.slint";
+import { Theme, SelectableText } from "../widgets.slint";
 import { T } from "../i18n.slint";
 
 export struct SkinFrameRequest {
@@ -199,7 +199,7 @@ export component SkinView inherits Rectangle {
         alignment: center;
         padding-left: 8px;
         padding-right: 8px;
-        Text {
+        SelectableText {
             text: T.tr("vault.skin.viewerError");
             font-size: Theme.text-xs;
             color: Theme.muted;

@@ -9,6 +9,7 @@
 
 import { Theme } from "../theme.slint";
 import { Icon, Icons } from "icon.slint";
+import { SelectableText } from "selectable.slint";
 
 export component TextField inherits Rectangle {
     in-out property <string> text <=> input.text;
@@ -172,7 +173,7 @@ export component Field inherits VerticalLayout {
     if root.label != "": HorizontalLayout {
         spacing: Theme.space-1;
         alignment: start;
-        Text {
+        SelectableText {
             text: root.label;
             color: Theme.text;
             font-size: Theme.text-xs;
@@ -193,7 +194,7 @@ export component Field inherits VerticalLayout {
             alignment: center;
             Icon { data: Icons.alert-circle; size: 14px; color: Theme.accent-red; }
         }
-        Text {
+        SelectableText {
             text: root.error;
             color: Theme.accent-red;
             font-size: Theme.text-xs;
@@ -202,7 +203,7 @@ export component Field inherits VerticalLayout {
             horizontal-stretch: 1;
         }
     }
-    if root.error == "" && root.hint != "": Text {
+    if root.error == "" && root.hint != "": SelectableText {
         text: root.hint;
         color: Theme.muted;
         font-size: Theme.text-xs;

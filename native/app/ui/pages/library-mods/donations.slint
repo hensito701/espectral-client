@@ -6,7 +6,7 @@
 // (library_mods/donations.rs); rows carry i18n KEYS so a language switch
 // re-renders without a round trip.
 
-import { Theme, T, Router, AppState, GlassCard, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Sticker, Icon, Icons, Emoji, Surface } from "../../widgets.slint";
+import { Theme, T, Router, AppState, GlassCard, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Sticker, Icon, Icons, Emoji, Surface, SelectableText } from "../../widgets.slint";
 import { LibraryBridge, RankCard } from "api.slint";
 import { LibScroll, VText, CenterText } from "parts.slint";
 
@@ -36,7 +36,7 @@ component Capsule inherits Rectangle {
             alignment: center;
             Emoji { char: root.emoji; size: 15px; }
         }
-        VText { text: root.text; font-size: 13px; font-weight: 600; }
+        SelectableText { text: root.text; font-size: 13px; font-weight: 600; }
     }
 }
 
@@ -54,7 +54,7 @@ component Hero inherits GlassCard {
                 alignment: center;
                 Badge { text: T.tr("pav.heroBadge"); variant: BadgeVariant.gold; dot: true; }
             }
-            VText { text: T.tr("pav.heroKicker"); font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; letter-spacing: 0.8px; color: Theme.muted; }
+            SelectableText { text: T.tr("pav.heroKicker"); font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; letter-spacing: 0.8px; color: Theme.muted; }
         }
         VerticalLayout {
             spacing: Theme.space-2;
@@ -63,7 +63,7 @@ component Hero inherits GlassCard {
                 font-size: 40px;
             }
             HorizontalLayout {
-                Text {
+                SelectableText {
                     max-width: 860px;
                     text: T.tr("pav.heroPitch");
                     color: Theme.muted-strong;
@@ -89,7 +89,7 @@ component SectionHeader inherits VerticalLayout {
     in property <string> subtitle;
     spacing: Theme.space-1;
     McTitle { text: root.title; font-size: 24px; }
-    Text { text: root.subtitle; color: Theme.muted; font-size: 14.4px; wrap: word-wrap; }
+    SelectableText { text: root.subtitle; color: Theme.muted; font-size: 14.4px; wrap: word-wrap; }
 }
 
 /// Partner / channel action pill: glass with the channel's brand colour as a
@@ -126,7 +126,6 @@ component LinkBtn inherits Rectangle {
             font-size: 14px;
             font-weight: 700;
             color: Theme.text;
-            overflow: elide;
         }
     }
     touch := TouchArea {
@@ -194,7 +193,7 @@ component ChannelCard inherits Rectangle {
                     alignment: center;
                     horizontal-stretch: 1;
                     spacing: 2px;
-                    Text {
+                    SelectableText {
                         text: root.title;
                         color: Theme.title-color;
                         font-family: Theme.font-title;
@@ -212,7 +211,7 @@ component ChannelCard inherits Rectangle {
                     }
                 }
             }
-            Text {
+            SelectableText {
                 vertical-stretch: 1;
                 text: root.desc;
                 color: Theme.muted-strong;
@@ -416,10 +415,10 @@ component RankCardView inherits Rectangle {
                     VerticalLayout {
                         alignment: end;
                         padding-bottom: 5px;
-                        Text { text: T.tr(root.rank.price-key); color: root.rank.featured ? Theme.accent : Theme.title-color; font-family: Theme.font-title; font-size: Theme.text-base; font-weight: 700; }
+                        SelectableText { text: T.tr(root.rank.price-key); color: root.rank.featured ? Theme.accent : Theme.title-color; font-family: Theme.font-title; font-size: Theme.text-base; font-weight: 700; }
                     }
                 }
-                Text {
+                SelectableText {
                     text: T.tr(root.rank.tagline-key);
                     color: Theme.muted;
                     font-size: 13.4px;
@@ -436,7 +435,7 @@ component RankCardView inherits Rectangle {
                 vertical-stretch: 1;
                 spacing: 9.6px;
                 alignment: start;
-                Text {
+                SelectableText {
                     text: T.tr1("pav.perksCount", "count", root.rank.perks.length).to-uppercase();
                     color: Theme.muted;
                     font-size: 12.2px;
@@ -452,7 +451,7 @@ component RankCardView inherits Rectangle {
                             alignment: start;
                             Rectangle { width: 8px; height: 8px; background: root.rank.accent; }
                         }
-                        Text {
+                        SelectableText {
                             horizontal-stretch: 1;
                             text: T.tr(perk);
                             color: Theme.muted-strong;
@@ -524,9 +523,9 @@ component UnbanTier inherits Rectangle {
         padding-left: 20px;
         padding-right: 20px;
         spacing: 10px;
-        VText { text: "# " + root.level; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.accent; }
-        VText { text: root.label; font-size: 14px; font-weight: 600; horizontal-stretch: 1; }
-        VText { text: root.price; font-family: Theme.font-title; font-size: Theme.text-sm; font-weight: 700; color: Theme.accent; }
+        SelectableText { text: "# " + root.level; font-family: Theme.label-family(8px); font-size: Theme.label-size(8px); font-weight: 700; color: Theme.accent; }
+        SelectableText { text: root.label; font-size: 14px; font-weight: 600; horizontal-stretch: 1; }
+        SelectableText { text: root.price; font-family: Theme.font-title; font-size: Theme.text-sm; font-weight: 700; color: Theme.accent; }
     }
 }
 
@@ -550,7 +549,7 @@ component WarningBox inherits Rectangle {
             padding-top: 2px;
             Emoji { char: root.emoji; size: 16px; }
         }
-        Text {
+        SelectableText {
             horizontal-stretch: 1;
             text: root.text;
             color: root.strict ? Theme.accent-red : Theme.text;
@@ -573,9 +572,9 @@ component UnbansCard inherits GlassCard {
             Badge { text: T.tr("pav.unbansBadge"); variant: BadgeVariant.warn; dot: true; }
         }
         McTitle { text: T.tr("pav.unbansTitle"); font-size: 24px; }
-        Text { text: T.tr("pav.unbansSubtitle"); color: Theme.muted; font-size: 14.1px; wrap: word-wrap; }
+        SelectableText { text: T.tr("pav.unbansSubtitle"); color: Theme.muted; font-size: 14.1px; wrap: word-wrap; }
     }
-    Text { text: T.tr("pav.unbansNote"); color: Theme.muted-strong; font-size: 14.7px; wrap: word-wrap; }
+    SelectableText { text: T.tr("pav.unbansNote"); color: Theme.muted-strong; font-size: 14.7px; wrap: word-wrap; }
     HorizontalLayout {
         spacing: Theme.space-4;
         UnbanTier { level: "1"; label: T.tr("donations.unbans.first"); price: T.tr("donations.unbans.firstPrice"); }
@@ -595,7 +594,7 @@ component UnbansCard inherits GlassCard {
             VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: center;
-                Text {
+                SelectableText {
                     max-width: 680px;
                     text: T.tr("pav.claimInstructions");
                     color: Theme.muted;
@@ -715,7 +714,7 @@ export component DonationsPage inherits Rectangle {
                         alignment: start;
                         Icon { data: Icons.info; size: 17px; color: Theme.accent-cyan; }
                     }
-                    Text {
+                    SelectableText {
                         horizontal-stretch: 1;
                         text: T.tr("donations.disclaimer");
                         color: Theme.muted-strong;
@@ -729,7 +728,7 @@ export component DonationsPage inherits Rectangle {
                 padding-top: 48px;
                 padding-bottom: 48px;
                 spacing: Theme.space-3;
-                CenterText { text: T.tr("pav.noRanksFound"); font-size: 15.2px; }
+                SelectableText { text: T.tr("pav.noRanksFound"); font-size: 15.2px; horizontal-alignment: center; wrap: word-wrap; }
                 HorizontalLayout {
                     alignment: center;
                     Btn {

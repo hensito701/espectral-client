@@ -4,7 +4,7 @@
 // Glass look: translucent wells, 1px hairlines, warm-white titles; the accent
 // marks only the selected state.
 
-import { Theme, Icon, TextField, McTitle } from "../../widgets.slint";
+import { Theme, Icon, TextField, McTitle, SelectableText } from "../../widgets.slint";
 
 /// `.preset-chip`: glass pill; the active one is an accent-tinted pill with a
 /// strong accent edge (no solid gold, no shadow).
@@ -86,7 +86,7 @@ export component CardHead inherits HorizontalLayout {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            Text {
+            SelectableText {
                 text: root.title;
                 color: Theme.title-color;
                 font-family: Theme.font-title;
@@ -101,7 +101,7 @@ export component CardHead inherits HorizontalLayout {
                 WarnBadge { text: root.badge; }
             }
         }
-        if root.desc != "": Text {
+        if root.desc != "": SelectableText {
             text: root.desc;
             color: Theme.muted;
             font-size: 13.2px;
@@ -122,7 +122,7 @@ export component SectionHeader inherits VerticalLayout {
         text: root.title;
         font-size: 24px;
     }
-    if root.desc != "": Text {
+    if root.desc != "": SelectableText {
         text: root.desc;
         color: Theme.muted;
         font-size: 13.6px;
@@ -160,7 +160,7 @@ export component InfoBox inherits Rectangle {
             padding-bottom: root.pad-y;
             horizontal-stretch: 1;
             alignment: center;
-            Text {
+            SelectableText {
                 text: root.text;
                 color: root.text-color;
                 font-size: root.font-size;

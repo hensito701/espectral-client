@@ -13,6 +13,7 @@ import { Icon, Icons } from "../widgets/icon.slint";
 import { ClientLockup, McTitle, Sticker } from "../widgets/badge.slint";
 import { Btn, BtnVariant, Spinner } from "../widgets/btn.slint";
 import { GlassCard, Elevation } from "../widgets/card.slint";
+import { SelectableText } from "../widgets/selectable.slint";
 
 component GateSuccess inherits VerticalLayout {
     alignment: center;
@@ -62,7 +63,7 @@ component GateSuccess inherits VerticalLayout {
         wrap: true;
     }
     Rectangle { height: Theme.space-2; }
-    Text {
+    SelectableText {
         text: T.tr("gate.subtitle");
         font-size: Theme.text-sm;
         line-height-factor: 1.35;
@@ -83,7 +84,7 @@ component GatePrompt inherits VerticalLayout {
             wrap: true;
         }
     }
-    Text {
+    SelectableText {
         text: T.tr("gate.subtitle");
         font-size: Theme.text-sm;
         line-height-factor: 1.35;
@@ -110,7 +111,7 @@ component GatePrompt inherits VerticalLayout {
                     alignment: center;
                     Icon { data: Icons.alert-circle; size: 16px; color: Theme.accent-red; }
                 }
-                Text {
+                SelectableText {
                     text: Session.auth-error;
                     font-size: Theme.text-xs;
                     color: Theme.accent-red;
@@ -169,7 +170,7 @@ component GatePrompt inherits VerticalLayout {
             clicked => { Session.continue-anonymous(); }
         }
     }
-    Text {
+    SelectableText {
         text: T.tr("gate.footnote");
         font-size: Theme.text-xs;
         font-weight: 500;
@@ -267,7 +268,7 @@ export component HotkeyLegend inherits HorizontalLayout {
                 }
             }
         }
-        Text {
+        SelectableText {
             text: sc.label;
             font-family: Theme.label-family(8px);
             font-size: Theme.label-size(8px);

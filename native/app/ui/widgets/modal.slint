@@ -22,6 +22,7 @@ import { IconBtn, Btn, BtnVariant } from "btn.slint";
 import { Icons } from "icon.slint";
 import { McTitle } from "badge.slint";
 import { GlassSheen } from "card.slint";
+import { SelectableText } from "selectable.slint";
 
 export component ModalFooter inherits Rectangle {
     in property <LayoutAlignment> alignment: end;
@@ -133,7 +134,7 @@ export component Modal inherits Rectangle {
                                 font-size: 24px;
                                 wrap: true;
                             }
-                            if root.subtitle != "": Text {
+                            if root.subtitle != "": SelectableText {
                                 text: root.subtitle;
                                 color: Theme.muted;
                                 font-size: Theme.text-sm;
@@ -170,7 +171,7 @@ export component ConfirmDialog inherits Modal {
     dialog-width: 440px;
     VerticalLayout {
         padding: Theme.space-6;
-        Text {
+        SelectableText {
             text: root.message;
             color: Theme.muted-strong;
             font-size: Theme.text-sm;

@@ -8,6 +8,7 @@ import { Shell, PaletteState, PaletteItem } from "../state.slint";
 import { Kbd } from "../widgets/badge.slint";
 import { Icon, Icons } from "../widgets/icon.slint";
 import { Emoji } from "../widgets/emoji.slint";
+import { SelectableText } from "../widgets/selectable.slint";
 
 component PaletteRow inherits Rectangle {
     in property <PaletteItem> item;
@@ -227,14 +228,14 @@ export component CommandPalette inherits Rectangle {
                 spacing: Theme.space-1;
                 alignment: center;
                 Icon { data: Icons.search; size: 32px; color: Theme.muted; opacity: 0.6; }
-                Text {
+                SelectableText {
                     text: T.tr1("command.noResults", "query", PaletteState.empty-query);
                     font-size: Theme.text-sm;
                     font-weight: 600;
                     color: Theme.text;
                     horizontal-alignment: center;
                 }
-                Text {
+                SelectableText {
                     text: T.tr("command.noResultsHint");
                     font-size: Theme.text-xs;
                     color: Theme.muted;
@@ -256,7 +257,7 @@ export component CommandPalette inherits Rectangle {
                     padding-bottom: Theme.space-3;
                     spacing: 2px;
                     for item[i] in PaletteState.items: VerticalLayout {
-                        if item.section != "": Text {
+                        if item.section != "": SelectableText {
                             height: 30px;
                             text: item.section;
                             // G1: section headers are small labels, not titles.
@@ -292,17 +293,17 @@ export component CommandPalette inherits Rectangle {
                     HorizontalLayout {
                         spacing: Theme.space-1;
                         VerticalLayout { alignment: center; Kbd { text: "↑↓"; } }
-                        Text { text: T.tr("command.kbd.navigate"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; vertical-alignment: center; }
+                        SelectableText { text: T.tr("command.kbd.navigate"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; vertical-alignment: center; }
                     }
                     HorizontalLayout {
                         spacing: Theme.space-1;
                         VerticalLayout { alignment: center; Kbd { text: "↵"; } }
-                        Text { text: T.tr("command.kbd.select"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; vertical-alignment: center; }
+                        SelectableText { text: T.tr("command.kbd.select"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; vertical-alignment: center; }
                     }
                     HorizontalLayout {
                         spacing: Theme.space-1;
                         VerticalLayout { alignment: center; Kbd { text: "ESC"; } }
-                        Text { text: T.tr("command.kbd.close"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; vertical-alignment: center; }
+                        SelectableText { text: T.tr("command.kbd.close"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; vertical-alignment: center; }
                     }
                     Rectangle { horizontal-stretch: 1; }
                     Text {

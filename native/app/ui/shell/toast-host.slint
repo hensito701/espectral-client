@@ -8,6 +8,7 @@
 import { Theme } from "../theme.slint";
 import { Shell, ToastKind, ToastItem } from "../state.slint";
 import { Icon, Icons } from "../widgets/icon.slint";
+import { SelectableText } from "../widgets/selectable.slint";
 
 component ToastCard inherits Rectangle {
     in property <ToastItem> item;
@@ -55,7 +56,7 @@ component ToastCard inherits Rectangle {
                 font-size: Theme.label-size(8px);
                 color: root.tone;
             }
-            Text {
+            SelectableText {
                 text: root.item.text;
                 font-size: Theme.text-xs;
                 color: Theme.text;

@@ -1,7 +1,7 @@
 // OWNER: home-instances agent. Ports of components/DryRunModal.svelte and
 // components/MrpackModal.svelte (state in HomeBridge dryrun-* / mrpack-*).
 
-import { Theme, T, AppState, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Modal, Emoji, Spinner, McTitle } from "../../widgets.slint";
+import { Theme, T, AppState, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Modal, Emoji, Spinner, McTitle, SelectableText } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 
 /// Shared modal header: title (+ optional badge) / subtitle / close.
@@ -31,7 +31,7 @@ component ModalHead inherits Rectangle {
                     Badge { text: root.badge; variant: BadgeVariant.accent; }
                 }
             }
-            Text { text: root.subtitle; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
+            SelectableText { text: root.subtitle; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
         }
         VerticalLayout {
             alignment: center;
@@ -188,7 +188,7 @@ component MetaCard inherits Rectangle {
             padding-top: Theme.space-3;
             padding-bottom: Theme.space-3;
             spacing: 6px;
-            Text { text: root.label.to-uppercase(); color: Theme.muted; font-size: Theme.text-xs; font-weight: 600; letter-spacing: 0.5px; }
+            SelectableText { text: root.label.to-uppercase(); color: Theme.muted; font-size: Theme.text-xs; font-weight: 600; letter-spacing: 0.5px; }
             @children
         }
     }
@@ -237,7 +237,7 @@ export component DryRunModal inherits Rectangle {
                     padding-bottom: Theme.space-8;
                     spacing: Theme.space-3;
                     HorizontalLayout { alignment: center; Spinner { size: 28px; tint: Theme.accent; } }
-                    Text { text: T.tr("home.dryRunLoading"); color: Theme.muted; font-size: Theme.text-sm; horizontal-alignment: center; }
+                    SelectableText { text: T.tr("home.dryRunLoading"); color: Theme.muted; font-size: Theme.text-sm; horizontal-alignment: center; }
                 }
                 if !HomeBridge.dryrun-loading && HomeBridge.dryrun-error != "": Rectangle {
                     border-radius: Theme.radius-md;
@@ -248,7 +248,7 @@ export component DryRunModal inherits Rectangle {
                         padding: Theme.space-3;
                         spacing: Theme.space-2;
                         Emoji { char: "⚠️"; size: 16px; }
-                        Text { text: HomeBridge.dryrun-error; color: Theme.accent-red; font-size: Theme.text-sm; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
+                        SelectableText { text: HomeBridge.dryrun-error; color: Theme.accent-red; font-size: Theme.text-sm; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
                     }
                 }
                 if !HomeBridge.dryrun-loading && HomeBridge.dryrun-has-result && root.tab == 0: VerticalLayout {
@@ -270,7 +270,7 @@ export component DryRunModal inherits Rectangle {
                             width: parent.width - 24px;
                             height: parent.height - 24px;
                             content-height: cmd.preferred-height;
-                            cmd := Text {
+                            cmd := SelectableText {
                                 width: parent.width;
                                 text: HomeBridge.dryrun-command;
                                 color: Theme.dark ? Theme.accent-green : #047857;
@@ -300,7 +300,7 @@ export component DryRunModal inherits Rectangle {
                         VerticalLayout {
                             padding: Theme.space-3;
                             spacing: 4px;
-                            Text { text: T.tr1("home.dryRunMissingCp", "count", HomeBridge.dryrun-missing.length) + ":"; color: Theme.accent-red; font-size: Theme.text-xs; font-weight: 700; }
+                            SelectableText { text: T.tr1("home.dryRunMissingCp", "count", HomeBridge.dryrun-missing.length) + ":"; color: Theme.accent-red; font-size: Theme.text-xs; font-weight: 700; }
                             for m in HomeBridge.dryrun-missing: Text { text: m; color: Theme.accent-red; font-family: Theme.font-mono; font-size: 11px; overflow: elide; }
                         }
                     }
@@ -310,11 +310,11 @@ export component DryRunModal inherits Rectangle {
                     spacing: Theme.space-3;
                     MetaCard {
                         label: T.tr("home.dryRunJava");
-                        Text { text: HomeBridge.dryrun-java; color: Theme.text; font-family: Theme.font-mono; font-size: Theme.text-xs; wrap: char-wrap; }
+                        SelectableText { text: HomeBridge.dryrun-java; color: Theme.text; font-family: Theme.font-mono; font-size: Theme.text-xs; wrap: char-wrap; }
                     }
                     MetaCard {
                         label: T.tr("home.dryRunNatives");
-                        Text { text: HomeBridge.dryrun-natives; color: Theme.text; font-family: Theme.font-mono; font-size: Theme.text-xs; wrap: char-wrap; }
+                        SelectableText { text: HomeBridge.dryrun-natives; color: Theme.text; font-family: Theme.font-mono; font-size: Theme.text-xs; wrap: char-wrap; }
                     }
                     MetaCard {
                         label: T.tr("home.dryRunAssets");
@@ -338,7 +338,7 @@ export component DryRunModal inherits Rectangle {
                             padding: Theme.space-3;
                             spacing: Theme.space-2;
                             Emoji { char: "⚠️"; size: 14px; }
-                            Text { text: w; color: Theme.text; font-size: Theme.text-xs; wrap: word-wrap; horizontal-stretch: 1; }
+                            SelectableText { text: w; color: Theme.text; font-size: Theme.text-xs; wrap: word-wrap; horizontal-stretch: 1; }
                         }
                     }
                 }
@@ -347,12 +347,12 @@ export component DryRunModal inherits Rectangle {
                     padding-bottom: Theme.space-6;
                     spacing: Theme.space-2;
                     Text { text: "✓"; color: Theme.accent-green; font-size: 28px; font-weight: 700; horizontal-alignment: center; }
-                    Text { text: T.tr("home.dryRunNoWarnings"); color: Theme.muted-strong; font-size: Theme.text-sm; horizontal-alignment: center; }
+                    SelectableText { text: T.tr("home.dryRunNoWarnings"); color: Theme.muted-strong; font-size: Theme.text-sm; horizontal-alignment: center; }
                 }
             }
         }
         ModalFoot {
-            if HomeBridge.dryrun-has-result && HomeBridge.dryrun-assets-ok: Text {
+            if HomeBridge.dryrun-has-result && HomeBridge.dryrun-assets-ok: SelectableText {
                 text: "● Entorno Verificado";
                 color: Theme.accent-green;
                 font-size: Theme.text-xs;

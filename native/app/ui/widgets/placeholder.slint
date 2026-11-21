@@ -7,6 +7,7 @@ import { Router } from "../state.slint";
 import { PageScaffold, PageHeader } from "page.slint";
 import { GlassCard } from "card.slint";
 import { Badge, BadgeVariant } from "badge.slint";
+import { SelectableText } from "selectable.slint";
 
 export component PlaceholderPage inherits Rectangle {
     in property <string> title;
@@ -26,7 +27,7 @@ export component PlaceholderPage inherits Rectangle {
         GlassCard {
             title: "Slint port pending";
             subtitle: root.source;
-            Text {
+            SelectableText {
                 text: "This page is a placeholder created by the UI foundation. The page agent that owns it replaces this component (see native/app/UI-PORTING.md).";
                 color: Theme.muted;
                 font-size: Theme.text-sm;

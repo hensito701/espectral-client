@@ -1,7 +1,7 @@
 // OWNER: home-instances agent. InstanceHub "Configuración" tab (two card
 // stacks + the full-width client-suite card).
 
-import { Theme, T, AppState, Shell, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, Slider, ProgressBar, ProgressTone, Emoji, AdvancedToggle } from "../../widgets.slint";
+import { Theme, T, AppState, Shell, Util, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, Slider, ProgressBar, ProgressTone, Emoji, AdvancedToggle, SelectableText } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 import { HiSelect, HiCheck, HiTextField } from "common.slint";
 import { HubCard, ActionFooter, PresetPill, Inset, MicroLabel, CheckRow, Note, Switch, FileBtn } from "hub-parts.slint";
@@ -43,7 +43,7 @@ component VersionCard inherits HubCard {
                 toggled(v) => { HomeBridge.vc-toggle-all(v); }
             }
         }
-        Text {
+        SelectableText {
             text: T.tr("instance.vcShowSnapshots");
             color: Theme.muted;
             font-size: Theme.text-xs;
@@ -65,11 +65,11 @@ component VersionCard inherits HubCard {
                 spacing: Theme.space-2;
                 HorizontalLayout {
                     alignment: start;
-                    Text { text: HomeBridge.vc-plan-from; color: Theme.text; font-size: 13.6px; }
-                    Text { text: HomeBridge.vc-plan-to; color: Theme.text; font-size: 13.6px; font-weight: 700; }
+                    SelectableText { text: HomeBridge.vc-plan-from; color: Theme.text; font-size: 13.6px; }
+                    SelectableText { text: HomeBridge.vc-plan-to; color: Theme.text; font-size: 13.6px; font-weight: 700; }
                 }
-                if HomeBridge.vc-warn-downgrade != "": Text { text: HomeBridge.vc-warn-downgrade; color: Theme.accent-alt; font-size: 12.5px; font-weight: 600; wrap: word-wrap; }
-                if HomeBridge.vc-warn-menu != "": Text { text: HomeBridge.vc-warn-menu; color: Theme.accent-alt; font-size: 12.5px; font-weight: 600; wrap: word-wrap; }
+                if HomeBridge.vc-warn-downgrade != "": SelectableText { text: HomeBridge.vc-warn-downgrade; color: Theme.accent-alt; font-size: 12.5px; font-weight: 600; wrap: word-wrap; }
+                if HomeBridge.vc-warn-menu != "": SelectableText { text: HomeBridge.vc-warn-menu; color: Theme.accent-alt; font-size: 12.5px; font-weight: 600; wrap: word-wrap; }
                 if HomeBridge.vc-summary != "": Note { hint: true; text: HomeBridge.vc-summary; }
                 if HomeBridge.vc-mods.length > 0: Rectangle {
                     height: min(224px, HomeBridge.vc-mods.length * 20px);
@@ -80,7 +80,7 @@ component VersionCard inherits HubCard {
                             height: 20px;
                             spacing: Theme.space-3;
                             Text { text: m.title; color: Theme.text; font-size: 12.5px; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
-                            Text {
+                            SelectableText {
                                 text: m.what;
                                 color: m.kind == "update" || m.kind == "add" ? Theme.accent : m.kind == "disable" ? Theme.accent-alt : Theme.muted;
                                 font-size: 12.5px;
@@ -93,7 +93,7 @@ component VersionCard inherits HubCard {
             }
         }
     }
-    if HomeBridge.vc-error != "": Text { text: HomeBridge.vc-error; color: Theme.accent-red; font-size: Theme.text-xs; wrap: word-wrap; }
+    if HomeBridge.vc-error != "": SelectableText { text: HomeBridge.vc-error; color: Theme.accent-red; font-size: Theme.text-xs; wrap: word-wrap; }
     if HomeBridge.hub-running: Note { hint: true; text: T.tr("instance.vcRunning"); }
     ActionFooter {
         if HomeBridge.vc-has-plan: Btn {
@@ -131,8 +131,8 @@ component MemoryCard inherits HubCard {
         VerticalLayout {
             spacing: Theme.space-2;
             HorizontalLayout {
-                Text { text: Util.format-memory(HomeBridge.hub-memory); color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; horizontal-stretch: 1; vertical-alignment: center; }
-                Text { text: "1 GB – 16 GB"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
+                SelectableText { text: Util.format-memory(HomeBridge.hub-memory); color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; horizontal-stretch: 1; vertical-alignment: center; }
+                SelectableText { text: "1 GB – 16 GB"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
             }
             Slider {
                 minimum: 1024;
@@ -226,7 +226,7 @@ component CaptureCard inherits HubCard {
         title: T.tr("instance.captureLabel");
         hint: HomeBridge.capture-supported ? T.tr("instance.captureHint") : T.tr("instance.captureUnavailable");
         toggled => { HomeBridge.toggle-capture(); }
-        if HomeBridge.saving-capture: Text { text: T.tr("instance.captureInstalling"); color: Theme.accent; font-size: Theme.text-xs; }
+        if HomeBridge.saving-capture: SelectableText { text: T.tr("instance.captureInstalling"); color: Theme.accent; font-size: Theme.text-xs; }
         if !HomeBridge.saving-capture && HomeBridge.capture-tools: VerticalLayout {
             alignment: start;
             Badge { text: T.tr("instance.captureActive"); variant: BadgeVariant.ok; dot: true; }
@@ -249,7 +249,7 @@ component JvmCard inherits HubCard {
                 horizontal-stretch: 1;
                 spacing: 4px;
                 MicroLabel { text: T.tr("instance.jvmVersion").to-uppercase(); }
-                Text { text: HomeBridge.jvm-version; color: Theme.text; font-size: Theme.text-xs; font-weight: 600; wrap: word-wrap; }
+                SelectableText { text: HomeBridge.jvm-version; color: Theme.text; font-size: Theme.text-xs; font-weight: 600; wrap: word-wrap; }
             }
         }
         if HomeBridge.jvm-path != "": VerticalLayout {
@@ -266,7 +266,7 @@ component JvmCard inherits HubCard {
                     VerticalLayout {
                         padding-top: 8px;
                         padding-bottom: 8px;
-                        Text { text: HomeBridge.jvm-path; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: 11.6px; wrap: char-wrap; }
+                        SelectableText { text: HomeBridge.jvm-path; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: 11.6px; wrap: char-wrap; }
                     }
                 }
             }
@@ -316,14 +316,14 @@ component AotCard inherits HubCard {
                 horizontal-stretch: 1;
                 spacing: 4px;
                 MicroLabel { text: T.tr("instance.aotCacheSize"); }
-                Text { text: HomeBridge.aot-size; color: Theme.text; font-family: Theme.font-mono; font-size: Theme.text-sm; font-weight: 700; }
+                SelectableText { text: HomeBridge.aot-size; color: Theme.text; font-family: Theme.font-mono; font-size: Theme.text-sm; font-weight: 700; }
             }
             VerticalLayout {
                 horizontal-stretch: 1;
                 spacing: 4px;
                 MicroLabel { text: T.tr("instance.aotProofLabel"); }
                 if HomeBridge.aot-proof-ok: HorizontalLayout { alignment: start; Badge { text: T.tr("instance.aotProofOk"); variant: BadgeVariant.accent; } }
-                if !HomeBridge.aot-proof-ok: Text { text: T.tr("instance.aotProofNone"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
+                if !HomeBridge.aot-proof-ok: SelectableText { text: T.tr("instance.aotProofNone"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
             }
         }
         CheckRow {
@@ -443,7 +443,7 @@ component AppearanceCard inherits HubCard {
                         HomeBridge.hue-dirty = v != HomeBridge.hub.hue;
                     }
                 }
-                Text {
+                SelectableText {
                     min-width: 48px;
                     text: HomeBridge.hue-value + "°";
                     color: Theme.text;
@@ -511,7 +511,7 @@ component AppearanceCard inherits HubCard {
                     placeholder: T.tr("perso.taglinePlaceholder");
                     accepted(t) => { HomeBridge.save-tagline(t); }
                 }
-                Text {
+                SelectableText {
                     min-width: 48px;
                     text: HomeBridge.tagline.character-count + "/40";
                     color: HomeBridge.tagline.character-count > 40 ? Theme.accent-red : Theme.muted;
@@ -697,7 +697,7 @@ component OptionsCard inherits HubCard {
                         height: 22px;
                         spacing: Theme.space-2;
                         Text { text: o.key; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: Theme.text-xs; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
-                        Text { text: o.value; color: Theme.text; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
+                        SelectableText { text: o.value; color: Theme.text; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
                     }
                 }
             }
@@ -722,7 +722,7 @@ component SuiteCard inherits HubCard {
                 y: 5px;
                 spacing: 6px;
                 VerticalLayout { alignment: center; Rectangle { width: 8px; height: 8px; background: Theme.accent; } }
-                Text { text: T.tr("client.suiteDisabled"); color: Theme.accent-bright; font-size: Theme.text-xs; font-weight: 700; }
+                SelectableText { text: T.tr("client.suiteDisabled"); color: Theme.accent-bright; font-size: Theme.text-xs; font-weight: 700; }
             }
         }
     }
@@ -754,8 +754,8 @@ component SuiteCard inherits HubCard {
                     spacing: 2px;
                     Text { text: f.name; color: Theme.text; font-size: Theme.text-sm; font-weight: 600; overflow: elide; }
                     Text { text: f.desc; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; overflow: elide; }
-                    if f.keybind != "": Text { text: T.tr1("instance.keybind", "key", f.keybind); color: Theme.accent-alt; font-size: Theme.text-xs; font-weight: 700; }
-                    Text {
+                    if f.keybind != "": SelectableText { text: T.tr1("instance.keybind", "key", f.keybind); color: Theme.accent-alt; font-size: Theme.text-xs; font-weight: 700; }
+                    SelectableText {
                         text: (f.enabled ? T.tr("instance.featureEnabled") : T.tr("instance.featureDisabled")) + (HomeBridge.suite-enabled ? "" : " · " + T.tr("client.suppressed"));
                         color: Theme.muted;
                         font-size: Theme.text-xs;

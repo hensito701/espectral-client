@@ -29,8 +29,9 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   the Microsoft logo no longer blends into it.
 - **Simpler settings copy.** The memory card just says "En automático se adapta a tu PC", and
   "Cerrar el launcher al entrar al juego" says it frees RAM instead of quoting a number.
-- **Copyable About text.** The name, version and "made with" values in Acerca de can be
-  selected and copied.
+- **Selectable text.** Titles, descriptions, hints, values (versions, paths, IPs, UUIDs),
+  errors, news posts and launch-log lines can be selected with the mouse and copied with
+  Ctrl+C. Buttons, tabs and other clickable labels still just click.
 
 ### Fixed
 - **"mod not found" when turning on a disabled mod.** When the recommended set moved to newer

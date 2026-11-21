@@ -2,7 +2,7 @@
 // config / servers / mods / danger). Router.instance-name holds the decoded
 // :name of #/instances/:name; Router.query may carry "tab=...".
 
-import { Theme, T, Router, Shell, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, LoaderBadge, LoaderBadgeSize, ProgressBar, ProgressTone, PageScaffold, McTitle } from "../../widgets.slint";
+import { Theme, T, Router, Shell, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, LoaderBadge, LoaderBadgeSize, ProgressBar, ProgressTone, PageScaffold, McTitle, SelectableText } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 import { TelemetryCapsule } from "capsule.slint";
 import { HiLogView, HiLoading, HiTextField } from "common.slint";
@@ -228,7 +228,7 @@ component ServersTab inherits HubCard {
                 }
             }
         }
-        if HomeBridge.server-err != "": Text { text: HomeBridge.server-err; color: Theme.accent-red; font-size: Theme.text-xs; wrap: word-wrap; }
+        if HomeBridge.server-err != "": SelectableText { text: HomeBridge.server-err; color: Theme.accent-red; font-size: Theme.text-xs; wrap: word-wrap; }
         HorizontalLayout {
             spacing: Theme.space-2;
             Btn {
@@ -258,7 +258,7 @@ component ServersTab inherits HubCard {
         spacing: Theme.space-4;
         if HomeBridge.servers.length == 0: Rectangle {
             height: 32px + 32px + 20px;
-            Text { text: T.tr("instance.noServers"); color: Theme.muted; font-size: Theme.text-sm; horizontal-alignment: center; vertical-alignment: center; }
+            SelectableText { text: T.tr("instance.noServers"); color: Theme.muted; font-size: Theme.text-sm; horizontal-alignment: center; vertical-alignment: center; }
         }
         if HomeBridge.servers.length > 0: grid := Rectangle {
             property <int> cols: max(1, floor((self.width + 12px) / (288px + 12px)));
@@ -290,7 +290,7 @@ component ServersTab inherits HubCard {
                             background: Theme.surface-solid;
                             border-width: Theme.hairline;
                             border-color: Theme.border-solid;
-                            ipl := Text { text: s.ip; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: Theme.text-xs; horizontal-alignment: center; vertical-alignment: center; }
+                            ipl := SelectableText { text: s.ip; color: Theme.muted-strong; font-family: Theme.font-mono; font-size: Theme.text-xs; horizontal-alignment: center; vertical-alignment: center; }
                         }
                     }
                     if s.motd != "": Text { text: s.motd; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; overflow: elide; }
@@ -398,8 +398,8 @@ component DangerTab inherits HubCard {
                     padding-bottom: 13.6px;
                     spacing: 4px;
                     horizontal-stretch: 1;
-                    Text { text: T.tr("instance.deleteInstanceTitle"); color: Theme.accent-red; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; }
-                    Text { text: T.tr("instance.deleteWarning"); color: Theme.muted-strong; font-size: Theme.text-xs; wrap: word-wrap; }
+                    SelectableText { text: T.tr("instance.deleteInstanceTitle"); color: Theme.accent-red; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; }
+                    SelectableText { text: T.tr("instance.deleteWarning"); color: Theme.muted-strong; font-size: Theme.text-xs; wrap: word-wrap; }
                 }
             }
         }
@@ -433,7 +433,7 @@ component ConsoleCard inherits HubCard {
                     border-color: Theme.border-solid;
                 }
             }
-            Text { text: T.tr("instance.logTitle"); color: Theme.text; font-size: Theme.text-sm; font-weight: 700; vertical-alignment: center; }
+            SelectableText { text: T.tr("instance.logTitle"); color: Theme.text; font-size: Theme.text-sm; font-weight: 700; vertical-alignment: center; }
             VerticalLayout {
                 alignment: center;
                 Badge {
@@ -441,7 +441,7 @@ component ConsoleCard inherits HubCard {
                     variant: HomeBridge.hub-log-running ? BadgeVariant.ok : BadgeVariant.neutral;
                 }
             }
-            if HomeBridge.hub-log-lines.length > 0: Text {
+            if HomeBridge.hub-log-lines.length > 0: SelectableText {
                 text: HomeBridge.hub-log-lines.length + " líneas";
                 color: Theme.muted;
                 font-size: Theme.text-xs;
@@ -473,7 +473,7 @@ component ConsoleCard inherits HubCard {
         border-width: Theme.hairline;
         border-color: Theme.border-solid;
         clip: true;
-        if HomeBridge.hub-log-lines.length == 0: Text {
+        if HomeBridge.hub-log-lines.length == 0: SelectableText {
             text: T.tr("instance.emptyLog");
             color: Theme.muted;
             font-size: Theme.text-xs;
@@ -503,10 +503,10 @@ component StateCard inherits HubCard {
         spacing: Theme.space-4;
         alignment: center;
         Text { text: "✕"; color: Theme.accent-red; font-size: 32px; horizontal-alignment: center; }
-        Text { text: T.tr("instance.notFound"); color: Theme.text; font-size: Theme.text-xl; font-weight: 600; horizontal-alignment: center; }
+        SelectableText { text: T.tr("instance.notFound"); color: Theme.text; font-size: Theme.text-xl; font-weight: 600; horizontal-alignment: center; }
         HorizontalLayout {
             alignment: center;
-            Text {
+            SelectableText {
                 max-width: 480px;
                 text: HomeBridge.hub-error != "" ? HomeBridge.hub-error : T.tr("instance.notFoundHint");
                 color: Theme.muted;

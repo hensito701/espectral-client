@@ -8,6 +8,7 @@
 //     GlassCard { clickable: true; clicked => { ... } ... }   // hover edge
 
 import { Theme } from "../theme.slint";
+import { SelectableText } from "selectable.slint";
 
 export enum Elevation { none, sm, md, lg }
 
@@ -88,7 +89,7 @@ export component GlassCard inherits Rectangle {
 
             if root.title != "" || root.subtitle != "": VerticalLayout {
                 spacing: 2px;
-                if root.title != "": Text {
+                if root.title != "": SelectableText {
                     text: root.title;
                     color: Theme.title-color;
                     font-family: Theme.font-title;
@@ -96,7 +97,7 @@ export component GlassCard inherits Rectangle {
                     font-weight: 600;
                     wrap: word-wrap;
                 }
-                if root.subtitle != "": Text {
+                if root.subtitle != "": SelectableText {
                     text: root.subtitle;
                     color: Theme.muted;
                     font-size: Theme.text-xs;
@@ -111,7 +112,7 @@ export component GlassCard inherits Rectangle {
                 padding-top: Theme.space-3;
                 spacing: Theme.space-2;
                 Rectangle { height: Theme.hairline; background: Theme.border-solid; }
-                Text {
+                SelectableText {
                     text: root.footer;
                     color: Theme.muted;
                     font-size: Theme.text-xs;

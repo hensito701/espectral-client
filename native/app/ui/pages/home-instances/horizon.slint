@@ -8,7 +8,7 @@
 //
 // Tiles read AppState.instances directly; selection is HomeBridge.selected-instance.
 
-import { Theme, T, AppState, Shell, InstanceRow, Util, LoaderBadge, LoaderBadgeSize, Badge, BadgeVariant, Btn, BtnVariant, BtnSize, Icon, Icons, McTitle } from "../../widgets.slint";
+import { Theme, T, AppState, Shell, InstanceRow, Util, LoaderBadge, LoaderBadgeSize, Badge, BadgeVariant, Btn, BtnVariant, BtnSize, Icon, Icons, McTitle, SelectableText } from "../../widgets.slint";
 import { GlassSheen } from "../../widgets/card.slint";
 import { HomeBridge } from "api.slint";
 
@@ -273,7 +273,7 @@ component EmptyRail inherits Rectangle {
             HorizontalLayout {
                 alignment: center;
                 padding-bottom: Theme.space-4;
-                Text {
+                SelectableText {
                     max-width: 480px;
                     text: T.tr("home.noInstancesSubtitle");
                     color: Theme.muted;

@@ -1,7 +1,7 @@
 // OWNER: home-instances agent. Small widgets shared by Home / InstanceHub /
 // the PiP drawer that the foundation catalogue does not cover.
 
-import { Theme, T, Icon, Icons, SelectOption, Spinner, TextField } from "../../widgets.slint";
+import { Theme, T, Icon, Icons, SelectOption, Spinner, TextField, SelectableText } from "../../widgets.slint";
 import { HiLogLine } from "api.slint";
 import { ListView } from "std-widgets.slint";
 
@@ -155,7 +155,7 @@ export component HiLogView inherits Rectangle {
         for line in root.lines: HorizontalLayout {
             spacing: Theme.space-3;
             padding-right: 6px;
-            if root.numbers: Text {
+            if root.numbers: SelectableText {
                 width: 32px;
                 text: line.num;
                 font-family: Theme.font-mono;
@@ -167,7 +167,7 @@ export component HiLogView inherits Rectangle {
                 horizontal-stretch: 1;
                 background: line.kind == 2 ? Theme.accent-red.with-alpha(0.12) : line.kind == 1 ? Theme.accent-alt.with-alpha(0.1) : transparent;
                 preferred-height: t.preferred-height;
-                t := Text {
+                t := SelectableText {
                     width: parent.width;
                     text: line.text;
                     font-family: Theme.font-mono;
@@ -216,7 +216,7 @@ export component HiLoading inherits VerticalLayout {
         alignment: center;
         Spinner { size: 36px; tint: Theme.accent; }
     }
-    Text {
+    SelectableText {
         text: root.text;
         color: Theme.muted;
         font-size: Theme.text-md;

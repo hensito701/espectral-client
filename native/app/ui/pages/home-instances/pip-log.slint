@@ -6,7 +6,7 @@
 // It is the one home-instances component that is always mounted, so it also
 // hosts the AppState watchers that feed HomeBridge.shared-changed().
 
-import { Theme, T, Shell, AppState, Router, Page, InstanceRow, LaunchRow, ServerRow, AccountRow, Icon, Icons, Emoji } from "../../widgets.slint";
+import { Theme, T, Shell, AppState, Router, Page, InstanceRow, LaunchRow, ServerRow, AccountRow, Icon, Icons, Emoji, SelectableText } from "../../widgets.slint";
 import { HomeBridge } from "api.slint";
 import { HiLogView } from "common.slint";
 
@@ -362,7 +362,7 @@ export component PipLogDrawer inherits Rectangle {
                 HorizontalLayout {
                     spacing: Theme.space-1;
                     horizontal-stretch: 0;
-                    Text {
+                    SelectableText {
                         text: T.tr1("pip.linesCount", "count", HomeBridge.log-lines.length);
                         font-size: Theme.text-xs;
                         font-weight: 700;
@@ -448,7 +448,7 @@ export component PipLogDrawer inherits Rectangle {
                     font-weight: 700;
                     vertical-alignment: center;
                 }
-                Text {
+                SelectableText {
                     text: T.tr("pip.waitingLogs");
                     color: Theme.muted;
                     font-family: Theme.font-mono;

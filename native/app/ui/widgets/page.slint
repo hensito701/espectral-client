@@ -16,6 +16,7 @@ import { Theme } from "../theme.slint";
 import { Shell } from "../state.slint";
 import { ScrollArea } from "scroll.slint";
 import { McTitle, GradientKind } from "badge.slint";
+import { SelectableText } from "selectable.slint";
 
 export component PageScaffold inherits Rectangle {
     in property <length> max-content-width: Theme.content-max;
@@ -70,7 +71,7 @@ export component PageHeader inherits VerticalLayout {
         text: root.title;
         font-size: 32px;
     }
-    if root.subtitle != "": Text {
+    if root.subtitle != "": SelectableText {
         text: root.subtitle;
         color: Theme.muted;
         font-size: Theme.text-base;
@@ -91,7 +92,7 @@ export component SectionTitle inherits VerticalLayout {
         text: root.title;
         font-size: 24px;
     }
-    if root.description != "": Text {
+    if root.description != "": SelectableText {
         text: root.description;
         color: Theme.muted;
         font-size: Theme.text-sm;

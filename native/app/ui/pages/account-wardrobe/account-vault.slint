@@ -6,7 +6,7 @@
 // Keep the exported component name and the empty interface used by app.slint.
 
 import { Theme, T, Router, AppState, Util, AccountRow, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle,
-    Icon, Icons, Spinner, MonogramTile, MonogramShape, Field, PageScaffold, GlassCard, Elevation, Shell } from "../../widgets.slint";
+    Icon, Icons, Spinner, MonogramTile, MonogramShape, Field, PageScaffold, GlassCard, Elevation, Shell, SelectableText } from "../../widgets.slint";
 import { AccountBridge } from "api.slint";
 import { GlassSheen } from "../../widgets/card.slint";
 import { CopyFlag, LoadingRow, UploadChip, PlainInput, MsLogo } from "parts.slint";
@@ -29,7 +29,7 @@ component VaultHero inherits HorizontalLayout {
             spacing: Theme.space-3;
             alignment: start;
             Badge { text: T.tr("vault.badge"); variant: BadgeVariant.accent; dot: true; }
-            Text {
+            SelectableText {
                 text: T.tr1("vault.rosterCount", "count", AccountBridge.accounts.length);
                 font-size: Theme.text-xs;
                 font-weight: 500;
@@ -45,7 +45,7 @@ component VaultHero inherits HorizontalLayout {
             min-width: 0px;
         }
         HorizontalLayout {
-            Text {
+            SelectableText {
                 max-width: 680px;
                 text: T.tr("vault.subtitle");
                 font-size: Theme.text-sm;
@@ -79,14 +79,14 @@ component MetaItem inherits VerticalLayout {
     in property <string> label;
     in property <string> value;
     spacing: 2px;
-    Text {
+    SelectableText {
         text: root.label.to-uppercase();
         font-size: Theme.text-xs;
         font-weight: 600;
         letter-spacing: 0.6px;
         color: Theme.muted;
     }
-    Text {
+    SelectableText {
         text: root.value;
         font-size: Theme.text-sm;
         font-weight: 500;
@@ -111,7 +111,7 @@ component PedestalMeta inherits HorizontalLayout {
     VerticalLayout {
         spacing: 2px;
         min-width: 160px;
-        Text { text: "UUID"; font-size: Theme.text-xs; font-weight: 600; letter-spacing: 0.6px; color: Theme.muted; }
+        SelectableText { text: "UUID"; font-size: Theme.text-xs; font-weight: 600; letter-spacing: 0.6px; color: Theme.muted; }
         HorizontalLayout {
             spacing: Theme.space-2;
             alignment: start;
@@ -122,7 +122,7 @@ component PedestalMeta inherits HorizontalLayout {
                 border-color: Theme.border-solid;
                 width: uuid-text.preferred-width + 12px;
                 height: uuid-text.preferred-height + 4px;
-                uuid-text := Text {
+                uuid-text := SelectableText {
                     text: AccountBridge.truncate(root.acc.uuid, 14) + "…";
                     font-family: Theme.font-mono;
                     font-size: Theme.text-xs;
@@ -227,10 +227,10 @@ component Pedestal inherits Rectangle {
                 alignment: start;
                 height: 19px;
                 Text { text: "✦"; color: Theme.accent; font-size: Theme.text-xs; vertical-alignment: center; }
-                Text { text: T.tr("vault.heroSkinHint"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
+                SelectableText { text: T.tr("vault.heroSkinHint"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
             }
             if root.has: PedestalMeta { acc: root.acc; }
-            if !root.has: Text {
+            if !root.has: SelectableText {
                 min-height: 22px;
                 vertical-alignment: center;
                 text: T.tr("vault.heroSelectPrompt");
@@ -260,7 +260,7 @@ component SectionHead inherits HorizontalLayout {
             min-width: 0px;
             horizontal-stretch: 0;
         }
-        Text { text: root.sub; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
+        SelectableText { text: root.sub; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
     }
     VerticalLayout {
         alignment: center;
@@ -291,7 +291,7 @@ component RosterEmpty inherits RosterBox {
                 padding-bottom: 4px;
                 Icon { data: Icons.user; size: 32px; color: Theme.muted; opacity: 0.6; }
             }
-            Text {
+            SelectableText {
                 text: T.tr("vault.rosterEmpty");
                 color: Theme.title-color;
                 font-family: Theme.font-title;
@@ -299,7 +299,7 @@ component RosterEmpty inherits RosterBox {
                 font-weight: 700;
                 horizontal-alignment: center;
             }
-            Text {
+            SelectableText {
                 text: T.tr("vault.rosterEmptyHint");
                 color: Theme.muted;
                 font-size: Theme.text-sm;
@@ -340,7 +340,7 @@ component AvatarEdit inherits VerticalLayout {
     property <bool> busy: AccountBridge.avatar-busy == acc.username;
     spacing: Theme.space-2;
     Rectangle { height: Theme.hairline; background: Theme.border-solid; }
-    Text { text: T.tr("vault.avatarTitle"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
+    SelectableText { text: T.tr("vault.avatarTitle"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
     HorizontalLayout {
         spacing: 6px;
         alignment: start;
@@ -385,7 +385,7 @@ component LogoutConfirm inherits Rectangle {
         padding-top: Theme.space-3;
         padding-bottom: Theme.space-3;
         spacing: Theme.space-3;
-        Text {
+        SelectableText {
             text: T.tr1("vault.cardLogoutConfirm", "name", root.username);
             font-size: Theme.text-sm;
             font-weight: 500;
@@ -492,7 +492,7 @@ component AccountCard inherits Rectangle {
                         alignment: start;
                         if root.acc.token-kind == "msa": Badge { text: T.tr("vault.cardKindMsa"); variant: BadgeVariant.accent; }
                         if root.acc.token-kind != "msa": Badge { text: T.tr("vault.cardKindOffline"); variant: BadgeVariant.neutral; }
-                        Text {
+                        SelectableText {
                             text: AccountBridge.truncate(root.acc.uuid, 8) + "…";
                             font-family: Theme.font-mono;
                             font-size: Theme.text-xs;
@@ -511,7 +511,7 @@ component AccountCard inherits Rectangle {
                 HorizontalLayout {
                     spacing: Theme.space-3;
                     min-height: 28px;
-                    Text {
+                    SelectableText {
                         text: T.tr1("vault.cardLastUsed", "time", root.acc.last-used != "" ? Util.relative-time(root.acc.last-used, T.lang) : T.tr("vault.cardNever"));
                         font-size: Theme.text-xs;
                         color: Theme.muted;
@@ -618,7 +618,7 @@ component OfflinePane inherits VerticalLayout {
     changed created => { input.text = ""; root.name = ""; }
     property <bool> valid: AccountBridge.valid-offline-name(root.name);
     spacing: Theme.space-4;
-    Text {
+    SelectableText {
         text: T.tr("vault.offlineDesc");
         font-size: Theme.text-sm;
         color: Theme.muted;
@@ -690,7 +690,7 @@ component FlowStepHead inherits HorizontalLayout {
             vertical-alignment: center;
         }
     }
-    Text {
+    SelectableText {
         text: root.label;
         font-size: Theme.text-sm;
         font-weight: 600;
@@ -761,7 +761,7 @@ component CodeBanner inherits Rectangle {
         padding-top: Theme.space-3;
         padding-bottom: Theme.space-3;
         spacing: Theme.space-3;
-        Text {
+        SelectableText {
             text: AccountBridge.ms-user-code;
             font-family: Theme.font-mono;
             font-size: Theme.text-xl;
@@ -831,7 +831,7 @@ component DeviceFlowCard inherits Rectangle {
                     background: Theme.accent;
                 }
             }
-            Text {
+            SelectableText {
                 text: T.tr("vault.msWaiting");
                 font-size: Theme.text-sm;
                 color: Theme.muted;
@@ -870,13 +870,13 @@ component MsAlert inherits Rectangle {
                 spacing: Theme.space-2;
                 alignment: start;
                 VerticalLayout { alignment: center; Icon { data: Icons.clock; size: 14px; color: Theme.accent-alt; } }
-                Text { text: T.tr("vault.msaPending"); color: Theme.accent-alt; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; horizontal-stretch: 1; }
+                SelectableText { text: T.tr("vault.msaPending"); color: Theme.accent-alt; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; horizontal-stretch: 1; }
             }
-            if root.pending: Text { text: T.tr("vault.msaPendingHint"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
+            if root.pending: SelectableText { text: T.tr("vault.msaPendingHint"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
             if !root.pending: HorizontalLayout {
                 spacing: Theme.space-2;
                 VerticalLayout { alignment: start; Icon { data: Icons.alert-triangle; size: 14px; color: Theme.accent-red; } }
-                Text { text: AccountBridge.ms-error; color: Theme.accent-red; font-size: Theme.text-xs; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
+                SelectableText { text: AccountBridge.ms-error; color: Theme.accent-red; font-size: Theme.text-xs; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
             }
         }
     }
@@ -932,7 +932,7 @@ component MsPartnerBtn inherits Rectangle {
 
 component MsaPane inherits VerticalLayout {
     spacing: Theme.space-4;
-    Text {
+    SelectableText {
         text: T.tr("vault.msDesc");
         font-size: Theme.text-sm;
         color: Theme.muted;
@@ -1017,7 +1017,7 @@ component AdvancedClientId inherits Rectangle {
                 padding-bottom: Theme.space-3;
                 spacing: Theme.space-2;
                 VerticalLayout { alignment: center; Icon { data: Icons.settings; size: 14px; color: Theme.muted; } }
-                Text {
+                SelectableText {
                     text: T.tr("vault.clientIdToggle");
                     font-size: Theme.text-sm;
                     font-weight: 600;
@@ -1105,7 +1105,7 @@ component LunarCard inherits Rectangle {
                 spacing: Theme.space-2;
                 min-width: 0px;
                 VerticalLayout { alignment: center; Icon { data: Icons.moon; size: 18px; color: Theme.accent-purple; } }
-                Text {
+                SelectableText {
                     text: T.tr("vault.lunarShieldTitle");
                     font-family: Theme.font-title;
                     font-size: Theme.text-base;
@@ -1121,7 +1121,7 @@ component LunarCard inherits Rectangle {
                     Badge { text: T.tr("vault.lunarBadge"); variant: BadgeVariant.purple; }
                 }
             }
-            Text {
+            SelectableText {
                 text: T.tr("vault.lunarShieldDesc");
                 font-size: Theme.text-xs;
                 color: Theme.muted;

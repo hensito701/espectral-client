@@ -4,7 +4,7 @@
 // of #/account now and follow the active account (the one the Cuenta page
 // shows as active).
 
-import { Theme, T, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GlassCard, Elevation, McTitle }
+import { Theme, T, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, GlassCard, Elevation, McTitle, SelectableText }
     from "../../widgets.slint";
 import { AccountBridge, EspectralIdentity } from "api.slint";
 import { LoadingRow } from "parts.slint";
@@ -13,7 +13,7 @@ import { LoadingRow } from "parts.slint";
 // small pieces
 // ---------------------------------------------------------------------------
 
-component Note inherits Text {
+component Note inherits SelectableText {
     font-size: Theme.text-xs;
     color: Theme.muted;
     font-weight: 500;
@@ -32,7 +32,7 @@ component Head inherits VerticalLayout {
         font-size: 16px;
         min-width: 0px;
     }
-    if root.subtitle != "": Text {
+    if root.subtitle != "": SelectableText {
         text: root.subtitle;
         font-size: Theme.text-xs;
         color: Theme.muted;
@@ -61,14 +61,14 @@ component IdentityRow inherits Rectangle {
     }
 }
 
-component RowLabel inherits Text {
+component RowLabel inherits SelectableText {
     font-size: Theme.text-md;
     font-weight: 600;
     color: Theme.text;
     vertical-alignment: center;
 }
 
-component RowStatus inherits Text {
+component RowStatus inherits SelectableText {
     in property <bool> ok;
     font-size: Theme.text-xs;
     font-weight: 600;
@@ -88,7 +88,7 @@ component VerifyRow inherits IdentityRow {
             ok: root.acc.verified;
             text: (root.acc.verified ? T.tr("wardrobe.identity.verified") : T.tr("wardrobe.identity.notVerified")).to-uppercase();
         }
-        if root.acc.grant-exp-es != "": Text {
+        if root.acc.grant-exp-es != "": SelectableText {
             text: T.tr1("wardrobe.identity.grantExp", "time", T.lang == "en" ? root.acc.grant-exp-en : root.acc.grant-exp-es);
             font-size: Theme.text-xs;
             color: Theme.muted;
@@ -148,7 +148,7 @@ component DiscordRow inherits IdentityRow {
     HorizontalLayout {
         spacing: Theme.space-2;
         alignment: end;
-        if AccountBridge.identity-linking: Text {
+        if AccountBridge.identity-linking: SelectableText {
             text: T.tr("wardrobe.discord.linking");
             font-size: Theme.text-xs;
             color: Theme.muted;
@@ -258,7 +258,7 @@ export component MinecraftDisclaimer inherits Rectangle {
         padding-right: Theme.space-4;
         padding-top: 14px;
         padding-bottom: 14px;
-        Text {
+        SelectableText {
             text: T.tr("wardrobe.disclaimer");
             font-size: Theme.text-xs;
             letter-spacing: 0.24px;

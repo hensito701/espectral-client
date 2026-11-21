@@ -1,7 +1,7 @@
 // OWNER: account-wardrobe agent. Small building blocks shared by the Cuenta
 // page (#/account), its identity sections and the account popover.
 
-import { Theme, Icon, Icons, Spinner } from "../../widgets.slint";
+import { Theme, Icon, Icons, Spinner, SelectableText } from "../../widgets.slint";
 import { AccountBridge } from "api.slint";
 
 /// Plain styled single-line input (popover add-input, gallery rename) —
@@ -94,7 +94,7 @@ export component LoadingRow inherits HorizontalLayout {
         alignment: center;
         Spinner { size: 18px; tint: Theme.accent; }
     }
-    Text {
+    SelectableText {
         text: root.text;
         color: Theme.muted;
         font-size: Theme.text-sm;

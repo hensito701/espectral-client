@@ -5,7 +5,7 @@
 // LAST child of the page root Rectangle and open it with
 // `LibraryBridge.mrpack-open = true;` (Home's "Importar modpack" button).
 
-import { Theme, T, Modal, ModalFooter, Btn, BtnVariant, McTitle, Field, Slider, ProgressBar, ProgressThickness, Spinner, Emoji, Util } from "../../widgets.slint";
+import { Theme, T, Modal, ModalFooter, Btn, BtnVariant, McTitle, Field, Slider, ProgressBar, ProgressThickness, Spinner, Emoji, Util, SelectableText } from "../../widgets.slint";
 import { LibraryBridge } from "api.slint";
 import { VText } from "parts.slint";
 
@@ -25,7 +25,7 @@ component ErrorBanner inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            Text {
+            SelectableText {
                 text: T.tr1("home.mrpackError", "error", LibraryBridge.mp-error);
                 color: Theme.accent-red;
                 font-size: Theme.text-sm;
@@ -51,8 +51,8 @@ component SuccessView inherits VerticalLayout {
     HorizontalLayout {
         alignment: center;
         spacing: 4px;
-        Text { text: T.tr("import.mrpack.selectedFile"); color: Theme.muted-strong; font-size: Theme.text-base; }
-        Text { text: LibraryBridge.mp-instance; color: Theme.muted-strong; font-size: Theme.text-base; font-weight: 700; }
+        SelectableText { text: T.tr("import.mrpack.selectedFile"); color: Theme.muted-strong; font-size: Theme.text-base; }
+        SelectableText { text: LibraryBridge.mp-instance; color: Theme.muted-strong; font-size: Theme.text-base; font-weight: 700; }
     }
 }
 
@@ -66,7 +66,7 @@ component ProgressView inherits VerticalLayout {
             alignment: center;
             Spinner { size: 18px; tint: Theme.accent-cyan; }
         }
-        VText {
+        SelectableText {
             horizontal-stretch: 1;
             text: LibraryBridge.mp-phase == 1 ? T.tr("home.mrpackPhasePost")
                 : LibraryBridge.mp-phase == 2 ? T.tr2("home.mrpackPhaseFiles", "done", LibraryBridge.mp-done, "total", LibraryBridge.mp-total)
@@ -145,7 +145,7 @@ component FormView inherits VerticalLayout {
                 value <=> LibraryBridge.mp-memory;
                 changed(v) => { LibraryBridge.mp-memory-touched = true; }
             }
-            Text {
+            SelectableText {
                 min-width: 90px;
                 text: Util.format-memory(LibraryBridge.mp-memory);
                 color: Theme.accent-cyan;
