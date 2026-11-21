@@ -13,34 +13,68 @@ import { HomeBridge } from "api.slint";
 import { NewsBridge } from "../news/api.slint";
 import { TelemetryCapsule } from "capsule.slint";
 
-/// The live-server line: status dot + host + MOTD, muted.
+/// Text that stays readable over a background picture: a soft dark halo
+/// (four 1px offsets) plus a 2px drop shadow under the glyphs. In glass
+/// mode it is plain text. Light theme: the halo is light instead.
+component ShadowText inherits Rectangle {
+    in property <string> text;
+    in property <brush> text-color;
+    in property <length> font-size;
+    in property <int> font-weight: 600;
+    /// Elide past this width (the MOTD).
+    in property <length> max-text-width: 100000px;
+    property <bool> shadow: Backdrop.mode == "image" && Backdrop.has-image;
+    property <color> ink: Theme.dark ? rgba(0, 0, 0, 0.55) : rgba(255, 255, 255, 0.65);
+    width: min(label.preferred-width, root.max-text-width);
+    height: label.preferred-height;
+    if root.shadow: Text { x: 0px; y: 2px; width: root.width; text: root.text; font-size: root.font-size; font-weight: root.font-weight; overflow: elide; color: Theme.dark ? rgba(0, 0, 0, 0.75) : rgba(255, 255, 255, 0.8); }
+    if root.shadow: Text { x: -1px; y: 0px; width: root.width; text: root.text; font-size: root.font-size; font-weight: root.font-weight; overflow: elide; color: root.ink; }
+    if root.shadow: Text { x: 1px; y: 0px; width: root.width; text: root.text; font-size: root.font-size; font-weight: root.font-weight; overflow: elide; color: root.ink; }
+    if root.shadow: Text { x: 0px; y: -1px; width: root.width; text: root.text; font-size: root.font-size; font-weight: root.font-weight; overflow: elide; color: root.ink; }
+    if root.shadow: Text { x: 0px; y: 1px; width: root.width; text: root.text; font-size: root.font-size; font-weight: root.font-weight; overflow: elide; color: root.ink; }
+    label := Text {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        text: root.text;
+        color: root.text-color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        overflow: elide;
+    }
+}
+
+/// The live-server line: status dot + host + MOTD.
 component ServerLine inherits HorizontalLayout {
     spacing: Theme.space-2;
     alignment: center;
     VerticalLayout {
         alignment: center;
         Rectangle {
-            width: 7px;
-            height: 7px;
-            border-radius: 3.5px;
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
             background: HomeBridge.motd-text != "" ? Theme.accent-green : Theme.muted;
         }
     }
-    Text {
-        text: HomeBridge.motd-server;
-        color: Theme.muted-strong;
-        font-size: Theme.text-xs;
-        font-weight: 600;
-        vertical-alignment: center;
+    VerticalLayout {
+        alignment: center;
+        ShadowText {
+            text: HomeBridge.motd-server;
+            text-color: Theme.text;
+            font-size: 13px;
+            font-weight: 700;
+        }
     }
-    Text {
-        text: HomeBridge.motd-text != "" ? "· " + HomeBridge.motd-text : "· " + T.tr("home.motdDefault");
-        color: Theme.muted;
-        font-size: Theme.text-xs;
-        font-weight: 500;
-        vertical-alignment: center;
-        overflow: elide;
-        max-width: 480px;
+    VerticalLayout {
+        alignment: center;
+        ShadowText {
+            text: HomeBridge.motd-text != "" ? "· " + HomeBridge.motd-text : "· " + T.tr("home.motdDefault");
+            text-color: Theme.muted-strong;
+            font-size: 13px;
+            font-weight: 600;
+            max-text-width: 480px;
+        }
     }
 }
 /// Round glass button at a Home edge: previous / next launcher picture.
@@ -128,14 +162,16 @@ export component HomePage inherits Rectangle {
                     shape: MonogramShape.rounded;
                 }
             }
-            Text {
-                text: HomeBridge.greeting == 0 ? T.tr1("home.greetingMorning", "name", root.player)
-                    : HomeBridge.greeting == 1 ? T.tr1("home.greetingAfternoon", "name", root.player)
-                    : T.tr1("home.greetingEvening", "name", root.player);
-                color: Theme.muted-strong;
-                font-size: Theme.text-lg;
-                font-weight: 500;
-                vertical-alignment: center;
+            VerticalLayout {
+                alignment: center;
+                ShadowText {
+                    text: HomeBridge.greeting == 0 ? T.tr1("home.greetingMorning", "name", root.player)
+                        : HomeBridge.greeting == 1 ? T.tr1("home.greetingAfternoon", "name", root.player)
+                        : T.tr1("home.greetingEvening", "name", root.player);
+                    text-color: Theme.title-color;
+                    font-size: 21px;
+                    font-weight: 700;
+                }
             }
         }
         HorizontalLayout {
@@ -149,7 +185,8 @@ export component HomePage inherits Rectangle {
                 width: min(news-label.preferred-width + 2 * Theme.space-4, 520px);
                 height: 30px;
                 border-radius: Theme.radius-pill;
-                background: news-ta.has-hover ? Theme.accent.with-alpha(0.16) : Theme.accent.with-alpha(0.10);
+                // Near-opaque glass so the accent text reads over any picture.
+                background: news-ta.has-hover ? Theme.accent.with-alpha(0.22) : Theme.surface-solid.with-alpha(0.82);
                 border-width: Theme.hairline;
                 border-color: Theme.edge-strong;
                 animate background { duration: Theme.dur-fast; }
@@ -157,9 +194,9 @@ export component HomePage inherits Rectangle {
                     width: min(self.preferred-width, parent.width - 2 * Theme.space-4);
                     x: (parent.width - self.width) / 2;
                     text: T.tr("news.newPrefix") + " " + NewsBridge.latest-unread-title + " →";
-                    font-size: Theme.text-xs;
-                    font-weight: 600;
-                    color: Theme.accent;
+                    font-size: 13px;
+                    font-weight: 700;
+                    color: Theme.accent-bright;
                     overflow: elide;
                     horizontal-alignment: center;
                     vertical-alignment: center;

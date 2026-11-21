@@ -76,6 +76,33 @@ export component ThemeToggle inherits ChromeSquare {
     }
 }
 
+/// Round glass link to a community page (top bar).
+component SocialLink inherits Rectangle {
+    in property <string> icon;
+    in property <bool> filled;
+    in property <string> label;
+    in property <string> url;
+    accessible-role: button;
+    accessible-label: root.label;
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    background: ta.has-hover ? Theme.surface-up : Theme.surface;
+    border-width: Theme.hairline;
+    border-color: ta.has-hover ? Theme.edge-strong : Theme.glass-border;
+    animate background, border-color { duration: Theme.dur-fast; }
+    Icon {
+        data: root.icon;
+        filled: root.filled;
+        size: root.filled ? 14px : 16px;
+        color: ta.has-hover ? Theme.accent-bright : Theme.muted-strong;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { AppState.open-url(root.url); }
+    }
+}
+
 /// A glass pill container (navigation, account chip).
 component GlassPill inherits Rectangle {
     in property <bool> hot;
@@ -132,6 +159,19 @@ export component TopChrome inherits Rectangle {
             mouse-cursor: pointer;
             clicked => { Router.navigate("#/"); }
         }
+    }
+
+    // ---- community links (next to the brand): web, X, Discord ----
+    // Hidden when the window is too narrow to keep them clear of the pill.
+    property <length> socials-x: brand.x + brand.width + Theme.space-4;
+    if root.socials-x + 3 * 32px + 2 * 6px < nav.x - Theme.space-4: HorizontalLayout {
+        x: root.socials-x;
+        y: (root.height - 32px) / 2;
+        height: 32px;
+        spacing: 6px;
+        SocialLink { icon: Icons.globe; label: "espectral.uhce.top"; url: "https://espectral.uhce.top"; }
+        SocialLink { icon: Icons.xlogo; filled: true; label: "X"; url: "https://x.com/GamesEspectral"; }
+        SocialLink { icon: Icons.discord; filled: true; label: "Discord"; url: "https://discord.uhce.top"; }
     }
 
     // ---- navigation pill (centre) ----
