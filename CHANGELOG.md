@@ -16,11 +16,15 @@ All notable changes to Espectral Client. Format loosely follows [Keep a Changelo
   A red dot marks posts you haven't seen, and Home shows the newest one as a "Nuevo: …" line.
   After a launcher update, the first card lists what changed in that version. Posts are cached,
   so the panel still shows the last ones offline.
+- **Community links.** Round buttons next to the "Espectral" logo open the website, X
+  (@GamesEspectral) and the Discord.
 
 ### Changed
 - **Jugar sits higher.** Home is one centred column: logo, greeting, server line and the play
   bar right under them, so the bar stays clickable when the bottom of the window is behind the
   taskbar. The greeting shows your skin's head next to your name.
+  Over a background picture the greeting and server line are bolder and have a soft shadow,
+  so they stay readable on bright spots.
 - **Microsoft sign-in button** is dark (light in the light theme) instead of bright blue, so
   the Microsoft logo no longer blends into it.
 - **Simpler settings copy.** The memory card just says "En automático se adapta a tu PC", and
