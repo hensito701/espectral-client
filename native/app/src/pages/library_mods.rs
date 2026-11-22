@@ -40,7 +40,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
 
     router::on_route(move |ui, route: &Route| match route.page {
         Page::Versions => versions::on_enter(ui),
-        Page::Mods => mods::on_enter(ui),
+        Page::Mods => mods::on_enter(ui, route),
         Page::Import => import::on_enter(ui),
         _ => {}
     });

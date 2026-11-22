@@ -2,6 +2,30 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.9.5] - 2026-11-22
+
+### Added
+- **Delete mods from the Mods page.** Every installed mod row now has a delete button with a
+  confirmation dialog. If other active mods depend on the mod you are deleting, the dialog warns
+  you before removing it.
+- **Change mod versions (with companion updates).** Modrinth-tracked mods can now switch between
+  release, beta and alpha builds directly from the Mods page. When you switch a mod that another
+  installed mod pairs with (such as changing Sodium while Iris is installed, or vice versa), the
+  launcher detects the matching companion build and updates both together safely.
+- **Pre-flight Fabric compatibility check.** The launcher reads each Fabric mod's
+  `fabric.mod.json` (including embedded jar-in-jar modules) and checks dependencies, version
+  ranges, Minecraft / Fabric Loader / Java requirements, duplicates and `breaks`/`conflicts`
+  before you launch:
+  - **Mods page:** problem mods show red or yellow notes in Spanish/English with one-click fix
+    buttons (*Actualizar Sodium (+ Iris)*, *Activar*, *Instalar Fabric API*, *Cambiar versión* or
+    *Desactivar*), plus a summary banner and a **Problemas** filter chip.
+  - **Explorar Modrinth:** checks the mod before committing it to your instance, letting you
+    update outdated dependencies (and companions like Iris) together or warning you about
+    conflicts before anything crashes.
+  - **Before launching:** if blocking mod issues are present, the play bar flags them with a
+    direct link to the Mods page, and pressing **Jugar** shows a clear warning modal (with an
+    option to go fix them or play anyway).
+
 ## [1.9.4] - 2026-11-22
 
 ### Fixed

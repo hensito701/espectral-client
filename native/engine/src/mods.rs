@@ -34,14 +34,17 @@ use crate::error::{EngineError, EngineResult, HttpError, HttpErrorKind};
 use crate::events::{EngineEvent, ProgressChannel, ProgressEvent};
 use crate::instances::effective_mods_dir;
 use crate::types::{
-    InstanceMeta, Loader, ModDependencyRef, ModEntry, ModPreset, ModRef, ModrinthProject, ModrinthSearchResult,
-    PresetInstallResult, VersionTarget,
+    CompanionChange, InstanceMeta, Loader, ModDependencyRef, ModEntry, ModInstallPlan, ModInstallPreview,
+    ModInstallUpgrade, ModPreset, ModRef, ModRename, ModVersionItem, ModVersionSwitchPlan, ModVersionSwitchResult,
+    ModVersionsReply, ModrinthProject, ModrinthSearchResult, PresetInstallResult, VersionTarget,
 };
 
 pub const MODRINTH_API: &str = "https://api.modrinth.com/v2";
 pub const PERFORMANCE_PRESET: &str = "performance";
 pub const BRANDING_PRESET: &str = "branding";
 pub const QOL_PRESET: &str = "qol";
+pub const SODIUM_PROJECT_ID: &str = "AANobbMI";
+pub const IRIS_PROJECT_ID: &str = "YL57xq9U";
 
 pub const PINNED_VERSIONS: [&str; 3] = ["1.21.11", "26.2", "26.3"];
 pub const PINNED_VERSION: &str = "1.21.11";
@@ -706,20 +709,57 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
             size = Some(st.len());
             sha1 = crate::download::sha1_file(&abs).await.ok();
         }
+        let fabric_meta = crate::fabric_compat::read_fabric_jar(&abs, &base, false);
         let version_id = pin_filename_to_version.get(&base).cloned();
         let pin = version_id.as_ref().and_then(|v| pins.iter().find(|p| &p.version_id == v));
         entries.push(ModEntry {
             filename: base,
             project_slug: pin.map(|p| p.slug.clone()),
-            version_number: pin.map(|p| {
-                meta_of(&p.version_id).and_then(|m| s(&m, "version_number")).unwrap_or_else(|| p.version_number.clone())
-            }),
+            version_number: pin
+                .map(|p| {
+                    meta_of(&p.version_id)
+                        .and_then(|m| s(&m, "version_number"))
+                        .unwrap_or_else(|| p.version_number.clone())
+                })
+                .or_else(|| {
+                    fabric_meta
+                        .as_ref()
+                        .map(|f| crate::fabric_compat::clean_version_display(&f.root.version).to_string())
+                        .filter(|v| !v.is_empty())
+                }),
             version_id,
             sha1,
             size,
             enabled: !disabled,
             installed: true,
+            project_id: pin.map(|p| p.project_id.clone()),
+            mod_id: fabric_meta.as_ref().map(|f| f.root.id.clone()),
+            display_name: fabric_meta.as_ref().map(|f| f.root.name.clone()),
         });
+    }
+    // Enrich on-disk non-branding jars with cached Modrinth project_id/version_id
+    // (one batched POST /version_files for uncached hashes; gracefully skipped offline).
+    let lookup_hashes: Vec<String> = entries
+        .iter()
+        .filter(|e| e.installed && !is_brand_jar(&e.filename) && e.project_id.is_none())
+        .filter_map(|e| e.sha1.clone())
+        .collect();
+    if !lookup_hashes.is_empty() {
+        let by_hash = cached_version_files(engine, &lookup_hashes).await;
+        for e in &mut entries {
+            if e.project_id.is_some() || is_brand_jar(&e.filename) {
+                continue;
+            }
+            if let Some(Some(meta)) = e.sha1.as_deref().and_then(|h| by_hash.get(h)) {
+                e.project_id = s(meta, "project_id");
+                if e.version_id.is_none() {
+                    e.version_id = s(meta, "id");
+                }
+                if let Some(vn) = s(meta, "version_number") {
+                    e.version_number = Some(vn);
+                }
+            }
+        }
     }
     let seen: HashSet<String> = entries.iter().filter_map(|e| e.version_id.clone()).collect();
     // A pin whose project is already on disk as another build (the set moved
@@ -755,6 +795,9 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
             size: file.and_then(|f| f.get("size").and_then(Value::as_u64)),
             enabled: false,
             installed: false,
+            project_id: Some(p.project_id.clone()),
+            mod_id: None,
+            display_name: None,
         });
     }
     if let Some(bp) = branding_pin_for_version(engine, &instance.version, instance.loader) {
@@ -1989,6 +2032,997 @@ pub async fn install_modrinth_mod(
 }
 
 // ---------------------------------------------------------------------------
+// Delete mod / Version switcher (with companions) / Pre-install compat check
+// ---------------------------------------------------------------------------
+
+/// Delete an installed mod jar (enabled and/or disabled twin). Refuses bundled
+/// Espectral branding jars (`400 branding_protected`).
+pub async fn delete_mod(engine: &Engine, instance_name: &str, filename: &str) -> EngineResult<String> {
+    let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
+    let base = assert_safe_filename(filename)?;
+    let jar_name = format!("{base}.jar");
+    if is_brand_jar(&jar_name) {
+        return Err(code_err(400, "branding_protected", "cannot delete the bundled Espectral mod"));
+    }
+    let mods_dir = effective_mods_dir(engine, &instance);
+    let jar = mods_dir.join(&jar_name);
+    let disabled = mods_dir.join(format!("{base}.jar.disabled"));
+    let mut removed = false;
+    for path in [&jar, &disabled] {
+        if path.exists() {
+            std::fs::remove_file(path)?;
+            removed = true;
+        }
+    }
+    if !removed {
+        return Err(code_err(404, "mod_not_found", format!("mod not found: {filename}")));
+    }
+    tracing::info!("[mods] deleted {jar_name} from {}", instance.name);
+    Ok(jar_name)
+}
+
+/// Batched `POST /version_files` backed by `ContentState::sha1_versions`.
+/// Network failures leave uncached hashes absent (never poisoned as None).
+async fn cached_version_files(engine: &Engine, hashes: &[String]) -> IndexMap<String, Option<Value>> {
+    let mut out = IndexMap::new();
+    let mut missing = Vec::new();
+    {
+        let cache = engine.content_state().sha1_versions.lock().unwrap_or_else(|p| p.into_inner());
+        for h in hashes {
+            if let Some(entry) = cache.get(h) {
+                out.insert(h.clone(), entry.clone());
+            } else if !missing.contains(h) {
+                missing.push(h.clone());
+            }
+        }
+    }
+    if !missing.is_empty() {
+        if let Ok(by_hash) = post_version_files(engine, &missing).await {
+            let mut cache = engine.content_state().sha1_versions.lock().unwrap_or_else(|p| p.into_inner());
+            for h in missing {
+                let val = by_hash.get(&h).cloned();
+                cache.insert(h.clone(), val.clone());
+                out.insert(h, val);
+            }
+        }
+    }
+    out
+}
+
+/// All listed/approved Modrinth versions of `project_id` for `(game_version, loader)`.
+async fn list_project_versions(
+    engine: &Engine,
+    project_id: &str,
+    game_version: &str,
+    loader: &str,
+) -> EngineResult<Vec<Value>> {
+    let q = format!(
+        "game_versions={}&loaders={}",
+        encode_uri_component(&json!([game_version]).to_string()),
+        encode_uri_component(&json!([loader]).to_string())
+    );
+    let url = format!("{}/project/{}/version?{q}", api(engine), encode_uri_component(project_id));
+    let list = fetch_json_with_retry(engine, &url, 2).await?;
+    let versions: Vec<Value> = list
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter(|v| {
+                    matches!(v.get("status").and_then(Value::as_str), Some("listed") | Some("approved") | None)
+                        && primary_file(v).is_some()
+                })
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    // Populate version_meta cache so subsequent lookups are instant.
+    {
+        let mut cache = engine.content_state().version_meta.lock().unwrap_or_else(|p| p.into_inner());
+        for v in &versions {
+            if let Some(id) = s(v, "id") {
+                cache.insert(id, v.clone());
+            }
+        }
+    }
+    Ok(versions)
+}
+
+struct ResolvedInstalledMod {
+    base_filename: String,
+    sha1: Option<String>,
+    project_id: Option<String>,
+    version_id: Option<String>,
+    version_number: Option<String>,
+    mod_id: Option<String>,
+    display_name: Option<String>,
+}
+
+async fn resolve_installed_mod(
+    engine: &Engine,
+    instance: &InstanceMeta,
+    mods_dir: &Path,
+    filename: &str,
+) -> EngineResult<ResolvedInstalledMod> {
+    let base = assert_safe_filename(filename)?;
+    let jar_name = format!("{base}.jar");
+    let enabled_path = mods_dir.join(&jar_name);
+    let disabled_path = mods_dir.join(format!("{base}.jar.disabled"));
+    let actual_path = if enabled_path.exists() {
+        enabled_path
+    } else if disabled_path.exists() {
+        disabled_path
+    } else {
+        return Err(code_err(404, "mod_not_found", format!("mod not found: {filename}")));
+    };
+
+    let sha1 = crate::download::sha1_file(&actual_path).await.ok();
+    let fabric = crate::fabric_compat::read_fabric_jar(&actual_path, &jar_name, false);
+    let mod_id = fabric.as_ref().map(|f| f.root.id.clone());
+    let display_name = fabric.as_ref().map(|f| f.root.name.clone());
+    let mut version_number = fabric
+        .as_ref()
+        .map(|f| crate::fabric_compat::clean_version_display(&f.root.version).to_string())
+        .filter(|v| !v.is_empty());
+    let mut project_id: Option<String> = None;
+    let mut version_id: Option<String> = None;
+
+    if let Some(ref h) = sha1 {
+        let map = cached_version_files(engine, std::slice::from_ref(h)).await;
+        if let Some(Some(meta)) = map.get(h) {
+            project_id = s(meta, "project_id");
+            version_id = s(meta, "id");
+            if let Some(vn) = s(meta, "version_number") {
+                version_number = Some(vn);
+            }
+        }
+    }
+    if project_id.is_none() {
+        if let Some(ref mid) = mod_id {
+            if let Some((pid, _)) = crate::fabric_compat::known_modrinth_for_id(mid) {
+                project_id = Some(pid.to_string());
+            }
+        }
+    }
+    if project_id.is_none() {
+        let pins = pins_for_version(engine, &instance.version).await.unwrap_or_default();
+        if let Some(pin) = pins.iter().find(|p| is_filename_for_slug(&jar_name, &p.slug)) {
+            project_id = Some(pin.project_id.clone());
+        }
+    }
+    Ok(ResolvedInstalledMod {
+        base_filename: jar_name,
+        sha1,
+        project_id,
+        version_id,
+        version_number,
+        mod_id,
+        display_name,
+    })
+}
+
+/// List all Modrinth versions (release / beta / alpha) of an installed mod for
+/// this instance's Minecraft version + loader.
+pub async fn list_mod_versions(
+    engine: &Engine,
+    instance_name: &str,
+    filename: &str,
+) -> EngineResult<ModVersionsReply> {
+    let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
+    let mods_dir = effective_mods_dir(engine, &instance);
+    let info = resolve_installed_mod(engine, &instance, &mods_dir, filename).await?;
+    if is_brand_jar(&info.base_filename) {
+        return Err(code_err(400, "branding_protected", "cannot switch version of bundled Espectral mod"));
+    }
+    let Some(project_id) = info.project_id else {
+        return Err(code_err(404, "mod_not_on_modrinth", format!("{} is not tracked on Modrinth", info.base_filename)));
+    };
+    let loader = instance.loader.content_loader();
+    let raw_versions = list_project_versions(engine, &project_id, &instance.version, loader).await?;
+    let titles = project_titles(engine, std::slice::from_ref(&project_id)).await;
+    let title = titles
+        .get(&project_id)
+        .cloned()
+        .or(info.display_name)
+        .unwrap_or_else(|| info.base_filename.clone());
+
+    let versions: Vec<ModVersionItem> = raw_versions
+        .into_iter()
+        .filter_map(|v| {
+            let vid = s(&v, "id")?;
+            let f = primary_file(&v)?;
+            let fname = file_name(f);
+            let fsha = file_sha1(f);
+            let is_current = info.version_id.as_deref() == Some(vid.as_str())
+                || (info.sha1.is_some() && info.sha1 == fsha)
+                || fname == info.base_filename;
+            Some(ModVersionItem {
+                version_id: vid,
+                version_number: s(&v, "version_number").unwrap_or_default(),
+                name: s(&v, "name").unwrap_or_default(),
+                version_type: s(&v, "version_type").unwrap_or_else(|| "release".into()),
+                date_published: s(&v, "date_published").unwrap_or_default(),
+                filename: fname,
+                installed: is_current,
+            })
+        })
+        .collect();
+
+    Ok(ModVersionsReply {
+        project_id,
+        title,
+        current_version_id: info.version_id,
+        current_version_number: info.version_number,
+        versions,
+    })
+}
+
+/// Find the best Modrinth version for `filename` that satisfies a Fabric version
+/// predicate (e.g. `>=0.9.3`), preferring release > beta > alpha, newest first.
+pub async fn find_mod_version_for_predicate(
+    engine: &Engine,
+    instance_name: &str,
+    filename: &str,
+    predicate: &str,
+) -> EngineResult<Option<ModVersionItem>> {
+    let reply = list_mod_versions(engine, instance_name, filename).await?;
+    let pred = crate::fabric_compat::VersionPredicate::parse_str(predicate);
+    for tier in ["release", "beta", "alpha"] {
+        for item in &reply.versions {
+            if item.version_type != tier {
+                continue;
+            }
+            if let Some(sv) = crate::fabric_compat::extract_mod_semver(&item.version_number) {
+                if pred.matches(&sv) {
+                    return Ok(Some(item.clone()));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn version_tier_rank(version_type: &str) -> u8 {
+    match version_type {
+        "release" => 0,
+        "beta" => 1,
+        _ => 2,
+    }
+}
+
+/// True if a Modrinth version JSON's `dependencies` array lists `version_id`.
+fn modrinth_version_pins(meta: &Value, target_version_id: &str) -> bool {
+    meta.get("dependencies")
+        .and_then(Value::as_array)
+        .is_some_and(|deps| {
+            deps.iter().any(|d| {
+                d.get("dependency_type").and_then(Value::as_str) == Some("required")
+                    && d.get("version_id").and_then(Value::as_str) == Some(target_version_id)
+            })
+        })
+}
+
+/// Plan switching an installed mod to `target_version_id`, bringing along
+/// companion mods (especially Iris <-> Sodium, plus any other installed mod
+/// whose required dependency or `fabric.mod.json` moves with it).
+pub async fn plan_mod_version_switch(
+    engine: &Engine,
+    instance_name: &str,
+    filename: &str,
+    target_version_id: &str,
+) -> EngineResult<ModVersionSwitchPlan> {
+    let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
+    let mods_dir = effective_mods_dir(engine, &instance);
+    let primary = resolve_installed_mod(engine, &instance, &mods_dir, filename).await?;
+    let Some(primary_pid) = primary.project_id.clone() else {
+        return Err(code_err(404, "mod_not_on_modrinth", format!("{} is not tracked on Modrinth", primary.base_filename)));
+    };
+    let target_meta = version_meta(engine, target_version_id).await?;
+    let target_file = primary_file(&target_meta).ok_or_else(|| no_file_error(&target_meta))?;
+    let to_filename = safe_download_name(target_file)?;
+    let to_version_number = s(&target_meta, "version_number").unwrap_or_default();
+    let target_semver = crate::fabric_compat::extract_mod_semver(&to_version_number);
+
+    // Scan all other installed jars + resolve their Modrinth project/version IDs in one batch.
+    let scanned = crate::fabric_compat::scan_mods_dir(&mods_dir);
+    let mut disk_files: Vec<(String, bool, Option<String>)> = Vec::new();
+    let mut hashes = Vec::new();
+    for f in read_names(&mods_dir).into_iter().filter(|f| is_mod_file(f) && !is_brand_jar(f)) {
+        let enabled = f.ends_with(".jar");
+        let base = if enabled { f.clone() } else { f[..f.len() - ".disabled".len()].to_string() };
+        if base == primary.base_filename {
+            continue;
+        }
+        let h = crate::download::sha1_file(&mods_dir.join(&f)).await.ok();
+        if let Some(ref hs) = h {
+            hashes.push(hs.clone());
+        }
+        disk_files.push((base, enabled, h));
+    }
+    let by_hash = cached_version_files(engine, &hashes).await;
+    let loader = instance.loader.content_loader();
+
+    // Build lookup of other installed mods by project_id.
+    struct OtherMod {
+        filename: String,
+        enabled: bool,
+        project_id: String,
+        version_id: Option<String>,
+        version_number: String,
+        scanned_idx: Option<usize>,
+        modrinth_meta: Option<Value>,
+    }
+    let mut others: Vec<OtherMod> = Vec::new();
+    for (base, enabled, h) in disk_files {
+        let meta = h.as_deref().and_then(|hs| by_hash.get(hs)).and_then(|o| o.clone());
+        let scanned_idx = scanned.iter().position(|j| j.filename == base);
+        let pid = meta
+            .as_ref()
+            .and_then(|m| s(m, "project_id"))
+            .or_else(|| {
+                scanned_idx
+                    .and_then(|i| crate::fabric_compat::known_modrinth_for_id(&scanned[i].root.id))
+                    .map(|(p, _)| p.to_string())
+            });
+        let Some(pid) = pid else { continue };
+        let vid = meta.as_ref().and_then(|m| s(m, "id"));
+        let vnum = meta
+            .as_ref()
+            .and_then(|m| s(m, "version_number"))
+            .or_else(|| scanned_idx.map(|i| scanned[i].root.version.clone()))
+            .unwrap_or_default();
+        others.push(OtherMod {
+            filename: base,
+            enabled,
+            project_id: pid,
+            version_id: vid,
+            version_number: vnum,
+            scanned_idx,
+            modrinth_meta: meta,
+        });
+    }
+
+    let mut companions: Vec<CompanionChange> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+    let mut handled_pids: HashSet<String> = HashSet::new();
+    handled_pids.insert(primary_pid.clone());
+
+    // Direction 1: Outgoing required deps of `target_meta` that pin a specific
+    // `version_id` for an already-installed mod (e.g. Iris -> Sodium).
+    if let Some(deps) = target_meta.get("dependencies").and_then(Value::as_array) {
+        for dep in deps {
+            if dep.get("dependency_type").and_then(Value::as_str) != Some("required") {
+                continue;
+            }
+            let Some(dep_vid) = s(dep, "version_id") else { continue };
+            let dep_pid = s(dep, "project_id");
+            let dep_meta = match version_meta(engine, &dep_vid).await {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let resolved_pid = s(&dep_meta, "project_id").or(dep_pid).unwrap_or_default();
+            if resolved_pid.is_empty() || handled_pids.contains(&resolved_pid) {
+                continue;
+            }
+            let Some(other) = others.iter().find(|o| o.project_id == resolved_pid) else { continue };
+            if other.version_id.as_deref() == Some(dep_vid.as_str()) {
+                continue;
+            }
+            let Some(f) = primary_file(&dep_meta) else { continue };
+            let Ok(to_f) = safe_download_name(f) else { continue };
+            handled_pids.insert(resolved_pid.clone());
+            companions.push(CompanionChange {
+                filename: other.filename.clone(),
+                project_id: resolved_pid,
+                title: other
+                    .scanned_idx
+                    .map(|i| scanned[i].root.name.clone())
+                    .unwrap_or_else(|| other.filename.clone()),
+                from_version: other.version_number.clone(),
+                to_version_id: dep_vid,
+                to_version_number: s(&dep_meta, "version_number").unwrap_or_default(),
+                to_filename: to_f,
+                reason: "required".into(),
+            });
+        }
+    }
+
+    // Direction 2: Incoming companions & dependents (Sodium -> Iris, plus any
+    // other enabled mod that depends on `primary`).
+    let mut primary_ids: HashSet<String> = HashSet::new();
+    if let Some(ref mid) = primary.mod_id {
+        primary_ids.insert(mid.clone());
+    }
+    if let Some(j) = scanned.iter().find(|j| j.filename == primary.base_filename) {
+        primary_ids.insert(j.root.id.clone());
+        for p in &j.root.provides {
+            primary_ids.insert(p.clone());
+        }
+    }
+
+    for other in &others {
+        if !other.enabled || handled_pids.contains(&other.project_id) {
+            continue;
+        }
+        let is_iris_for_sodium = primary_pid == SODIUM_PROJECT_ID && other.project_id == IRIS_PROJECT_ID;
+        let fabric_dep_clauses: Option<Vec<String>> = other.scanned_idx.and_then(|idx| {
+            let j = &scanned[idx];
+            primary_ids.iter().find_map(|pid| j.root.depends.get(pid).cloned())
+        });
+        let modrinth_depends_on_primary = other
+            .modrinth_meta
+            .as_ref()
+            .and_then(|m| m.get("dependencies"))
+            .and_then(Value::as_array)
+            .is_some_and(|deps| {
+                deps.iter().any(|d| {
+                    d.get("dependency_type").and_then(Value::as_str) == Some("required")
+                        && d.get("project_id").and_then(Value::as_str) == Some(primary_pid.as_str())
+                })
+            });
+
+        if !is_iris_for_sodium && fabric_dep_clauses.is_none() && !modrinth_depends_on_primary {
+            continue;
+        }
+
+        let current_satisfies = match (&fabric_dep_clauses, &target_semver) {
+            (Some(clauses), Some(sv)) => crate::fabric_compat::VersionPredicate::parse_list(clauses).matches(sv),
+            _ => true,
+        };
+
+        let other_name = other
+            .scanned_idx
+            .map(|i| scanned[i].root.name.clone())
+            .unwrap_or_else(|| other.filename.clone());
+
+        let other_versions = list_project_versions(engine, &other.project_id, &instance.version, loader)
+            .await
+            .unwrap_or_default();
+
+        // First preference: a build of `other` that explicitly pins `target_version_id`
+        // in Modrinth dependencies (exact Iris <-> Sodium pairing!).
+        let mut exact_matches: Vec<&Value> =
+            other_versions.iter().filter(|v| modrinth_version_pins(v, target_version_id)).collect();
+        exact_matches.sort_by_key(|v| version_tier_rank(s(v, "version_type").as_deref().unwrap_or("release")));
+
+        if let Some(best) = exact_matches.first() {
+            let best_id = s(best, "id").unwrap_or_default();
+            if other.version_id.as_deref() != Some(best_id.as_str()) {
+                if let Some(f) = primary_file(best) {
+                    if let Ok(to_f) = safe_download_name(f) {
+                        handled_pids.insert(other.project_id.clone());
+                        companions.push(CompanionChange {
+                            filename: other.filename.clone(),
+                            project_id: other.project_id.clone(),
+                            title: other_name,
+                            from_version: other.version_number.clone(),
+                            to_version_id: best_id,
+                            to_version_number: s(best, "version_number").unwrap_or_default(),
+                            to_filename: to_f,
+                            reason: "companion".into(),
+                        });
+                        continue;
+                    }
+                }
+            } else {
+                continue;
+            }
+        }
+
+        // If the current installed version of `other` will break against `target_semver`
+        // (or is Iris with a different Sodium build that no Iris pins yet):
+        if !current_satisfies {
+            // Try newest release/beta of `other` that doesn't pin a DIFFERENT version of `primary_pid`.
+            let fallback = other_versions
+                .iter()
+                .filter(|v| {
+                    let pins_other = v
+                        .get("dependencies")
+                        .and_then(Value::as_array)
+                        .is_some_and(|deps| {
+                            deps.iter().any(|d| {
+                                d.get("dependency_type").and_then(Value::as_str) == Some("required")
+                                    && d.get("project_id").and_then(Value::as_str) == Some(primary_pid.as_str())
+                                    && d.get("version_id")
+                                        .and_then(Value::as_str)
+                                        .is_some_and(|vid| vid != target_version_id)
+                            })
+                        });
+                    !pins_other && s(v, "id").as_deref() != other.version_id.as_deref()
+                })
+                .min_by_key(|v| version_tier_rank(s(v, "version_type").as_deref().unwrap_or("release")));
+
+            if let Some(best) = fallback {
+                if let (Some(best_id), Some(f)) = (s(best, "id"), primary_file(best)) {
+                    if let Ok(to_f) = safe_download_name(f) {
+                        handled_pids.insert(other.project_id.clone());
+                        companions.push(CompanionChange {
+                            filename: other.filename.clone(),
+                            project_id: other.project_id.clone(),
+                            title: other_name,
+                            from_version: other.version_number.clone(),
+                            to_version_id: best_id,
+                            to_version_number: s(best, "version_number").unwrap_or_default(),
+                            to_filename: to_f,
+                            reason: "compat".into(),
+                        });
+                        continue;
+                    }
+                }
+            }
+            warnings.push(other_name);
+        } else if is_iris_for_sodium
+            && exact_matches.is_empty()
+            && primary.version_id.as_deref() != Some(target_version_id)
+        {
+            // Check if current Iris explicitly pins the OLD Sodium version (even if fabric.mod.json says 0.9.x).
+            let pins_different = other
+                .modrinth_meta
+                .as_ref()
+                .and_then(|m| m.get("dependencies"))
+                .and_then(Value::as_array)
+                .is_some_and(|deps| {
+                    deps.iter().any(|d| {
+                        d.get("project_id").and_then(Value::as_str) == Some(SODIUM_PROJECT_ID)
+                            && d.get("version_id")
+                                .and_then(Value::as_str)
+                                .is_some_and(|vid| vid != target_version_id)
+                    })
+                });
+            if pins_different {
+                warnings.push(other_name);
+            }
+        }
+    }
+
+    // Resolve friendly project titles for primary + companions.
+    let mut title_ids = vec![primary_pid.clone()];
+    title_ids.extend(companions.iter().map(|c| c.project_id.clone()));
+    let titles = project_titles(engine, &title_ids).await;
+    let primary_title = titles
+        .get(&primary_pid)
+        .cloned()
+        .or(primary.display_name)
+        .unwrap_or_else(|| primary.base_filename.clone());
+    for c in &mut companions {
+        if let Some(t) = titles.get(&c.project_id) {
+            c.title = t.clone();
+        }
+    }
+
+    Ok(ModVersionSwitchPlan {
+        filename: primary.base_filename,
+        project_id: primary_pid,
+        title: primary_title,
+        from_version: primary.version_number.unwrap_or_default(),
+        to_version_id: target_version_id.to_string(),
+        to_version_number,
+        to_filename,
+        companions,
+        warnings,
+    })
+}
+
+/// Apply a version switch (and optionally its planned companion updates).
+/// Downloads all target files with SHA-1 verification BEFORE deleting old jars.
+pub async fn apply_mod_version_switch(
+    engine: &Engine,
+    instance_name: &str,
+    filename: &str,
+    target_version_id: &str,
+    include_companions: bool,
+) -> EngineResult<ModVersionSwitchResult> {
+    let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
+    let mods_dir = effective_mods_dir(engine, &instance);
+    std::fs::create_dir_all(&mods_dir)?;
+
+    let plan = plan_mod_version_switch(engine, instance_name, filename, target_version_id).await?;
+    struct Job {
+        old_filename: String,
+        was_enabled: bool,
+        new_filename: String,
+        title: String,
+        is_companion: bool,
+        meta: Value,
+    }
+    let mut jobs = Vec::new();
+    let primary_enabled = mods_dir.join(&plan.filename).exists();
+    jobs.push(Job {
+        old_filename: plan.filename.clone(),
+        was_enabled: primary_enabled,
+        new_filename: plan.to_filename.clone(),
+        title: plan.title.clone(),
+        is_companion: false,
+        meta: version_meta(engine, &plan.to_version_id).await?,
+    });
+    if include_companions {
+        for c in &plan.companions {
+            let was_enabled = mods_dir.join(&c.filename).exists();
+            jobs.push(Job {
+                old_filename: c.filename.clone(),
+                was_enabled,
+                new_filename: c.to_filename.clone(),
+                title: c.title.clone(),
+                is_companion: true,
+                meta: version_meta(engine, &c.to_version_id).await?,
+            });
+        }
+    }
+
+    let total = jobs.len() as u64;
+    let mut downloads = Vec::new();
+    for (i, job) in jobs.iter().enumerate() {
+        let file = primary_file(&job.meta).ok_or_else(|| no_file_error(&job.meta))?;
+        let fname = safe_download_name(file)?;
+        let dest = mods_dir.join(&fname);
+        let expected_sha1 = file_sha1(file);
+        let already_valid = dest.exists()
+            && expected_sha1
+                .as_deref()
+                .is_some_and(|exp| std::fs::read(&dest).ok().map(|b| crate::download::sha1_hex(&b)).as_deref() == Some(exp));
+        if !already_valid {
+            downloads.push(
+                DownloadItem::new(s(file, "url").unwrap_or_default(), dest)
+                    .sha1(expected_sha1)
+                    .size(file.get("size").and_then(Value::as_u64))
+                    .event(
+                        ProgressChannel::Mod,
+                        ProgressEvent::for_instance(instance_name)
+                            .filename(&fname)
+                            .index(i as u64)
+                            .total(total),
+                    ),
+            );
+        }
+    }
+    if !downloads.is_empty() {
+        engine.http().download_all(downloads, DownloadAllOptions::default()).await?;
+    }
+
+    // All downloads succeeded — now swap old files out and preserve enabled state.
+    let mut changed = Vec::new();
+    let mut companions_changed = Vec::new();
+    for job in jobs {
+        if job.old_filename != job.new_filename {
+            let _ = std::fs::remove_file(mods_dir.join(&job.old_filename));
+            let _ = std::fs::remove_file(mods_dir.join(format!("{}.disabled", job.old_filename)));
+        }
+        if job.was_enabled {
+            let _ = std::fs::remove_file(mods_dir.join(format!("{}.disabled", job.new_filename)));
+        } else {
+            let src = mods_dir.join(&job.new_filename);
+            let dst = mods_dir.join(format!("{}.disabled", job.new_filename));
+            if src.exists() {
+                let _ = std::fs::rename(src, dst);
+            }
+        }
+        changed.push(ModRename { from: job.old_filename, to: job.new_filename });
+        if job.is_companion {
+            companions_changed.push(job.title);
+        }
+    }
+    Ok(ModVersionSwitchResult { changed, companions_changed })
+}
+
+const MAX_STAGE_BYTES: u64 = 15 * 1024 * 1024;
+
+fn staging_path(engine: &Engine, sha1: &str) -> PathBuf {
+    engine.paths().data_dir().join("cache").join("mod-staging").join(format!("{sha1}.jar"))
+}
+
+/// Pre-install compatibility & upgrade preview for installing a Modrinth mod.
+/// For Fabric instances, downloads the root jar (if <= 15 MiB) into a SHA-1
+/// staging cache and runs the full `fabric.mod.json` compatibility check
+/// BEFORE touching `mods/`, detecting outdated dependencies (like Sodium) and
+/// planning companion updates (like Iris).
+pub async fn preview_modrinth_install(
+    engine: &Engine,
+    instance_name: &str,
+    project_id: &str,
+) -> EngineResult<ModInstallPreview> {
+    let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
+    let loader = instance.loader.content_loader();
+    let plan = plan_mod_install(engine, &instance, project_id, loader).await?;
+    let root_file = primary_file(&plan.root).ok_or_else(|| no_file_error(&plan.root))?;
+    let root_fname = safe_download_name(root_file)?;
+    let root_vid = s(&plan.root, "id").unwrap_or_default();
+    let root_vnum = s(&plan.root, "version_number").unwrap_or_default();
+
+    let mods_dir = effective_mods_dir(engine, &instance);
+    let mut upgrades: Vec<ModInstallUpgrade> = Vec::new();
+    let mut upgraded_files: HashSet<String> = HashSet::new();
+    let mut enable_disabled: Vec<String> = Vec::new();
+    let mut compat_issues: Vec<crate::fabric_compat::ModCompatIssue> = Vec::new();
+
+    if instance.loader == Loader::Fabric {
+        let env = crate::fabric_compat::discover_fabric_env(engine, &instance);
+        let existing_jars = crate::fabric_compat::scan_mods_dir(&mods_dir);
+
+        // Stage the root jar to inspect its real `fabric.mod.json`.
+        let file_size = root_file.get("size").and_then(Value::as_u64).unwrap_or(0);
+        let root_sha1 = file_sha1(root_file);
+        let staged_jar = if file_size <= MAX_STAGE_BYTES {
+            if let Some(ref sha) = root_sha1 {
+                let st = staging_path(engine, sha);
+                let ok = if st.exists()
+                    && crate::download::sha1_file(&st).await.ok().as_deref() == Some(sha.as_str())
+                {
+                    true
+                } else {
+                    if let Some(parent) = st.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let dl = crate::download::DownloadOptions {
+                        sha1: Some(sha.clone()),
+                        size: root_file.get("size").and_then(Value::as_u64),
+                        ..Default::default()
+                    };
+                    engine.http().download_file(&s(root_file, "url").unwrap_or_default(), &st, &dl).await.is_ok()
+                };
+                if ok {
+                    crate::fabric_compat::read_fabric_jar(&st, &root_fname, true)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(candidate) = staged_jar {
+            // Simulate adding candidate to the existing jars.
+            let mut sim_jars = existing_jars.clone();
+            sim_jars.push(candidate.clone());
+            let sim_report = crate::fabric_compat::evaluate_fabric_compat(&env, &sim_jars);
+
+            // Collect project ids of newly planned deps so we don't report them as missing.
+            let planned_dep_files: HashSet<String> =
+                plan.dependencies.iter().map(|d| d.filename.to_ascii_lowercase()).collect();
+            let planned_dep_pids: HashSet<String> = plan.dependencies.iter().map(|d| d.project_id.clone()).collect();
+
+            for issue in sim_report.issues {
+                // Only surface issues caused by or targeting the new candidate mod.
+                let touches_candidate = issue.filename == root_fname
+                    || issue.target_filename.as_deref() == Some(root_fname.as_str());
+                if !touches_candidate {
+                    continue;
+                }
+                match issue.kind {
+                    crate::fabric_compat::CompatIssueKind::MissingDep => {
+                        // Skip if plan.dependencies is already going to install this mod!
+                        let covered = crate::fabric_compat::known_modrinth_for_id(&issue.target_id)
+                            .is_some_and(|(pid, _)| planned_dep_pids.contains(pid))
+                            || planned_dep_files
+                                .iter()
+                                .any(|f| is_filename_for_slug(f, &issue.target_id));
+                        if !covered {
+                            compat_issues.push(issue);
+                        }
+                    }
+                    crate::fabric_compat::CompatIssueKind::DisabledDep => {
+                        if let Some(crate::fabric_compat::CompatFix::Enable { ref filename, .. }) = issue.fix {
+                            if !enable_disabled.contains(filename) {
+                                enable_disabled.push(filename.clone());
+                            }
+                        } else if let Some(crate::fabric_compat::CompatFix::UpdateMod {
+                            ref filename,
+                            ref required,
+                            ..
+                        }) = issue.fix
+                        {
+                            if !enable_disabled.contains(filename) {
+                                enable_disabled.push(filename.clone());
+                            }
+                            if !try_plan_upgrade(
+                                engine,
+                                instance_name,
+                                filename,
+                                required,
+                                &mut upgrades,
+                                &mut upgraded_files,
+                            )
+                            .await
+                            {
+                                compat_issues.push(issue);
+                            }
+                        } else {
+                            compat_issues.push(issue);
+                        }
+                    }
+                    crate::fabric_compat::CompatIssueKind::IncompatibleDep => {
+                        if let Some(crate::fabric_compat::CompatFix::UpdateMod {
+                            ref filename,
+                            ref required,
+                            ..
+                        }) = issue.fix
+                        {
+                            if !try_plan_upgrade(
+                                engine,
+                                instance_name,
+                                filename,
+                                required,
+                                &mut upgrades,
+                                &mut upgraded_files,
+                            )
+                            .await
+                            {
+                                compat_issues.push(issue);
+                            }
+                        } else {
+                            compat_issues.push(issue);
+                        }
+                    }
+                    _ => compat_issues.push(issue),
+                }
+            }
+        }
+    }
+
+    let has_blocking_compat =
+        compat_issues.iter().any(|i| i.severity == crate::fabric_compat::CompatSeverity::Error);
+    let needs_confirmation = !upgrades.is_empty()
+        || !enable_disabled.is_empty()
+        || !plan.conflicts.is_empty()
+        || !plan.missing.is_empty()
+        || has_blocking_compat;
+
+    Ok(ModInstallPreview {
+        project_id: plan.project.project_id,
+        title: plan.project.title,
+        version_id: root_vid,
+        version_number: root_vnum,
+        filename: root_fname,
+        dependencies: plan.dependencies,
+        upgrades,
+        enable_disabled,
+        missing: plan.missing,
+        optional: plan.optional,
+        conflicts: plan.conflicts,
+        compat_issues,
+        needs_confirmation,
+    })
+}
+
+async fn try_plan_upgrade(
+    engine: &Engine,
+    instance_name: &str,
+    filename: &str,
+    required: &str,
+    upgrades: &mut Vec<ModInstallUpgrade>,
+    upgraded_files: &mut HashSet<String>,
+) -> bool {
+    if upgraded_files.contains(filename) {
+        return true;
+    }
+    let Ok(Some(best)) = find_mod_version_for_predicate(engine, instance_name, filename, required).await else {
+        return false;
+    };
+    let Ok(switch_plan) = plan_mod_version_switch(engine, instance_name, filename, &best.version_id).await else {
+        return false;
+    };
+    upgraded_files.insert(switch_plan.filename.clone());
+    upgrades.push(ModInstallUpgrade {
+        filename: switch_plan.filename,
+        project_id: switch_plan.project_id,
+        title: switch_plan.title,
+        from_version: switch_plan.from_version,
+        to_version_id: switch_plan.to_version_id,
+        to_version_number: switch_plan.to_version_number,
+        to_filename: switch_plan.to_filename,
+    });
+    for c in switch_plan.companions {
+        if upgraded_files.insert(c.filename.clone()) {
+            upgrades.push(ModInstallUpgrade {
+                filename: c.filename,
+                project_id: c.project_id,
+                title: c.title,
+                from_version: c.from_version,
+                to_version_id: c.to_version_id,
+                to_version_number: c.to_version_number,
+                to_filename: c.to_filename,
+            });
+        }
+    }
+    true
+}
+
+/// Commit a Modrinth install: optionally applies planned dependency/companion
+/// upgrades and re-enables disabled deps first, reuses any SHA-1 verified staged
+/// jar, then downloads and installs the mod + required dependencies.
+pub async fn commit_modrinth_install(
+    engine: &Engine,
+    instance_name: &str,
+    project_id: &str,
+    apply_upgrades: bool,
+    force: bool,
+) -> EngineResult<ModInstallPlan> {
+    let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
+    let loader = instance.loader.content_loader();
+    let plan = plan_mod_install(engine, &instance, project_id, loader).await?;
+    if !plan.conflicts.is_empty() && !force {
+        let titles: Vec<&str> = plan.conflicts.iter().map(|c| c.title.as_str()).collect();
+        return Err(EngineError::api_verbatim(409, "mod_conflicts", titles.join(", ")));
+    }
+
+    if apply_upgrades {
+        if let Ok(preview) = preview_modrinth_install(engine, instance_name, project_id).await {
+            for fname in &preview.enable_disabled {
+                let _ = set_mod_enabled(engine, instance_name, fname, true).await;
+            }
+            for up in &preview.upgrades {
+                apply_mod_version_switch(engine, instance_name, &up.filename, &up.to_version_id, false).await?;
+            }
+        }
+    }
+
+    // Reuse the staged root jar if present & hash-valid so we don't download it twice.
+    let mods_dir = effective_mods_dir(engine, &instance);
+    std::fs::create_dir_all(&mods_dir)?;
+    if let Some(rf) = primary_file(&plan.root) {
+        if let (Ok(fname), Some(sha)) = (safe_download_name(rf), file_sha1(rf)) {
+            let st = staging_path(engine, &sha);
+            let dest = mods_dir.join(&fname);
+            if st.exists()
+                && !dest.exists()
+                && crate::download::sha1_file(&st).await.ok().as_deref() == Some(sha.as_str())
+            {
+                let _ = std::fs::copy(&st, &dest);
+            }
+        }
+    }
+
+    let reply = ModInstallPlan {
+        queued: true,
+        project: plan.project.clone(),
+        dependencies: plan.dependencies.clone(),
+        missing: plan.missing.clone(),
+        optional: plan.optional.clone(),
+        conflicts: plan.conflicts.clone(),
+    };
+    let bg = engine.clone();
+    let n = instance_name.to_string();
+    let pid = project_id.to_string();
+    let l = loader.to_string();
+    engine.spawn_background("mods", async move {
+        if let Err(e) = install_modrinth_mod(&bg, &n, &pid, Some(&l), Some(plan)).await {
+            tracing::error!("[mods] commit-modrinth failed for {n}: {e}");
+        }
+        Ok(())
+    });
+    Ok(reply)
+}
+
+/// Resolve a Fabric mod id (e.g. `fabric-api`, `cloth-config`) to a Modrinth
+/// project that has a build for this instance's MC version + loader.
+pub async fn resolve_modrinth_for_mod_id(
+    engine: &Engine,
+    instance_name: &str,
+    mod_id: &str,
+) -> EngineResult<Option<ModRef>> {
+    let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
+    let loader = instance.loader.content_loader();
+    if let Some((pid, name)) = crate::fabric_compat::known_modrinth_for_id(mod_id) {
+        if best_version_for_cached(engine, pid, &instance.version, loader).await.is_some() {
+            return Ok(Some(ModRef { project_id: pid.to_string(), title: name.to_string() }));
+        }
+    }
+    // Fallback: try Modrinth slug lookup (`GET /v2/project/{mod_id}`).
+    let url = format!("{}/project/{}", api(engine), encode_uri_component(mod_id));
+    if let Ok(proj) = fetch_json_with_retry(engine, &url, 1).await {
+        if s(&proj, "project_type").as_deref() == Some("mod") {
+            if let Some(pid) = s(&proj, "id") {
+                if best_version_for_cached(engine, &pid, &instance.version, loader).await.is_some() {
+                    let title = s(&proj, "title").unwrap_or_else(|| mod_id.to_string());
+                    return Ok(Some(ModRef { project_id: pid, title }));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+// ---------------------------------------------------------------------------
 // Version / platform change
 // ---------------------------------------------------------------------------
 
@@ -2826,5 +3860,219 @@ mod tests {
         assert!(disabled.contains(&"gone.jar") && disabled.contains(&"random.jar") && disabled.contains(&"upd-1.jar"));
         assert!(mods.join("gone.jar.disabled").exists() && mods.join("random.jar.disabled").exists());
         assert!(mods.join("keep.jar").exists());
+    }
+
+    fn make_fabric_jar(meta: Value) -> Vec<u8> {
+        use std::io::Write;
+        let buf = std::io::Cursor::new(Vec::new());
+        let mut zw = zip::ZipWriter::new(buf);
+        zw.start_file("fabric.mod.json", zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(meta.to_string().as_bytes()).unwrap();
+        zw.finish().unwrap().into_inner()
+    }
+
+    #[tokio::test]
+    async fn delete_mod_removes_enabled_disabled_and_protects_branding() {
+        let (_d, e) = engine_with(None);
+        let mods = write_instance(&e, "del", "26.3", "fabric");
+        std::fs::write(mods.join("foo.jar"), b"abc").unwrap();
+        std::fs::write(mods.join("bar.jar.disabled"), b"def").unwrap();
+        std::fs::write(mods.join("espectral-menu-26.3-1.9.4.jar"), b"brand").unwrap();
+
+        // Running instance refuses delete (409 ALREADY_RUNNING)
+        e.active_instances().insert("del");
+        let err = e.delete_mod("del", "foo.jar").await.unwrap_err().envelope();
+        assert_eq!((err.status, err.code.as_str()), (409, "ALREADY_RUNNING"));
+        e.active_instances().remove("del");
+
+        // Branding jar is protected (400 branding_protected)
+        let err = e.delete_mod("del", "espectral-menu-26.3-1.9.4.jar").await.unwrap_err().envelope();
+        assert_eq!((err.status, err.code.as_str()), (400, "branding_protected"));
+
+        // Enabled and disabled jars delete cleanly
+        let r1 = e.delete_mod("del", "foo.jar").await.unwrap();
+        assert_eq!(r1.deleted, "foo.jar");
+        assert!(!mods.join("foo.jar").exists());
+
+        let r2 = e.delete_mod("del", "bar.jar").await.unwrap();
+        assert_eq!(r2.deleted, "bar.jar");
+        assert!(!mods.join("bar.jar.disabled").exists());
+
+        // Missing -> 404 mod_not_found
+        let err = e.delete_mod("del", "missing.jar").await.unwrap_err().envelope();
+        assert_eq!((err.status, err.code.as_str()), (404, "mod_not_found"));
+    }
+
+    #[tokio::test]
+    async fn version_switch_and_modrinth_preview_bring_iris_along_with_sodium() {
+        let sha = crate::download::sha1_hex;
+        let sodium_092 = make_fabric_jar(json!({
+            "id": "sodium", "name": "Sodium", "version": "0.9.2+mc26.3",
+            "depends": { "minecraft": "26.3.x" }
+        }));
+        let sodium_093 = make_fabric_jar(json!({
+            "id": "sodium", "name": "Sodium", "version": "0.9.3+mc26.3",
+            "depends": { "minecraft": "26.3.x" }
+        }));
+        let iris_117 = make_fabric_jar(json!({
+            "id": "iris", "name": "Iris", "version": "1.11.7+mc26.3",
+            "depends": { "sodium": ["0.9.x"] }
+        }));
+        let iris_118 = make_fabric_jar(json!({
+            "id": "iris", "name": "Iris", "version": "1.11.8+mc26.3",
+            "depends": { "sodium": [">=0.9.3"] }
+        }));
+        let addon_jar = make_fabric_jar(json!({
+            "id": "cool-addon", "name": "Cool Addon", "version": "1.0.0",
+            "depends": { "minecraft": "26.3.x", "sodium": ">=0.9.3" }
+        }));
+
+        let s92_sha = sha(&sodium_092);
+        let s93_sha = sha(&sodium_093);
+        let i17_sha = sha(&iris_117);
+        let i18_sha = sha(&iris_118);
+        let add_sha = sha(&addon_jar);
+
+        let cdn = MockServer::start({
+            let s93 = sodium_093.clone();
+            let i18 = iris_118.clone();
+            let add = addon_jar.clone();
+            move |req| match req.path.as_str() {
+                "/sodium-093.jar" => MockResponse::bytes(s93.clone()),
+                "/iris-118.jar" => MockResponse::bytes(i18.clone()),
+                "/cool-addon.jar" => MockResponse::bytes(add.clone()),
+                _ => MockResponse::status(404),
+            }
+        })
+        .await;
+        let cdn_url = cdn.url("");
+
+        let (s92_len, s93_len, i17_len, i18_len, add_len) =
+            (sodium_092.len(), sodium_093.len(), iris_117.len(), iris_118.len(), addon_jar.len());
+
+        let api = MockServer::start(move |req| {
+            let p = req.path.as_str();
+            let s92_v = json!({
+                "id": "vS92", "project_id": SODIUM_PROJECT_ID, "version_number": "mc26.3-0.9.2-fabric",
+                "name": "Sodium 0.9.2", "version_type": "release", "status": "listed",
+                "date_published": "2026-11-01T00:00:00Z", "dependencies": [],
+                "files": [{ "primary": true, "filename": "sodium-fabric-0.9.2+mc26.3.jar",
+                            "url": format!("{cdn_url}/sodium-092.jar"), "size": s92_len,
+                            "hashes": { "sha1": s92_sha } }]
+            });
+            let s93_v = json!({
+                "id": "vS93", "project_id": SODIUM_PROJECT_ID, "version_number": "mc26.3-0.9.3-fabric",
+                "name": "Sodium 0.9.3", "version_type": "beta", "status": "listed",
+                "date_published": "2026-11-15T00:00:00Z", "dependencies": [],
+                "files": [{ "primary": true, "filename": "sodium-fabric-0.9.3+mc26.3.jar",
+                            "url": format!("{cdn_url}/sodium-093.jar"), "size": s93_len,
+                            "hashes": { "sha1": s93_sha } }]
+            });
+            let i17_v = json!({
+                "id": "vI17", "project_id": IRIS_PROJECT_ID, "version_number": "1.11.7+26.3-fabric",
+                "name": "Iris 1.11.7", "version_type": "release", "status": "listed",
+                "date_published": "2026-11-01T00:00:00Z",
+                "dependencies": [{ "dependency_type": "required", "project_id": SODIUM_PROJECT_ID, "version_id": "vS92" }],
+                "files": [{ "primary": true, "filename": "iris-fabric-1.11.7+mc26.3.jar",
+                            "url": format!("{cdn_url}/iris-117.jar"), "size": i17_len,
+                            "hashes": { "sha1": i17_sha } }]
+            });
+            let i18_v = json!({
+                "id": "vI18", "project_id": IRIS_PROJECT_ID, "version_number": "1.11.8+26.3-fabric",
+                "name": "Iris 1.11.8", "version_type": "beta", "status": "listed",
+                "date_published": "2026-11-15T00:00:00Z",
+                "dependencies": [{ "dependency_type": "required", "project_id": SODIUM_PROJECT_ID, "version_id": "vS93" }],
+                "files": [{ "primary": true, "filename": "iris-fabric-1.11.8+mc26.3.jar",
+                            "url": format!("{cdn_url}/iris-118.jar"), "size": i18_len,
+                            "hashes": { "sha1": i18_sha } }]
+            });
+            let add_v = json!({
+                "id": "vADD", "project_id": "PADDON", "version_number": "1.0.0",
+                "name": "Cool Addon 1.0", "version_type": "release", "status": "listed",
+                "date_published": "2026-11-16T00:00:00Z",
+                "dependencies": [{ "dependency_type": "required", "project_id": SODIUM_PROJECT_ID }],
+                "files": [{ "primary": true, "filename": "cool-addon-1.0.0.jar",
+                            "url": format!("{cdn_url}/cool-addon.jar"), "size": add_len,
+                            "hashes": { "sha1": add_sha } }]
+            });
+
+            if p == "/v2/version_files" {
+                let mut m = Map::new();
+                m.insert(s92_sha.clone(), s92_v);
+                m.insert(i17_sha.clone(), i17_v);
+                return MockResponse::json(&Value::Object(m));
+            }
+            if p == "/v2/version/vS93" {
+                return MockResponse::json(&s93_v);
+            }
+            if p == "/v2/version/vI18" {
+                return MockResponse::json(&i18_v);
+            }
+            if p == "/v2/version/vADD" {
+                return MockResponse::json(&add_v);
+            }
+            if p.starts_with(&format!("/v2/project/{SODIUM_PROJECT_ID}/version")) {
+                return MockResponse::json(&json!([s93_v, s92_v]));
+            }
+            if p.starts_with(&format!("/v2/project/{IRIS_PROJECT_ID}/version")) {
+                return MockResponse::json(&json!([i18_v, i17_v]));
+            }
+            if p.starts_with("/v2/project/PADDON/version") {
+                return MockResponse::json(&json!([add_v]));
+            }
+            if p.starts_with("/v2/projects?ids=") {
+                return MockResponse::json(&json!([
+                    { "id": SODIUM_PROJECT_ID, "title": "Sodium" },
+                    { "id": IRIS_PROJECT_ID, "title": "Iris Shaders" },
+                    { "id": "PADDON", "title": "Cool Addon" }
+                ]));
+            }
+            MockResponse::status(404)
+        })
+        .await;
+
+        let (_d, e) = engine_with(Some(&api));
+        let mods = write_instance(&e, "guaka", "26.3", "fabric");
+        std::fs::write(mods.join("sodium-fabric-0.9.2+mc26.3.jar"), &sodium_092).unwrap();
+        std::fs::write(mods.join("iris-fabric-1.11.7+mc26.3.jar"), &iris_117).unwrap();
+
+        // 1. Version listing shows both 0.9.3 (beta) and 0.9.2 (release, installed)
+        let vers = e.list_mod_versions("guaka", "sodium-fabric-0.9.2+mc26.3.jar").await.unwrap();
+        assert_eq!(vers.versions.len(), 2);
+        assert!(vers.versions.iter().any(|v| v.version_id == "vS92" && v.installed));
+        assert!(vers.versions.iter().any(|v| v.version_id == "vS93" && v.version_type == "beta" && !v.installed));
+
+        // 2. Switching Sodium -> 0.9.3 automatically plans Iris -> 1.11.8 as companion!
+        let plan = e
+            .plan_mod_version_switch("guaka", "sodium-fabric-0.9.2+mc26.3.jar", "vS93")
+            .await
+            .unwrap();
+        assert_eq!(plan.companions.len(), 1);
+        assert_eq!(plan.companions[0].project_id, IRIS_PROJECT_ID);
+        assert_eq!(plan.companions[0].to_version_id, "vI18");
+
+        // 3. Previewing Cool Addon (requires sodium >=0.9.3 in fabric.mod.json)
+        //    automatically detects Sodium needs upgrade AND brings Iris along!
+        let preview = e.preview_modrinth_install("guaka", "PADDON").await.unwrap();
+        assert!(preview.needs_confirmation);
+        assert_eq!(preview.upgrades.len(), 2, "upgrades: {:?}", preview.upgrades);
+        assert!(preview.upgrades.iter().any(|u| u.project_id == SODIUM_PROJECT_ID && u.to_version_id == "vS93"));
+        assert!(preview.upgrades.iter().any(|u| u.project_id == IRIS_PROJECT_ID && u.to_version_id == "vI18"));
+        assert!(preview.compat_issues.is_empty(), "all issues resolved by upgrades: {:?}", preview.compat_issues);
+
+        // 4. Applying Sodium switch (+ Iris companion) swaps both jars atomically!
+        let applied = e
+            .apply_mod_version_switch("guaka", "sodium-fabric-0.9.2+mc26.3.jar", "vS93", true)
+            .await
+            .unwrap();
+        assert_eq!(applied.changed.len(), 2);
+        assert!(mods.join("sodium-fabric-0.9.3+mc26.3.jar").exists());
+        assert!(!mods.join("sodium-fabric-0.9.2+mc26.3.jar").exists());
+        assert!(mods.join("iris-fabric-1.11.8+mc26.3.jar").exists());
+        assert!(!mods.join("iris-fabric-1.11.7+mc26.3.jar").exists());
+
+        // 5. After upgrading, compatibility report is 100% clean!
+        let compat = e.check_mods_compat("guaka").await.unwrap();
+        assert_eq!(compat.error_count, 0, "issues: {:?}", compat.issues);
     }
 }

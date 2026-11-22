@@ -6,8 +6,8 @@
 // when the query is empty), tracks mod-progress events and loads the result
 // icons from cdn.modrinth.com through the engine HTTP client (LRU cache).
 
-import { Theme, T, AppState, Router, GlassCard, Elevation, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji, ProgressBar, ProgressThickness, MonogramTile, MonogramShape, LoaderBadge, LoaderBadgeSize, Toggle, SelectableText } from "../../widgets.slint";
-import { LibraryBridge, ModRow, ModrinthCard, PinnedPill } from "api.slint";
+import { Theme, T, AppState, Router, GlassCard, Elevation, Btn, IconBtn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji, ProgressBar, ProgressThickness, MonogramTile, MonogramShape, LoaderBadge, LoaderBadgeSize, Toggle, SelectableText, Modal, ModalFooter, ConfirmDialog, ScrollArea } from "../../widgets.slint";
+import { LibraryBridge, ModRow, ModCompatNote, ModVersionOption, ModChangeSummary, ModrinthCard, PinnedPill } from "api.slint";
 import { LibScroll, GlassPanel, GlowDot, VText, StatePanel, CenterText } from "parts.slint";
 
 // feather "box" + modrinth glyphs used only here
@@ -394,6 +394,39 @@ component InventoryToolbar inherits Rectangle {
                     clicked => { LibraryBridge.m-set-filter(f); }
                 }
             }
+            if LibraryBridge.m-problem-count > 0: prob-chip := Rectangle {
+                property <bool> on: LibraryBridge.m-filter == 3;
+                height: 28px;
+                min-width: prob-row.preferred-width;
+                border-radius: Theme.radius-sm;
+                background: self.on ? Theme.accent-red.with-alpha(0.18) : prob-touch.has-hover ? Theme.accent-red.with-alpha(0.10) : Theme.accent-red.with-alpha(0.06);
+                border-width: Theme.hairline;
+                border-color: self.on ? Theme.accent-red : Theme.accent-red.with-alpha(0.4);
+                animate background, border-color { duration: Theme.dur-fast; }
+                prob-row := HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 6px;
+                    alignment: center;
+                    Rectangle {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 3px;
+                        background: Theme.accent-red;
+                    }
+                    Text {
+                        text: T.tr("mods.filterProblems") + " (" + LibraryBridge.m-problem-count + ")";
+                        font-size: Theme.text-xs;
+                        font-weight: 600;
+                        color: Theme.accent-red;
+                        vertical-alignment: center;
+                    }
+                }
+                prob-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { LibraryBridge.m-set-filter(3); }
+                }
+            }
         }
         VerticalLayout {
             alignment: center;
@@ -411,14 +444,70 @@ component ModSwitch inherits Toggle {
     toggled(v) => { root.flipped(); }
 }
 
+component CompatNoteStrip inherits Rectangle {
+    in property <ModCompatNote> note;
+    property <bool> is-err: note.severity == "error";
+    property <color> tone: is-err ? Theme.accent-red : Theme.accent-alt;
+    height: inner.preferred-height;
+    border-radius: Theme.radius-sm;
+    background: tone.with-alpha(0.10);
+    border-width: Theme.hairline;
+    border-color: tone.with-alpha(0.38);
+    inner := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 6px;
+        padding-top: 5px;
+        padding-bottom: 5px;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                data: root.is-err ? Icons.alert-circle : Icons.alert-triangle;
+                size: 14px;
+                color: root.tone;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            SelectableText {
+                text: root.note.text;
+                font-size: Theme.text-xs;
+                font-weight: 500;
+                color: root.is-err ? Theme.accent-red : Theme.accent-alt;
+                wrap: word-wrap;
+            }
+        }
+        if root.note.fix-label != "": VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                text: root.note.fix-label;
+                clicked => { LibraryBridge.m-apply-fix(root.note.fix-kind, root.note.fix-target, root.note.fix-arg); }
+            }
+        }
+    }
+}
+
 component ModEntryRow inherits Rectangle {
     in property <ModRow> entry;
     /// Last row of the list: no trailing separator.
     in property <bool> last: false;
     height: content.preferred-height;
-    opacity: entry.enabled ? 1 : 0.6;
-    background: hover.has-hover ? Theme.surface-up : transparent;
+    opacity: entry.enabled || entry.has-error || entry.has-warn ? 1 : 0.62;
+    background: entry.has-error ? Theme.accent-red.with-alpha(hover.has-hover ? 0.08 : 0.04)
+        : entry.has-warn ? Theme.accent-alt.with-alpha(hover.has-hover ? 0.07 : 0.03)
+        : hover.has-hover ? Theme.surface-up : transparent;
     animate background { duration: Theme.dur-fast; }
+    // Left severity accent stripe when the row has compat issues
+    if root.entry.has-error || root.entry.has-warn: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 3px;
+        height: root.height;
+        background: root.entry.has-error ? Theme.accent-red : Theme.accent-alt;
+    }
     // hairline list separator
     Rectangle {
         y: root.height - Theme.hairline;
@@ -427,83 +516,125 @@ component ModEntryRow inherits Rectangle {
         visible: !root.last;
     }
     hover := TouchArea { }
-    content := HorizontalLayout {
-        padding-top: 5.6px;
-        padding-bottom: 5.6px;
-        padding-left: 9.6px;
-        padding-right: 9.6px;
-        spacing: Theme.space-3;
-        VerticalLayout {
-            alignment: center;
-            MonogramTile { name: root.entry.name; size: 32px; shape: MonogramShape.rounded; }
-        }
-        VerticalLayout {
-            horizontal-stretch: 1;
-            spacing: 2.4px;
-            alignment: center;
+    content := VerticalLayout {
+        padding-top: 7px;
+        padding-bottom: 7px;
+        padding-left: 11px;
+        padding-right: 11px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            VerticalLayout {
+                alignment: center;
+                MonogramTile { name: root.entry.name; size: 32px; shape: MonogramShape.rounded; }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2.4px;
+                alignment: center;
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    VText { text: root.entry.name; font-size: 13px; font-weight: 600; overflow: elide; }
+                    if root.entry.version != "": VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            border-radius: Theme.radius-pill;
+                            background: Theme.card-bg-soft;
+                            border-width: Theme.hairline;
+                            border-color: Theme.border-solid;
+                            min-width: ver.preferred-width + 16px;
+                            height: ver.preferred-height + 6px;
+                            ver := Text {
+                                text: root.entry.version;
+                                font-family: Theme.label-family(8px);
+                                font-size: Theme.label-size(8px);
+                                font-weight: 700;
+                                color: Theme.muted;
+                            }
+                        }
+                    }
+                    if root.entry.slug != "": VText {
+                        text: root.entry.slug;
+                        font-family: Theme.font-mono;
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        font-weight: 500;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 5.6px;
+                    alignment: start;
+                    Text {
+                        text: root.entry.filename;
+                        font-family: Theme.font-mono;
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        opacity: 0.85;
+                        overflow: elide;
+                        font-weight: 500;
+                    }
+                    if root.entry.meta != "": SelectableText {
+                        text: root.entry.meta;
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        font-weight: 500;
+                    }
+                }
+                if root.entry.requires != "" || root.entry.required-by != "": HorizontalLayout {
+                    padding-top: 3.2px;
+                    spacing: 5.6px;
+                    alignment: start;
+                    if root.entry.requires != "": Badge { text: root.entry.requires; variant: BadgeVariant.warn; }
+                    if root.entry.required-by != "": Badge { text: root.entry.required-by; variant: BadgeVariant.ok; }
+                }
+            }
             HorizontalLayout {
-                spacing: Theme.space-2;
-                alignment: start;
-                VText { text: root.entry.name; font-size: 13px; font-weight: 600; overflow: elide; }
-                if root.entry.version != "": VerticalLayout {
+                horizontal-stretch: 0;
+                spacing: 6px;
+                alignment: end;
+                if root.entry.can-switch-version: VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        variant: BtnVariant.ghost;
+                        size: BtnSize.sm;
+                        icon: Icons.refresh;
+                        text: T.tr("mods.changeVersion");
+                        clicked => { LibraryBridge.m-open-versions(root.entry.filename); }
+                    }
+                }
+                if root.entry.can-delete: VerticalLayout {
                     alignment: center;
                     Rectangle {
-                        border-radius: Theme.radius-pill;
-                        background: Theme.card-bg-soft;
-                        border-width: Theme.hairline;
-                        border-color: Theme.border-solid;
-                        min-width: ver.preferred-width + 16px;
-                        height: ver.preferred-height + 6px;
-                        ver := Text {
-                            text: root.entry.version;
-                            font-family: Theme.label-family(8px);
-                            font-size: Theme.label-size(8px);
-                            font-weight: 700;
-                            color: Theme.muted;
+                        width: 28px;
+                        height: 28px;
+                        border-radius: Theme.radius-sm;
+                        background: del-ta.has-hover ? Theme.accent-red.with-alpha(0.14) : transparent;
+                        animate background { duration: Theme.dur-fast; }
+                        Icon {
+                            data: Icons.trash;
+                            size: 14px;
+                            color: del-ta.has-hover ? Theme.accent-red : Theme.muted;
+                        }
+                        del-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { LibraryBridge.m-ask-delete(root.entry.filename); }
                         }
                     }
                 }
-                if root.entry.slug != "": VText {
-                    text: root.entry.slug;
-                    font-family: Theme.font-mono;
-                    font-size: Theme.text-xs;
-                    color: Theme.muted;
-                    font-weight: 500;
+                VerticalLayout {
+                    alignment: center;
+                    ModSwitch {
+                        on: root.entry.enabled;
+                        flipped => { LibraryBridge.m-toggle(root.entry.filename); }
+                    }
                 }
-            }
-            HorizontalLayout {
-                spacing: 5.6px;
-                alignment: start;
-                Text {
-                    text: root.entry.filename;
-                    font-family: Theme.font-mono;
-                    font-size: Theme.text-xs;
-                    color: Theme.muted;
-                    opacity: 0.85;
-                    overflow: elide;
-                    font-weight: 500;
-                }
-                if root.entry.meta != "": SelectableText {
-                    text: root.entry.meta;
-                    font-size: Theme.text-xs;
-                    color: Theme.muted;
-                    font-weight: 500;
-                }
-            }
-            if root.entry.requires != "" || root.entry.required-by != "": HorizontalLayout {
-                padding-top: 3.2px;
-                spacing: 5.6px;
-                alignment: start;
-                if root.entry.requires != "": Badge { text: root.entry.requires; variant: BadgeVariant.warn; }
-                if root.entry.required-by != "": Badge { text: root.entry.required-by; variant: BadgeVariant.ok; }
             }
         }
-        VerticalLayout {
-            alignment: center;
-            ModSwitch {
-                on: root.entry.enabled;
-                flipped => { LibraryBridge.m-toggle(root.entry.filename); }
-            }
+        if root.entry.issues.length > 0: VerticalLayout {
+            padding-left: 44px;
+            spacing: 4px;
+            for n in root.entry.issues: CompatNoteStrip { note: n; }
         }
     }
 }
@@ -579,9 +710,55 @@ component EmptyPanel inherits StatePanel {
     }
 }
 
+component CompatSummaryBanner inherits GlassPanel {
+    property <bool> has-err: LibraryBridge.m-compat-errors > 0;
+    property <color> tone: has-err ? Theme.accent-red : Theme.accent-alt;
+    fill: tone.with-alpha(0.09);
+    stroke: tone.with-alpha(0.45);
+    height: row.preferred-height;
+    row := HorizontalLayout {
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                data: root.has-err ? Icons.alert-circle : Icons.alert-triangle;
+                size: 16px;
+                color: root.tone;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            SelectableText {
+                text: LibraryBridge.m-compat-errors == 1 ? T.tr("mods.compatBannerErrorOne")
+                    : LibraryBridge.m-compat-errors > 1 ? T.tr1("mods.compatBannerErrors", "count", LibraryBridge.m-compat-errors)
+                    : T.tr1("mods.compatBannerWarnings", "count", LibraryBridge.m-compat-warnings);
+                color: root.tone;
+                font-size: Theme.text-sm;
+                font-weight: 600;
+                wrap: word-wrap;
+            }
+        }
+        if LibraryBridge.m-filter != 3: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: T.tr("mods.filterProblems") + " (" + LibraryBridge.m-problem-count + ")";
+                clicked => { LibraryBridge.m-set-filter(3); }
+            }
+        }
+    }
+}
+
 component InstalledPane inherits VerticalLayout {
     spacing: Theme.space-3;
     InventoryToolbar { }
+    if LibraryBridge.m-compat-errors > 0 || LibraryBridge.m-compat-warnings > 0: CompatSummaryBanner { }
     if LibraryBridge.m-loading && LibraryBridge.m-count == 0: LoadingPanel { text: T.tr("mods.loading"); }
     if !(LibraryBridge.m-loading && LibraryBridge.m-count == 0) && LibraryBridge.m-error != "": ErrorBanner {
         text: LibraryBridge.m-error;
@@ -1002,6 +1179,368 @@ component ModrinthPane inherits VerticalLayout {
     }
 }
 
+// ---------------------------------------------------------------- modals
+
+component DeleteModModal inherits Modal {
+    open <=> LibraryBridge.m-delete-open;
+    title: T.tr("mods.deleteTitle");
+    dialog-width: 460px;
+    dismissable: !LibraryBridge.m-deleting;
+    close => { LibraryBridge.m-cancel-delete(); }
+    VerticalLayout {
+        padding: Theme.space-6;
+        spacing: Theme.space-3;
+        SelectableText {
+            text: T.tr2("mods.deleteConfirm", "name", LibraryBridge.m-delete-name, "file", LibraryBridge.m-delete-filename);
+            color: Theme.muted-strong;
+            font-size: Theme.text-sm;
+            wrap: word-wrap;
+        }
+        if LibraryBridge.m-delete-dependents != "": GlassPanel {
+            fill: Theme.accent-alt.with-alpha(0.10);
+            stroke: Theme.accent-alt.with-alpha(0.45);
+            height: warn-r.preferred-height;
+            warn-r := HorizontalLayout {
+                padding: Theme.space-3;
+                spacing: Theme.space-2;
+                VerticalLayout {
+                    alignment: start;
+                    Icon { data: Icons.alert-triangle; size: 15px; color: Theme.accent-alt; }
+                }
+                SelectableText {
+                    horizontal-stretch: 1;
+                    text: T.tr1("mods.deleteDependentWarn", "deps", LibraryBridge.m-delete-dependents);
+                    color: Theme.accent-alt;
+                    font-size: Theme.text-xs;
+                    font-weight: 500;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+    ModalFooter {
+        Btn {
+            variant: BtnVariant.secondary;
+            text: T.tr("home.wizardCancelBtn");
+            enabled: !LibraryBridge.m-deleting;
+            clicked => { LibraryBridge.m-cancel-delete(); }
+        }
+        Btn {
+            variant: BtnVariant.danger;
+            text: T.tr("mods.delete");
+            loading: LibraryBridge.m-deleting;
+            enabled: !LibraryBridge.m-deleting;
+            clicked => { LibraryBridge.m-confirm-delete(); }
+        }
+    }
+}
+
+component VersionOptionRow inherits Rectangle {
+    in property <ModVersionOption> opt;
+    in property <bool> selected;
+    callback clicked();
+    height: r.preferred-height;
+    border-radius: Theme.radius-sm;
+    background: selected ? Theme.accent.with-alpha(0.14) : ta.has-hover ? Theme.surface-up : transparent;
+    border-width: Theme.hairline;
+    border-color: selected ? Theme.edge-strong : transparent;
+    animate background, border-color { duration: Theme.dur-fast; }
+    r := HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                alignment: start;
+                Text {
+                    text: root.opt.version-number;
+                    font-size: Theme.text-sm;
+                    font-weight: 700;
+                    color: root.selected ? Theme.accent-bright : Theme.text;
+                    overflow: elide;
+                }
+                Badge {
+                    text: root.opt.version-type;
+                    variant: root.opt.version-type == "release" ? BadgeVariant.ok
+                        : root.opt.version-type == "beta" ? BadgeVariant.warn : BadgeVariant.err;
+                }
+                if root.opt.installed: Badge {
+                    text: T.tr("mods.versionCurrent");
+                    variant: BadgeVariant.accent;
+                }
+            }
+            if root.opt.name != "" && root.opt.name != root.opt.version-number: Text {
+                text: root.opt.name;
+                font-size: Theme.text-xs;
+                color: Theme.muted;
+                overflow: elide;
+            }
+        }
+        if root.opt.date != "": VerticalLayout {
+            alignment: center;
+            Text {
+                text: root.opt.date;
+                font-family: Theme.font-mono;
+                font-size: Theme.text-xs;
+                color: Theme.muted;
+            }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: root.opt.installed ? default : pointer;
+        enabled: !root.opt.installed;
+        clicked => { root.clicked(); }
+    }
+}
+
+component ModVersionModal inherits Modal {
+    open <=> LibraryBridge.m-ver-open;
+    title: T.tr("mods.versionModalTitle") + (LibraryBridge.m-ver-title != "" ? " · " + LibraryBridge.m-ver-title : "");
+    subtitle: LibraryBridge.m-ver-current != "" ? T.tr("mods.versionCurrent") + ": " + LibraryBridge.m-ver-current : "";
+    dialog-width: 560px;
+    dismissable: !LibraryBridge.m-ver-applying;
+    close => { LibraryBridge.m-close-versions(); }
+
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-3;
+        if LibraryBridge.m-ver-loading: VerticalLayout {
+            padding-top: Theme.space-6;
+            padding-bottom: Theme.space-6;
+            spacing: Theme.space-2;
+            HorizontalLayout { alignment: center; ModSpinner { } }
+            SelectableText { text: T.tr("mods.versionLoading"); color: Theme.muted; horizontal-alignment: center; }
+        }
+        if !LibraryBridge.m-ver-loading && LibraryBridge.m-ver-error != "": ErrorBanner {
+            text: LibraryBridge.m-ver-error;
+        }
+        if !LibraryBridge.m-ver-loading && LibraryBridge.m-ver-error == "" && LibraryBridge.m-ver-options.length == 0: SelectableText {
+            text: T.tr2("mods.versionEmpty", "loader", LibraryBridge.m-sel-loader, "mc", LibraryBridge.m-sel-version);
+            color: Theme.muted;
+            wrap: word-wrap;
+        }
+        if !LibraryBridge.m-ver-loading && LibraryBridge.m-ver-options.length > 0: Rectangle {
+            height: min(260px, ver-list.preferred-height + 8px);
+            border-radius: Theme.radius-md;
+            background: Theme.card-bg-soft;
+            border-width: Theme.hairline;
+            border-color: Theme.border-solid;
+            clip: true;
+            ScrollArea {
+                width: 100%;
+                height: 100%;
+                ver-list := VerticalLayout {
+                    padding: 4px;
+                    spacing: 2px;
+                    for opt in LibraryBridge.m-ver-options: VersionOptionRow {
+                        opt: opt;
+                        selected: opt.version-id == LibraryBridge.m-ver-selected;
+                        clicked => { LibraryBridge.m-select-version(opt.version-id); }
+                    }
+                }
+            }
+        }
+        if LibraryBridge.m-ver-planning: HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            ModSpinner { }
+            VText { text: T.tr("mods.versionPlanning"); font-size: Theme.text-xs; color: Theme.muted; }
+        }
+        if !LibraryBridge.m-ver-planning && LibraryBridge.m-ver-companions.length > 0: GlassPanel {
+            fill: Theme.accent-cyan.with-alpha(0.08);
+            stroke: Theme.accent-cyan.with-alpha(0.4);
+            height: comp-col.preferred-height;
+            comp-col := VerticalLayout {
+                padding: Theme.space-3;
+                spacing: 4px;
+                SelectableText {
+                    text: T.tr("mods.versionCompanionsTitle");
+                    font-size: Theme.text-xs;
+                    font-weight: 700;
+                    color: Theme.accent-cyan;
+                    wrap: word-wrap;
+                }
+                for c in LibraryBridge.m-ver-companions: SelectableText {
+                    text: "• " + c.title + ": " + c.from-ver + " → " + c.to-ver;
+                    font-size: Theme.text-xs;
+                    color: Theme.text;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        if !LibraryBridge.m-ver-planning && LibraryBridge.m-ver-warnings.length > 0: GlassPanel {
+            fill: Theme.accent-alt.with-alpha(0.10);
+            stroke: Theme.accent-alt.with-alpha(0.45);
+            height: vw-col.preferred-height;
+            vw-col := VerticalLayout {
+                padding: Theme.space-3;
+                spacing: 4px;
+                SelectableText {
+                    text: T.tr("mods.versionWarnTitle");
+                    font-size: Theme.text-xs;
+                    font-weight: 700;
+                    color: Theme.accent-alt;
+                }
+                for w in LibraryBridge.m-ver-warnings: SelectableText {
+                    text: "• " + w;
+                    font-size: Theme.text-xs;
+                    color: Theme.accent-alt;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+    ModalFooter {
+        Btn {
+            variant: BtnVariant.secondary;
+            text: T.tr("home.wizardCancelBtn");
+            enabled: !LibraryBridge.m-ver-applying;
+            clicked => { LibraryBridge.m-close-versions(); }
+        }
+        Btn {
+            variant: BtnVariant.primary;
+            text: LibraryBridge.m-ver-companions.length > 0
+                ? T.tr1("mods.versionApplyWith", "count", LibraryBridge.m-ver-companions.length + 1)
+                : T.tr("mods.versionApply");
+            loading: LibraryBridge.m-ver-applying;
+            enabled: LibraryBridge.m-ver-selected != "" && !LibraryBridge.m-ver-planning && !LibraryBridge.m-ver-applying;
+            clicked => { LibraryBridge.m-apply-version(); }
+        }
+    }
+}
+
+component InstallPreviewModal inherits Modal {
+    open <=> LibraryBridge.m-prev-open;
+    title: T.tr1("mods.previewTitle", "name", LibraryBridge.m-prev-title);
+    dialog-width: 540px;
+    dismissable: !LibraryBridge.m-prev-committing;
+    close => { LibraryBridge.m-prev-cancel(); }
+
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-3;
+        if LibraryBridge.m-prev-upgrades.length > 0: GlassPanel {
+            fill: Theme.accent-cyan.with-alpha(0.08);
+            stroke: Theme.accent-cyan.with-alpha(0.4);
+            height: up-col.preferred-height;
+            up-col := VerticalLayout {
+                padding: Theme.space-3;
+                spacing: 4px;
+                SelectableText {
+                    text: T.tr("mods.previewUpgrades");
+                    font-size: Theme.text-xs;
+                    font-weight: 700;
+                    color: Theme.accent-cyan;
+                    wrap: word-wrap;
+                }
+                for u in LibraryBridge.m-prev-upgrades: SelectableText {
+                    text: "• " + u.title + ": " + u.from-ver + " → " + u.to-ver;
+                    font-size: Theme.text-xs;
+                    color: Theme.text;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        if LibraryBridge.m-prev-enables.length > 0: GlassPanel {
+            fill: Theme.accent-green.with-alpha(0.08);
+            stroke: Theme.accent-green.with-alpha(0.4);
+            height: en-col.preferred-height;
+            en-col := VerticalLayout {
+                padding: Theme.space-3;
+                spacing: 4px;
+                SelectableText {
+                    text: T.tr("mods.previewEnable");
+                    font-size: Theme.text-xs;
+                    font-weight: 700;
+                    color: Theme.accent-green;
+                }
+                for f in LibraryBridge.m-prev-enables: SelectableText {
+                    text: "• " + f;
+                    font-size: Theme.text-xs;
+                    color: Theme.text;
+                }
+            }
+        }
+        if LibraryBridge.m-prev-conflicts != "": GlassPanel {
+            fill: Theme.accent-red.with-alpha(0.10);
+            stroke: Theme.accent-red.with-alpha(0.45);
+            height: cf-r.preferred-height;
+            cf-r := HorizontalLayout {
+                padding: Theme.space-3;
+                spacing: Theme.space-2;
+                Icon { data: Icons.alert-circle; size: 15px; color: Theme.accent-red; }
+                SelectableText {
+                    horizontal-stretch: 1;
+                    text: T.tr1("mods.previewConflicts", "mods", LibraryBridge.m-prev-conflicts);
+                    color: Theme.accent-red;
+                    font-size: Theme.text-xs;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        if LibraryBridge.m-prev-missing != "": GlassPanel {
+            fill: Theme.accent-alt.with-alpha(0.10);
+            stroke: Theme.accent-alt.with-alpha(0.45);
+            height: ms-r.preferred-height;
+            ms-r := HorizontalLayout {
+                padding: Theme.space-3;
+                spacing: Theme.space-2;
+                Icon { data: Icons.alert-triangle; size: 15px; color: Theme.accent-alt; }
+                SelectableText {
+                    horizontal-stretch: 1;
+                    text: T.tr1("mods.previewMissing", "mods", LibraryBridge.m-prev-missing);
+                    color: Theme.accent-alt;
+                    font-size: Theme.text-xs;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        if LibraryBridge.m-prev-issues.length > 0: GlassPanel {
+            fill: Theme.accent-red.with-alpha(0.10);
+            stroke: Theme.accent-red.with-alpha(0.45);
+            height: iss-col.preferred-height;
+            iss-col := VerticalLayout {
+                padding: Theme.space-3;
+                spacing: 4px;
+                SelectableText {
+                    text: T.tr("mods.previewCompatWarn");
+                    font-size: Theme.text-xs;
+                    font-weight: 700;
+                    color: Theme.accent-red;
+                }
+                for line in LibraryBridge.m-prev-issues: SelectableText {
+                    text: "• " + line;
+                    font-size: Theme.text-xs;
+                    color: Theme.text;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+    ModalFooter {
+        Btn {
+            variant: BtnVariant.secondary;
+            text: T.tr("home.wizardCancelBtn");
+            enabled: !LibraryBridge.m-prev-committing;
+            clicked => { LibraryBridge.m-prev-cancel(); }
+        }
+        Btn {
+            variant: LibraryBridge.m-prev-has-errors ? BtnVariant.danger : BtnVariant.primary;
+            text: LibraryBridge.m-prev-upgrades.length > 0 && !LibraryBridge.m-prev-has-errors
+                ? T.tr("mods.previewInstallAndUpdate")
+                : T.tr("mods.previewInstallAnyway");
+            loading: LibraryBridge.m-prev-committing;
+            enabled: !LibraryBridge.m-prev-committing;
+            clicked => { LibraryBridge.m-prev-confirm(true); }
+        }
+    }
+}
+
 export component ModsPage inherits Rectangle {
     property <int> instance-count: AppState.instances.length;
     changed instance-count => { LibraryBridge.instances-changed(); }
@@ -1024,4 +1563,8 @@ export component ModsPage inherits Rectangle {
         if LibraryBridge.m-tab == 1: PresetsPane { }
         if LibraryBridge.m-tab == 2: ModrinthPane { }
     }
+
+    DeleteModModal { }
+    ModVersionModal { }
+    InstallPreviewModal { }
 }

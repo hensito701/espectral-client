@@ -814,7 +814,7 @@ mod tests {
         assert!(!share_enabled(&e, UUID).is_err());
         assert!(share_enabled(&e, u2).unwrap());
         // dashed uuid normalizes to the same record
-        assert_eq!(get_cosmetics_state(&e, "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF").emotes, false);
+        assert!(!get_cosmetics_state(&e, "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF").emotes);
     }
 
     #[test]

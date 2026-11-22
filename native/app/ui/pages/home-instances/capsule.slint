@@ -687,6 +687,51 @@ export component TelemetryCapsule inherits Rectangle {
                         font-family: Theme.font-mono;
                         font-size: 11px;
                     }
+                    if !root.running && !root.launching && HomeBridge.compat-instance == root.instance-name && HomeBridge.compat-error-count > 0: compat-pill := Rectangle {
+                        height: compat-col.preferred-height;
+                        border-radius: Theme.radius-sm;
+                        background: compat-ta.has-hover ? Theme.accent-red.with-alpha(0.18) : Theme.accent-red.with-alpha(0.11);
+                        border-width: Theme.hairline;
+                        border-color: Theme.accent-red.with-alpha(0.5);
+                        animate background { duration: Theme.dur-fast; }
+                        compat-col := VerticalLayout {
+                            padding-left: 9px;
+                            padding-right: 9px;
+                            padding-top: 5px;
+                            padding-bottom: 5px;
+                            spacing: 2px;
+                            HorizontalLayout {
+                                spacing: 5px;
+                                alignment: start;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Icon { data: Icons.alert-triangle; size: 12px; color: Theme.accent-red; }
+                                }
+                                Text {
+                                    text: HomeBridge.compat-error-count == 1
+                                        ? T.tr("home.compatPillOne")
+                                        : T.tr1("home.compatPillMany", "count", HomeBridge.compat-error-count);
+                                    color: Theme.accent-red;
+                                    font-size: Theme.text-xs;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                            Text {
+                                text: T.tr("home.compatReview") + " →";
+                                color: Theme.text;
+                                font-size: 11px;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+                        }
+                        compat-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { HomeBridge.compat-open-mods(root.instance-name); }
+                        }
+                    }
                 }
                 status-touch := TouchArea {
                     mouse-cursor: pointer;

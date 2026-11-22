@@ -140,7 +140,14 @@
     "home.dryRunLoading": "Generando informe de dry-run...",
     "home.capsuleTiming": "Preparación {prep}s · JVM {jvm}s",
     "client.suiteDisabled": "Suite DESACTIVADA",
-    "client.suppressed": "suprimida por la Suite"
+    "client.suppressed": "suprimida por la Suite",
+    "home.compatPillOne": "1 error en mods",
+    "home.compatPillMany": "{count} errores",
+    "home.compatReview": "Revisar mods",
+    "home.compatModalTitle": "Problemas en tus mods",
+    "home.compatModalSubtitle": "Fabric probablemente detendrá el juego si arrancas así. Puedes arreglarlo en la página de Mods.",
+    "home.compatGoToMods": "Ir a Mods",
+    "home.compatLaunchAnyway": "Jugar igualmente"
   },
   "en": {
     "home.title": "Home",
@@ -283,6 +290,13 @@
     "home.dryRunLoading": "Generating dry-run report...",
     "home.capsuleTiming": "Prep {prep}s · JVM {jvm}s",
     "client.suiteDisabled": "Suite DISABLED",
-    "client.suppressed": "suppressed by the Suite"
+    "client.suppressed": "suppressed by the Suite",
+    "home.compatPillOne": "1 mod issue",
+    "home.compatPillMany": "{count} mod issues",
+    "home.compatReview": "Review mods",
+    "home.compatModalTitle": "Issues in your mods",
+    "home.compatModalSubtitle": "Fabric will likely stop the game from starting like this. You can fix it on the Mods page.",
+    "home.compatGoToMods": "Go to Mods",
+    "home.compatLaunchAnyway": "Play anyway"
   }
 }

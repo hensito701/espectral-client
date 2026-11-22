@@ -125,6 +125,16 @@ export global HomeBridge {
     callback launch(name: string);
     callback stop(name: string);
     callback select-account(username: string);
+    /// Fabric mod compatibility status for the capsule instance.
+    in-out property <string> compat-instance;
+    in-out property <int> compat-error-count;
+    in-out property <string> compat-summary;
+    /// Pre-launch compatibility warning modal (shown when clicking Jugar with errors).
+    in-out property <bool> compat-modal-open;
+    in-out property <string> compat-modal-instance;
+    in-out property <[string]> compat-modal-issues;
+    callback compat-open-mods(instance: string);
+    callback compat-launch-anyway(instance: string);
 
     // =====================================================================
     // Dry-run inspector

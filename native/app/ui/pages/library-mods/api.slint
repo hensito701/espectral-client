@@ -17,6 +17,33 @@ export struct VersionRow {
     latest-snapshot: bool,
 }
 
+/// Compatibility note attached to a mod row (error = red, warn = yellow).
+export struct ModCompatNote {
+    text: string,
+    severity: string,        // "error" | "warn"
+    fix-label: string,       // "" = no fix button
+    fix-kind: string,        // "disable" | "enable" | "update" | "change_version" | "install"
+    fix-target: string,      // filename or mod_id
+    fix-arg: string,         // predicate or friendly name
+}
+
+/// Selectable version in the mod version switcher modal.
+export struct ModVersionOption {
+    version-id: string,
+    version-number: string,
+    name: string,
+    version-type: string,    // "release" | "beta" | "alpha"
+    date: string,
+    installed: bool,
+}
+
+/// Companion/upgrade change summary row ("Iris: 1.11.7 → 1.11.8").
+export struct ModChangeSummary {
+    title: string,
+    from-ver: string,
+    to-ver: string,
+}
+
 /// Installed mod (engine ModEntry, display-ready).
 export struct ModRow {
     filename: string,
@@ -25,8 +52,14 @@ export struct ModRow {
     version: string,
     meta: string,            // "· 1.2 MB · abcdef12" tail of the meta row
     enabled: bool,
+    installed: bool,
+    can-delete: bool,
+    can-switch-version: bool,
     requires: string,        // "" or "Requiere sodium"
     required-by: string,     // "" or "Necesario para iris"
+    has-error: bool,
+    has-warn: bool,
+    issues: [ModCompatNote],
 }
 
 /// Performance preset pill.
@@ -143,8 +176,52 @@ export global LibraryBridge {
     in property <int> m-count;
     in property <int> m-enabled-count;
     in property <int> m-disabled-count;
+    in property <int> m-problem-count;
+    in property <int> m-compat-errors;
+    in property <int> m-compat-warnings;
     in property <bool> m-loading;
     in property <string> m-error;
+    // Delete confirmation modal
+    in-out property <bool> m-delete-open;
+    in property <string> m-delete-filename;
+    in property <string> m-delete-name;
+    in property <string> m-delete-dependents; // "" or comma-separated dependent mod names
+    in property <bool> m-deleting;
+    callback m-ask-delete(string);            // filename
+    callback m-confirm-delete();
+    callback m-cancel-delete();
+    // Version switcher modal
+    in-out property <bool> m-ver-open;
+    in property <string> m-ver-filename;
+    in property <string> m-ver-title;
+    in property <string> m-ver-current;
+    in property <bool> m-ver-loading;
+    in property <string> m-ver-error;
+    in property <[ModVersionOption]> m-ver-options;
+    in property <string> m-ver-selected;
+    in property <bool> m-ver-planning;
+    in property <bool> m-ver-applying;
+    in property <[ModChangeSummary]> m-ver-companions;
+    in property <[string]> m-ver-warnings;
+    callback m-open-versions(string);         // filename
+    callback m-select-version(string);        // version_id
+    callback m-apply-version();
+    callback m-close-versions();
+    // Modrinth pre-install compatibility modal
+    in-out property <bool> m-prev-open;
+    in property <string> m-prev-project-id;
+    in property <string> m-prev-title;
+    in property <[ModChangeSummary]> m-prev-upgrades;
+    in property <[string]> m-prev-enables;
+    in property <string> m-prev-conflicts;
+    in property <string> m-prev-missing;
+    in property <[string]> m-prev-issues;
+    in property <bool> m-prev-has-errors;
+    in property <bool> m-prev-committing;
+    callback m-prev-confirm(bool);            // apply_upgrades
+    callback m-prev-cancel();
+    // One-click compat fix
+    callback m-apply-fix(string, string, string); // kind, target, arg
     in property <[PinnedPill]> m-pinned;
     in property <int> m-perf-missing;
     in property <bool> m-preset-available;

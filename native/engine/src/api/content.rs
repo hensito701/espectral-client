@@ -46,9 +46,11 @@ use serde_json::Value;
 
 use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult};
+use crate::fabric_compat::ModCompatReport;
 use crate::types::{
     ClientInfo, ClientPatch, CreateInstanceRequest, ImportResult, ImportSource, InstanceDetail, InstanceMeta,
-    InstancePatch, InstanceSummary, Loader, ModEntry, ModInstallPlan, ModPreset, ModPresetInfo, ModrinthSearchResult,
+    InstancePatch, InstanceSummary, Loader, ModEntry, ModInstallPlan, ModInstallPreview, ModPreset, ModPresetInfo,
+    ModRef, ModVersionItem, ModVersionSwitchPlan, ModVersionSwitchResult, ModVersionsReply, ModrinthSearchResult,
     OptionsPair, OverwritePolicy, ServerEntry, ServerStatus,
 };
 
@@ -115,6 +117,8 @@ pub struct ContentState {
     pub(crate) version_meta: Mutex<HashMap<String, Value>>,
     /// mods.mjs bestVersionCache: `project\0version\0loader` -> best version (None = no listed build).
     pub(crate) best_version: Mutex<HashMap<String, Option<Value>>>,
+    /// sha1 -> Modrinth version JSON (None = confirmed unknown on Modrinth).
+    pub(crate) sha1_versions: Mutex<HashMap<String, Option<Value>>>,
     /// mods.mjs brandingManifestCache: dir -> branding.json (None = absent/broken).
     pub(crate) branding_manifest: Mutex<HashMap<PathBuf, Option<Value>>>,
     /// servers.mjs cache: host -> (fetched_at ms, status).
@@ -406,6 +410,117 @@ impl Engine {
             .await
             .map_err(|e| send_error(e, 500, fallback))?;
         Ok(ModToggleReply { filename, enabled })
+    }
+
+    /// DELETE .../mods/:filename -> `{ deleted }` (409 `ALREADY_RUNNING`, 400 `branding_protected`).
+    pub async fn delete_mod(&self, name: &str, filename: &str) -> EngineResult<DeletedReply> {
+        if self.active_instances().contains(name) {
+            return Err(EngineError::conflict(
+                "ALREADY_RUNNING",
+                format!("instance '{name}' is running; stop it before deleting mods"),
+            ));
+        }
+        let deleted = crate::mods::delete_mod(self, name, filename)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_delete_failed"))?;
+        Ok(DeletedReply { deleted, trash: None })
+    }
+
+    /// Local Fabric compatibility check (`fabric.mod.json` + nested jars, zero network).
+    pub async fn check_mods_compat(&self, name: &str) -> EngineResult<ModCompatReport> {
+        crate::fabric_compat::check_instance_mods_compat(self, name)
+            .await
+            .map_err(|e| send_error(e, 500, "mods_compat_failed"))
+    }
+
+    /// List available Modrinth versions for an installed mod (release/beta/alpha).
+    pub async fn list_mod_versions(&self, name: &str, filename: &str) -> EngineResult<ModVersionsReply> {
+        crate::mods::list_mod_versions(self, name, filename)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_versions_failed"))
+    }
+
+    /// Preview switching an installed mod to `target_version_id`, including
+    /// companion updates (e.g. Iris when Sodium changes).
+    pub async fn plan_mod_version_switch(
+        &self,
+        name: &str,
+        filename: &str,
+        target_version_id: &str,
+    ) -> EngineResult<ModVersionSwitchPlan> {
+        crate::mods::plan_mod_version_switch(self, name, filename, target_version_id)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_switch_plan_failed"))
+    }
+
+    /// Find the best Modrinth version of an installed mod that satisfies a Fabric version predicate.
+    pub async fn find_mod_version_for_predicate(
+        &self,
+        name: &str,
+        filename: &str,
+        predicate: &str,
+    ) -> EngineResult<Option<ModVersionItem>> {
+        crate::mods::find_mod_version_for_predicate(self, name, filename, predicate)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_versions_failed"))
+    }
+
+    /// Apply a mod version switch (+ optional companion updates). Blocked while running.
+    pub async fn apply_mod_version_switch(
+        &self,
+        name: &str,
+        filename: &str,
+        target_version_id: &str,
+        include_companions: bool,
+    ) -> EngineResult<ModVersionSwitchResult> {
+        if self.active_instances().contains(name) {
+            return Err(EngineError::conflict(
+                "ALREADY_RUNNING",
+                format!("instance '{name}' is running; stop it before changing mod versions"),
+            ));
+        }
+        crate::mods::apply_mod_version_switch(self, name, filename, target_version_id, include_companions)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_switch_failed"))
+    }
+
+    /// Pre-install compatibility & upgrade preview for installing a Modrinth project.
+    pub async fn preview_modrinth_install(&self, name: &str, project_id: &str) -> EngineResult<ModInstallPreview> {
+        if project_id.is_empty() {
+            return Err(EngineError::api_verbatim(400, "modrinth_project_id_required", "missing project_id"));
+        }
+        crate::mods::preview_modrinth_install(self, name, project_id)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_preview_failed"))
+    }
+
+    /// Commit a Modrinth install, optionally applying dependency/companion upgrades first.
+    pub async fn commit_modrinth_install(
+        &self,
+        name: &str,
+        project_id: &str,
+        apply_upgrades: bool,
+        force: bool,
+    ) -> EngineResult<ModInstallPlan> {
+        if project_id.is_empty() {
+            return Err(EngineError::api_verbatim(400, "modrinth_project_id_required", "missing project_id"));
+        }
+        if self.active_instances().contains(name) {
+            return Err(EngineError::conflict(
+                "ALREADY_RUNNING",
+                format!("instance '{name}' is running; stop it before installing mods"),
+            ));
+        }
+        crate::mods::commit_modrinth_install(self, name, project_id, apply_upgrades, force)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_install_modrinth_failed"))
+    }
+
+    /// Resolve a Fabric mod id (e.g. `fabric-api`, `cloth-config`) to a Modrinth project.
+    pub async fn resolve_modrinth_for_mod_id(&self, name: &str, mod_id: &str) -> EngineResult<Option<ModRef>> {
+        crate::mods::resolve_modrinth_for_mod_id(self, name, mod_id)
+            .await
+            .map_err(|e| send_error(e, 502, "modrinth_lookup_failed"))
     }
 
     /// POST .../mods/install `{ preset }` -> `{ queued: true }` (background install).

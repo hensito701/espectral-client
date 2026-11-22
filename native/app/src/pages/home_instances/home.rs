@@ -81,13 +81,29 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
         if hb.get_capsule_instance() != name {
             hb.set_capsule_instance(name.clone());
             hb.set_aot_chip_kind("".into());
+            hb.set_compat_error_count(0);
+            hb.set_compat_summary("".into());
         }
         launchlog::set_capsule_instance(&ui, &name);
         update_capsule_running(&ui);
         refresh_aot(name.as_str());
+        refresh_compat(name.as_str());
     });
     let c = ctx.clone();
-    hb.on_launch(move |name| launch(&c, name.to_string()));
+    hb.on_launch(move |name| launch(&c, name.to_string(), false));
+    let c = ctx.clone();
+    hb.on_compat_launch_anyway(move |name| launch(&c, name.to_string(), true));
+    let w = ui.as_weak();
+    hb.on_compat_open_mods(move |name| {
+        if let Some(ui) = w.upgrade() {
+            let route = if name.is_empty() {
+                "#/mods".to_string()
+            } else {
+                format!("#/mods?instance={}", router::encode_component(&name))
+            };
+            router::navigate(&ui, &route);
+        }
+    });
     let c = ctx.clone();
     hb.on_stop(move |name| {
         let name = name.to_string();
@@ -239,9 +255,18 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
                 hb.set_greeting(greeting_bucket());
                 ensure_selection(ui);
                 update_servers(ui);
+                let sel = hb.get_selected_instance().to_string();
+                if !sel.is_empty() {
+                    refresh_compat(&sel);
+                }
             }
             // the instances grid picks its tile through the same selection
-            Page::Instances | Page::Instance => ensure_selection(ui),
+            Page::Instances | Page::Instance => {
+                ensure_selection(ui);
+                if route.page == Page::Instance && !route.instance.is_empty() {
+                    refresh_compat(&route.instance);
+                }
+            }
             _ => {}
         }
     });
@@ -408,7 +433,51 @@ fn update_aot_chip(ui: &AppWindow) {
     hb.set_aot_chip_title(title.into());
 }
 
-fn launch(c: &Ctx, name: String) {
+fn launch(c: &Ctx, name: String, force_compat: bool) {
+    let Some(ui) = c.ui() else { return };
+    let hb = ui.global::<HomeBridge>();
+    if name.is_empty()
+        || !hb.get_launching().is_empty()
+        || hb.get_capsule_running() && hb.get_capsule_instance() == name.as_str()
+    {
+        return;
+    }
+    if !force_compat {
+        let c_ok = c.clone();
+        let c_err = c.clone();
+        let n_check = name.clone();
+        let n_err = name.clone();
+        c.call_with(
+            move |e| async move { e.check_mods_compat(&n_check).await },
+            move |ui, report| {
+                let hb = ui.global::<HomeBridge>();
+                hb.set_compat_instance(name.as_str().into());
+                hb.set_compat_error_count(report.error_count as i32);
+                if report.error_count > 0 {
+                    let lines: Vec<SharedString> = report
+                        .issues
+                        .iter()
+                        .filter(|i| i.severity == espectral_engine::fabric_compat::CompatSeverity::Error)
+                        .map(|i| SharedString::from(format!("{}: {}", i.mod_name, format_compat_issue_short(i))))
+                        .collect();
+                    hb.set_compat_modal_instance(name.as_str().into());
+                    hb.set_compat_modal_issues(ModelRc::new(VecModel::from(lines)));
+                    hb.set_compat_modal_open(true);
+                    return;
+                }
+                start_launch(&c_ok, name);
+            },
+            move |_ui, _err| {
+                // Never block launch if the local compat scan unexpectedly fails.
+                start_launch(&c_err, n_err);
+            },
+        );
+        return;
+    }
+    start_launch(c, name);
+}
+
+fn start_launch(c: &Ctx, name: String) {
     let Some(ui) = c.ui() else { return };
     let hb = ui.global::<HomeBridge>();
     if name.is_empty()
@@ -440,6 +509,77 @@ fn launch(c: &Ctx, name: String) {
             toast::engine_error(&e);
         },
     );
+}
+
+/// Re-run the local Fabric compatibility check for the capsule instance.
+pub fn refresh_compat(name: &str) {
+    let Some(c) = cx() else { return };
+    if name.is_empty() {
+        if let Some(ui) = c.ui() {
+            let hb = ui.global::<HomeBridge>();
+            hb.set_compat_instance("".into());
+            hb.set_compat_error_count(0);
+            hb.set_compat_summary("".into());
+        }
+        return;
+    }
+    let n = name.to_string();
+    c.call_with(
+        move |e| async move { Ok((n.clone(), e.check_mods_compat(&n).await.ok())) },
+        |ui, (n, report)| {
+            let hb = ui.global::<HomeBridge>();
+            if hb.get_capsule_instance() != n.as_str() {
+                return;
+            }
+            hb.set_compat_instance(n.as_str().into());
+            match report {
+                Some(r) if r.error_count > 0 => {
+                    hb.set_compat_error_count(r.error_count as i32);
+                    let first = r
+                        .issues
+                        .iter()
+                        .find(|i| i.severity == espectral_engine::fabric_compat::CompatSeverity::Error)
+                        .map(|i| format!("{}: {}", i.mod_name, format_compat_issue_short(i)))
+                        .unwrap_or_default();
+                    hb.set_compat_summary(first.into());
+                }
+                _ => {
+                    hb.set_compat_error_count(0);
+                    hb.set_compat_summary("".into());
+                }
+            }
+        },
+        |_ui, _e| {},
+    );
+}
+
+fn format_compat_issue_short(i: &espectral_engine::fabric_compat::ModCompatIssue) -> String {
+    use espectral_engine::fabric_compat::{format_predicate_human, CompatIssueKind};
+    let es = i18n::lang() == i18n::Lang::Es;
+    let req = format_predicate_human(&i.required, es);
+    let actual = i.actual.as_deref().unwrap_or("?");
+    match i.kind {
+        CompatIssueKind::MinecraftVersion => i18n::tf("mods.compatMc", &[("req", &req), ("actual", actual)]),
+        CompatIssueKind::LoaderVersion => i18n::tf("mods.compatLoader", &[("req", &req), ("actual", actual)]),
+        CompatIssueKind::JavaVersion => i18n::tf("mods.compatJava", &[("req", &req), ("actual", actual)]),
+        CompatIssueKind::MissingDep => {
+            if i.required.is_empty() || i.required == "*" {
+                i18n::tf("mods.compatMissing", &[("mod", &i.target_name)])
+            } else {
+                i18n::tf("mods.compatMissingVer", &[("mod", &i.target_name), ("req", &req)])
+            }
+        }
+        CompatIssueKind::DisabledDep => i18n::tf("mods.compatDisabled", &[("mod", &i.target_name)]),
+        CompatIssueKind::IncompatibleDep => {
+            i18n::tf("mods.compatIncompat", &[("mod", &i.target_name), ("req", &req), ("actual", actual)])
+        }
+        CompatIssueKind::BreaksMod => i18n::tf("mods.compatBreaks", &[("mod", &i.target_name)]),
+        CompatIssueKind::ConflictsMod => i18n::tf("mods.compatConflicts", &[("mod", &i.target_name)]),
+        CompatIssueKind::DuplicateMod => {
+            i18n::tf("mods.compatDuplicate", &[("mod", &i.target_name), ("actual", actual)])
+        }
+        CompatIssueKind::ServerOnly => i18n::t("mods.compatServerOnly"),
+    }
 }
 
 fn dryrun(c: &Ctx, name: String) {

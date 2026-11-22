@@ -69,6 +69,9 @@ pub fn fake_mods() -> Vec<ModEntry> {
         size: Some(1_245_184),
         enabled,
         installed: true,
+        project_id: None,
+        mod_id: None,
+        display_name: None,
     };
     vec![
         m("sodium-fabric-0.6.13+mc26.3.jar", Some("sodium"), Some("0.6.13"), true),

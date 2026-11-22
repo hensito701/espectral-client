@@ -557,6 +557,15 @@ pub struct ModEntry {
     pub size: Option<u64>,
     pub enabled: bool,
     pub installed: bool,
+    /// Modrinth project id (resolved via pin table or SHA-1 lookup).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    /// Mod id from `fabric.mod.json` (local, zero network).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mod_id: Option<String>,
+    /// Human display name from `fabric.mod.json` (e.g. "Sodium", "Mod Menu").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -727,7 +736,7 @@ pub struct VersionChangePlan {
     pub mods: Vec<VersionChangeMod>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModRename {
     pub from: String,
     pub to: String,
@@ -808,13 +817,13 @@ pub struct ModrinthSearchResult {
     pub limit: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModRef {
     pub project_id: String,
     pub title: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModDependencyRef {
     pub project_id: String,
     pub title: String,
@@ -830,6 +839,96 @@ pub struct ModInstallPlan {
     pub missing: Vec<ModRef>,
     pub optional: Vec<ModRef>,
     pub conflicts: Vec<ModRef>,
+}
+
+/// One selectable Modrinth version for an installed mod.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModVersionItem {
+    pub version_id: String,
+    pub version_number: String,
+    pub name: String,
+    /// `"release"` | `"beta"` | `"alpha"`
+    pub version_type: String,
+    pub date_published: String,
+    pub filename: String,
+    pub installed: bool,
+}
+
+/// Available versions for an installed mod (`Engine::list_mod_versions`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModVersionsReply {
+    pub project_id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_version_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_version_number: Option<String>,
+    pub versions: Vec<ModVersionItem>,
+}
+
+/// A companion mod that moves alongside a version switch (e.g. Iris when Sodium changes).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompanionChange {
+    pub filename: String,
+    pub project_id: String,
+    pub title: String,
+    pub from_version: String,
+    pub to_version_id: String,
+    pub to_version_number: String,
+    pub to_filename: String,
+    /// `"companion"` | `"required"` | `"compat"`
+    pub reason: String,
+}
+
+/// Preview of switching a mod to another version (`Engine::plan_mod_version_switch`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModVersionSwitchPlan {
+    pub filename: String,
+    pub project_id: String,
+    pub title: String,
+    pub from_version: String,
+    pub to_version_id: String,
+    pub to_version_number: String,
+    pub to_filename: String,
+    pub companions: Vec<CompanionChange>,
+    pub warnings: Vec<String>,
+}
+
+/// Result of applying a mod version switch (`Engine::apply_mod_version_switch`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModVersionSwitchResult {
+    pub changed: Vec<ModRename>,
+    pub companions_changed: Vec<String>,
+}
+
+/// An existing mod that needs to upgrade before installing a new Modrinth mod.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModInstallUpgrade {
+    pub filename: String,
+    pub project_id: String,
+    pub title: String,
+    pub from_version: String,
+    pub to_version_id: String,
+    pub to_version_number: String,
+    pub to_filename: String,
+}
+
+/// Pre-install compatibility preview (`Engine::preview_modrinth_install`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModInstallPreview {
+    pub project_id: String,
+    pub title: String,
+    pub version_id: String,
+    pub version_number: String,
+    pub filename: String,
+    pub dependencies: Vec<ModDependencyRef>,
+    pub upgrades: Vec<ModInstallUpgrade>,
+    pub enable_disabled: Vec<String>,
+    pub missing: Vec<ModRef>,
+    pub optional: Vec<ModRef>,
+    pub conflicts: Vec<ModRef>,
+    pub compat_issues: Vec<crate::fabric_compat::ModCompatIssue>,
+    pub needs_confirmation: bool,
 }
 
 // =========================================================================

@@ -788,6 +788,9 @@ async fn list_mods_scan(engine: &Engine, inst: &InstanceMeta) -> Vec<ModEntry> {
             size: Some(size),
             enabled: is_enabled_jar(&f),
             installed: true,
+            project_id: None,
+            mod_id: None,
+            display_name: None,
         });
     }
     out.sort_by(|a, b| locale_compare(&a.filename, &b.filename));

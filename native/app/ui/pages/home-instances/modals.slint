@@ -368,3 +368,73 @@ export component DryRunModal inherits Rectangle {
         }
     }
 }
+
+/// Pre-launch warning modal shown when clicking Jugar on a Fabric instance
+/// with blocking mod compatibility errors.
+export component ModCompatLaunchModal inherits Rectangle {
+    Modal {
+        open: HomeBridge.compat-modal-open;
+        show-close: false;
+        dialog-width: 540px;
+        close => { HomeBridge.compat-modal-open = false; }
+
+        ModalHead {
+            title: T.tr("home.compatModalTitle");
+            subtitle: T.tr("home.compatModalSubtitle");
+            badge: HomeBridge.compat-modal-instance;
+            close => { HomeBridge.compat-modal-open = false; }
+        }
+        VerticalLayout {
+            padding-left: Theme.space-6;
+            padding-right: Theme.space-6;
+            padding-top: Theme.space-5;
+            padding-bottom: Theme.space-5;
+            spacing: Theme.space-2;
+            for line in HomeBridge.compat-modal-issues: Rectangle {
+                border-radius: Theme.radius-md;
+                background: Theme.accent-red.with-alpha(0.10);
+                border-width: Theme.hairline;
+                border-color: Theme.accent-red.with-alpha(0.45);
+                HorizontalLayout {
+                    padding: Theme.space-3;
+                    spacing: Theme.space-2;
+                    VerticalLayout {
+                        alignment: start;
+                        Icon { data: Icons.alert-circle; size: 15px; color: Theme.accent-red; }
+                    }
+                    SelectableText {
+                        text: line;
+                        color: Theme.text;
+                        font-size: Theme.text-xs;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
+                    }
+                }
+            }
+        }
+        ModalFoot {
+            Btn {
+                variant: BtnVariant.ghost;
+                text: T.tr("home.compatLaunchAnyway");
+                clicked => {
+                    HomeBridge.compat-modal-open = false;
+                    HomeBridge.compat-launch-anyway(HomeBridge.compat-modal-instance);
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Btn {
+                variant: BtnVariant.secondary;
+                text: T.tr("home.wizardCancelBtn");
+                clicked => { HomeBridge.compat-modal-open = false; }
+            }
+            Btn {
+                variant: BtnVariant.primary;
+                text: T.tr("home.compatGoToMods");
+                clicked => {
+                    HomeBridge.compat-modal-open = false;
+                    HomeBridge.compat-open-mods(HomeBridge.compat-modal-instance);
+                }
+            }
+        }
+    }
+}

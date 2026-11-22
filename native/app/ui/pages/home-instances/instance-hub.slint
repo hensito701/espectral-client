@@ -330,7 +330,7 @@ component ModsTab inherits HorizontalLayout {
                 Btn {
                     variant: BtnVariant.primary;
                     text: T.tr("instance.goToMods");
-                    clicked => { Router.navigate("#/mods"); }
+                    clicked => { HomeBridge.compat-open-mods(HomeBridge.hub.name); }
                 }
                 Btn {
                     variant: BtnVariant.secondary;

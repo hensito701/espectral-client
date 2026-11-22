@@ -218,7 +218,9 @@ export component HomePage inherits Rectangle {
                 instance-name: HomeBridge.selected-instance;
                 picker: true;
                 floating: true;
-                width: min(760px, root.width - 2 * Theme.space-6);
+                // Room for the status column (● Minecraft / mod-problem chip)
+                // between the two pickers and Jugar.
+                width: min(860px, root.width - 2 * Theme.space-6);
                 height: 88px;
             }
         }

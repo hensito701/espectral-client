@@ -57,6 +57,7 @@ pub mod launch;
 pub mod version_change;
 
 // ---- content ---------------------------------------------------------------
+pub mod fabric_compat;
 pub mod import;
 pub mod instances;
 pub mod mods;
