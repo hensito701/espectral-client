@@ -244,9 +244,9 @@ pub fn sign_grant(payload: &Value, kid: &str, key: &SigningKey) -> String {
 
 /// Fresh random signing key (tests).
 pub fn generate_signing_key() -> SigningKey {
-    use rand::RngCore;
+    use rand::Rng;
     let mut seed = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut seed);
+    rand::rng().fill_bytes(&mut seed);
     SigningKey::from_bytes(&seed)
 }
 

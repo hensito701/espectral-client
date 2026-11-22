@@ -22,7 +22,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use indexmap::{IndexMap, IndexSet};
-use rand::RngCore;
+use rand::Rng;
 use serde_json::{json, Value};
 
 use crate::api::accounts_skins::{BridgePlayer, BridgeVisibleReply};
@@ -39,7 +39,7 @@ pub const MAX_VISIBLE_INPUT: usize = 1000;
 /// Per-launch bridge token: 32 random bytes, hex.
 pub fn mint_token() -> String {
     let mut b = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut b);
+    rand::rng().fill_bytes(&mut b);
     hex::encode(b)
 }
 

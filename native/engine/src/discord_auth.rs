@@ -21,7 +21,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use rand::RngCore;
+use rand::Rng;
 use serde_json::{json, Map, Value};
 
 use crate::api::identity_discord::{DiscordCallbackOutcome, DiscordClaim, DiscordUser};
@@ -123,7 +123,7 @@ pub fn discord_client_id(engine: &Engine) -> String {
 
 fn random_state() -> String {
     let mut b = [0u8; 16];
-    rand::thread_rng().fill_bytes(&mut b);
+    rand::rng().fill_bytes(&mut b);
     hex::encode(b)
 }
 

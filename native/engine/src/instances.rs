@@ -19,7 +19,7 @@
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
-use rand::Rng;
+use rand::RngExt;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -157,14 +157,14 @@ pub fn hue_distance(a: i64, b: i64) -> i64 {
 /// 50 tries, then anything.
 pub fn pick_distinct_hue(existing: &[i64]) -> i64 {
     let taken: Vec<i64> = existing.iter().copied().filter(|h| is_valid_hue(*h)).collect();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..50 {
-        let h = rng.gen_range(0..360);
+        let h = rng.random_range(0..360);
         if taken.iter().all(|t| hue_distance(h, *t) >= 30) {
             return h;
         }
     }
-    rng.gen_range(0..360)
+    rng.random_range(0..360)
 }
 
 /// Node `path.isAbsolute` for the host platform (win32 also accepts a

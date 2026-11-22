@@ -20,7 +20,7 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
 
 use base64::Engine as _;
-use rand::RngCore;
+use rand::Rng;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -148,12 +148,12 @@ pub fn read_token(data_dir: &Path) -> Option<String> {
 /// could be observed as a blank token. Rotating is how the user revokes access.
 pub fn write_token(data_dir: &Path) -> EngineResult<String> {
     let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     let token = hex::encode(bytes);
     let file = token_path(data_dir);
     std::fs::create_dir_all(data_dir)?;
     let mut suffix = [0u8; 4];
-    rand::thread_rng().fill_bytes(&mut suffix);
+    rand::rng().fill_bytes(&mut suffix);
     let tmp = data_dir.join(format!("{TOKEN_FILE}.{}.{}.tmp", std::process::id(), hex::encode(suffix)));
     let result = (|| -> std::io::Result<()> {
         let mut opts = std::fs::OpenOptions::new();

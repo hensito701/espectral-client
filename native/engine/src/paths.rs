@@ -312,12 +312,12 @@ pub fn write_json_atomic(path: &Path, value: &impl serde::Serialize) -> std::io:
 /// The temp file is removed when anything fails. Windows: the file inherits
 /// the data directory's ACL (per-user under `%LOCALAPPDATA%`).
 pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    use rand::RngCore;
+    use rand::Rng;
     use std::io::Write;
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent)?;
     let mut suffix = [0u8; 8];
-    rand::thread_rng().fill_bytes(&mut suffix);
+    rand::rng().fill_bytes(&mut suffix);
     let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
     name.push(format!(".{}.{}.tmp", std::process::id(), hex::encode(suffix)));
     let tmp = parent.join(name);

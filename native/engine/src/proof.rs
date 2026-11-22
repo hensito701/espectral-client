@@ -17,7 +17,7 @@
 //!
 //! HMAC-SHA256 (RFC 2104); keys are the tokens' ASCII bytes; hex is lowercase.
 
-use rand::RngCore;
+use rand::Rng;
 use sha2::{Digest, Sha256};
 
 pub const BRIDGE_ID_HEADER: &str = "x-espectral-bridge-id";
@@ -56,7 +56,7 @@ pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 /// 16 random bytes as 32 lowercase hex.
 pub fn mint_nonce() -> String {
     let mut b = [0u8; 16];
-    rand::thread_rng().fill_bytes(&mut b);
+    rand::rng().fill_bytes(&mut b);
     hex::encode(b)
 }
 

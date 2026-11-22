@@ -24,7 +24,7 @@
 use std::path::PathBuf;
 
 use md5::{Digest, Md5};
-use rand::Rng;
+use rand::RngExt;
 use serde_json::{Map, Value};
 
 use crate::api::DeletedReply;
@@ -53,14 +53,14 @@ fn hue_distance(a: i64, b: i64) -> i64 {
 pub fn pick_avatar_color(accounts: &[Account]) -> i64 {
     let taken: Vec<i64> =
         accounts.iter().filter_map(|a| a.avatar_color).filter(|c| is_valid_avatar_color(*c)).collect();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..50 {
-        let h: i64 = rng.gen_range(0..360);
+        let h: i64 = rng.random_range(0..360);
         if taken.iter().all(|t| hue_distance(h, *t) >= 30) {
             return h;
         }
     }
-    rng.gen_range(0..360)
+    rng.random_range(0..360)
 }
 
 /// Java-compatible offline UUID: md5("OfflinePlayer:" + name), version 3, RFC 4122 variant.
