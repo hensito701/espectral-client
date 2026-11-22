@@ -89,7 +89,7 @@ export component GlassCard inherits Rectangle {
 
             if root.title != "" || root.subtitle != "": VerticalLayout {
                 spacing: 2px;
-                if root.title != "": SelectableText {
+                if root.title != "": Text {
                     text: root.title;
                     color: Theme.title-color;
                     font-family: Theme.font-title;
@@ -97,9 +97,10 @@ export component GlassCard inherits Rectangle {
                     font-weight: 600;
                     wrap: word-wrap;
                 }
-                if root.subtitle != "": SelectableText {
+                if root.subtitle != "": Text {
                     text: root.subtitle;
                     color: Theme.muted;
+                    font-family: Theme.font-body;
                     font-size: Theme.text-xs;
                     font-weight: 500;
                     wrap: word-wrap;

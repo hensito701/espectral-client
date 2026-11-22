@@ -5,7 +5,7 @@
 // LAST child of the page root Rectangle and open it with
 // `LibraryBridge.mrpack-open = true;` (Home's "Importar modpack" button).
 
-import { Theme, T, Modal, ModalFooter, Btn, BtnVariant, McTitle, Field, Slider, ProgressBar, ProgressThickness, Spinner, Emoji, Util, SelectableText } from "../../widgets.slint";
+import { Theme, T, Modal, ModalFooter, Btn, EmojiBtn, BtnVariant, McTitle, Field, Slider, ProgressBar, ProgressThickness, Spinner, Emoji, Util, SelectableText } from "../../widgets.slint";
 import { LibraryBridge } from "api.slint";
 import { VText } from "parts.slint";
 
@@ -124,7 +124,7 @@ component FormView inherits VerticalLayout {
                     vertical-alignment: center;
                 }
             }
-            Btn {
+            EmojiBtn {
                 variant: BtnVariant.secondary;
                 emoji: "📁";
                 loading: LibraryBridge.mp-browsing;
@@ -188,7 +188,7 @@ export component MrpackModal inherits Modal {
         alignment: space-between;
         HorizontalLayout {
             alignment: start;
-            if LibraryBridge.mp-phase == 4: Btn {
+            if LibraryBridge.mp-phase == 4: EmojiBtn {
                 emoji: "🚀";
                 text: T.tr("home.mrpackGoToInstance");
                 clicked => { LibraryBridge.mp-goto(); }
@@ -208,7 +208,7 @@ export component MrpackModal inherits Modal {
                 text: T.tr("home.wizardCancelBtn");
                 clicked => { LibraryBridge.mp-close(); }
             }
-            if LibraryBridge.mp-phase != 4: Btn {
+            if LibraryBridge.mp-phase != 4: EmojiBtn {
                 emoji: "📥";
                 loading: root.working;
                 enabled: LibraryBridge.mp-path != "" && !root.working;

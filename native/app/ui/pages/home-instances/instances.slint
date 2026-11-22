@@ -2,7 +2,7 @@
 // instance" and "import modpack". Home keeps only the picker in its play bar;
 // this is where instances are browsed and managed.
 
-import { Theme, T, AppState, Shell, PageScaffold, McTitle, Btn, BtnVariant, Icons, SelectableText } from "../../widgets.slint";
+import { Theme, T, AppState, Shell, PageScaffold, McTitle, Btn, EmojiBtn, BtnVariant, Icons, SelectableText } from "../../widgets.slint";
 import { HorizonRail } from "horizon.slint";
 import { LibraryBridge } from "../library-mods/api.slint";
 
@@ -30,7 +30,7 @@ export component InstancesPage inherits Rectangle {
             }
             VerticalLayout {
                 alignment: center;
-                Btn {
+                EmojiBtn {
                     variant: BtnVariant.secondary;
                     emoji: "📦";
                     text: T.tr("home.importModpack");
