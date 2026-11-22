@@ -65,6 +65,7 @@ pub mod loader_meta;
 pub mod mods;
 pub mod mrpack;
 pub mod news;
+pub mod packs;
 pub mod servers;
 
 // ---- accounts-skins --------------------------------------------------------

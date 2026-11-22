@@ -581,8 +581,30 @@ pub async fn import_profile(
     policy: OverwritePolicy,
     merge_optionslc: bool,
 ) -> EngineResult<ImportResult> {
+    import_profile_with_packs(engine, instance, source_id, policy, merge_optionslc, false).await
+}
+
+/// [`import_profile`] that can also copy the source's resource packs
+/// (`ImportProfileRequest::include_resourcepacks`).
+pub async fn import_profile_with_packs(
+    engine: &Engine,
+    instance: &InstanceMeta,
+    source_id: &str,
+    policy: OverwritePolicy,
+    merge_optionslc: bool,
+    include_resourcepacks: bool,
+) -> EngineResult<ImportResult> {
     let target = engine.paths().instance_dir(&instance.name);
-    import_profile_into(engine, instance, &target, source_id, policy, merge_optionslc).await
+    import_profile_into_with_packs(
+        engine,
+        instance,
+        &target,
+        source_id,
+        policy,
+        merge_optionslc,
+        include_resourcepacks,
+    )
+    .await
 }
 
 /// importProfile with an explicit target dir (JS `instance.dir`).
@@ -593,6 +615,18 @@ pub async fn import_profile_into(
     source_id: &str,
     policy: OverwritePolicy,
     merge_optionslc: bool,
+) -> EngineResult<ImportResult> {
+    import_profile_into_with_packs(engine, instance, target_dir, source_id, policy, merge_optionslc, false).await
+}
+
+async fn import_profile_into_with_packs(
+    engine: &Engine,
+    instance: &InstanceMeta,
+    target_dir: &Path,
+    source_id: &str,
+    policy: OverwritePolicy,
+    merge_optionslc: bool,
+    include_resourcepacks: bool,
 ) -> EngineResult<ImportResult> {
     if instance.name.is_empty() {
         return Err(import_error(400, "BAD_INSTANCE", "instance is required"));
@@ -643,6 +677,10 @@ pub async fn import_profile_into(
         copied.push(file.to_string());
     }
 
+    if include_resourcepacks {
+        import_resource_packs(&source_root, target_dir, &policy, &mut copied, &mut skipped)?;
+    }
+
     let mut lunar = None;
     if source.kind == ImportSourceKind::Lunar {
         lunar = source.lunar.clone();
@@ -676,6 +714,72 @@ pub async fn import_profile_into(
         0
     };
     Ok(ImportResult { copied, skipped, servers_parsed, options_keys, lunar })
+}
+
+/// Copy the source's resource packs into `<target>/resourcepacks/`: the ones its options.txt enables,
+/// or every pack in its folder when options.txt names none. An existing pack follows the overwrite
+/// policy; a folder pack is replaced only under `if-older`.
+fn import_resource_packs(
+    source_root: &Path,
+    target_dir: &Path,
+    policy: &OverwritePolicy,
+    copied: &mut Vec<String>,
+    skipped: &mut Vec<ImportSkipped>,
+) -> EngineResult<()> {
+    let src_dir = source_root.join("resourcepacks");
+    let Ok(rd) = std::fs::read_dir(&src_dir) else { return Ok(()) };
+    let enabled = enabled_pack_names(source_root);
+    let dst_dir = target_dir.join("resourcepacks");
+    for entry in rd.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let src = entry.path();
+        let is_pack = src.is_dir() || name.to_ascii_lowercase().ends_with(".zip");
+        if !is_pack || crate::packs::safe_basename(&name).is_err() {
+            continue;
+        }
+        if enabled.as_ref().is_some_and(|names| !names.contains(&name)) {
+            continue;
+        }
+        let rel = format!("resourcepacks/{name}");
+        let dst = dst_dir.join(&name);
+        if dst.exists() {
+            match policy {
+                OverwritePolicy::Never => {
+                    let reason = "target already exists and overwrite_policy is \"never\"";
+                    skipped.push(ImportSkipped { file: rel, reason: reason.into() });
+                    continue;
+                }
+                OverwritePolicy::IfOlder => {
+                    if mtime(&src) <= mtime(&dst) {
+                        skipped.push(ImportSkipped { file: rel, reason: "source is not newer than target".into() });
+                        continue;
+                    }
+                    if dst.is_dir() {
+                        std::fs::remove_dir_all(&dst)?;
+                    } else {
+                        std::fs::remove_file(&dst)?;
+                    }
+                }
+            }
+        }
+        std::fs::create_dir_all(&dst_dir)?;
+        if src.is_dir() {
+            crate::packs::copy_tree(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)?;
+        }
+        copied.push(rel);
+    }
+    Ok(())
+}
+
+/// Pack names `<source>/options.txt` enables (`file/<name>` entries); None when it names none.
+fn enabled_pack_names(source_root: &Path) -> Option<Vec<String>> {
+    let text = std::fs::read(source_root.join("options.txt")).ok()?;
+    let parsed = parse_options_txt(&String::from_utf8_lossy(&text));
+    let value = parsed.entries.iter().find(|e| e.key.as_deref() == Some("resourcePacks"))?.value.clone()?;
+    let list: Vec<String> = serde_json::from_str(&value).ok()?;
+    Some(list.iter().filter_map(|e| e.strip_prefix("file/").map(str::to_string)).collect())
 }
 
 /// Persist memory_mb into `<target>/instance.json`, preserving every other key.
@@ -868,5 +972,30 @@ mod tests {
         let json: Value =
             serde_json::from_str(&std::fs::read_to_string(target.join("instance.json")).unwrap()).unwrap();
         assert_eq!((json["memory_mb"].clone(), json["keep"].clone()), (Value::from(6144), Value::from(1)));
+    }
+
+    #[tokio::test]
+    async fn imports_resourcepacks_when_enabled() {
+        let (d, e) = temp_engine();
+        let r = sandbox_roots(d.path());
+        e.update_content_settings(|s| s.import_roots = Some(r.clone()));
+        let source = r.appdata.join(".minecraft");
+        std::fs::create_dir_all(source.join("resourcepacks")).unwrap();
+        std::fs::write(source.join("options.txt"), "version:3700\nresourcePacks:[\"vanilla\",\"file/Enabled.zip\"]\n")
+            .unwrap();
+        std::fs::write(source.join("resourcepacks").join("Enabled.zip"), b"zip-a").unwrap();
+        std::fs::write(source.join("resourcepacks").join("Unused.zip"), b"zip-b").unwrap();
+        let inst = InstanceMeta { name: "packs-import".into(), ..Default::default() };
+        let target = e.paths().instance_dir("packs-import");
+
+        let off = import_profile_with_packs(&e, &inst, "vanilla", OverwritePolicy::Never, false, false).await.unwrap();
+        assert!(!off.copied.iter().any(|c| c.starts_with("resourcepacks/")));
+        assert!(!target.join("resourcepacks").exists());
+
+        let on = import_profile_with_packs(&e, &inst, "vanilla", OverwritePolicy::Never, false, true).await.unwrap();
+        let packs: Vec<&String> = on.copied.iter().filter(|c| c.starts_with("resourcepacks/")).collect();
+        assert_eq!(packs, vec![&"resourcepacks/Enabled.zip".to_string()]);
+        assert_eq!(std::fs::read(target.join("resourcepacks").join("Enabled.zip")).unwrap(), b"zip-a");
+        assert!(!target.join("resourcepacks").join("Unused.zip").exists());
     }
 }

@@ -127,6 +127,7 @@ pub async fn plan_version_change(
         backup_worlds: downgrade && has_worlds(engine, &inst),
         espectral_menu: crate::mods::supports_branding(engine, &t.version, t.loader),
         mods,
+        resource_packs: crate::packs::version_change_packs(engine, &inst, &t.version).await,
     })
 }
 

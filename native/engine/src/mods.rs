@@ -1414,7 +1414,7 @@ fn property_value<'a>(lines: &'a [String], key: &str) -> Option<&'a str> {
 /// player's ordering and comments survive) and appending when absent. Any
 /// other occurrence is dropped: Java properties read last-wins, so a stale
 /// earlier duplicate would otherwise win over the value we just wrote.
-fn set_property(lines: &mut Vec<String>, key: &str, value: &str) {
+pub(crate) fn set_property(lines: &mut Vec<String>, key: &str, value: &str) {
     let mut last = None;
     for (i, line) in lines.iter().enumerate() {
         if parse_property_line(line).is_some_and(|(k, _)| k == key) {
@@ -2194,7 +2194,7 @@ pub async fn delete_mod(engine: &Engine, instance_name: &str, filename: &str) ->
 
 /// Batched `POST /version_files` backed by `ContentState::sha1_versions`.
 /// Network failures leave uncached hashes absent (never poisoned as None).
-async fn cached_version_files(engine: &Engine, hashes: &[String]) -> IndexMap<String, Option<Value>> {
+pub(crate) async fn cached_version_files(engine: &Engine, hashes: &[String]) -> IndexMap<String, Option<Value>> {
     let mut out = IndexMap::new();
     let mut missing = Vec::new();
     {
