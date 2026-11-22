@@ -1063,6 +1063,23 @@ fn show_plan(ui: &AppWindow, plan: VersionChangePlan) {
     hb.set_vc_warn_menu(
         if !plan.espectral_menu && !vanilla { i18n::t("instance.vcNoMenu") } else { String::new() }.into(),
     );
+    let packs = &plan.resource_packs;
+    let warn_packs = if packs.is_empty() {
+        String::new()
+    } else {
+        let shown = packs.iter().take(3).map(|p| p.display_name.as_str()).collect::<Vec<_>>().join(", ");
+        let names = if packs.len() > 3 { format!("{shown} +{}", packs.len() - 3) } else { shown };
+        let count = packs.len().to_string();
+        let mut warn = i18n::tf("instance.vcPacks", &[("count", &count), ("names", &names)]);
+        let updates = packs.iter().filter(|p| p.update_version_number.is_some()).count();
+        if updates > 0 {
+            let count = updates.to_string();
+            warn.push(' ');
+            warn.push_str(&i18n::tf("instance.vcPacksUpdates", &[("count", &count)]));
+        }
+        warn
+    };
+    hb.set_vc_warn_packs(warn_packs.into());
     let mut mods = Vec::new();
     let summary = if vanilla && !plan.mods.is_empty() {
         i18n::tf("instance.vcVanillaMods", &[("count", &plan.mods.len().to_string())])
