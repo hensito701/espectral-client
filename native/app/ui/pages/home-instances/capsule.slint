@@ -23,15 +23,18 @@ component PlayButton inherits Rectangle {
     in property <string> label;
     callback clicked();
     property <bool> hovered: touch.has-hover && enabled && !busy;
-    min-width: max(148px, row.preferred-width);
+    // Fixed width: the bar's spare room goes to the status line, not the button.
+    width: max(196px, row.preferred-width);
     height: 52px;
     border-radius: Theme.radius-md;
     opacity: enabled ? 1 : 0.45;
     background: root.running ? (root.hovered ? #c81e1e : Theme.accent-red)
         : root.hovered ? Theme.btn-fill-hover : Theme.btn-fill;
-    drop-shadow-blur: root.running ? 0px : 18px;
+    // The gold glow only under Jugar; Detener gets none (a blur-less gold copy
+    // read as a brown edge under the red button).
+    drop-shadow-blur: 18px;
     drop-shadow-offset-y: 4px;
-    drop-shadow-color: Theme.glow-play-color;
+    drop-shadow-color: root.running ? transparent : Theme.glow-play-color;
     clip: true;
     animate background { duration: Theme.dur-fast; }
     row := HorizontalLayout {
@@ -720,6 +723,7 @@ export component TelemetryCapsule inherits Rectangle {
                 }
             }
             VerticalLayout {
+                horizontal-stretch: 0;
                 alignment: center;
                 PlayButton {
                     running: root.running;
