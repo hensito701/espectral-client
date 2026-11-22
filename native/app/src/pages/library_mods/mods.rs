@@ -1453,7 +1453,7 @@ fn install_mod(project_id: String, title: String, force: bool) {
     // Pre-install compatibility & upgrade check before touching mods/
     let (pid_ok, t_ok) = (project_id.clone(), target.clone());
     c.call_with(
-        move |e| async move { e.preview_modrinth_install(&target, &project_id).await },
+        move |e| async move { e.preview_modrinth_install(&target, &project_id, None, Vec::new()).await },
         move |ui, preview| {
             if !preview.needs_confirmation {
                 commit_install(t_ok, pid_ok, false, false);
@@ -1545,7 +1545,9 @@ fn commit_install(target: String, project_id: String, apply_upgrades: bool, forc
     }
     let (pid, pid_err, inst) = (project_id.clone(), project_id.clone(), target.clone());
     c.call_with(
-        move |e| async move { e.commit_modrinth_install(&target, &project_id, apply_upgrades, force).await },
+        move |e| async move {
+            e.commit_modrinth_install(&target, &project_id, apply_upgrades, force, None, Vec::new()).await
+        },
         move |ui, plan| {
             let b = ui.global::<LibraryBridge>();
             b.set_m_prev_committing(false);
@@ -1809,6 +1811,8 @@ mod tests {
             project_id: Some("YL57xq9U".into()),
             mod_id: Some("iris".into()),
             display_name: Some("Iris".into()),
+            pinned: false,
+            icon_url: None,
         };
         let r = mod_row(&m, &[], true);
         assert_eq!(r.meta.as_str(), "· 1.5 KB · 01234567");

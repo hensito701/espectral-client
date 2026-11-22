@@ -70,6 +70,15 @@ pub mod de {
         Ok(v.as_ref().and_then(Value::as_bool).unwrap_or(false))
     }
 
+    /// Any JSON -> `Vec<String>` keeping only string items; null/non-array -> empty.
+    pub fn vec_string<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+        let v = Option::<Value>::deserialize(d)?;
+        Ok(match v {
+            Some(Value::Array(items)) => items.into_iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
+            _ => vec![],
+        })
+    }
+
     /// Any JSON -> String (non-strings -> "").
     pub fn string<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
         Ok(opt_string(d)?.unwrap_or_default())
@@ -505,6 +514,9 @@ pub struct InstanceMeta {
     pub memory_auto_migrated: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mods: Option<Vec<Value>>,
+    /// Modrinth project ids / base filenames locked against "Update all".
+    #[serde(default, deserialize_with = "de::vec_string", skip_serializing_if = "Vec::is_empty")]
+    pub pinned_mods: Vec<String>,
     #[serde(default, deserialize_with = "de::opt_string")]
     pub imported_from: Option<String>,
     #[serde(default, deserialize_with = "de::opt_string")]
@@ -579,6 +591,13 @@ pub struct ModEntry {
     /// Human display name from `fabric.mod.json` (e.g. "Sodium", "Mod Menu").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Excluded from "Update all" (version pin). "Check updates" still
+    /// reports it, with `pinned: true`.
+    #[serde(default)]
+    pub pinned: bool,
+    /// Modrinth project icon (one batched GET /projects, cached per process).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -671,6 +690,9 @@ pub struct InstancePatch {
     pub memory_mb: Option<Option<u32>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled_mods: Option<Vec<String>>,
+    /// Replace the pinned-mod list (Modrinth project ids / base filenames).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned_mods: Option<Vec<String>>,
     #[serde(default, deserialize_with = "de::double_option", skip_serializing_if = "Option::is_none")]
     pub jdk_path_override: Option<Option<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1033,6 +1055,78 @@ pub struct CompatBatchFixResult {
     pub remaining_errors: usize,
     /// Skipped or failed fixes, English, for logs.
     pub notes: Vec<String>,
+}
+
+// =========================================================================
+// Mod updates (Phase 2: batched check / Update all / pinning / orphans)
+// =========================================================================
+
+/// One mod with an available update (`Engine::check_mod_updates`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModUpdateEntry {
+    /// On-disk filename (`x.jar`, same value as `ModEntry::filename`).
+    pub filename: String,
+    pub project_id: String,
+    pub title: String,
+    /// Installed build's version number (read from the jar descriptor).
+    pub from_version: String,
+    /// Current Modrinth version id when the process cache already knew it
+    /// (rollback metadata; a normal check stays at one HTTP request).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_version_id: Option<String>,
+    pub to_version_id: String,
+    pub to_version_number: String,
+    pub to_filename: String,
+    /// `"release"` | `"beta"` | `"alpha"`
+    pub version_type: String,
+    /// Pinned mod: reported as available but skipped by "Update all".
+    pub pinned: bool,
+    pub enabled: bool,
+}
+
+/// Result of one batched Modrinth update check.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModUpdatesReport {
+    /// On-disk candidate jars the batch request covered.
+    pub checked: u32,
+    /// Mods whose newest matching build differs from the installed jar.
+    pub updates: Vec<ModUpdateEntry>,
+}
+
+/// Result of `Engine::apply_mod_updates`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModBatchUpdateResult {
+    /// Targets actually applied (companions aligned within the batch).
+    pub updated: Vec<ModUpdateEntry>,
+    pub changed: Vec<ModRename>,
+    /// Pinned mods "Update all" left alone (`filenames = None`).
+    pub skipped_pinned: Vec<String>,
+    /// Companion checks that could not be applied (e.g. Iris outside the batch).
+    pub warnings: Vec<String>,
+}
+
+/// A library jar the just-deleted mod was the last dependent of.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrphanLib {
+    /// Modrinth project id when the library is in the known-id table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    pub mod_id: String,
+    pub filename: String,
+    pub display_name: String,
+}
+
+/// Result of `Engine::undo_last_mod_update`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModUndoResult {
+    pub restored: Vec<ModRename>,
+}
+
+/// `Engine::set_mod_pinned` reply: the resulting pin list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModPinReply {
+    pub pinned: bool,
+    pub pinned_mods: Vec<String>,
 }
 
 // =========================================================================

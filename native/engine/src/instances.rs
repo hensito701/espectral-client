@@ -273,6 +273,16 @@ fn write_raw(engine: &Engine, name: &str, raw: &Map<String, Value>) -> std::io::
     crate::paths::write_json_atomic(&engine.paths().instance_json(name), raw)
 }
 
+/// Replace `pinned_mods` in instance.json, preserving every other key
+/// (unknown keys included). Shared by `Engine::set_mod_pinned` and PATCH.
+pub(crate) fn write_pinned_mods(engine: &Engine, name: &str, pinned: &[String]) -> EngineResult<()> {
+    let mut raw = get_instance_raw(engine, name)?;
+    raw.insert("pinned_mods".into(), Value::Array(pinned.iter().cloned().map(Value::String).collect()));
+    raw.insert("updated_at".into(), Value::String(crate::platform::now_iso()));
+    write_raw(engine, name, &raw)?;
+    Ok(())
+}
+
 /// Typed lenient view of a raw instance.json object.
 pub(crate) fn meta_from_raw(raw: &Map<String, Value>) -> InstanceMeta {
     if let Ok(m) = serde_json::from_value::<InstanceMeta>(Value::Object(raw.clone())) {
@@ -706,6 +716,9 @@ pub async fn patch_instance(engine: &Engine, name: &str, patch: &InstancePatch) 
         let inst = meta_from_raw(&raw);
         apply_enabled_mods(engine, &inst, enabled)?;
     }
+    if let Some(pinned) = &patch.pinned_mods {
+        raw.insert("pinned_mods".into(), Value::Array(pinned.iter().cloned().map(Value::String).collect()));
+    }
     if let Some(want) = patch.capture_tools {
         // Flipping the flag OWNS the Replay Mod jar: on installs it, off
         // removes it (shader packs + Iris stay). The install runs before the
@@ -791,7 +804,7 @@ async fn list_mods_scan(engine: &Engine, inst: &InstanceMeta) -> Vec<ModEntry> {
         let base = f.strip_suffix(".disabled").unwrap_or(&f).to_string();
         let size = std::fs::metadata(mods_dir.join(&f)).map(|m| m.len()).unwrap_or(0);
         out.push(ModEntry {
-            filename: base,
+            filename: base.clone(),
             project_slug: None,
             version_number: None,
             version_id: None,
@@ -802,6 +815,8 @@ async fn list_mods_scan(engine: &Engine, inst: &InstanceMeta) -> Vec<ModEntry> {
             project_id: None,
             mod_id: None,
             display_name: None,
+            pinned: crate::mod_updates::is_pinned(&inst.pinned_mods, None, &base),
+            icon_url: None,
         });
     }
     out.sort_by(|a, b| locale_compare(&a.filename, &b.filename));
