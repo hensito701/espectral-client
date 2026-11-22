@@ -101,12 +101,25 @@ fn has_issue(c: PackCompatStatus) -> bool {
 }
 
 /// "34", "34.1", "34–46" or "34+" when the pack declares no upper bound.
+/// `(N,0)..=(N,u32::MAX)` is the engine's full-span encoding of a single major
+/// (legacy `pack_format`), so it reads "34", not "34+".
 fn format_range(r: &PackFormatRange) -> String {
     let major = |(maj, min): (u32, u32)| if min == 0 { maj.to_string() } else { format!("{maj}.{min}") };
     if r.min == r.max {
         major(r.min)
     } else if r.max.1 == u32::MAX {
-        format!("{}+", major(r.min))
+        if r.max.0 == u32::MAX {
+            format!("{}+", major(r.min))
+        } else if r.min.1 == 0 {
+            // Whole-minor span: majors only ("34" when same, "80–99" when not).
+            if r.min.0 == r.max.0 {
+                r.min.0.to_string()
+            } else {
+                format!("{}–{}", r.min.0, r.max.0)
+            }
+        } else {
+            format!("{}+", major(r.min))
+        }
     } else {
         format!("{}–{}", major(r.min), major(r.max))
     }
@@ -928,8 +941,15 @@ mod tests {
     fn format_ranges() {
         let r = |min: (u32, u32), max: (u32, u32)| PackFormatRange { min, max };
         assert_eq!(format_range(&r((34, 0), (34, 0))), "34");
+        // A legacy `pack_format: 34` is stored as (34,0)..=(34,u32::MAX): "34", not "34+".
+        assert_eq!(format_range(&r((34, 0), (34, u32::MAX))), "34");
         assert_eq!(format_range(&r((34, 0), (46, 0))), "34–46");
-        assert_eq!(format_range(&r((88, 0), (88, u32::MAX))), "88+");
+        // A two-major whole-minor span keeps the range ("80–99").
+        assert_eq!(format_range(&r((80, 0), (99, u32::MAX))), "80–99");
+        // A truly unbounded range stays "34+".
+        assert_eq!(format_range(&r((34, 0), (u32::MAX, u32::MAX))), "34+");
+        // Open at the minor level only is still an open range.
+        assert_eq!(format_range(&r((34, 1), (34, u32::MAX))), "34.1+");
         assert_eq!(format_range(&r((88, 1), (88, 2))), "88.1–88.2");
     }
 

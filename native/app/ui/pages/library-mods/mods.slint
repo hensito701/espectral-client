@@ -45,7 +45,9 @@ component CatalogHeader inherits HorizontalLayout {
             variant: BtnVariant.secondary;
             size: BtnSize.sm;
             icon: Icons.folder;
-            text: T.tr("mods.openFolder");
+            text: LibraryBridge.m-tab == 1 ? T.tr("packs.openPacksFolder")
+                : LibraryBridge.m-tab == 2 ? T.tr("packs.openShadersFolder")
+                : T.tr("mods.openFolder");
             enabled: LibraryBridge.m-has-target;
             clicked => { LibraryBridge.m-open-folder(); }
         }

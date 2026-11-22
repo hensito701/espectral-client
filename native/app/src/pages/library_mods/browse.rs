@@ -1397,7 +1397,8 @@ fn inline_plain(s: &str) -> String {
         }
         if c == '[' {
             if let Some((label_end, after)) = link_parts(&chars, i) {
-                out.extend(&chars[i + 1..label_end]);
+                let label: String = chars[i + 1..label_end].iter().collect();
+                out.push_str(&inline_plain(&label));
                 i = after;
                 continue;
             }
@@ -1416,9 +1417,22 @@ fn inline_plain(s: &str) -> String {
     out
 }
 
-/// For `[label](url)` starting at `open` (the `[`): (index of `]`, index after `)`).
+/// For `[label](url)` starting at `open` (the `[`): (index of the matching `]`, index after `)`).
+/// Brackets nest, so a badge link `[![alt](img)](url)` is one link whose label is an image.
 fn link_parts(chars: &[char], open: usize) -> Option<(usize, usize)> {
-    let close = (open + 1..chars.len()).find(|&j| chars[j] == ']')?;
+    let mut depth = 0usize;
+    let close = (open + 1..chars.len()).find(|&j| match chars[j] {
+        '[' => {
+            depth += 1;
+            false
+        }
+        ']' if depth == 0 => true,
+        ']' => {
+            depth -= 1;
+            false
+        }
+        _ => false,
+    })?;
     if chars.get(close + 1) != Some(&'(') {
         return None;
     }
@@ -1503,6 +1517,12 @@ mod tests {
     #[test]
     fn plain_text_keeps_lone_angle_brackets() {
         assert_eq!(plain_text("a < b and c > d"), "a < b and c > d");
+    }
+
+    #[test]
+    fn plain_text_drops_badge_links() {
+        let md = "Support me: [![Buy me a coffee](https://img/badge.svg)](https://coffee/donate) thanks";
+        assert_eq!(plain_text(md), "Support me:  thanks");
     }
 
     #[test]

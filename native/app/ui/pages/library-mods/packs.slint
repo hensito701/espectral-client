@@ -444,7 +444,7 @@ component RpToolbar inherits VerticalLayout {
                 variant: BtnVariant.secondary;
                 size: BtnSize.sm;
                 icon: Icons.folder;
-                text: T.tr("mods.openFolder");
+                text: T.tr("packs.openPacksFolder");
                 enabled: LibraryBridge.m-has-target;
                 clicked => { LibraryBridge.m-open-folder(); }
             }
@@ -739,7 +739,7 @@ export component ShadersPane inherits VerticalLayout {
             variant: BtnVariant.secondary;
             size: BtnSize.sm;
             icon: Icons.folder;
-            text: T.tr("mods.openFolder");
+            text: T.tr("packs.openShadersFolder");
             enabled: LibraryBridge.m-has-target;
             clicked => { LibraryBridge.m-open-folder(); }
         }

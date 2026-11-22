@@ -150,7 +150,7 @@ component ResultCard inherits GlassCard {
     in property <ModrinthCard> card;
     clickable: true;
     clicked => { LibraryBridge.m-open-detail(root.card.project-id); }
-    VerticalLayout {
+    body := VerticalLayout {
         padding: Theme.space-4;
         spacing: 0px;
         HorizontalLayout {
@@ -198,13 +198,16 @@ component ResultCard inherits GlassCard {
                     color: Theme.text;
                     overflow: elide;
                 }
-                if root.card.author != "": SelectableText {
+                if root.card.author != "": Text {
                     text: T.tr1("browse.author", "name", root.card.author);
                     font-size: Theme.text-xs;
                     color: Theme.muted;
                     font-weight: 500;
+                    overflow: elide;
                 }
-                HorizontalLayout {
+                // Wraps onto a second line in narrow columns so the download count is never cut.
+                FlexboxLayout {
+                    min-width: 0px;
                     spacing: Theme.space-2;
                     alignment: start;
                     Text {
@@ -229,6 +232,9 @@ component ResultCard inherits GlassCard {
         }
         Text {
             text: root.card.description;
+            // min-width 0: a wrapping Text reports its unwrapped width as minimum, which pushed
+            // the card past the grid column; the layout gives it the card's content width.
+            min-width: 0px;
             color: Theme.muted;
             font-size: 13px;
             line-height-factor: 1.6 / 1.28;
@@ -237,7 +243,8 @@ component ResultCard inherits GlassCard {
             vertical-alignment: top;
             height: 3 * 13px * 1.6;
         }
-        if root.card.categories.length > 0: HorizontalLayout {
+        if root.card.categories.length > 0: FlexboxLayout {
+            min-width: 0px;
             padding-top: Theme.space-1;
             spacing: Theme.space-1;
             alignment: start;
