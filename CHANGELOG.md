@@ -2,6 +2,16 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.9.4] - 2026-11-22
+
+### Fixed
+- **Novedades cards click again.** A post's title and author line open and close the post
+  from anywhere on the card; only the text of an opened post can be selected and copied.
+  The Microsoft/Offline line in the account switcher and popup notifications click normally
+  too.
+- **Background picker lines up.** The pictures fill the card in even columns under the
+  "Imágenes" / "Cristal líquido" tiles, with the same gap everywhere.
+
 ## [1.9.3] - 2026-11-21
 
 ### Added

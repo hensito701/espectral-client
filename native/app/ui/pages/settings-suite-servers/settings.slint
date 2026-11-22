@@ -444,12 +444,10 @@ component BackdropChoice inherits Rectangle {
     }
 }
 
-/// One picture in the grid: 16:9 thumbnail, accent edge on the current
-/// picture, a small × on hover on the player's own pictures.
+/// One picture in the grid: 16:9 thumbnail (sized by BackdropGrid), accent
+/// edge on the current picture, a small × on hover on the player's own pictures.
 component BackdropThumb inherits Rectangle {
     in property <BackdropItem> item;
-    width: 120px;
-    height: 68px;
     border-radius: Theme.radius-md;
     border-width: root.item.key == Backdrop.current ? 2px : Theme.hairline;
     border-color: root.item.key == Backdrop.current ? Theme.accent : ta.has-hover ? Theme.hover-border : Theme.border-solid;
@@ -489,8 +487,6 @@ component BackdropThumb inherits Rectangle {
 
 /// The last tile of the grid: opens the file dialog for the player's pictures.
 component BackdropAdd inherits Rectangle {
-    width: 120px;
-    height: 68px;
     border-radius: Theme.radius-md;
     border-width: Theme.hairline;
     border-color: ta.has-hover ? Theme.hover-border : Theme.border-solid;
@@ -518,22 +514,28 @@ component BackdropAdd inherits Rectangle {
 }
 
 /// Manual wrap grid (the GalleryGrid pattern): Backdrop.items + the add tile.
+/// Cells fill the card width (4 columns, 2 when narrow) with the same 12px
+/// gap as the mode tiles above, so the two rows share their edges.
 component BackdropGrid inherits Rectangle {
-    property <length> gap: Theme.space-2;
-    property <length> cell-w: 120px;
-    property <length> cell-h: 68px;
+    property <length> gap: 12px;
+    property <int> cols: root.width >= 400px ? 4 : 2;
+    property <length> cell-w: (root.width - (cols - 1) * gap) / cols;
+    property <length> cell-h: root.cell-w * 9 / 16;
     property <int> total: Backdrop.items.length + 1;
-    property <int> cols: max(1, floor((root.width + gap) / (cell-w + gap)));
     property <int> rows: ceil(total / cols);
     height: rows * cell-h + max(0, rows - 1) * gap;
     for it[i] in Backdrop.items: BackdropThumb {
         x: mod(i, root.cols) * (root.cell-w + root.gap);
         y: floor(i / root.cols) * (root.cell-h + root.gap);
+        width: root.cell-w;
+        height: root.cell-h;
         item: it;
     }
     BackdropAdd {
         x: mod(Backdrop.items.length, root.cols) * (root.cell-w + root.gap);
         y: floor(Backdrop.items.length / root.cols) * (root.cell-h + root.gap);
+        width: root.cell-w;
+        height: root.cell-h;
     }
 }
 
@@ -544,24 +546,26 @@ component BackdropCard inherits SettingCard {
             title: T.tr("settings.backdrop.title");
             desc: T.tr("settings.backdrop.desc");
         }
-        HorizontalLayout {
+        VerticalLayout {
             spacing: 12px;
-            BackdropChoice { mode: "image"; label: T.tr("settings.backdrop.modeImages"); icon: Icons.image; }
-            BackdropChoice { mode: "glass"; label: T.tr("settings.backdrop.modeGlass"); icon: SetIcons.sparkles; }
-            Rectangle { horizontal-stretch: 1; preferred-width: 1px; }
-        }
-        if Backdrop.mode == "image": BackdropGrid { }
-        if Backdrop.mode == "image": SelectableText {
-            text: T.tr("settings.backdrop.hint");
-            font-size: 12px;
-            color: Theme.muted;
-            wrap: word-wrap;
-        }
-        if Backdrop.mode == "glass" && !Theme.glass: SelectableText {
-            text: T.tr("settings.backdrop.glassNote");
-            font-size: 12px;
-            color: Theme.muted;
-            wrap: word-wrap;
+            HorizontalLayout {
+                spacing: 12px;
+                BackdropChoice { mode: "image"; label: T.tr("settings.backdrop.modeImages"); icon: Icons.image; }
+                BackdropChoice { mode: "glass"; label: T.tr("settings.backdrop.modeGlass"); icon: SetIcons.sparkles; }
+            }
+            if Backdrop.mode == "image": BackdropGrid { }
+            if Backdrop.mode == "image": SelectableText {
+                text: T.tr("settings.backdrop.hint");
+                font-size: 12px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            if Backdrop.mode == "glass" && !Theme.glass: SelectableText {
+                text: T.tr("settings.backdrop.glassNote");
+                font-size: 12px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
         }
     }
 }
