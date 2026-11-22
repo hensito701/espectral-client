@@ -11,11 +11,15 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
+use espectral_engine::crash_diag::{memory_label_gb, CrashAction, CrashCategory, CrashDiagnosis, SuspectConfidence};
 use espectral_engine::events::EngineEvent;
+use espectral_engine::types::InstancePatch;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::bridge::Ctx;
+use crate::util;
 use crate::{i18n, prefs, store, toast, AppWindow, HiLogLine, HiLogTab, HomeBridge, Shell};
+use super::home;
 
 const MAX_LINES: usize = 2000;
 const MAX_BUFFERS: usize = 8;
@@ -304,6 +308,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
         hb.set_log_lines(ModelRc::from(s.pip.clone()));
         hb.set_hub_log_lines(ModelRc::from(s.hub.clone()));
     });
+    register_crash(ctx, ui);
     if prefs::get_bool(PIN_PREF) {
         let sh = ui.global::<Shell>();
         sh.set_pip_log_pinned(true);
@@ -551,6 +556,198 @@ pub fn launches_changed(ui: &AppWindow) {
     sync(ui);
 }
 
+/// The crash diagnosis the modal shows, with the launch it belongs to.
+struct Shown {
+    key: String,
+    diag: CrashDiagnosis,
+}
+
+thread_local! {
+    static SHOWN: RefCell<Option<Shown>> = RefCell::new(None);
+}
+
+/// After a game exits non-zero, ask the engine for a diagnosis and open the crash
+/// modal when it names a cause or a culprit, or the game never reached the main
+/// menu. Launch errors and player stops never get here.
+fn offer_crash_diagnosis(key: &str, died_before_menu: bool) {
+    let Some(ctx) = ST.with(|s| s.borrow().ctx.clone()) else { return };
+    let (k, shown_key) = (key.to_string(), key.to_string());
+    ctx.call_with(
+        move |e| async move { e.diagnose_crash(&k).await },
+        move |ui, diag| {
+            let Some(diag) = diag else { return };
+            let named = diag.category != CrashCategory::Unknown || !diag.suspected_mods.is_empty();
+            if named || died_before_menu {
+                show_crash_modal(ui, shown_key, diag);
+            }
+        },
+        |_ui, _err| {},
+    );
+}
+
+/// Fill the HomeBridge crash-* properties from a diagnosis and open the modal.
+fn show_crash_modal(ui: &AppWindow, key: String, diag: CrashDiagnosis) {
+    let hb = ui.global::<HomeBridge>();
+    let args: Vec<(&str, &str)> = diag.summary_args.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    hb.set_crash_cause(i18n::tf(&diag.summary_key, &args).into());
+    let pills: Vec<SharedString> = diag
+        .suspected_mods
+        .iter()
+        .map(|s| {
+            let confidence = match s.confidence {
+                SuspectConfidence::High => i18n::t("crash.suspect.high"),
+                SuspectConfidence::Medium => i18n::t("crash.suspect.medium"),
+            };
+            let pill = i18n::tf(
+                "crash.suspect.pill",
+                &[("mod", s.display_name.as_str()), ("confidence", confidence.as_str())],
+            );
+            SharedString::from(pill)
+        })
+        .collect();
+    hb.set_crash_suspects(ModelRc::new(VecModel::from(pills)));
+    let excerpt: Vec<SharedString> = diag.excerpt.iter().map(|l| SharedString::from(l.as_str())).collect();
+    hb.set_crash_excerpt(ModelRc::new(VecModel::from(excerpt)));
+    hb.set_crash_instance(diag.instance.as_str().into());
+    hb.set_crash_primary_label(primary_label(&diag).into());
+    hb.set_crash_has_report(diag.crash_report_path.is_some());
+    hb.set_crash_mclogs_url("".into());
+    hb.set_crash_busy(false);
+    hb.set_crash_open(true);
+    SHOWN.with(|s| *s.borrow_mut() = Some(Shown { key, diag }));
+}
+
+/// Actions that change the game before a relaunch (the primary button).
+fn is_fix(action: &CrashAction) -> bool {
+    matches!(
+        action,
+        CrashAction::DisableMod(_)
+            | CrashAction::IncreaseMemory(_)
+            | CrashAction::DisableShaders
+            | CrashAction::DisableResourcePack(_)
+    )
+}
+
+/// Label of the primary fix button ("" when the diagnosis offers no fix).
+fn primary_label(diag: &CrashDiagnosis) -> String {
+    match diag.actions.iter().find(|a| is_fix(a)) {
+        Some(CrashAction::DisableMod(file)) => {
+            let name = diag
+                .suspected_mods
+                .iter()
+                .find(|s| &s.filename == file)
+                .map_or(file.as_str(), |s| s.display_name.as_str());
+            i18n::tf("crash.action.disableMod", &[("mod", name)])
+        }
+        Some(CrashAction::IncreaseMemory(mb)) => {
+            let gb = memory_label_gb(*mb);
+            i18n::tf("crash.action.increaseMemory", &[("gb", gb.as_str())])
+        }
+        Some(CrashAction::DisableShaders) => i18n::t("crash.action.disableShaders"),
+        Some(CrashAction::DisableResourcePack(_)) => i18n::t("crash.action.disableResourcePack"),
+        _ => String::new(),
+    }
+}
+
+/// The crash modal's callbacks (UI thread, registered once in `init`).
+fn register_crash(ctx: &Ctx, ui: &AppWindow) {
+    let hb = ui.global::<HomeBridge>();
+    let c = ctx.clone();
+    hb.on_crash_primary(move || crash_primary(&c));
+    let c = ctx.clone();
+    hb.on_crash_copy_link(move || crash_copy_link(&c));
+    hb.on_crash_open_report(crash_open_report);
+    let w = ui.as_weak();
+    hb.on_crash_view_log(move || {
+        let Some(key) = SHOWN.with(|s| s.borrow().as_ref().map(|x| x.key.clone())) else { return };
+        let Some(ui) = w.upgrade() else { return };
+        ST.with(|s| s.borrow_mut().active = Some(key));
+        ui.global::<Shell>().set_pip_log_open(true);
+        ui.global::<HomeBridge>().set_crash_open(false);
+        sync(&ui);
+    });
+}
+
+/// Apply the primary fix, then relaunch through the normal launch path.
+fn crash_primary(c: &Ctx) {
+    let Some(ui) = c.ui() else { return };
+    let Some((key, diag)) = SHOWN.with(|s| s.borrow().as_ref().map(|x| (x.key.clone(), x.diag.clone()))) else {
+        return;
+    };
+    let Some(action) = diag.actions.iter().find(|a| is_fix(a)).cloned() else { return };
+    let hb = ui.global::<HomeBridge>();
+    hb.set_crash_open(false);
+    hb.set_crash_busy(true);
+    let (name, inst) = (diag.instance.clone(), diag.instance);
+    let relaunch = c.clone();
+    c.call_with(
+        move |e| async move {
+            match action {
+                CrashAction::DisableMod(file) => e.set_mod_enabled(&inst, &file, false).await.map(|_| true),
+                CrashAction::IncreaseMemory(mb) => {
+                    let patch = InstancePatch { memory_mb: Some(Some(mb)), ..Default::default() };
+                    e.patch_instance(&inst, patch).await.map(|_| true)
+                }
+                CrashAction::DisableShaders => e.disable_shaders_for_launch(&key).map(|()| true),
+                CrashAction::DisableResourcePack(pack) => e.disable_resource_pack_for_launch(&key, &pack),
+                _ => Ok(false),
+            }
+        },
+        move |ui, changed| {
+            ui.global::<HomeBridge>().set_crash_busy(false);
+            if !changed {
+                toast::info(i18n::t("crash.nothingChanged"));
+            }
+            home::launch(&relaunch, name, false);
+        },
+        |ui, e| {
+            let hb = ui.global::<HomeBridge>();
+            hb.set_crash_busy(false);
+            hb.set_crash_open(true);
+            toast::engine_error(&e);
+        },
+    );
+}
+
+/// Copy the mclo.gs link, uploading the log first when the modal has no link yet.
+fn crash_copy_link(c: &Ctx) {
+    let Some(ui) = c.ui() else { return };
+    let hb = ui.global::<HomeBridge>();
+    let existing = hb.get_crash_mclogs_url().to_string();
+    if !existing.is_empty() {
+        util::copy_text(&existing);
+        toast::ok(i18n::tf("crash.linkCopied", &[("url", existing.as_str())]));
+        return;
+    }
+    let Some(key) = SHOWN.with(|s| s.borrow().as_ref().map(|x| x.key.clone())) else { return };
+    hb.set_crash_busy(true);
+    c.call_with(
+        move |e| async move { e.upload_crash_log(&key).await },
+        move |ui, up| {
+            let hb = ui.global::<HomeBridge>();
+            hb.set_crash_busy(false);
+            hb.set_crash_mclogs_url(up.url.as_str().into());
+            util::copy_text(&up.url);
+            toast::ok(i18n::tf("crash.linkCopied", &[("url", up.url.as_str())]));
+        },
+        |ui, e| {
+            ui.global::<HomeBridge>().set_crash_busy(false);
+            toast::engine_error(&e);
+        },
+    );
+}
+
+/// Open the crash report (or hs_err file) in the system's default app.
+fn crash_open_report() {
+    let Some(path) = SHOWN.with(|s| s.borrow().as_ref().and_then(|x| x.diag.crash_report_path.clone())) else {
+        return;
+    };
+    if let Err(e) = open::that_detached(&path) {
+        let why = e.to_string();
+        toast::err(i18n::tf("crash.openFailed", &[("error", why.as_str())]));
+    }
+}
+
 /// Engine events (UI thread).
 pub fn on_event(ui: &AppWindow, ev: &EngineEvent) {
     match ev {
@@ -574,6 +771,9 @@ pub fn on_event(ui: &AppWindow, ev: &EngineEvent) {
                 s.hub_key = None;
             });
             sync(ui);
+            if x.error.is_none() && x.code != Some(0) {
+                offer_crash_diagnosis(&x.key, x.menu_ms.is_none());
+            }
         }
         _ => {}
     }

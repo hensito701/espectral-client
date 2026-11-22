@@ -5,7 +5,7 @@ import { Theme, T, AppState, Icon, Icons, Btn, BtnVariant, BtnSize, Badge, Badge
 import { HomeBridge } from "api.slint";
 
 /// Shared modal header: title (+ optional badge) / subtitle / close.
-component ModalHead inherits Rectangle {
+export component ModalHead inherits Rectangle {
     in property <string> title;
     in property <string> subtitle;
     in property <string> badge;
@@ -51,7 +51,7 @@ component ModalHead inherits Rectangle {
     Rectangle { y: parent.height - Theme.hairline; height: Theme.hairline; background: Theme.border-solid; }
 }
 
-component ModalFoot inherits Rectangle {
+export component ModalFoot inherits Rectangle {
     background: Theme.card-bg-soft;
     Rectangle { y: 0; height: Theme.hairline; background: Theme.border-solid; }
     HorizontalLayout {

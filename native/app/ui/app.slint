@@ -32,6 +32,7 @@ import { InstanceHubPage } from "pages/home-instances/instance-hub.slint";
 import { PipLogDrawer } from "pages/home-instances/pip-log.slint";
 import { InstanceWizardModal } from "pages/home-instances/wizard.slint";
 import { DryRunModal, ModCompatLaunchModal } from "pages/home-instances/modals.slint";
+import { CrashDiagnosisModal } from "pages/home-instances/crash-modal.slint";
 import { MrpackModal } from "pages/library-mods/mrpack-modal.slint";
 import { VersionsPage } from "pages/library-mods/versions.slint";
 import { ImportPage } from "pages/library-mods/import.slint";
@@ -164,6 +165,7 @@ export component AppWindow inherits Window {
             MrpackModal { }
             DryRunModal { }
             ModCompatLaunchModal { }
+            CrashDiagnosisModal { }
         }
 
         CommandPalette {

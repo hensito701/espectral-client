@@ -135,6 +135,20 @@ export global HomeBridge {
     in-out property <[string]> compat-modal-issues;
     callback compat-open-mods(instance: string);
     callback compat-launch-anyway(instance: string);
+    // Post-crash diagnosis (launchlog.rs fills these after a non-zero game exit).
+    in-out property <bool> crash-open;
+    in-out property <string> crash-instance;
+    in-out property <string> crash-cause;
+    in-out property <[string]> crash-suspects;
+    in-out property <[string]> crash-excerpt;
+    in-out property <string> crash-primary-label;
+    in-out property <bool> crash-has-report;
+    in-out property <string> crash-mclogs-url;
+    in-out property <bool> crash-busy;
+    callback crash-primary();
+    callback crash-copy-link();
+    callback crash-open-report();
+    callback crash-view-log();
 
     // =====================================================================
     // Dry-run inspector
