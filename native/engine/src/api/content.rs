@@ -48,10 +48,10 @@ use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult};
 use crate::fabric_compat::ModCompatReport;
 use crate::types::{
-    ClientInfo, ClientPatch, CreateInstanceRequest, ImportResult, ImportSource, InstanceDetail, InstanceMeta,
-    InstancePatch, InstanceSummary, Loader, ModEntry, ModInstallPlan, ModInstallPreview, ModPreset, ModPresetInfo,
-    ModRef, ModVersionItem, ModVersionSwitchPlan, ModVersionSwitchResult, ModVersionsReply, ModrinthSearchResult,
-    OptionsPair, OverwritePolicy, ServerEntry, ServerStatus,
+    ClientInfo, ClientPatch, CompatBatchFixResult, CreateInstanceRequest, ImportResult, ImportSource, InstanceDetail,
+    InstanceMeta, InstancePatch, InstanceSummary, Loader, ModEntry, ModInstallPlan, ModInstallPreview, ModPreset,
+    ModPresetInfo, ModRef, ModVersionItem, ModVersionSwitchPlan, ModVersionSwitchResult, ModVersionsReply,
+    ModrinthSearchResult, OptionsPair, OverwritePolicy, ServerEntry, ServerStatus,
 };
 
 use super::{DeletedReply, PathReply, QueuedReply};
@@ -124,6 +124,9 @@ pub struct ContentState {
     pub(crate) jar_sha1: Mutex<HashMap<PathBuf, (std::time::SystemTime, u64, String)>>,
     /// mods.mjs brandingManifestCache: dir -> branding.json (None = absent/broken).
     pub(crate) branding_manifest: Mutex<HashMap<PathBuf, Option<Value>>>,
+    /// Install previews by `instance\0project\0root version`, so committing right after a
+    /// preview reuses its planned upgrades instead of repeating the network work.
+    pub(crate) install_previews: Mutex<HashMap<String, (Instant, ModInstallPreview)>>,
     /// servers.mjs cache: host -> (fetched_at ms, status).
     pub(crate) server_status: Mutex<HashMap<String, (i64, ServerStatus)>>,
     /// reqwest client that never follows redirects (mrpack pack-file host checks).
@@ -526,6 +529,19 @@ impl Engine {
         crate::mods::commit_modrinth_install(self, name, project_id, apply_upgrades, force)
             .await
             .map_err(|e| send_error(e, 500, "mod_install_modrinth_failed"))
+    }
+
+    /// Batch "Fix all safe issues" for a stopped instance (409 ALREADY_RUNNING while running).
+    pub async fn apply_safe_compat_fixes(&self, name: &str) -> EngineResult<CompatBatchFixResult> {
+        if self.active_instances().contains(name) {
+            return Err(EngineError::conflict(
+                "ALREADY_RUNNING",
+                format!("instance '{name}' is running; stop it before fixing mods"),
+            ));
+        }
+        crate::mods::apply_safe_compat_fixes(self, name)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_compat_fix_failed"))
     }
 
     /// Resolve a Fabric mod id (e.g. `fabric-api`, `cloth-config`) to a Modrinth project.
