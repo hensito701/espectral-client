@@ -22,6 +22,7 @@ use crate::events::{EngineEvent, ImportDoneEvent, ImportProgressEvent, ProgressC
 use crate::types::{CreateInstanceRequest, InstanceSummary, Loader};
 
 const OVERRIDES_PREFIX: &str = "overrides/";
+const CLIENT_OVERRIDES_PREFIX: &str = "client-overrides/";
 
 /// Hosts a pack index may download from (SSRF guard; every redirect hop is checked).
 pub const PACK_FILE_HOSTS: [&str; 4] =
@@ -351,41 +352,28 @@ async fn resolve_pack_file_url(engine: &Engine, raw: &str) -> EngineResult<Strin
     ))
 }
 
-/// Resolve every pack-file URL (deduplicated, <= 8 concurrent). A failing URL
-/// resolves to None and is reported through `failures`.
+/// Resolve every pack-file URL once (deduplicated, <= 8 concurrent). Every
+/// `downloads[]` entry is validated so a dead mirror can fall back to the
+/// next; the error text is kept beside the URL it belongs to.
 async fn resolve_pack_file_urls(
     engine: &Engine,
-    raws: &[Option<String>],
-    failures: &Mutex<Vec<String>>,
-) -> Vec<Option<String>> {
+    raws: &[String],
+) -> std::collections::HashMap<String, Result<String, String>> {
     use futures_util::StreamExt;
     let mut unique: Vec<String> = vec![];
-    for r in raws.iter().flatten() {
+    for r in raws {
         if !unique.contains(r) {
             unique.push(r.clone());
         }
     }
-    let resolved: std::collections::HashMap<String, Result<String, String>> = futures_util::stream::iter(unique)
+    futures_util::stream::iter(unique)
         .map(|raw| async move {
             let r = resolve_pack_file_url(engine, &raw).await.map_err(|e| e.to_string());
             (raw, r)
         })
         .buffer_unordered(8)
         .collect()
-        .await;
-    raws.iter()
-        .map(|raw| {
-            let raw = raw.as_ref()?;
-            match resolved.get(raw) {
-                Some(Ok(u)) => Some(u.clone()),
-                Some(Err(e)) => {
-                    failures.lock().unwrap_or_else(|p| p.into_inner()).push(format!("{raw}: {e}"));
-                    None
-                }
-                None => None,
-            }
-        })
-        .collect()
+        .await
 }
 
 // ---------------------------------------------------------------------------
@@ -434,6 +422,12 @@ pub async fn install_mrpack_files(
         if filename.is_empty() {
             continue;
         }
+        // mrpack spec: `env.client == "unsupported"` files are server-only and
+        // must not be installed on the client at all.
+        if file.pointer("/env/client").and_then(Value::as_str) == Some("unsupported") {
+            tracing::debug!("[mrpack] '{filename}' is unsupported on the client; skipped");
+            continue;
+        }
         let dest = safe_join(&dest_base, &filename)?;
         if is_reserved_instance_file(engine, instance_name, &dest) {
             return Err(bad_path(format!("la ruta '{filename}' colisiona con la metadata de la instancia")));
@@ -470,40 +464,93 @@ pub async fn install_mrpack_files(
     }
 
     let failures = Arc::new(Mutex::new(Vec::<String>::new()));
-    let first_url =
-        |p: &Pending| p.file.get("downloads").and_then(|d| d.get(0)).and_then(Value::as_str).map(str::to_string);
-    let raws: Vec<Option<String>> = pending.iter().map(first_url).collect();
-    let urls = resolve_pack_file_urls(engine, &raws, &failures).await;
-    let mut items = vec![];
-    for (p, url) in pending.iter().zip(urls) {
+    // Every `downloads[]` URL is validated so a dead mirror falls back to the
+    // next one; only validated URLs are ever fetched.
+    let all_raws: Vec<String> = pending
+        .iter()
+        .flat_map(|p| {
+            p.file
+                .get("downloads")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|u| u.as_str().map(str::to_string)).collect::<Vec<_>>())
+                .unwrap_or_default()
+        })
+        .collect();
+    let resolved = resolve_pack_file_urls(engine, &all_raws).await;
+    let mut mirrors: Vec<Vec<String>> = vec![];
+    for p in &pending {
         let path = p.file.get("path").and_then(Value::as_str).unwrap_or("").to_string();
-        match url {
-            Some(u) => items.push(
-                DownloadItem::new(u, p.dest.clone())
-                    .sha1(p.sha1.clone())
-                    .size(p.file.get("fileSize").and_then(Value::as_u64))
-                    .event(
-                        ProgressChannel::Mod,
-                        ProgressEvent::for_instance(instance_name).kind("mrpack").index(p.index as u64).filename(path),
-                    ),
-            ),
-            None if first_url(p).is_none() => {
-                failures.lock().unwrap_or_else(|e| e.into_inner()).push(format!("{path}: no download url"));
-            }
-            None => {}
+        let raws: Vec<String> = p
+            .file
+            .get("downloads")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(|u| u.as_str().map(str::to_string)).collect())
+            .unwrap_or_default();
+        if raws.is_empty() {
+            failures.lock().unwrap_or_else(|e| e.into_inner()).push(format!("{path}: no download url"));
         }
+        let mut ok_urls = vec![];
+        for r in raws {
+            match resolved.get(&r) {
+                Some(Ok(u)) => ok_urls.push(u.clone()),
+                Some(Err(e)) => {
+                    failures.lock().unwrap_or_else(|f| f.into_inner()).push(format!("{path} (mirror): {e}"));
+                }
+                None => {}
+            }
+        }
+        mirrors.push(ok_urls);
     }
-    let succeeded = Arc::new(Mutex::new(0usize));
-    if !items.is_empty() {
-        let (eng, name, fails, ok) = (engine.clone(), instance_name.to_string(), failures.clone(), succeeded.clone());
+    let dest_index: std::collections::HashMap<PathBuf, usize> =
+        pending.iter().enumerate().map(|(i, p)| (p.dest.clone(), i)).collect();
+    let succeeded_dests = Arc::new(Mutex::new(std::collections::HashSet::<PathBuf>::new()));
+    let last_err = Arc::new(Mutex::new(std::collections::HashMap::<usize, String>::new()));
+    let mut remaining: Vec<usize> =
+        mirrors.iter().enumerate().filter_map(|(i, m)| (!m.is_empty()).then_some(i)).collect();
+    // Mirror rounds: every still-failing file retries on its next validated
+    // URL each round until it succeeds or runs out of mirrors.
+    let mut round = 0usize;
+    while !remaining.is_empty() {
+        let mut items = vec![];
+        for &i in &remaining {
+            if let Some(u) = mirrors[i].get(round) {
+                let p = &pending[i];
+                let path = p.file.get("path").and_then(Value::as_str).unwrap_or("").to_string();
+                items.push(
+                    DownloadItem::new(u.clone(), p.dest.clone())
+                        .sha1(p.sha1.clone())
+                        .size(p.file.get("fileSize").and_then(Value::as_u64))
+                        .event(
+                            ProgressChannel::Mod,
+                            ProgressEvent::for_instance(instance_name)
+                                .kind("mrpack")
+                                .index(p.index as u64)
+                                .filename(path),
+                        ),
+                );
+            }
+        }
+        if items.is_empty() {
+            break;
+        }
+        let (eng, name, ok, errs, di) = (
+            engine.clone(),
+            instance_name.to_string(),
+            succeeded_dests.clone(),
+            last_err.clone(),
+            dest_index.clone(),
+        );
+        let failed_this = Arc::new(Mutex::new(Vec::<usize>::new()));
+        let ft = failed_this.clone();
         let on_item = Arc::new(move |o: &ItemOutcome| {
             let ctx = o.item.event.as_ref().map(|e| e.context.clone()).unwrap_or_default();
             if o.ok {
-                *ok.lock().unwrap_or_else(|p| p.into_inner()) += 1;
-            } else {
-                let f = ctx.filename.clone().unwrap_or_else(|| "?".into());
+                ok.lock().unwrap_or_else(|p| p.into_inner()).insert(o.dest.clone());
+            } else if let Some(&i) = di.get(&o.dest) {
                 let err = o.error.clone().unwrap_or_else(|| "unknown error".into());
-                fails.lock().unwrap_or_else(|p| p.into_inner()).push(format!("{f}: {err}"));
+                let f = ctx.filename.clone().unwrap_or_else(|| "?".into());
+                errs.lock().unwrap_or_else(|p| p.into_inner()).insert(i, format!("{f}: {err}"));
+                ft.lock().unwrap_or_else(|p| p.into_inner()).push(i);
             }
             let index = ctx.index.as_ref().and_then(Value::as_u64);
             import_progress(&eng, &name, "files", index, total, ctx.filename.clone());
@@ -511,9 +558,25 @@ pub async fn install_mrpack_files(
         // Partial failures are collected per item; overrides must still run.
         let _ =
             engine.http().download_all(items, DownloadAllOptions { concurrency: None, on_item: Some(on_item) }).await;
+        let mut failed = failed_this.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        failed.sort_unstable();
+        failed.dedup();
+        remaining.retain(|i| failed.contains(i) && mirrors[*i].len() > round + 1);
+        round += 1;
+    }
+    {
+        let mut f = failures.lock().unwrap_or_else(|p| p.into_inner());
+        let errs = last_err.lock().unwrap_or_else(|p| p.into_inner());
+        let mut keys: Vec<usize> = errs.keys().copied().collect();
+        keys.sort_unstable();
+        for i in keys {
+            if let Some(e) = errs.get(&i) {
+                f.push(e.clone());
+            }
+        }
     }
     let failures = failures.lock().unwrap_or_else(|p| p.into_inner()).clone();
-    let succeeded = *succeeded.lock().unwrap_or_else(|p| p.into_inner());
+    let succeeded = succeeded_dests.lock().unwrap_or_else(|p| p.into_inner()).len();
     if !failures.is_empty() && succeeded == 0 {
         return Err(EngineError::other(format!("could not download any modpack file: {}", failures[0])));
     }
@@ -527,14 +590,15 @@ pub async fn install_mrpack_files(
     Ok(failures)
 }
 
-/// Shared override-writing loop (zip + folder sources).
+/// Shared override-writing loop (zip + folder sources). Returns how many
+/// files were written; a listed-but-unwritable override warns, never fails,
+/// unless the caller errors on a fully-empty write.
 fn write_override_files(
     engine: &Engine,
     instance_name: &str,
     rels: &[String],
     mut write_one: impl FnMut(&str, &Path) -> EngineResult<bool>,
-    fail_message: &str,
-) -> EngineResult<()> {
+) -> EngineResult<usize> {
     let dest_base = crate::instances::effective_game_dir_by_name(engine, instance_name);
     let total = rels.len() as u64;
     let mut written = 0;
@@ -551,40 +615,45 @@ fn write_override_files(
         }
         import_progress(engine, instance_name, "overrides", Some(index as u64), total, Some(rel.clone()));
     }
-    if written == 0 && total > 0 {
-        return Err(EngineError::other(fail_message));
-    }
-    Ok(())
+    Ok(written)
 }
 
-/// Extract a .mrpack's `overrides/` tree into the instance game dir.
+/// Rel paths under `prefix` inside a .mrpack zip (no directory entries).
+fn zip_override_entries(zip_path: &Path, prefix: &str) -> EngineResult<Vec<String>> {
+    Ok(crate::ziputil::list_zip_entries(zip_path)?
+        .into_iter()
+        .filter(|e| e.starts_with(prefix) && !e.ends_with('/'))
+        .map(|e| e[prefix.len()..].to_string())
+        .filter(|r| !r.is_empty())
+        .collect())
+}
+
+/// Extract a .mrpack's `overrides/` tree into the instance game dir, then
+/// `client-overrides/` on top of it (the spec gives client-overrides higher
+/// precedence). Same `safe_join` / reserved-file / size caps for both trees.
 pub fn extract_overrides(engine: &Engine, zip_path: &Path, instance_name: &str) -> EngineResult<()> {
     let buf = std::fs::read(zip_path)?;
-    let entries: Vec<String> = {
-        let tmp = crate::ziputil::list_zip_entries(zip_path)?;
-        tmp.into_iter()
-            .filter(|e| e.starts_with(OVERRIDES_PREFIX) && !e.ends_with('/'))
-            .map(|e| e[OVERRIDES_PREFIX.len()..].to_string())
-            .filter(|r| !r.is_empty())
-            .collect()
-    };
     // Streamed to disk entry by entry, each capped, and all of them together.
     let mut budget = MAX_OVERRIDES_TOTAL;
-    write_override_files(
-        engine,
-        instance_name,
-        &entries,
-        |rel, dest| {
+    let mut listed = 0usize;
+    let mut written = 0usize;
+    for prefix in [OVERRIDES_PREFIX, CLIENT_OVERRIDES_PREFIX] {
+        let entries = zip_override_entries(zip_path, prefix)?;
+        listed += entries.len();
+        written += write_override_files(engine, instance_name, &entries, |rel, dest| {
             let max = MAX_OVERRIDE_BYTES.min(budget);
-            let Some(n) = crate::ziputil::extract_zip_entry_from(&buf, &format!("{OVERRIDES_PREFIX}{rel}"), dest, max)?
+            let Some(n) = crate::ziputil::extract_zip_entry_from(&buf, &format!("{prefix}{rel}"), dest, max)?
             else {
                 return Ok(false);
             };
             budget -= n;
             Ok(true)
-        },
-        "no override could be extracted from the modpack",
-    )
+        })?;
+    }
+    if listed > 0 && written == 0 {
+        return Err(EngineError::other("no override could be extracted from the modpack"));
+    }
+    Ok(())
 }
 
 fn walk_files(root: &Path, dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
@@ -603,28 +672,32 @@ fn walk_files(root: &Path, dir: &Path, out: &mut Vec<String>) -> std::io::Result
     Ok(())
 }
 
-/// Copy an unpacked pack's `overrides/` folder into the instance game dir (missing = no-op).
+/// Copy an unpacked pack's `overrides/` folder into the instance game dir
+/// (missing = no-op), then `client-overrides/` on top of it.
 pub fn copy_overrides_from_dir(engine: &Engine, source_dir: &Path, instance_name: &str) -> EngineResult<()> {
-    let root = source_dir.join("overrides");
-    let mut rels = vec![];
-    match walk_files(&root, &root, &mut rels) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(e.into()),
-    }
-    write_override_files(
-        engine,
-        instance_name,
-        &rels,
-        |rel, dest| {
+    let mut listed = 0usize;
+    let mut written = 0usize;
+    for sub in ["overrides", "client-overrides"] {
+        let root = source_dir.join(sub);
+        let mut rels = vec![];
+        match walk_files(&root, &root, &mut rels) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
+        }
+        listed += rels.len();
+        written += write_override_files(engine, instance_name, &rels, |rel, dest| {
             if let Some(p) = dest.parent() {
                 std::fs::create_dir_all(p)?;
             }
             std::fs::copy(root.join(rel), dest)?;
             Ok(true)
-        },
-        "no override could be copied from the modpack",
-    )
+        })?;
+    }
+    if listed > 0 && written == 0 {
+        return Err(EngineError::other("no override could be copied from the modpack"));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,5 +1099,61 @@ mod tests {
         assert!(import_mrpack(&e, &path, None, None).await.unwrap_err().has_code("QUILT_UNSUPPORTED"));
         std::fs::write(dir.join("modrinth.index.json"), "[1]").unwrap();
         assert!(import_mrpack(&e, &path, None, None).await.unwrap_err().has_code("BAD_MRPACK"));
+    }
+
+    /// mrpack spec compliance: `env.client == "unsupported"` files never land
+    /// (and their URL is never even resolved), `downloads[1..]` mirrors take
+    /// over when the first URL fails, and `client-overrides/` extracts after
+    /// `overrides/` so it wins on duplicate paths.
+    #[tokio::test]
+    async fn skips_client_unsupported_extracts_client_overrides_and_falls_back_mirrors() {
+        let server = MockServer::start(|req| match req.path.as_str() {
+            "/good.jar" => MockResponse::ok("good jar"),
+            _ => MockResponse::status(404),
+        })
+        .await;
+        let (d, e) = temp_engine();
+        e.update_content_settings(|s| {
+            s.pack_file_hosts = vec![server.host()];
+            s.pack_file_allow_http = true;
+        });
+        make_instance(&e, "spec");
+        let good_sha = crate::download::sha1_hex(b"good jar");
+        let files = vec![
+            json!({ "path": "mods/server-lib.jar", "env": { "client": "unsupported", "server": "required" },
+                    "downloads": [server.url("/server.jar")] }),
+            json!({ "path": "mods/fallback.jar",
+                    "downloads": [server.url("/dead.jar"), server.url("/good.jar")],
+                    "hashes": { "sha1": good_sha } }),
+        ];
+        install_mrpack_files(&e, "spec", &files, None).await.unwrap();
+        let game = e.paths().instance_dir("spec");
+        assert!(!game.join("mods").join("server-lib.jar").exists(), "server-only file must be skipped");
+        assert_eq!(std::fs::read_to_string(game.join("mods").join("fallback.jar")).unwrap(), "good jar");
+        let paths: Vec<String> = server.requests().iter().map(|r| r.path.clone()).collect();
+        assert!(!paths.iter().any(|p| p.contains("/server.jar")), "skipped file's URL never touched: {paths:?}");
+        assert!(paths.iter().any(|p| p == "/dead.jar"), "first mirror attempted: {paths:?}");
+        assert!(paths.iter().any(|p| p == "/good.jar"), "fell back to mirror 2: {paths:?}");
+
+        // client-overrides/ wins over overrides/ for the same rel path.
+        use std::io::Write;
+        let zip_path = d.path().join("pack.mrpack");
+        {
+            let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+            for (name, body) in [
+                ("overrides/config/shared.toml", "from-overrides"),
+                ("overrides/config/only-over.toml", "only-overrides"),
+                ("client-overrides/config/shared.toml", "from-client-overrides"),
+                ("client-overrides/options.txt", "client-options"),
+            ] {
+                zw.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+                zw.write_all(body.as_bytes()).unwrap();
+            }
+            zw.finish().unwrap();
+        }
+        extract_overrides(&e, &zip_path, "spec").unwrap();
+        assert_eq!(std::fs::read_to_string(game.join("config").join("shared.toml")).unwrap(), "from-client-overrides");
+        assert_eq!(std::fs::read_to_string(game.join("config").join("only-over.toml")).unwrap(), "only-overrides");
+        assert_eq!(std::fs::read_to_string(game.join("options.txt")).unwrap(), "client-options");
     }
 }

@@ -92,6 +92,8 @@ pub fn fake_projects() -> Vec<ModrinthProject> {
         game_versions: vec![],
         latest_version_number: "1.0".into(),
         installed: installed.then_some(true),
+        client_side: None,
+        server_side: None,
     };
     vec![
         p("AANobbMI", "Sodium", "The fastest and most compatible rendering optimization mod for Minecraft. Now available for both NeoForge and Fabric!", 98_441_210, true),

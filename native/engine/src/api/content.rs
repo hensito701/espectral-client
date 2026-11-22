@@ -119,6 +119,9 @@ pub struct ContentState {
     pub(crate) best_version: Mutex<HashMap<String, Option<Value>>>,
     /// sha1 -> Modrinth version JSON (None = confirmed unknown on Modrinth).
     pub(crate) sha1_versions: Mutex<HashMap<String, Option<Value>>>,
+    /// `sha1_versions` needs each jar's hash first; hashing every jar on every
+    /// search is slow, so mod jars memoize by (path, mtime, len) -> sha1.
+    pub(crate) jar_sha1: Mutex<HashMap<PathBuf, (std::time::SystemTime, u64, String)>>,
     /// mods.mjs brandingManifestCache: dir -> branding.json (None = absent/broken).
     pub(crate) branding_manifest: Mutex<HashMap<PathBuf, Option<Value>>>,
     /// servers.mjs cache: host -> (fetched_at ms, status).
@@ -230,6 +233,15 @@ pub struct ModrinthSearchQuery {
     pub instance: Option<String>,
     #[serde(default)]
     pub offset: u64,
+    /// Modrinth `index` sort: "relevance" | "downloads" | "follows" |
+    /// "newest" | "updated". None = `downloads` when `q` is empty (explore)
+    /// and `relevance` for a real query.
+    #[serde(default)]
+    pub sort: Option<String>,
+    /// Search excludes server-side-only mods by default
+    /// (`["client_side!=unsupported"]` facet); true keeps them listed.
+    #[serde(default)]
+    pub include_server_only: bool,
 }
 
 /// POST install-modrinth body.
@@ -576,9 +588,18 @@ impl Engine {
         let version = query.version.as_deref().filter(|v| !v.is_empty());
         let loader = query.loader.as_deref().filter(|v| !v.is_empty());
         let instance = query.instance.as_deref().filter(|v| !v.is_empty());
-        crate::mods::search_modrinth(self, q, version, loader, instance, query.offset)
-            .await
-            .map_err(|e| send_error(e, 502, "modrinth_search_failed"))
+        crate::mods::search_modrinth(
+            self,
+            q,
+            version,
+            loader,
+            instance,
+            query.offset,
+            query.sort.as_deref(),
+            query.include_server_only,
+        )
+        .await
+        .map_err(|e| send_error(e, 502, "modrinth_search_failed"))
     }
 
     /// POST .../mods/install-modrinth -> plan summary + `queued: true`

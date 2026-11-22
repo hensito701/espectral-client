@@ -250,16 +250,31 @@ fn select_instance(name: String) {
     let Some(ui) = win() else { return };
     push_target(&ui);
     if changed {
+        // Modrinth results belong to the previous instance: drop them and the
+        // cards so nothing stale flashes, and re-search if the tab is open.
+        let on_modrinth_tab = ui.global::<LibraryBridge>().get_m_tab() == 2;
         with(|s| {
             s.mods.clear();
             s.compat = None;
             s.preset = None;
+            s.results = None;
+            s.total = None;
+            s.last_batch = 0;
+            s.conflict = None;
+            s.optional.clear();
+            s.search_seq += 1;
+            s.searching = false;
+            s.loading_more = false;
         });
         ui.global::<LibraryBridge>().set_m_filter(0);
         push_mods(&ui);
+        rebuild_cards(&ui);
         load_mods();
         load_preset();
         load_compat();
+        if on_modrinth_tab {
+            run_search(false);
+        }
     }
 }
 
@@ -438,6 +453,10 @@ fn format_issue_text(i: &ModCompatIssue) -> String {
             i18n::tf("mods.compatDuplicate", &[("mod", &i.target_name), ("actual", actual)])
         }
         CompatIssueKind::ServerOnly => i18n::t("mods.compatServerOnly"),
+        CompatIssueKind::EspectralConflict => {
+            let key = format!("mods.espectralConflict.{}", i.reason.as_deref().unwrap_or("unknown"));
+            i18n::tf(&key, &[("mod", &i.mod_name)])
+        }
     }
 }
 
@@ -889,6 +908,8 @@ fn run_search(append: bool) {
         loader: sel.as_ref().map(|i| i.loader.content_loader().to_string()),
         instance: sel.as_ref().map(|i| i.name.clone()),
         offset,
+        sort: None,
+        include_server_only: false,
     };
     c.call_with(
         move |e| async move { e.search_modrinth(query).await },

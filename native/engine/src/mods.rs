@@ -36,7 +36,7 @@ use crate::instances::effective_mods_dir;
 use crate::types::{
     CompanionChange, InstanceMeta, Loader, ModDependencyRef, ModEntry, ModInstallPlan, ModInstallPreview,
     ModInstallUpgrade, ModPreset, ModRef, ModRename, ModVersionItem, ModVersionSwitchPlan, ModVersionSwitchResult,
-    ModVersionsReply, ModrinthProject, ModrinthSearchResult, PresetInstallResult, VersionTarget,
+    ModVersionsReply, ModrinthProject, ModrinthSearchResult, PresetInstallResult, ReleaseChannel, VersionTarget,
 };
 
 pub const MODRINTH_API: &str = "https://api.modrinth.com/v2";
@@ -615,6 +615,18 @@ async fn best_version_for(
     game_version: &str,
     loader: &str,
 ) -> EngineResult<Option<Value>> {
+    best_version_for_channel(engine, project_id, game_version, loader, ReleaseChannel::Release).await
+}
+
+/// `best_version_for` on a release channel: the channel's own tier first,
+/// then the remaining tiers by stability so something always installs.
+pub async fn best_version_for_channel(
+    engine: &Engine,
+    project_id: &str,
+    game_version: &str,
+    loader: &str,
+    channel: ReleaseChannel,
+) -> EngineResult<Option<Value>> {
     let q = format!(
         "game_versions={}&loaders={}",
         encode_uri_component(&json!([game_version]).to_string()),
@@ -623,8 +635,28 @@ async fn best_version_for(
     let url = format!("{}/project/{}/version?{q}", api(engine), encode_uri_component(project_id));
     let list = fetch_json_with_retry(engine, &url, 2).await?;
     Ok(list.as_array().and_then(|a| {
-        a.iter().find(|v| matches!(v.get("status").and_then(Value::as_str), Some("listed") | Some("approved"))).cloned()
+        a.iter()
+            .filter(|v| {
+                matches!(v.get("status").and_then(Value::as_str), Some("listed") | Some("approved"))
+                    && primary_file(v).is_some()
+            })
+            .min_by_key(|v| channel_tier_rank(channel, s(v, "version_type").as_deref().unwrap_or("release")))
+            .cloned()
     }))
+}
+
+/// Rank of a Modrinth `version_type` under `channel`: the channel's tier
+/// wins, then the rest fall back by stability (release < beta < alpha).
+fn channel_tier_rank(channel: ReleaseChannel, version_type: &str) -> u8 {
+    let wanted = match channel {
+        ReleaseChannel::Release => "release",
+        ReleaseChannel::Beta => "beta",
+        ReleaseChannel::Alpha => "alpha",
+    };
+    if version_type == wanted {
+        return 0;
+    }
+    version_tier_rank(version_type) + 1
 }
 
 /// Cached best_version_for; fetch failures are NOT cached (returns None).
@@ -1701,7 +1733,13 @@ pub fn installed_mod_filenames(engine: &Engine, instance_name: &str) -> EngineRe
 // Modrinth search
 // ---------------------------------------------------------------------------
 
-/// Browse Modrinth (12 per page, sorted by downloads). Empty query = explore.
+/// Sort values Modrinth's `index` parameter accepts.
+const SEARCH_SORTS: [&str; 5] = ["relevance", "downloads", "follows", "newest", "updated"];
+
+/// Browse Modrinth (12 per page). Empty query = explore (`index=downloads`);
+/// a real query ranks by `index=relevance` unless `sort` names a valid index.
+/// Server-only mods are hidden unless `include_server_only` (Modrinth's
+/// `client_side!=unsupported` facet keeps required/optional/unknown).
 pub async fn search_modrinth(
     engine: &Engine,
     query: &str,
@@ -1709,20 +1747,30 @@ pub async fn search_modrinth(
     loader: Option<&str>,
     instance_name: Option<&str>,
     offset: u64,
+    sort: Option<&str>,
+    include_server_only: bool,
 ) -> EngineResult<ModrinthSearchResult> {
     let mut facets = vec![json!(["project_type:mod"])];
+    if !include_server_only {
+        facets.push(json!(["client_side!=unsupported"]));
+    }
     if let Some(l) = loader.filter(|l| !l.is_empty()) {
         facets.push(json!([format!("loaders:{l}")]));
     }
     if let Some(v) = game_version.filter(|v| !v.is_empty()) {
         facets.push(json!([format!("versions:{v}")]));
     }
+    let index = match sort.filter(|s| SEARCH_SORTS.contains(s)) {
+        Some(s) => s,
+        None if query.trim().is_empty() => "downloads",
+        None => "relevance",
+    };
     let params = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("query", query)
         .append_pair("facets", &Value::Array(facets).to_string())
         .append_pair("limit", "12")
         .append_pair("offset", &offset.to_string())
-        .append_pair("index", "downloads")
+        .append_pair("index", index)
         .finish();
     let url = format!("{}/search?{params}", api(engine));
     let data = match fetch_json_with_retry(engine, &url, 2).await {
@@ -1751,16 +1799,20 @@ pub async fn search_modrinth(
                         .unwrap_or_default(),
                     latest_version_number: s(hit, "latest_version").unwrap_or_default(),
                     installed: None,
+                    client_side: s(hit, "client_side"),
+                    server_side: s(hit, "server_side"),
                 })
                 .collect()
         })
         .unwrap_or_default();
     if let Some(name) = instance_name.filter(|n| !n.is_empty()) {
-        let installed = installed_mod_filenames(engine, name)?;
+        let (installed_pids, unresolved) = installed_project_ids_fast(engine, name).await?;
         for hit in &mut results {
             let slug_t = slugify_title(&hit.title);
-            hit.installed =
-                Some(installed.iter().any(|f| is_filename_for_slug(f, &hit.slug) || is_filename_for_slug(f, &slug_t)));
+            let filename_match = unresolved
+                .iter()
+                .any(|f| is_filename_for_slug(f, &hit.slug) || is_filename_for_slug(f, &slug_t));
+            hit.installed = Some(installed_pids.contains(&hit.project_id) || filename_match);
         }
     }
     let total = data.get("total_hits").and_then(Value::as_u64).unwrap_or(results.len() as u64);
@@ -1807,6 +1859,82 @@ async fn installed_project_ids(engine: &Engine, mods_dir: &Path, files: &[String
     Some(by_hash.values().filter_map(|v| s(v, "project_id")).collect())
 }
 
+
+/// sha1 of a mod jar, memoized on `ContentState::jar_sha1` by
+/// (path, mtime, len) so repeated searches skip re-hashing unchanged jars.
+async fn jar_sha1_cached(engine: &Engine, path: &Path) -> Option<String> {
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime = meta.modified().ok()?;
+    let len = meta.len();
+    if let Some(hit) = engine
+        .content_state()
+        .jar_sha1
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(path)
+        .filter(|cached| (cached.0, cached.1) == (mtime, len))
+    {
+        return Some(hit.2.clone());
+    }
+    let sha1 = crate::download::sha1_file(path).await.ok()?;
+    engine
+        .content_state()
+        .jar_sha1
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(path.to_path_buf(), (mtime, len, sha1.clone()));
+    Some(sha1)
+}
+
+/// Project ids of the jars already in the instance's mods dir, plus the base
+/// filenames that could NOT be resolved (callers fall back to slug matching
+/// only for those). Resolution order: cached sha1 -> `POST /version_files`
+/// (`ContentState::sha1_versions`), then the offline `fabric.mod.json` id ->
+/// `KNOWN_MODRINTH_IDS` map. Everything is error-tolerant: a failed lookup
+/// leaves the jar unresolved instead of dropping it.
+async fn installed_project_ids_fast(
+    engine: &Engine,
+    instance_name: &str,
+) -> EngineResult<(HashSet<String>, Vec<String>)> {
+    if !crate::util::is_valid_instance_name(instance_name) {
+        return Err(code_err(409, "invalid_instance_name", format!("invalid instance name: {instance_name}")));
+    }
+    let mods_dir = crate::instances::effective_game_dir_by_name(engine, instance_name).join("mods");
+    let on_disk: Vec<String> = read_names(&mods_dir).into_iter().filter(|f| is_mod_file(f)).collect();
+    let mut pairs: Vec<(String, String, String)> = vec![]; // (sha1, on-disk name, base filename)
+    let mut unresolved: Vec<String> = vec![];
+    for file in &on_disk {
+        let base = file.strip_suffix(".disabled").unwrap_or(file).to_string();
+        match jar_sha1_cached(engine, &mods_dir.join(file)).await {
+            Some(h) => pairs.push((h, file.clone(), base)),
+            None => unresolved.push(base),
+        }
+    }
+    let by_hash = cached_version_files(engine, &pairs.iter().map(|(h, ..)| h.clone()).collect::<Vec<_>>()).await;
+    let mut pids = HashSet::new();
+    for (hash, file, base) in pairs {
+        let pid = by_hash.get(&hash).and_then(|v| v.as_ref()).and_then(|m| s(m, "project_id"));
+        match pid {
+            Some(p) => {
+                pids.insert(p);
+            }
+            // Offline or unknown on Modrinth: the jar's own mod id may still
+            // map to a known project; whatever remains falls back to slugs.
+            None => {
+                let known = crate::fabric_compat::read_fabric_jar(&mods_dir.join(&file), &base, true)
+                    .and_then(|jar| crate::fabric_compat::known_modrinth_for_id(&jar.root.id))
+                    .map(|(pid, _)| pid.to_string());
+                match known {
+                    Some(p) => {
+                        pids.insert(p);
+                    }
+                    None => unresolved.push(base),
+                }
+            }
+        }
+    }
+    Ok((pids, unresolved))
+}
 /// project id -> title (cosmetic; never fails).
 async fn project_titles(engine: &Engine, ids: &[String]) -> IndexMap<String, String> {
     let mut unique: IndexSet<String> = IndexSet::new();
@@ -2867,6 +2995,7 @@ pub async fn preview_modrinth_install(
         || !plan.missing.is_empty()
         || has_blocking_compat;
 
+    spawn_staging_prune(engine);
     Ok(ModInstallPreview {
         project_id: plan.project.project_id,
         title: plan.project.title,
@@ -2882,6 +3011,50 @@ pub async fn preview_modrinth_install(
         compat_issues,
         needs_confirmation,
     })
+}
+
+const MAX_STAGING_TOTAL_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_STAGING_FILES: usize = 32;
+
+/// Cap `cache/mod-staging/` at 128 MiB / 32 files, evicting the oldest-mtime
+/// entries first. Spawned after preview/commit of a Modrinth install; best
+/// effort (a file that resists removal is skipped, not fatal).
+pub fn prune_staging_cache(engine: &Engine) {
+    let dir = engine.paths().data_dir().join("cache").join("mod-staging");
+    let Ok(rd) = std::fs::read_dir(&dir) else { return };
+    let mut entries: Vec<(PathBuf, std::time::SystemTime, u64)> = rd
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            if !p.is_file() {
+                return None;
+            }
+            let meta = e.metadata().ok()?;
+            Some((p, meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH), meta.len()))
+        })
+        .collect();
+    entries.sort_by_key(|(_, mtime, _)| *mtime);
+    let mut total: u64 = entries.iter().map(|(_, _, len)| *len).sum();
+    let mut count = entries.len();
+    for (path, _, len) in entries {
+        if total <= MAX_STAGING_TOTAL_BYTES && count <= MAX_STAGING_FILES {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(len);
+            count -= 1;
+            tracing::debug!("[mods] evicted staged jar {}", path.display());
+        }
+    }
+}
+
+/// `prune_staging_cache` off the caller's path (fire-and-forget).
+fn spawn_staging_prune(engine: &Engine) {
+    let bg = engine.clone();
+    engine.spawn_background("mods", async move {
+        prune_staging_cache(&bg);
+        Ok(())
+    });
 }
 
 async fn try_plan_upgrade(
@@ -2990,6 +3163,7 @@ pub async fn commit_modrinth_install(
         }
         Ok(())
     });
+    spawn_staging_prune(engine);
     Ok(reply)
 }
 
@@ -3769,11 +3943,15 @@ mod tests {
     #[tokio::test]
     async fn search_maps_hits_and_installed_flags() {
         let server = MockServer::start(|req| {
+            if req.path.ends_with("/version_files") {
+                return MockResponse::json(&json!({}));
+            }
             assert!(req.path.starts_with("/v2/search?query="), "{}", req.path);
             MockResponse::json(&json!({
                 "hits": [
                     { "project_id": "uXXizFIs", "slug": "ferrite-core", "title": "FerriteCore", "description": "d",
-                      "icon_url": null, "downloads": 5, "versions": ["26.2"], "latest_version": "9.0.0" },
+                      "icon_url": null, "downloads": 5, "versions": ["26.2"], "latest_version": "9.0.0",
+                      "client_side": "required", "server_side": "optional" },
                     { "project_id": "x", "slug": "other", "title": "Ferrite Core", "description": "", "downloads": 1, "versions": [] }
                 ],
                 "total_hits": 40
@@ -3783,17 +3961,21 @@ mod tests {
         let (_d, e) = engine_with(Some(&server));
         let mods = write_instance(&e, "s", "26.2", "fabric");
         std::fs::write(mods.join("ferrite-core-9.0.0.jar.disabled"), "x").unwrap();
-        let r = search_modrinth(&e, "fer core", Some("26.2"), Some("fabric"), Some("s"), 12).await.unwrap();
+        let r =
+            search_modrinth(&e, "fer core", Some("26.2"), Some("fabric"), Some("s"), 12, None, false).await.unwrap();
         assert_eq!((r.total, r.offset, r.limit), (40, 12, 12));
         assert_eq!(r.results[0].installed, Some(true));
         assert_eq!(r.results[1].installed, Some(true), "slugified title matches");
+        assert_eq!(r.results[0].client_side.as_deref(), Some("required"));
+        assert_eq!(r.results[0].server_side.as_deref(), Some("optional"));
         let facets = server.requests()[0].path.clone();
         assert!(facets.starts_with("/v2/search?query=fer+core&facets="), "{facets}");
-        assert!(facets.contains("limit=12&offset=12&index=downloads"));
+        assert!(facets.contains("limit=12&offset=12&index=relevance"));
         let q: Vec<(String, String)> =
             url::form_urlencoded::parse(facets.split_once('?').unwrap().1.as_bytes()).into_owned().collect();
-        assert_eq!(q[1].1, r#"[["project_type:mod"],["loaders:fabric"],["versions:26.2"]]"#);
-        let err = search_modrinth(&e, "", None, None, Some("bad/name"), 0).await.unwrap_err();
+        let want = r#"[["project_type:mod"],["client_side!=unsupported"],["loaders:fabric"],["versions:26.2"]]"#;
+        assert_eq!(q[1].1, want);
+        let err = search_modrinth(&e, "", None, None, Some("bad/name"), 0, None, false).await.unwrap_err();
         assert_eq!(err.status(), 409);
     }
 
@@ -3801,7 +3983,7 @@ mod tests {
     async fn search_failure_is_modrinth_search_failed() {
         let server = MockServer::start(|_| MockResponse::status(404)).await;
         let (_d, e) = engine_with(Some(&server));
-        let err = search_modrinth(&e, "", None, None, None, 0).await.unwrap_err();
+        let err = search_modrinth(&e, "", None, None, None, 0, None, false).await.unwrap_err();
         assert_eq!((err.status(), err.raw_code()), (404, Some("MODRINTH_SEARCH_FAILED")));
         assert_eq!(server.hits(), 3, "2 retries");
     }
@@ -4074,5 +4256,162 @@ mod tests {
         // 5. After upgrading, compatibility report is 100% clean!
         let compat = e.check_mods_compat("guaka").await.unwrap();
         assert_eq!(compat.error_count, 0, "issues: {:?}", compat.issues);
+    }
+
+    /// Versions arrive newest-first; `best_version_for` must still pick the
+    /// newest release over newer betas/alphas, and only fall back to beta
+    /// when the project publishes no release at all.
+    #[tokio::test]
+    async fn best_version_prefers_release_over_beta_alpha() {
+        let v = |id: &str, vt: &str| {
+            json!({
+                "id": id, "project_id": "PCHAN", "version_number": id, "version_type": vt, "status": "listed",
+                "files": [{ "primary": true, "filename": format!("p-{id}.jar"), "url": "u", "hashes": {} }]
+            })
+        };
+        let server = MockServer::start(fake_modrinth(
+            json!({ "PCHAN": [v("a3", "alpha"), v("b2", "beta"), v("r1", "release")], "PBETA": [v("b9", "beta")] }),
+            json!({}),
+            json!({}),
+        ))
+        .await;
+        let (_d, e) = engine_with(Some(&server));
+        let best = best_version_for(&e, "PCHAN", "26.3", "fabric").await.unwrap().unwrap();
+        assert_eq!(s(&best, "id").as_deref(), Some("r1"));
+        let best = best_version_for(&e, "PBETA", "26.3", "fabric").await.unwrap().unwrap();
+        assert_eq!(s(&best, "id").as_deref(), Some("b9"), "beta fallback when no release");
+        let beta = best_version_for_channel(&e, "PCHAN", "26.3", "fabric", ReleaseChannel::Beta)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(s(&beta, "id").as_deref(), Some("b2"), "beta channel prefers the newest beta");
+        let alpha = best_version_for_channel(&e, "PCHAN", "26.3", "fabric", ReleaseChannel::Alpha)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(s(&alpha, "id").as_deref(), Some("a3"), "alpha channel prefers the newest alpha");
+    }
+
+    /// index=relevance for a real query, index=downloads for explore; a valid
+    /// explicit sort wins and a bogus one falls back to the default.
+    #[tokio::test]
+    async fn search_uses_relevance_for_query_and_downloads_for_explore() {
+        let server = MockServer::start(|_| MockResponse::json(&json!({ "hits": [], "total_hits": 0 }))).await;
+        let (_d, e) = engine_with(Some(&server));
+        let index_of = |i: usize| {
+            let path = &server.requests()[i].path;
+            url::form_urlencoded::parse(path.split_once('?').unwrap().1.as_bytes())
+                .into_owned()
+                .find(|(k, _)| k == "index")
+                .map(|(_, v)| v)
+                .unwrap_or_default()
+        };
+        search_modrinth(&e, "zoomify", None, None, None, 0, None, false).await.unwrap();
+        assert_eq!(index_of(0), "relevance");
+        search_modrinth(&e, "", None, None, None, 0, None, false).await.unwrap();
+        assert_eq!(index_of(1), "downloads");
+        search_modrinth(&e, "zoomify", None, None, None, 0, Some("newest"), false).await.unwrap();
+        assert_eq!(index_of(2), "newest");
+        search_modrinth(&e, "zoomify", None, None, None, 0, Some("bogus"), false).await.unwrap();
+        assert_eq!(index_of(3), "relevance", "invalid sort falls back to relevance");
+        search_modrinth(&e, "", None, None, None, 0, Some("bogus"), false).await.unwrap();
+        assert_eq!(index_of(4), "downloads", "invalid sort falls back to downloads on explore");
+    }
+
+    /// `hit.installed` comes from the resolved Modrinth project id (sha1 ->
+    /// /version_files): a jar whose filename matches a slug but hashes to a
+    /// DIFFERENT project must not flag that slug installed; only jars that
+    /// Modrinth does not know fall back to filename matching.
+    #[tokio::test]
+    async fn search_installed_matches_by_project_id_not_slug() {
+        let hits = json!([
+            { "project_id": "PFC", "slug": "ferrite-core", "title": "FerriteCore", "description": "", "downloads": 1, "versions": [] },
+            { "project_id": "POTHER", "slug": "other-mod", "title": "Other", "description": "", "downloads": 1, "versions": [] },
+            { "project_id": "PUNK", "slug": "unknown", "title": "Unknown Mod", "description": "", "downloads": 1, "versions": [] }
+        ]);
+        let hash_of = crate::download::sha1_hex(b"other-jar");
+        let server = MockServer::start(move |req| {
+            if req.path.starts_with("/v2/search") {
+                return MockResponse::json(&json!({ "hits": hits.clone(), "total_hits": 3 }));
+            }
+            if req.path.ends_with("/version_files") && req.method == "POST" {
+                let body = req.body_json().unwrap();
+                let mut out = Map::new();
+                for h in body["hashes"].as_array().unwrap() {
+                    if h.as_str() == Some(hash_of.as_str()) {
+                        out.insert(h.as_str().unwrap().into(), json!({ "project_id": "POTHER" }));
+                    }
+                }
+                return MockResponse::json(&Value::Object(out));
+            }
+            MockResponse::status(404)
+        })
+        .await;
+        let (_d, e) = engine_with(Some(&server));
+        let mods = write_instance(&e, "inst", "26.3", "fabric");
+        // The slug says ferrite-core but the jar is actually POTHER's file.
+        std::fs::write(mods.join("ferrite-core-9.0.0.jar"), b"other-jar").unwrap();
+        std::fs::write(mods.join("unknown-mod.jar"), b"not-on-modrinth").unwrap();
+        let r = search_modrinth(&e, "x", None, None, Some("inst"), 0, None, false).await.unwrap();
+        let by_pid: std::collections::HashMap<String, Option<bool>> =
+            r.results.iter().map(|p| (p.project_id.clone(), p.installed)).collect();
+        assert_eq!(by_pid["POTHER"], Some(true), "project-id match despite odd filename");
+        assert_eq!(by_pid["PFC"], Some(false), "slug guess must not flag a resolved jar");
+        assert_eq!(by_pid["PUNK"], Some(true), "unresolved jar still matches by filename");
+    }
+
+    /// Server-only mods are filtered by the `client_side!=unsupported` facet
+    /// unless the query opts in (verified live: Labrinth v2 honours `!=`).
+    #[tokio::test]
+    async fn search_filters_server_only_by_default() {
+        let server = MockServer::start(|_| MockResponse::json(&json!({ "hits": [], "total_hits": 0 }))).await;
+        let (_d, e) = engine_with(Some(&server));
+        e.search_modrinth(crate::api::content::ModrinthSearchQuery { q: "x".into(), ..Default::default() })
+            .await
+            .unwrap();
+        let facets_of = |i: usize| {
+            let path = &server.requests()[i].path;
+            let pairs: Vec<(String, String)> =
+                url::form_urlencoded::parse(path.split_once('?').unwrap().1.as_bytes()).into_owned().collect();
+            let raw = pairs.iter().find(|(k, _)| k == "facets").unwrap().1.clone();
+            serde_json::from_str::<Value>(&raw).unwrap()
+        };
+        assert_eq!(facets_of(0), json!([["project_type:mod"], ["client_side!=unsupported"]]));
+        e.search_modrinth(
+            crate::api::content::ModrinthSearchQuery {
+                q: "x".into(),
+                include_server_only: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(facets_of(1), json!([["project_type:mod"]]));
+    }
+
+    /// `cache/mod-staging/` stays under 128 MiB / 32 files, oldest mtime first.
+    #[tokio::test]
+    async fn staging_cache_prunes_oldest_over_cap() {
+        let (_d, e) = engine_with(None);
+        let dir = e.paths().data_dir().join("cache").join("mod-staging");
+        std::fs::create_dir_all(&dir).unwrap();
+        let base = std::time::SystemTime::UNIX_EPOCH;
+        // 40 sparse 4 MiB files: 160 MiB > 128 MiB and 40 > 32; mtime i secs.
+        for i in 0..40u64 {
+            let p = dir.join(format!("{i:040x}.jar"));
+            let f = std::fs::File::create(&p).unwrap();
+            f.set_len(4 * 1024 * 1024).unwrap();
+            f.set_modified(base + std::time::Duration::from_secs(i)).unwrap();
+        }
+        prune_staging_cache(&e);
+        let left = read_names(&dir);
+        assert_eq!(left.len(), 32, "{left:?}");
+        for i in 0..8u64 {
+            assert!(!left.contains(&format!("{i:040x}.jar")), "mtime-oldest evicted first");
+        }
+        assert!(left.contains(&format!("{:040x}.jar", 8)));
+        // Under the caps, nothing is evicted.
+        prune_staging_cache(&e);
+        assert_eq!(read_names(&dir).len(), 32);
     }
 }
