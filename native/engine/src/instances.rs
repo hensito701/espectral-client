@@ -65,7 +65,7 @@ pub fn loader_offered(loader: Loader, mc: &str) -> bool {
     match loader {
         Loader::Vanilla => true,
         Loader::Forge => crate::forge::forge_supported(mc),
-        Loader::Fabric => classic.map_or(true, |(minor, _)| minor >= 14),
+        Loader::Fabric => classic.is_none_or(|(minor, _)| minor >= 14),
         Loader::Neoforge => match classic {
             Some((minor, patch)) => minor > 20 || (minor == 20 && patch >= 2),
             None => crate::neoforge::neoforge_prefix_for(mc).is_some(),

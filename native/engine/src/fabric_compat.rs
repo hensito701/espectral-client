@@ -974,7 +974,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
     let mixinextras_ver = env.mixinextras_version.as_deref().map(FabricVersion::parse);
     let loader_bundles_mixinextras = loader_ver
         .as_ref()
-        .map_or(true, |lv| VersionPredicate::parse_str(">=0.15.0").matches(lv));
+        .is_none_or(|lv| VersionPredicate::parse_str(">=0.15.0").matches(lv));
 
     // Track already-emitted symmetric break/conflict pairs so we don't spam duplicates.
     let mut seen_pairs: HashSet<(String, String, bool)> = HashSet::new();

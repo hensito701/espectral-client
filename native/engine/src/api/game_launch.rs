@@ -193,7 +193,7 @@ impl GameLaunchState {
     fn prune_buffers(&self) {
         let now = crate::platform::now_ms();
         let mut b = lock(&self.buffers);
-        b.retain(|_, buf| buf.running || buf.ended_at.map_or(true, |e| now - e < BUFFER_TTL_MS));
+        b.retain(|_, buf| buf.running || buf.ended_at.is_none_or(|e| now - e < BUFFER_TTL_MS));
         if b.len() <= BUFFER_LRU_CAP {
             return;
         }
@@ -1022,7 +1022,7 @@ async fn run_launch(
     match spawned {
         Ok(sp) => {
             let seen = lock(&exit_seen);
-            let alive = sp.process.as_ref().map_or(true, |p| !p.has_exited());
+            let alive = sp.process.as_ref().is_none_or(|p| !p.has_exited());
             if !*seen && alive {
                 lock(&st.running).insert(
                     name.clone(),

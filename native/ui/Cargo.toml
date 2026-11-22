@@ -17,6 +17,11 @@ build = "build.rs"
 
 [lib]
 path = "src/lib.rs"
+# No tests live here (src/lib.rs is one include_modules! line): without these
+# two lines `cargo test --workspace` compiles the 55 MB module a second time as a
+# test harness and runs rustdoc over it.
+test = false
+doctest = false
 
 [features]
 # Dev only: build with `SLINT_LIVE_PREVIEW=1` and this feature to make the

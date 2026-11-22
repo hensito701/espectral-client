@@ -72,8 +72,10 @@ uuid = { version = "1", features = ["v4"] }
 # misc
 url = "2"
 # Audited: every Regex::new in engine/app is ASCII-safe (log/version/URL/host
-# matching); unicode-perl stays because several patterns use \d, \s and \b.
-regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-perl"] }
+# matching), so the Unicode script/age/segment tables stay out. unicode-perl
+# stays for \d, \s and \b; unicode-case for the (?i) patterns (neoforge.rs,
+# the replaymod filename check in mods.rs), which panic at compile without it.
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dirs = "5"
 # Forge/NeoForge mods.toml parsing (engine).
