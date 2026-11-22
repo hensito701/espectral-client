@@ -143,10 +143,12 @@ incremental = false
 debug = "line-tables-only"
 
 [profile.release]
-# With ThinLTO LLVM inlines across codegen units anyway, so 16 units unlock
-# multi-core codegen for the engine/app crates with negligible runtime cost.
+# 4 units, measured on devLIN (2026-11-22, -j 2): 16 units made the release
+# build slower (cold 18:23 vs 14:39, app edit 5:59 vs 5:32) because the release
+# scripts run the app/UI stage with JOBS=1-2 for RAM, so extra units only add
+# ThinLTO work; binary size is the same. The UI crate keeps its own 16 below.
 lto = "thin"
-codegen-units = 16
+codegen-units = 4
 strip = "symbols"
 
 # The UI crate is one very large generated module (~2/3 of the binary's
