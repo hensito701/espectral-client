@@ -123,12 +123,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     b.on_m_set_tab(|tab| {
         let Some(ui) = win() else { return };
         ui.global::<LibraryBridge>().set_m_tab(tab);
-        if tab == 2 {
-            let need = with(|s| s.results.is_none() && !s.searching);
-            if need {
-                run_search(false);
-            }
-        }
+        on_tab_changed(&ui, tab);
     });
     b.on_m_set_filter(|f| {
         let Some(ui) = win() else { return };
@@ -183,7 +178,9 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
 /// Route entered: select `?instance=<name>` if provided, reset tab to installed, reload.
 pub fn on_enter(ui: &AppWindow, route: &Route) {
     let b = ui.global::<LibraryBridge>();
-    b.set_m_tab(super::debug::mods_tab().unwrap_or(0));
+    // `?tab=` wins over the debug screenshot token; the default is the Mods tab.
+    let tab = route.param("tab").as_deref().and_then(tab_from_param).or_else(super::debug::mods_tab).unwrap_or(0);
+    b.set_m_tab(tab);
     b.set_m_filter(0);
     if let Some(inst) = route.param("instance").filter(|s| !s.is_empty()) {
         with(|s| s.target = inst.clone());
@@ -208,6 +205,31 @@ pub fn on_enter(ui: &AppWindow, route: &Route) {
     load_mods();
     load_preset();
     load_compat();
+    on_tab_changed(ui, tab);
+}
+
+/// `?tab=` value of `#/mods` -> tab index (0 Mods, 1 Resource Packs, 2 Shaders, 3 Presets, 4 Modrinth).
+fn tab_from_param(v: &str) -> Option<i32> {
+    match v {
+        "mods" | "installed" => Some(0),
+        "packs" => Some(1),
+        "shaders" => Some(2),
+        "presets" => Some(3),
+        "modrinth" => Some(4),
+        _ => None,
+    }
+}
+
+/// Side effects of a tab becoming active: the Modrinth search on first open,
+/// and the pack panes' lazy loads.
+fn on_tab_changed(ui: &AppWindow, tab: i32) {
+    if tab == 4 {
+        let need = with(|s| s.results.is_none() && !s.searching);
+        if need {
+            run_search(false);
+        }
+    }
+    super::packs::on_tab(ui, tab);
 }
 
 pub fn on_instances_changed(ui: &AppWindow) {
@@ -216,6 +238,7 @@ pub fn on_instances_changed(ui: &AppWindow) {
     let after = with(|s| s.target.clone());
     push_target(ui);
     if before != after {
+        super::packs::target_changed();
         load_mods();
         load_preset();
         load_compat();
@@ -250,9 +273,10 @@ fn select_instance(name: String) {
     let Some(ui) = win() else { return };
     push_target(&ui);
     if changed {
+        super::packs::target_changed();
         // Modrinth results belong to the previous instance: drop them and the
         // cards so nothing stale flashes, and re-search if the tab is open.
-        let on_modrinth_tab = ui.global::<LibraryBridge>().get_m_tab() == 2;
+        let on_modrinth_tab = ui.global::<LibraryBridge>().get_m_tab() == 4;
         with(|s| {
             s.mods.clear();
             s.compat = None;
@@ -881,10 +905,24 @@ fn open_folder() {
     if target.is_empty() {
         return;
     }
+    // The folder follows the active tab: mods/, resourcepacks/ or shaderpacks/.
+    let tab = win().map(|ui| ui.global::<LibraryBridge>().get_m_tab()).unwrap_or(0);
     c.call_with(
         move |e| async move {
-            let dir = e.mods_dir(&target).await?;
-            e.open_folder(&dir.path).await
+            let dir = match tab {
+                1 | 2 => {
+                    let inst = espectral_engine::resolver::load_instance_meta(&e, &target)?;
+                    let dir = if tab == 1 {
+                        espectral_engine::packs::effective_resourcepacks_dir(&e, &inst)
+                    } else {
+                        espectral_engine::packs::effective_shaderpacks_dir(&e, &inst)
+                    };
+                    std::fs::create_dir_all(&dir)?;
+                    dir.to_string_lossy().into_owned()
+                }
+                _ => e.mods_dir(&target).await?.path,
+            };
+            e.open_folder(&dir).await
         },
         |_ui, _| {
             let ok = i18n::t("mods.openFolderSuccess");
@@ -1419,14 +1457,14 @@ fn install_missing_mod_id(mod_id: String, display: String) {
             } else {
                 // Fallback: switch to Explorar Modrinth pre-filled with the missing mod id.
                 let b = ui.global::<LibraryBridge>();
-                b.set_m_tab(2);
+                b.set_m_tab(4);
                 b.set_m_search_query(ss(if display.is_empty() { mod_id } else { display }));
                 run_search(false);
             }
         },
         move |ui, _err| {
             let b = ui.global::<LibraryBridge>();
-            b.set_m_tab(2);
+            b.set_m_tab(4);
             b.set_m_search_query(ss(id_err));
             run_search(false);
         },

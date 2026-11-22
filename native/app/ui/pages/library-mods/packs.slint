@@ -1,0 +1,925 @@
+// OWNER: library-mods agent. ResourcePacksPane + ShadersPane for the ModCatalog
+// tabs 1 (Resource Packs) and 2 (Shaders). Smart-mods plan 4.2.
+//
+// State lives on LibraryBridge (`rp-*`, `sh-*`); Rust (library_mods/packs.rs)
+// lists the packs through the engine, keeps the options.txt order, unwrapping,
+// deletes, cross-instance copies and the Iris state, and decodes pack.png
+import { Theme, T, Btn, BtnVariant, BtnSize, IconBtn, Badge, BadgeVariant, Icon, Icons, Spinner, Emoji, MonogramTile, MonogramShape, Toggle, SelectableText, TextField, Modal, ModalFooter, ConfirmDialog, GlassCard, Elevation, Checkbox, ScrollArea } from "../../widgets.slint";
+import { LibraryBridge, RpRow, ShRow } from "api.slint";
+import { GlassPanel, VText, StatePanel, Chip } from "parts.slint";
+
+component PackSpinner inherits Spinner {
+    size: 16px;
+    tint: Theme.accent;
+}
+
+// ---------------------------------------------------------------- shared bits
+
+/// Compat pill: OK green / outdated amber / nested or invalid red.
+component CompatPill inherits Badge {
+    in property <string> compat;
+    text: compat == "compatible" ? T.tr("packs.compatOk")
+        : compat == "too_old" ? T.tr("packs.compatOld")
+        : compat == "too_new" ? T.tr("packs.compatNew")
+        : compat == "nested_archive" ? T.tr("packs.compatNested")
+        : compat == "invalid_meta" ? T.tr("packs.compatInvalid")
+        : T.tr("packs.compatUnknown");
+    variant: compat == "compatible" ? BadgeVariant.ok
+        : compat == "too_old" || compat == "too_new" ? BadgeVariant.warn
+        : compat == "unknown" ? BadgeVariant.neutral
+        : BadgeVariant.err;
+    dot: true;
+}
+
+/// Red strip under a nested-zip row with the 1-click unwrap fix.
+component NestedStrip inherits GlassPanel {
+    in property <string> filename;
+    fill: Theme.accent-red.with-alpha(0.08);
+    stroke: Theme.accent-red.with-alpha(0.45);
+    height: row.preferred-height;
+    row := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 6px;
+        padding-top: 5px;
+        padding-bottom: 5px;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            alignment: center;
+            Icon { data: Icons.alert-triangle; size: 14px; color: Theme.accent-red; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            SelectableText {
+                text: T.tr("packs.nestedHint");
+                font-size: Theme.text-xs;
+                font-weight: 500;
+                color: Theme.accent-red;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.danger;
+                size: BtnSize.sm;
+                text: T.tr("packs.fixNested");
+                enabled: !LibraryBridge.rp-busy;
+                clicked => { LibraryBridge.rp-unwrap(root.filename); }
+            }
+        }
+    }
+}
+
+component PackLoadingPanel inherits StatePanel {
+    in property <string> text;
+    HorizontalLayout {
+        alignment: center;
+        PackSpinner { }
+    }
+    SelectableText { text: root.text; horizontal-alignment: center; wrap: word-wrap; }
+}
+
+component PackErrorBanner inherits GlassPanel {
+    in property <string> text;
+    in property <bool> shaders: false;
+    fill: Theme.card-bg-soft;
+    stroke: Theme.accent-red.with-alpha(0.45);
+    height: row.preferred-height;
+    row := HorizontalLayout {
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-2;
+        alignment: center;
+        VText { text: "!"; color: Theme.accent-red; font-weight: 700; }
+        VerticalLayout {
+            alignment: center;
+            SelectableText {
+                text: root.text;
+                color: Theme.accent-red;
+                font-size: Theme.text-md;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: T.tr("versions.retry");
+                clicked => {
+                    if root.shaders {
+                        LibraryBridge.sh-reload();
+                    } else {
+                        LibraryBridge.rp-reload();
+                    }
+                }
+            }
+        }
+    }
+}
+
+component PackEmptyPanel inherits StatePanel {
+    in property <string> emoji;
+    in property <string> title;
+    in property <string> hint;
+    HorizontalLayout {
+        alignment: center;
+        Emoji { char: root.emoji; size: 32px; }
+    }
+    SelectableText {
+        text: root.title;
+        color: Theme.text;
+        font-size: Theme.text-xl;
+        font-weight: 700;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    SelectableText { text: root.hint; horizontal-alignment: center; wrap: word-wrap; }
+}
+
+// ---------------------------------------------------------------- resource packs
+
+component PackRow inherits Rectangle {
+    in property <RpRow> entry;
+    /// Last row of its section: no trailing separator.
+    in property <bool> last: false;
+    /// Length of the active list: disables "move down" on the last row.
+    in property <int> active-count;
+    height: content.preferred-height;
+    opacity: root.entry.enabled ? 1 : 0.72;
+    background: root.entry.compat == "nested_archive" || root.entry.compat == "invalid_meta"
+        ? Theme.accent-red.with-alpha(hover.has-hover ? 0.08 : 0.04)
+        : hover.has-hover ? Theme.surface-up : transparent;
+    animate background { duration: Theme.dur-fast; }
+    Rectangle {
+        y: root.height - Theme.hairline;
+        height: Theme.hairline;
+        background: Theme.border-solid;
+        visible: !root.last;
+    }
+    hover := TouchArea { }
+    content := VerticalLayout {
+        padding-top: 7px;
+        padding-bottom: 7px;
+        padding-left: 11px;
+        padding-right: 11px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            VerticalLayout {
+                alignment: center;
+                if root.entry.has-icon: Rectangle {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: Theme.radius-md;
+                    background: Theme.card-bg-soft;
+                    border-width: Theme.hairline;
+                    border-color: Theme.border-solid;
+                    clip: true;
+                    Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.entry.icon;
+                        image-fit: cover;
+                    }
+                }
+                if !root.entry.has-icon: MonogramTile {
+                    name: root.entry.name;
+                    size: 40px;
+                    shape: MonogramShape.rounded;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2.4px;
+                alignment: center;
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    VText { text: root.entry.name; font-size: 13px; font-weight: 600; overflow: elide; }
+                    if root.entry.version != "": VerticalLayout {
+                        alignment: center;
+                        SelectableText {
+                            text: root.entry.version;
+                            font-family: Theme.label-family(8px);
+                            font-size: Theme.label-size(8px);
+                            font-weight: 700;
+                            color: Theme.muted;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        CompatPill { compat: root.entry.compat; }
+                    }
+                    if root.entry.has-update: VerticalLayout {
+                        alignment: center;
+                        Badge {
+                            text: root.entry.update-ver != ""
+                                ? T.tr1("packs.updateTo", "ver", root.entry.update-ver)
+                                : T.tr("packs.updateAvail");
+                            variant: BadgeVariant.accent;
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 5.6px;
+                    alignment: start;
+                    SelectableText {
+                        text: root.entry.filename;
+                        font-family: Theme.font-mono;
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        opacity: 0.85;
+                        overflow: elide;
+                        font-weight: 500;
+                    }
+                    if root.entry.size != "": Text {
+                        text: "· " + root.entry.size;
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        font-weight: 500;
+                    }
+                    if root.entry.format-range != "": Text {
+                        text: "· " + T.tr1("packs.format", "range", root.entry.format-range);
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        font-weight: 500;
+                    }
+                }
+                if root.entry.description != "": Text {
+                    text: root.entry.description;
+                    font-size: Theme.text-xs;
+                    color: Theme.muted;
+                    overflow: elide;
+                }
+                if root.entry.tags.length > 0 || root.entry.overrides-count > 0 || root.entry.overridden-count > 0: HorizontalLayout {
+                    spacing: 5.6px;
+                    alignment: start;
+                    for tag in root.entry.tags: Badge { text: tag; }
+                    if root.entry.overrides-count > 0: Text {
+                        text: "· " + T.tr1("packs.overrides", "count", root.entry.overrides-count);
+                        font-size: Theme.text-xs;
+                        color: Theme.accent-green;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+                    if root.entry.overridden-count > 0: Text {
+                        text: "· " + T.tr2("packs.overriddenBy", "count", root.entry.overridden-count, "names", root.entry.overridden-by);
+                        font-size: Theme.text-xs;
+                        color: Theme.accent-alt;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            HorizontalLayout {
+                horizontal-stretch: 0;
+                spacing: 6px;
+                alignment: end;
+                if root.entry.enabled: VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    IconBtn {
+                        icon: Icons.chevron-up;
+                        size: 24px;
+                        icon-size: 13px;
+                        flat: true;
+                        enabled: !LibraryBridge.rp-busy && root.entry.priority > 0;
+                        clicked => { LibraryBridge.rp-move-up(root.entry.filename); }
+                    }
+                    IconBtn {
+                        icon: Icons.chevron-down;
+                        size: 24px;
+                        icon-size: 13px;
+                        flat: true;
+                        enabled: !LibraryBridge.rp-busy && root.entry.priority >= 0 && root.entry.priority < root.active-count - 1;
+                        clicked => { LibraryBridge.rp-move-down(root.entry.filename); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: Theme.radius-sm;
+                        background: del-ta.has-hover ? Theme.accent-red.with-alpha(0.14) : transparent;
+                        animate background { duration: Theme.dur-fast; }
+                        Icon {
+                            data: Icons.trash;
+                            size: 14px;
+                            color: del-ta.has-hover ? Theme.accent-red : Theme.muted;
+                        }
+                        del-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            enabled: !LibraryBridge.rp-busy;
+                            clicked => {
+                                LibraryBridge.rp-delete-filename = root.entry.filename;
+                                LibraryBridge.rp-delete-open = true;
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Toggle {
+                        checked: root.entry.enabled;
+                        enabled: !LibraryBridge.rp-busy;
+                        toggled(v) => { LibraryBridge.rp-toggle(root.entry.filename); }
+                    }
+                }
+            }
+        }
+        if root.entry.nested: NestedStrip { filename: root.entry.filename; }
+    }
+}
+
+component RpToolbar inherits VerticalLayout {
+    spacing: 0px;
+    row := HorizontalLayout {
+        padding-top: Theme.space-2;
+        padding-bottom: Theme.space-2;
+        spacing: Theme.space-3;
+        HorizontalLayout {
+            spacing: Theme.space-1;
+            alignment: start;
+            horizontal-stretch: 1;
+            Chip {
+                text: T.tr("packs.filterAll") + " (" + (LibraryBridge.rp-count-active + LibraryBridge.rp-count-inactive) + ")";
+                active: LibraryBridge.rp-filter == 0;
+                clicked => { LibraryBridge.rp-set-filter(0); }
+            }
+            Chip {
+                text: T.tr("packs.filterActive") + " (" + LibraryBridge.rp-count-active + ")";
+                active: LibraryBridge.rp-filter == 1;
+                dot-color: Theme.accent-green;
+                clicked => { LibraryBridge.rp-set-filter(1); }
+            }
+            Chip {
+                text: T.tr("packs.filterInactive") + " (" + LibraryBridge.rp-count-inactive + ")";
+                active: LibraryBridge.rp-filter == 2;
+                clicked => { LibraryBridge.rp-set-filter(2); }
+            }
+            Chip {
+                text: T.tr("packs.filterIssues") + " (" + LibraryBridge.rp-count-issues + ")";
+                active: LibraryBridge.rp-filter == 3;
+                dot-color: Theme.accent-red;
+                enabled: LibraryBridge.rp-count-issues > 0;
+                clicked => { LibraryBridge.rp-set-filter(3); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            TextField {
+                width: 220px;
+                field-height: 30px;
+                icon: Icons.search;
+                clearable: true;
+                placeholder: T.tr("packs.searchPlaceholder");
+                text <=> LibraryBridge.rp-query;
+                edited(t) => { LibraryBridge.rp-set-query(t); }
+            }
+        }
+    }
+    row2 := HorizontalLayout {
+            padding-bottom: Theme.space-2;
+            spacing: Theme.space-2;
+            alignment: end;
+            if LibraryBridge.rp-server-cache-size != "": GlassPanel {
+                radius: Theme.radius-pill;
+                fill: Theme.card-bg-soft;
+                stroke: Theme.accent-alt.with-alpha(0.45);
+                height: cache-row.preferred-height;
+                cache-row := HorizontalLayout {
+                    padding-left: Theme.space-3;
+                    padding-right: 6px;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    spacing: Theme.space-2;
+                    VerticalLayout {
+                        alignment: center;
+                        Icon { data: Icons.server; size: 13px; color: Theme.accent-alt; }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        SelectableText {
+                            text: T.tr1("packs.serverCache", "size", LibraryBridge.rp-server-cache-size);
+                            font-size: Theme.text-xs;
+                            color: Theme.accent-alt;
+                            font-weight: 500;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Btn {
+                            variant: BtnVariant.ghost;
+                            size: BtnSize.sm;
+                            text: T.tr("packs.clearCache");
+                            enabled: !LibraryBridge.rp-busy;
+                            clicked => { LibraryBridge.rp-clear-server-cache(); }
+                        }
+                    }
+                }
+            }
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                icon: Icons.refresh;
+                text: T.tr("packs.checkUpdates");
+                loading: LibraryBridge.rp-checking-updates;
+                enabled: LibraryBridge.m-has-target && !LibraryBridge.rp-checking-updates && !LibraryBridge.rp-busy;
+                clicked => { LibraryBridge.rp-check-updates(); }
+            }
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                icon: Icons.copy;
+                text: T.tr("packs.copyFrom");
+                enabled: LibraryBridge.m-has-target && !LibraryBridge.rp-busy;
+                clicked => { LibraryBridge.rp-copy-from(); }
+            }
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                icon: Icons.folder;
+                text: T.tr("mods.openFolder");
+                enabled: LibraryBridge.m-has-target;
+                clicked => { LibraryBridge.m-open-folder(); }
+            }
+        }
+}
+
+/// Tab 1: the resource packs manager (active stack + inactive list).
+export component ResourcePacksPane inherits VerticalLayout {
+    spacing: Theme.space-3;
+    RpToolbar { }
+    if !LibraryBridge.m-has-target: PackEmptyPanel {
+        emoji: "🎨";
+        title: T.tr("packs.noInstance");
+        hint: T.tr("mods.createFirst");
+    }
+    if LibraryBridge.m-has-target && LibraryBridge.rp-loading
+        && LibraryBridge.rp-active.length == 0 && LibraryBridge.rp-inactive.length == 0: PackLoadingPanel {
+        text: T.tr("packs.loading");
+    }
+    if LibraryBridge.m-has-target && LibraryBridge.rp-error != "": PackErrorBanner {
+        text: LibraryBridge.rp-error;
+    }
+    if LibraryBridge.m-has-target && !LibraryBridge.rp-loading && LibraryBridge.rp-error == ""
+        && LibraryBridge.rp-active.length == 0 && LibraryBridge.rp-inactive.length == 0
+        && LibraryBridge.rp-count-active + LibraryBridge.rp-count-inactive == 0: PackEmptyPanel {
+        emoji: "🎨";
+        title: T.tr("packs.empty");
+        hint: T.tr("packs.emptyHint");
+    }
+    if LibraryBridge.m-has-target && !LibraryBridge.rp-loading && LibraryBridge.rp-error == ""
+        && LibraryBridge.rp-active.length == 0 && LibraryBridge.rp-inactive.length == 0
+        && LibraryBridge.rp-count-active + LibraryBridge.rp-count-inactive > 0: PackEmptyPanel {
+        emoji: "🔍";
+        title: T.tr("packs.noResults");
+        hint: T.tr("packs.noResultsHint");
+    }
+    if LibraryBridge.rp-active.length > 0: VerticalLayout {
+        spacing: Theme.space-2;
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            Text {
+                text: T.tr("packs.activeSection").to-uppercase();
+                font-size: Theme.text-xs;
+                font-weight: 600;
+                letter-spacing: 0.6px;
+                color: Theme.muted;
+                vertical-alignment: center;
+            }
+            Text {
+                text: T.tr("packs.activeHint");
+                font-size: Theme.text-xs;
+                color: Theme.muted;
+                opacity: 0.75;
+                vertical-alignment: center;
+            }
+        }
+        GlassCard {
+            elevation: Elevation.md;
+            padding-size: 0px;
+            spacing: 0px;
+            for row[i] in LibraryBridge.rp-active: PackRow {
+                entry: row;
+                last: i == LibraryBridge.rp-active.length - 1;
+                active-count: LibraryBridge.rp-active.length;
+            }
+        }
+    }
+    if LibraryBridge.rp-inactive.length > 0: VerticalLayout {
+        spacing: Theme.space-2;
+        Text {
+            text: T.tr("packs.inactiveSection").to-uppercase();
+            font-size: Theme.text-xs;
+            font-weight: 600;
+            letter-spacing: 0.6px;
+            color: Theme.muted;
+        }
+        GlassCard {
+            elevation: Elevation.md;
+            padding-size: 0px;
+            spacing: 0px;
+            for row[i] in LibraryBridge.rp-inactive: PackRow {
+                entry: row;
+                last: i == LibraryBridge.rp-inactive.length - 1;
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- shaders
+
+/// Radio dot for the active shader pack.
+component ShaderRadio inherits Rectangle {
+    in property <bool> on;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    border-width: Theme.hairline;
+    border-color: on ? Theme.accent : Theme.muted;
+    background: transparent;
+    if root.on: Rectangle {
+        x: 3px;
+        y: 3px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.accent;
+    }
+}
+
+component ShaderRow inherits Rectangle {
+    in property <ShRow> entry;
+    in property <bool> last: false;
+    height: content.preferred-height;
+    opacity: LibraryBridge.sh-enabled ? 1 : 0.72;
+    background: root.entry.active ? Theme.accent.with-alpha(hover.has-hover ? 0.16 : 0.10)
+        : hover.has-hover ? Theme.surface-up : transparent;
+    // Row-wide select area sits under the content so the delete button wins clicks.
+    hover := TouchArea {
+        mouse-cursor: pointer;
+        enabled: !LibraryBridge.sh-busy && !root.entry.active && LibraryBridge.sh-enabled;
+        clicked => { LibraryBridge.sh-select(root.entry.filename); }
+    }
+    animate background { duration: Theme.dur-fast; }
+    Rectangle {
+        y: root.height - Theme.hairline;
+        height: Theme.hairline;
+        background: Theme.border-solid;
+        visible: !root.last;
+    }
+    content := HorizontalLayout {
+        padding-top: 9px;
+        padding-bottom: 9px;
+        padding-left: 11px;
+        padding-right: 11px;
+        spacing: Theme.space-3;
+        VerticalLayout {
+            alignment: center;
+            ShaderRadio { on: root.entry.active; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2.4px;
+            alignment: center;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                alignment: start;
+                VText { text: root.entry.name; font-size: 13px; font-weight: 600; overflow: elide; }
+                if root.entry.version != "": VerticalLayout {
+                    alignment: center;
+                    SelectableText {
+                        text: root.entry.version;
+                        font-family: Theme.label-family(8px);
+                        font-size: Theme.label-size(8px);
+                        font-weight: 700;
+                        color: Theme.muted;
+                    }
+                }
+                if root.entry.active: VerticalLayout {
+                    alignment: center;
+                    Badge { text: T.tr("packs.shaderActive"); variant: BadgeVariant.accent; dot: true; }
+                }
+                if root.entry.has-update: VerticalLayout {
+                    alignment: center;
+                    Badge {
+                        text: root.entry.update-ver != ""
+                            ? T.tr1("packs.updateTo", "ver", root.entry.update-ver)
+                            : T.tr("packs.updateAvail");
+                        variant: BadgeVariant.warn;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 5.6px;
+                alignment: start;
+                SelectableText {
+                    text: root.entry.filename;
+                    font-family: Theme.font-mono;
+                    font-size: Theme.text-xs;
+                    color: Theme.muted;
+                    opacity: 0.85;
+                    overflow: elide;
+                    font-weight: 500;
+                }
+                if root.entry.size != "": Text {
+                    text: "· " + root.entry.size;
+                    font-size: Theme.text-xs;
+                    color: Theme.muted;
+                    font-weight: 500;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: Theme.radius-sm;
+                background: del-ta.has-hover ? Theme.accent-red.with-alpha(0.14) : transparent;
+                animate background { duration: Theme.dur-fast; }
+                Icon {
+                    data: Icons.trash;
+                    size: 14px;
+                    color: del-ta.has-hover ? Theme.accent-red : Theme.muted;
+                }
+                del-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    enabled: !LibraryBridge.sh-busy;
+                    clicked => {
+                        LibraryBridge.sh-delete-filename = root.entry.filename;
+                        LibraryBridge.sh-delete-open = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Tab 2: Iris shader packs (master toggle + pack picker).
+export component ShadersPane inherits VerticalLayout {
+    spacing: Theme.space-3;
+    if !LibraryBridge.sh-iris-installed && !LibraryBridge.sh-loading: GlassPanel {
+        fill: Theme.accent-alt.with-alpha(0.10);
+        stroke: Theme.accent-alt.with-alpha(0.45);
+        height: iris-row.preferred-height;
+        iris-row := HorizontalLayout {
+            padding-top: Theme.space-3;
+            padding-bottom: Theme.space-3;
+            padding-left: Theme.space-4;
+            padding-right: Theme.space-4;
+            spacing: Theme.space-2;
+            VerticalLayout {
+                alignment: center;
+                Icon { data: Icons.alert-triangle; size: 15px; color: Theme.accent-alt; }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                SelectableText {
+                    text: LibraryBridge.m-sel-loader == "fabric"
+                        ? T.tr("packs.irisMissing")
+                        : T.tr1("packs.irisMissingLoader", "loader", LibraryBridge.m-sel-loader);
+                    color: Theme.accent-alt;
+                    font-size: Theme.text-xs;
+                    font-weight: 500;
+                    wrap: word-wrap;
+                }
+            }
+            if LibraryBridge.m-sel-loader == "fabric": VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    text: T.tr("packs.installIris");
+                    loading: LibraryBridge.sh-installing-iris;
+                    enabled: !LibraryBridge.sh-installing-iris;
+                    clicked => { LibraryBridge.sh-install-iris(); }
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-3;
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            horizontal-stretch: 1;
+            VerticalLayout {
+                alignment: center;
+                Toggle {
+                    checked: LibraryBridge.sh-enabled;
+                    enabled: LibraryBridge.sh-iris-installed && !LibraryBridge.sh-busy;
+                    toggled(v) => { LibraryBridge.sh-set-enabled(v); }
+                }
+            }
+            Text {
+                text: T.tr("packs.shadersEnabled");
+                font-size: Theme.text-sm;
+                font-weight: 600;
+                color: Theme.text;
+                vertical-alignment: center;
+            }
+        }
+        Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.sm;
+            icon: Icons.refresh;
+            text: T.tr("packs.checkUpdates");
+            enabled: LibraryBridge.m-has-target && !LibraryBridge.sh-busy;
+            clicked => { LibraryBridge.sh-check-updates(); }
+        }
+        Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.sm;
+            icon: Icons.folder;
+            text: T.tr("mods.openFolder");
+            enabled: LibraryBridge.m-has-target;
+            clicked => { LibraryBridge.m-open-folder(); }
+        }
+        Btn {
+            size: BtnSize.sm;
+            text: T.tr("packs.browseShaders");
+            enabled: LibraryBridge.m-has-target;
+            clicked => {
+                // Modrinth browser: index 4 is its tab; m-set-type(2) = shader content type,
+                // reloads categories and reruns the search.
+                LibraryBridge.m-set-tab(4);
+                LibraryBridge.m-set-type(2);
+            }
+        }
+    }
+    if !LibraryBridge.m-has-target: PackEmptyPanel {
+        emoji: "✨";
+        title: T.tr("packs.noInstance");
+        hint: T.tr("mods.createFirst");
+    }
+    if LibraryBridge.m-has-target && LibraryBridge.sh-loading && LibraryBridge.sh-rows.length == 0: PackLoadingPanel {
+        text: T.tr("packs.loadingShaders");
+    }
+    if LibraryBridge.m-has-target && LibraryBridge.sh-error != "": PackErrorBanner {
+        text: LibraryBridge.sh-error;
+        shaders: true;
+    }
+    if LibraryBridge.m-has-target && !LibraryBridge.sh-loading && LibraryBridge.sh-error == ""
+        && LibraryBridge.sh-iris-installed && LibraryBridge.sh-rows.length == 0: PackEmptyPanel {
+        emoji: "✨";
+        title: T.tr("packs.noShaders");
+        hint: T.tr("packs.noShadersHint");
+    }
+    if LibraryBridge.m-has-target && LibraryBridge.sh-iris-installed && LibraryBridge.sh-rows.length > 0: GlassCard {
+        elevation: Elevation.md;
+        padding-size: 0px;
+        spacing: 0px;
+        for row[i] in LibraryBridge.sh-rows: ShaderRow {
+            entry: row;
+            last: i == LibraryBridge.sh-rows.length - 1;
+        }
+    }
+}
+
+// ---------------------------------------------------------------- modals
+// (placed as the last children of ModsPage so they fill the window)
+
+/// "Copy from instance" — stage 1 picks the source, stage 2 the packs.
+export component CopyFromModal inherits Modal {
+    open <=> LibraryBridge.rp-copy-open;
+    title: T.tr("packs.copyTitle");
+    subtitle: LibraryBridge.rp-copy-source != "" ? LibraryBridge.rp-copy-source : "";
+    dialog-width: 560px;
+    dismissable: !LibraryBridge.rp-copy-busy;
+    close => { LibraryBridge.rp-copy-cancel(); }
+
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-3;
+        if LibraryBridge.rp-copy-loading: VerticalLayout {
+            padding-top: Theme.space-6;
+            padding-bottom: Theme.space-6;
+            spacing: Theme.space-2;
+            HorizontalLayout { alignment: center; PackSpinner { } }
+            SelectableText { text: T.tr("packs.loading"); color: Theme.muted; horizontal-alignment: center; }
+        }
+        if !LibraryBridge.rp-copy-loading && LibraryBridge.rp-copy-source == "": VerticalLayout {
+            spacing: Theme.space-2;
+            if LibraryBridge.rp-copy-instances.length == 0: SelectableText {
+                text: T.tr("packs.copyNoInstances");
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            for inst in LibraryBridge.rp-copy-instances: pick := Rectangle {
+                height: pick-row.preferred-height;
+                border-radius: Theme.radius-sm;
+                background: pick-ta.has-hover ? Theme.surface-up : Theme.card-bg-soft;
+                border-width: Theme.hairline;
+                border-color: pick-ta.has-hover ? Theme.hover-border : Theme.border-solid;
+                animate background, border-color { duration: Theme.dur-fast; }
+                pick-row := HorizontalLayout {
+                    padding-left: Theme.space-3;
+                    padding-right: Theme.space-3;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    spacing: Theme.space-2;
+                    VText {
+                        text: inst.name;
+                        font-size: Theme.text-sm;
+                        font-weight: 600;
+                        color: Theme.text;
+                        horizontal-stretch: 1;
+                    }
+                    VText {
+                        text: inst.tag;
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Icon { data: Icons.chevron-right; size: 14px; color: Theme.muted; }
+                    }
+                }
+                pick-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { LibraryBridge.rp-copy-pick(inst.name); }
+                }
+            }
+        }
+        if !LibraryBridge.rp-copy-loading && LibraryBridge.rp-copy-source != "": VerticalLayout {
+            spacing: Theme.space-3;
+            if LibraryBridge.rp-copy-packs.length == 0: SelectableText {
+                text: T.tr("packs.copyNoPacks");
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            if LibraryBridge.rp-copy-packs.length > 0: Rectangle {
+                height: min(300px, copy-list.preferred-height + 8px);
+                border-radius: Theme.radius-md;
+                background: Theme.card-bg-soft;
+                border-width: Theme.hairline;
+                border-color: Theme.border-solid;
+                clip: true;
+                ScrollArea {
+                    width: 100%;
+                    height: 100%;
+                    copy-list := VerticalLayout {
+                        padding: 4px;
+                        spacing: 2px;
+                        for pack in LibraryBridge.rp-copy-packs: Checkbox {
+                            text: pack.name + (pack.enabled ? " · " + T.tr("packs.copyActive") : "");
+                            checked: pack.checked;
+                            toggled(v) => { LibraryBridge.rp-copy-toggle(pack.filename); }
+                        }
+                    }
+                }
+            }
+            if LibraryBridge.rp-copy-packs.length > 0: Checkbox {
+                text: T.tr("packs.copyKeepOrder");
+                checked <=> LibraryBridge.rp-copy-keep-order;
+            }
+        }
+    }
+    ModalFooter {
+        Btn {
+            variant: BtnVariant.secondary;
+            text: T.tr("home.wizardCancelBtn");
+            enabled: !LibraryBridge.rp-copy-busy;
+            clicked => { LibraryBridge.rp-copy-cancel(); }
+        }
+        Btn {
+            variant: BtnVariant.primary;
+            text: T.tr("packs.copyConfirm");
+            loading: LibraryBridge.rp-copy-busy;
+            enabled: LibraryBridge.rp-copy-packs.length > 0 && !LibraryBridge.rp-copy-busy;
+            clicked => { LibraryBridge.rp-copy-confirm(); }
+        }
+    }
+}
+
+/// Confirmed delete of a resource pack (the dialog owns its open state).
+export component RpDeleteDialog inherits ConfirmDialog {
+    open <=> LibraryBridge.rp-delete-open;
+    title: T.tr("packs.deleteTitle");
+    message: T.tr1("packs.deleteConfirm", "name", LibraryBridge.rp-delete-filename);
+    confirm-text: T.tr("packs.delete");
+    cancel-text: T.tr("home.wizardCancelBtn");
+    danger: true;
+    confirmed => { LibraryBridge.rp-delete(LibraryBridge.rp-delete-filename); }
+}
+
+/// Confirmed delete of a shader pack.
+export component ShDeleteDialog inherits ConfirmDialog {
+    open <=> LibraryBridge.sh-delete-open;
+    title: T.tr("packs.deleteShaderTitle");
+    message: T.tr1("packs.deleteConfirm", "name", LibraryBridge.sh-delete-filename);
+    confirm-text: T.tr("packs.delete");
+    cancel-text: T.tr("home.wizardCancelBtn");
+    danger: true;
+    confirmed => { LibraryBridge.sh-delete(LibraryBridge.sh-delete-filename); }
+}

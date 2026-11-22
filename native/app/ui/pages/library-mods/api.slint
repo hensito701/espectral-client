@@ -141,6 +141,55 @@ export struct RankGridRow {
     cards: [RankCard],
 }
 
+/// One resource pack row (engine ResourcePackEntry, display-ready).
+/// `compat` mirrors PackCompatStatus snake_case: "compatible" | "too_old" |
+/// "too_new" | "invalid_meta" | "nested_archive" | "unknown".
+export struct RpRow {
+    filename: string,
+    name: string,
+    version: string,         // "" or the Modrinth version number
+    description: string,
+    size: string,            // formatted bytes ("1.2 MB")
+    enabled: bool,
+    priority: int,           // -1 when disabled
+    compat: string,
+    format-range: string,    // "" or e.g. "34–46"
+    nested: bool,
+    icon: image,
+    has-icon: bool,
+    overrides-count: int,
+    overridden-by: string,   // higher-priority pack names, comma separated
+    overridden-count: int,
+    tags: [string],
+    has-update: bool,
+    update-ver: string,
+}
+
+/// One shader pack row (engine ShaderPackEntry, display-ready).
+export struct ShRow {
+    filename: string,
+    name: string,
+    version: string,
+    size: string,
+    active: bool,
+    has-update: bool,
+    update-ver: string,
+}
+
+/// Another instance offered in the "Copy from instance" picker.
+export struct RpCopyInstanceRow {
+    name: string,
+    tag: string,             // "fabric · 1.21.1"
+}
+
+/// One selectable pack of the copy-from-instance source list.
+export struct RpCopyPackRow {
+    filename: string,
+    name: string,
+    enabled: bool,           // active in the source instance
+    checked: bool,           // selection checkbox (model data, flipped by Rust)
+}
+
 export global LibraryBridge {
     /// AppState.instances changed while a library page is shown (pages call it).
     callback instances-changed();
@@ -169,7 +218,7 @@ export global LibraryBridge {
     in property <bool> m-has-target;
     in property <string> m-sel-loader;
     in property <string> m-sel-version;
-    in-out property <int> m-tab;             // 0 installed 1 presets 2 modrinth
+    in-out property <int> m-tab;             // 0 mods 1 resource packs 2 shaders 3 presets 4 modrinth
     in-out property <int> m-filter;          // 0 all 1 enabled 2 disabled
     in-out property <string> m-filter-query;
     in property <[ModRow]> m-rows;           // filtered
@@ -327,4 +376,64 @@ export global LibraryBridge {
     callback d-refresh();
     callback d-set-cols(int);
     callback d-copy(string, string);         // channel id, url
+    // ------------------------------------------------------- resource packs
+    in property <bool> rp-loading;
+    in property <string> rp-error;
+    in property <[RpRow]> rp-active;         // priority order: index 0 = top
+    in property <[RpRow]> rp-inactive;
+    in property <int> rp-count-active;
+    in property <int> rp-count-inactive;
+    in property <int> rp-count-issues;
+    in-out property <int> rp-filter;         // 0 all 1 active 2 inactive 3 issues
+    in-out property <string> rp-query;
+    in property <bool> rp-busy;              // an order/toggle/unwrap/delete op is in flight
+    in property <int> rp-update-count;       // packs with a newer Modrinth build
+    in property <bool> rp-checking-updates;
+    // Server resource-pack cache (<gameDir>/downloads/)
+    in property <int> rp-server-cache-files;
+    in property <string> rp-server-cache-size;   // formatted bytes, "" when empty
+    // Delete confirmation (Slint-owned modal; Rust only confirms)
+    in-out property <bool> rp-delete-open;
+    in-out property <string> rp-delete-filename;
+    // "Copy from instance" modal
+    in-out property <bool> rp-copy-open;
+    in property <string> rp-copy-source;     // source instance name ("" = picking one)
+    in property <[RpCopyInstanceRow]> rp-copy-instances;
+    in property <bool> rp-copy-loading;
+    in property <[RpCopyPackRow]> rp-copy-packs;
+    in-out property <bool> rp-copy-keep-order: true;
+    in property <bool> rp-copy-busy;
+    callback rp-set-filter(int);
+    callback rp-set-query(string);
+    callback rp-reload();
+    callback rp-toggle(string);                 // filename: add to top / remove
+    callback rp-move-up(string);                // filename: raise priority
+    callback rp-move-down(string);              // filename: lower priority
+    callback rp-unwrap(string);                 // filename: fix nested zip
+    callback rp-delete(string);                 // filename: confirmed delete
+    callback rp-check-updates();
+    callback rp-copy-from();                    // open the copy-from-instance picker
+    callback rp-copy-pick(string);              // source instance name
+    callback rp-copy-toggle(string);            // filename: flip checkbox
+    callback rp-copy-confirm();
+    callback rp-copy-cancel();
+    callback rp-clear-server-cache();
+
+    // -------------------------------------------------------------- shaders
+    in property <bool> sh-loading;
+    in property <string> sh-error;
+    in property <bool> sh-iris-installed;
+    in property <bool> sh-enabled;              // master enableShaders toggle
+    in property <[ShRow]> sh-rows;
+    in property <bool> sh-busy;
+    in property <bool> sh-installing-iris;
+    // Delete confirmation (Slint-owned modal; Rust only confirms)
+    in-out property <bool> sh-delete-open;
+    in-out property <string> sh-delete-filename;
+    callback sh-reload();
+    callback sh-select(string);                 // filename: make it the active shader
+    callback sh-set-enabled(bool);              // master toggle
+    callback sh-install-iris();                 // one-click Iris + Sodium (Fabric)
+    callback sh-delete(string);                 // filename: confirmed delete
+    callback sh-check-updates();
 }
