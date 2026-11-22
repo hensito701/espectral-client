@@ -27,6 +27,7 @@ mod drop;
 mod icons;
 mod import;
 mod mods;
+pub(crate) use mods::fix_summary;
 mod mrpack;
 mod versions;
 
