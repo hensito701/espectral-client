@@ -2,6 +2,13 @@
 //! client on the tokio runtime, decoded + shrunk off the UI thread
 //! (png/jpeg/webp/gif → the 44px tile in physical pixels, so it is drawn 1:1),
 //! turned into a `slint::Image` on the UI thread and kept in a small LRU.
+//!
+//! The same LRU holds the installed-mod tiles: Modrinth project icons keyed by
+//! their URL, and icons embedded in a local jar (`fabric.mod.json` `icon` /
+//! `mods.toml` `logoFile`) keyed by `jar:<instance>#<filename>#<sha1>`. The
+//! embedded path claims its key first ([`claim`]), decodes off the UI thread and
+//! stores the tile with [`settle`]; both paths share the in-flight/broken sets,
+//! so a listing can be rebuilt as often as it likes without refetching.
 
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
@@ -57,6 +64,12 @@ pub fn get(url: &str) -> Option<Image> {
 /// Start loading `url` unless cached, in flight or failed before; `ready` runs
 /// on the UI thread once the icon is in the cache.
 pub fn request(ctx: &Ctx, url: &str, ready: fn(&AppWindow, &str)) {
+    request_with(ctx, url, ready, |_, _| {});
+}
+
+/// [`request`] plus a `failed` hook (UI thread), so an installed row whose
+/// Modrinth icon cannot be fetched can fall back to the jar's embedded icon.
+pub fn request_with(ctx: &Ctx, url: &str, ready: fn(&AppWindow, &str), failed: fn(&AppWindow, &str)) {
     if url.is_empty() || get(url).is_some() {
         return;
     }
@@ -85,10 +98,36 @@ pub fn request(ctx: &Ctx, url: &str, ready: fn(&AppWindow, &str)) {
                 }
                 None => {
                     FAILED.with(|f| f.borrow_mut().insert(url));
+                    failed(ui, &url);
                 }
             }
         });
     });
+}
+
+/// Reserve `key` for an async embedded-icon load (UI thread); false when the
+/// tile is cached, another load is in flight or the jar already failed.
+pub fn claim(key: &str) -> bool {
+    if key.is_empty() || get(key).is_some() {
+        return false;
+    }
+    if FAILED.with(|f| f.borrow().contains(key)) {
+        return false;
+    }
+    PENDING.with(|p| p.borrow_mut().insert(key.to_string()))
+}
+
+/// Store the decoded tile for a claimed key (UI thread). `None` marks the key
+/// bad (no declared icon, undecodable bytes, I/O error) so it is not retried
+/// for this jar hash; true when cached.
+pub fn settle(key: &str, buf: Option<SharedPixelBuffer<Rgba8Pixel>>) -> bool {
+    PENDING.with(|p| p.borrow_mut().remove(key));
+    let Some(buf) = buf else {
+        FAILED.with(|f| f.borrow_mut().insert(key.to_string()));
+        return false;
+    };
+    CACHE.with(|c| c.borrow_mut().put(key.to_string(), Image::from_rgba8(buf)));
+    true
 }
 
 async fn fetch(engine: &espectral_engine::Engine, url: &str) -> Option<Vec<u8>> {
@@ -143,5 +182,22 @@ mod tests {
         assert_eq!(l.entries.len(), CAPACITY);
         assert!(l.get("u0").is_none());
         assert!(l.get(&format!("u{}", CAPACITY + 4)).is_some());
+    }
+
+    #[test]
+    fn embedded_icon_claim_settle() {
+        // Thread-local state is per test thread: the keys are private to this test.
+        let key = "jar:icons-test#claim.jar#0123";
+        assert!(claim(key));
+        // Second listing while the first load is in flight: no duplicate work.
+        assert!(!claim(key));
+        assert!(settle(key, Some(SharedPixelBuffer::<Rgba8Pixel>::new(4, 4))));
+        assert!(get(key).is_some());
+        assert!(!claim(key));
+        // A jar without a usable icon is marked bad, never decoded again.
+        let bad = "jar:icons-test#no-icon.jar#4567";
+        assert!(claim(bad));
+        assert!(!settle(bad, None));
+        assert!(!claim(bad));
     }
 }
