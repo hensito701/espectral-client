@@ -63,8 +63,9 @@ component GateSuccess inherits VerticalLayout {
         wrap: true;
     }
     Rectangle { height: Theme.space-2; }
-    SelectableText {
+    Text {
         text: T.tr("gate.subtitle");
+        font-family: Theme.font-body;
         font-size: Theme.text-sm;
         line-height-factor: 1.35;
         color: Theme.muted;
@@ -84,8 +85,9 @@ component GatePrompt inherits VerticalLayout {
             wrap: true;
         }
     }
-    SelectableText {
+    Text {
         text: T.tr("gate.subtitle");
+        font-family: Theme.font-body;
         font-size: Theme.text-sm;
         line-height-factor: 1.35;
         color: Theme.muted;
@@ -170,8 +172,9 @@ component GatePrompt inherits VerticalLayout {
             clicked => { Session.continue-anonymous(); }
         }
     }
-    SelectableText {
+    Text {
         text: T.tr("gate.footnote");
+        font-family: Theme.font-body;
         font-size: Theme.text-xs;
         font-weight: 500;
         line-height-factor: 1.35;
@@ -268,7 +271,7 @@ export component HotkeyLegend inherits HorizontalLayout {
                 }
             }
         }
-        SelectableText {
+        Text {
             text: sc.label;
             font-family: Theme.label-family(8px);
             font-size: Theme.label-size(8px);

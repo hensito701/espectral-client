@@ -320,8 +320,8 @@ component StepSettings inherits VerticalLayout {
                 min-width: 120px;
                 alignment: end;
                 spacing: 4px;
-                SelectableText { text: Util.format-memory(root.memory); color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; vertical-alignment: center; }
-                SelectableText { text: "(" + root.memory + " MB)"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
+                Text { text: Util.format-memory(root.memory); font-family: Theme.font-body; color: Theme.accent; font-size: Theme.text-lg; font-weight: 700; vertical-alignment: center; }
+                Text { text: "(" + root.memory + " MB)"; font-family: Theme.font-body; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; vertical-alignment: center; }
             }
         }
     }
@@ -337,8 +337,9 @@ component StepSettings inherits VerticalLayout {
                 border-color: Theme.border-solid;
             }
         }
-        SelectableText {
+        Text {
             text: T.tr("home.wizardHueNote");
+            font-family: Theme.font-body;
             color: Theme.muted;
             font-size: Theme.text-xs;
             font-weight: 500;
@@ -422,13 +423,14 @@ component StepSettings inherits VerticalLayout {
                 }
                 if root.import-enabled: VerticalLayout {
                     spacing: 6px;
-                    SelectableText { text: T.tr("home.wizardImportSource") + ":"; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; }
+                    Text { text: T.tr("home.wizardImportSource") + ":"; font-family: Theme.font-body; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; }
                     if HomeBridge.wiz-sources.length > 0: HiSelect {
                         options: HomeBridge.wiz-sources;
                         current-index <=> root.source-index;
                     }
-                    if HomeBridge.wiz-sources.length == 0: SelectableText {
+                    if HomeBridge.wiz-sources.length == 0: Text {
                         text: "Buscando launchers instalados...";
+                        font-family: Theme.font-body;
                         color: Theme.muted;
                         font-size: Theme.text-xs;
                         font-italic: true;
@@ -588,7 +590,7 @@ export component InstanceWizardModal inherits Rectangle {
                     alignment: center;
                     spacing: 2px;
                     McTitle { text: T.tr("home.wizardTitle"); font-size: 24px; horizontal-stretch: 0; }
-                    SelectableText { text: T.tr("home.wizardSubtitle"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
+                    Text { text: T.tr("home.wizardSubtitle"); font-family: Theme.font-body; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
                 }
                 VerticalLayout {
                     alignment: center;

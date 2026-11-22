@@ -86,7 +86,7 @@ export component CardHead inherits HorizontalLayout {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            SelectableText {
+            Text {
                 text: root.title;
                 color: Theme.title-color;
                 font-family: Theme.font-title;
@@ -101,9 +101,10 @@ export component CardHead inherits HorizontalLayout {
                 WarnBadge { text: root.badge; }
             }
         }
-        if root.desc != "": SelectableText {
+        if root.desc != "": Text {
             text: root.desc;
             color: Theme.muted;
+            font-family: Theme.font-body;
             font-size: 13.2px;
             line-height-factor: 1.09;
             wrap: word-wrap;
@@ -122,9 +123,10 @@ export component SectionHeader inherits VerticalLayout {
         text: root.title;
         font-size: 24px;
     }
-    if root.desc != "": SelectableText {
+    if root.desc != "": Text {
         text: root.desc;
         color: Theme.muted;
+        font-family: Theme.font-body;
         font-size: 13.6px;
         line-height-factor: 1.25;
         wrap: word-wrap;
