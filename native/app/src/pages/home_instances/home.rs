@@ -583,6 +583,9 @@ fn format_compat_issue_short(i: &espectral_engine::fabric_compat::ModCompatIssue
             let key = format!("mods.espectralConflict.{}", i.reason.as_deref().unwrap_or("unknown"));
             i18n::tf(&key, &[("mod", &i.mod_name)])
         }
+        CompatIssueKind::WrongLoader => {
+            i18n::tf("mods.compatWrongLoader", &[("req", &i.required), ("actual", actual)])
+        }
     }
 }
 

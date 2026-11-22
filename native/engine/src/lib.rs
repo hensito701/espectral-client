@@ -61,6 +61,7 @@ pub mod version_change;
 pub mod fabric_compat;
 pub mod import;
 pub mod instances;
+pub mod loader_meta;
 pub mod mods;
 pub mod mrpack;
 pub mod news;
