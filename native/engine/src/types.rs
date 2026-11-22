@@ -136,6 +136,19 @@ impl std::fmt::Display for Loader {
     }
 }
 
+/// Release channel a mod browser / updater prefers when a project publishes
+/// more than one tier of builds. `Release` (the default) still falls back to
+/// `beta` then `alpha` so a project with no stable build is installable at
+/// all; the other channels prefer their own tier first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReleaseChannel {
+    #[default]
+    Release,
+    Beta,
+    Alpha,
+}
+
 fn is_false(b: &bool) -> bool {
     !*b
 }
@@ -806,6 +819,12 @@ pub struct ModrinthProject {
     pub latest_version_number: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installed: Option<bool>,
+    /// `required` / `optional` / `unsupported` / `unknown` (from the search
+    /// hit; cards badge client vs client+server vs server-only mods).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_side: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_side: Option<String>,
 }
 
 /// GET /api/modrinth/search.

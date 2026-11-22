@@ -579,6 +579,10 @@ fn format_compat_issue_short(i: &espectral_engine::fabric_compat::ModCompatIssue
             i18n::tf("mods.compatDuplicate", &[("mod", &i.target_name), ("actual", actual)])
         }
         CompatIssueKind::ServerOnly => i18n::t("mods.compatServerOnly"),
+        CompatIssueKind::EspectralConflict => {
+            let key = format!("mods.espectralConflict.{}", i.reason.as_deref().unwrap_or("unknown"));
+            i18n::tf(&key, &[("mod", &i.mod_name)])
+        }
     }
 }
 

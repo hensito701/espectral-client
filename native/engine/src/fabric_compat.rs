@@ -684,6 +684,9 @@ pub enum CompatIssueKind {
     ConflictsMod,
     DuplicateMod,
     ServerOnly,
+    /// Advisory: a mod known to break an Espectral Client feature (only
+    /// emitted while an espectral-menu/espectral-brand jar is enabled).
+    EspectralConflict,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -713,6 +716,10 @@ pub struct ModCompatIssue {
     pub actual: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix: Option<CompatFix>,
+    /// Reason code for `EspectralConflict` (`ESPECTRAL_KNOWN_CONFLICTS`; the
+    /// app maps it to a localized explanation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// Lightweight local metadata extracted from a jar's `fabric.mod.json`.
@@ -783,6 +790,20 @@ pub const KNOWN_MODRINTH_IDS: &[(&str, &str, &str)] = &[
 pub fn known_modrinth_for_id(mod_id: &str) -> Option<(&'static str, &'static str)> {
     KNOWN_MODRINTH_IDS.iter().find(|(id, _, _)| *id == mod_id).map(|(_, pid, name)| (*pid, *name))
 }
+
+/// Mods known to break an Espectral Client feature at runtime. Only
+/// evaluated while an `espectral-menu`/`espectral-brand` jar is enabled —
+/// without the client mod installed the "conflict" harms nothing.
+/// (mod id, reason code; the app renders the code as a player message).
+pub const ESPECTRAL_KNOWN_CONFLICTS: &[(&str, &str)] = &[
+    // Cancels vanilla lightmap extraction -> Espectral fullbright goes dark.
+    ("badoptimizations", "fullbright"),
+    // Rewrites the entity render pipeline Espectral cosmetic layers use.
+    ("entityculling", "cosmetics"),
+    // Throttles FPS unfocused -> fights Espectral agent/background capture.
+    ("dynamic_fps", "fps_throttle"),
+    ("dynamicfps", "fps_throttle"),
+];
 
 /// True if `id` is a Fabric API sub-module (so missing it really means "install Fabric API").
 pub fn is_fabric_api_module(id: &str) -> bool {
@@ -887,6 +908,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                     required: String::new(),
                     actual: None,
                     fix: Some(CompatFix::Disable { filename: j.filename.clone() }),
+                    reason: None,
                 });
                 continue;
             }
@@ -933,6 +955,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                 required: String::new(),
                 actual: Some(clean_version_display(&kept.root.version).to_string()),
                 fix: Some(CompatFix::Disable { filename: stale.filename.clone() }),
+                reason: None,
             });
         }
     }
@@ -977,6 +1000,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                             required: pred.raw_string(),
                             actual: Some(env.mc_version.clone()),
                             fix: Some(CompatFix::ChangeVersion { filename: j.filename.clone() }),
+                            reason: None,
                         });
                     }
                 }
@@ -998,6 +1022,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                                 required: pred.raw_string(),
                                 actual: env.loader_version.clone(),
                                 fix: Some(CompatFix::Disable { filename: j.filename.clone() }),
+                                reason: None,
                             });
                         }
                     }
@@ -1019,6 +1044,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                             required: pred.raw_string(),
                             actual: Some(env.java_major.to_string()),
                             fix: Some(CompatFix::Disable { filename: j.filename.clone() }),
+                            reason: None,
                         });
                     }
                 }
@@ -1041,6 +1067,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                                 required: pred.raw_string(),
                                 actual: env.mixinextras_version.clone(),
                                 fix: Some(CompatFix::Disable { filename: j.filename.clone() }),
+                                reason: None,
                             });
                         }
                     } else if !loader_bundles_mixinextras {
@@ -1079,6 +1106,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                             required: pred.raw_string(),
                             actual: Some(clean_version_display(&dis.version_raw).to_string()),
                             fix,
+                            reason: None,
                         });
                     } else if is_fabric_api_module(other_id) {
                         if !reported_missing_fapi {
@@ -1098,6 +1126,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                                     mod_id: "fabric-api".into(),
                                     name: "Fabric API".into(),
                                 }),
+                                reason: None,
                             });
                         }
                     } else {
@@ -1183,6 +1212,43 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                     required: pred.raw_string(),
                     actual: Some(clean_version_display(&other.version_raw).to_string()),
                     fix: Some(fix),
+                    reason: None,
+                });
+            }
+        }
+    }
+
+    // 3. Espectral runtime advisories: only while the client mod is present
+    //    and enabled do these mods actually break an Espectral feature.
+    let espectral_active =
+        jars.iter().any(|j| j.enabled && matches!(j.root.id.as_str(), "espectral-menu" | "espectral-brand"));
+    if espectral_active {
+        for j in jars {
+            if !j.enabled || duplicate_older.contains(&j.filename) {
+                continue;
+            }
+            let ids = j
+                .nested
+                .iter()
+                .map(|n| n.id.as_str())
+                .chain(std::iter::once(j.root.id.as_str()));
+            for id in ids {
+                let Some((_, reason)) = ESPECTRAL_KNOWN_CONFLICTS.iter().find(|(mid, _)| *mid == id) else {
+                    continue;
+                };
+                issues.push(ModCompatIssue {
+                    filename: j.filename.clone(),
+                    mod_id: j.root.id.clone(),
+                    mod_name: j.root.name.clone(),
+                    severity: CompatSeverity::Warning,
+                    kind: CompatIssueKind::EspectralConflict,
+                    target_id: "espectral-menu".into(),
+                    target_name: "Espectral Menu".into(),
+                    target_filename: None,
+                    required: String::new(),
+                    actual: None,
+                    fix: Some(CompatFix::Disable { filename: j.filename.clone() }),
+                    reason: Some(reason.to_string()),
                 });
             }
         }
@@ -1255,6 +1321,7 @@ fn incompatible_dep_issue(
             target_name: prov.parent_name.clone(),
             required: pred.raw_string(),
         }),
+        reason: None,
     }
 }
 
@@ -1272,6 +1339,7 @@ fn missing_dep_issue(j: &ScannedJar, dep_id: &str, pred: &VersionPredicate) -> M
         required: pred.raw_string(),
         actual: None,
         fix: Some(CompatFix::InstallMod { mod_id: dep_id.to_string(), name }),
+        reason: None,
     }
 }
 
@@ -1728,5 +1796,64 @@ mod tests {
         assert_eq!(format_predicate_human("~1.21.8", true), "1.21.8");
         assert_eq!(format_predicate_human(">=26.1 <27", true), "26.1–<27");
         assert_eq!(format_predicate_human("~1.21.8 || >=26.2", true), "1.21.8 o 26.2 o más nuevo");
+    }
+
+    /// `badoptimizations` / `entityculling` / `dynamic_fps` warn ONLY while an
+    /// espectral-menu / espectral-brand jar is enabled: the same mod set
+    /// without the client mod produces no advisory.
+    #[test]
+    fn warns_on_espectral_known_conflicts() {
+        let espectral = mk_jar(
+            "espectral-menu-26.3-1.9.6.jar",
+            true,
+            json!({ "id": "espectral-menu", "name": "Espectral Menu", "version": "1.9.6", "environment": "client" }),
+            vec![],
+        );
+        let bad_opt = mk_jar(
+            "BadOptimizations-2.4.0.jar",
+            true,
+            json!({ "id": "badoptimizations", "name": "BadOptimizations", "version": "2.4.0" }),
+            vec![],
+        );
+        let culling = mk_jar(
+            "entityculling-1.10.jar",
+            true,
+            json!({ "id": "entityculling", "name": "EntityCulling", "version": "1.10" }),
+            vec![],
+        );
+        let fps = mk_jar(
+            "dynamic-fps-3.9.jar",
+            true,
+            json!({ "id": "dynamic_fps", "name": "Dynamic FPS", "version": "3.9" }),
+            vec![],
+        );
+        let quiet = mk_jar("sodium-0.9.2.jar", true, json!({ "id": "sodium", "version": "0.9.2" }), vec![]);
+
+        let report = evaluate_fabric_compat(
+            &env_26_3(),
+            &[espectral.clone(), bad_opt.clone(), culling.clone(), fps.clone(), quiet.clone()],
+        );
+        let advisory = |file: &str, reason: &str| {
+            report.issues.iter().any(|i| {
+                i.kind == CompatIssueKind::EspectralConflict
+                    && i.filename == file
+                    && i.severity == CompatSeverity::Warning
+                    && i.reason.as_deref() == Some(reason)
+                    && matches!(&i.fix, Some(CompatFix::Disable { filename }) if filename == file)
+            })
+        };
+        assert!(advisory("BadOptimizations-2.4.0.jar", "fullbright"), "{:?}", report.issues);
+        assert!(advisory("entityculling-1.10.jar", "cosmetics"));
+        assert!(advisory("dynamic-fps-3.9.jar", "fps_throttle"));
+        assert_eq!(report.warning_count, 3, "{:?}", report.issues);
+
+        // Without an enabled Espectral jar the same mods warn about nothing.
+        let report = evaluate_fabric_compat(&env_26_3(), &[bad_opt.clone(), culling, fps, quiet]);
+        assert!(!report.issues.iter().any(|i| i.kind == CompatIssueKind::EspectralConflict));
+        // A disabled espectral jar does not activate the table either.
+        let mut disabled = espectral;
+        disabled.enabled = false;
+        let report = evaluate_fabric_compat(&env_26_3(), &[disabled, bad_opt]);
+        assert!(!report.issues.iter().any(|i| i.kind == CompatIssueKind::EspectralConflict));
     }
 }
