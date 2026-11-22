@@ -645,14 +645,16 @@ export component DonationsPage inherits Rectangle {
             SectionHeader { title: T.tr("pav.channelsTitle"); subtitle: T.tr("pav.channelsSubtitle"); }
             // One instance of each channel card, positioned by root.wide: the
             // two conditional branches compiled the card trees twice (Phase 4A).
-            Rectangle {
+            chan-box := Rectangle {
                 property <length> gap: 20px;
                 property <length> card-w: root.wide
                     ? (root.content-w - 2 * self.gap) / 3
                     : (root.content-w - self.gap) / 2;
                 // side-by-side row height: both cards stretch to the taller one
                 property <length> top-h: max(paypal.preferred-height, tebex.preferred-height);
-                height: root.wide ? max(self.top-h, discord.preferred-height) : self.top-h + self.gap + discord.preferred-height;
+                // The page's layouts are sized to their minimum, so a card alone in the narrow
+                // second row gets its min-height (col.preferred-height), not its preferred-height.
+                height: root.wide ? max(self.top-h, discord.preferred-height) : self.top-h + self.gap + discord.min-height;
                 paypal := PaypalCard {
                     x: 0px;
                     y: 0px;
@@ -669,7 +671,7 @@ export component DonationsPage inherits Rectangle {
                     x: root.wide ? 2 * (parent.card-w + parent.gap) : 0px;
                     y: root.wide ? 0px : parent.top-h + parent.gap;
                     width: parent.card-w;
-                    height: root.wide ? parent.height : self.preferred-height;
+                    height: root.wide ? parent.height : self.min-height;
                 }
             }
         }

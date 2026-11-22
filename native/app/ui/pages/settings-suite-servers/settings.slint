@@ -1093,10 +1093,15 @@ component DataDirCard inherits SettingCard {
         }
         // One instance of each chip, positioned by `root.narrow`: a responsive
         // `if` pair would compile a second copy of all three chips for the
-        // other branch.
+        // other branch. Wide geometry mirrors the old `HorizontalLayout`:
+        // each cell got its own bounded preferred width (the chips' implicit
+        // minimum, since their `preferred-width: 1px` clamps up to the
+        // content minimum) plus an equal share of the leftover space, with
+        // the rounding remainder absorbed by the last chip — NOT an equal
+        // third of the row width.
         chips := Rectangle {
             property <length> gap: 12px;
-            property <length> col-w: (self.width - 2 * self.gap) / 3;
+            property <length> share: (self.width - 2 * self.gap - chip-instances.min-width - chip-logs.min-width - chip-mods.min-width) / 3;
             property <length> row-h: max(chip-instances.preferred-height, max(chip-logs.preferred-height, chip-mods.preferred-height));
             height: root.narrow
                 ? chip-instances.preferred-height + self.gap + chip-logs.preferred-height + self.gap + chip-mods.preferred-height
@@ -1107,25 +1112,25 @@ component DataDirCard inherits SettingCard {
                 clicked => { SettingsBridge.open-data-folder("instances"); }
                 x: 0px;
                 y: 0px;
-                width: root.narrow ? chips.width : chips.col-w;
+                width: root.narrow ? chips.width : self.min-width + chips.share;
                 height: root.narrow ? self.preferred-height : chips.row-h;
             }
             chip-logs := SubfolderChip {
                 icon: SetIcons.file-text;
                 text: T.tr("dash.data.openLogs");
                 clicked => { SettingsBridge.open-data-folder("logs"); }
-                x: root.narrow ? 0px : chips.col-w + chips.gap;
+                x: root.narrow ? 0px : chip-instances.width + chips.gap;
                 y: root.narrow ? chip-instances.preferred-height + chips.gap : 0px;
-                width: root.narrow ? chips.width : chips.col-w;
+                width: root.narrow ? chips.width : self.min-width + chips.share;
                 height: root.narrow ? self.preferred-height : chips.row-h;
             }
             chip-mods := SubfolderChip {
                 icon: Icons.package;
                 text: T.tr("dash.data.openMods");
                 clicked => { SettingsBridge.open-data-folder("mods"); }
-                x: root.narrow ? 0px : 2 * (chips.col-w + chips.gap);
+                x: root.narrow ? 0px : chip-instances.width + chips.gap + chip-logs.width + chips.gap;
                 y: root.narrow ? chip-instances.preferred-height + chips.gap + chip-logs.preferred-height + chips.gap : 0px;
-                width: root.narrow ? chips.width : chips.col-w;
+                width: root.narrow ? chips.width : chips.width - chip-instances.width - chip-logs.width - 2 * chips.gap;
                 height: root.narrow ? self.preferred-height : chips.row-h;
             }
         }
