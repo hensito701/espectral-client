@@ -34,7 +34,7 @@ use crate::types::{
 use crate::util::{is_trash_dir_name, is_valid_instance_name};
 
 /// Game subdirs created at instance creation (JS GAME_SUBDIRS).
-const GAME_SUBDIRS: [&str; 6] = ["mods", "natives", "logs", "saves", "config", "cache"];
+const GAME_SUBDIRS: [&str; 8] = ["mods", "natives", "logs", "saves", "config", "cache", "resourcepacks", "shaderpacks"];
 
 /// 409 `FORGE_UNAVAILABLE`: Forge is not offered for this Minecraft version.
 fn forge_unavailable(version: &str) -> EngineError {

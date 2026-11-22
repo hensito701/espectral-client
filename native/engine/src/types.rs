@@ -734,6 +734,9 @@ pub struct VersionChangePlan {
     pub backup_worlds: bool,
     pub espectral_menu: bool,
     pub mods: Vec<VersionChangeMod>,
+    /// Active resource packs the target version cannot load, with any Modrinth build for it.
+    #[serde(default)]
+    pub resource_packs: Vec<crate::packs::VersionChangePack>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

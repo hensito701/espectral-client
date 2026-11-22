@@ -47,6 +47,10 @@ use serde_json::Value;
 use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult};
 use crate::fabric_compat::ModCompatReport;
+use crate::packs::{
+    PackCopyResult, PackInstallResult, PackKind, PackUnwrapResult, PackUpdate, ResourcePackEntry, ServerPackCacheInfo,
+    ShadersState, ZipPackKind,
+};
 use crate::types::{
     ClientInfo, ClientPatch, CreateInstanceRequest, ImportResult, ImportSource, InstanceDetail, InstanceMeta,
     InstancePatch, InstanceSummary, Loader, ModEntry, ModInstallPlan, ModInstallPreview, ModPreset, ModPresetInfo,
@@ -127,6 +131,12 @@ pub struct ContentState {
     /// news.rs memo: (Instant, shaped feed) for MEMO_TTL dedup.
     pub(crate) news_memo: Mutex<Option<(Instant, crate::news::NewsFeed)>>,
     pub(crate) no_redirect_client: OnceLock<reqwest::Client>,
+    /// packs: resource-pack format read from a client jar (positive results only), per Minecraft version.
+    pub(crate) pack_format: Mutex<HashMap<String, (u32, u32)>>,
+    /// packs: texture scan per pack file, memoized by (path, mtime, size).
+    pub(crate) pack_scans: Mutex<HashMap<crate::packs::PackStamp, std::sync::Arc<crate::packs::PackScan>>>,
+    /// packs: SHA-1 per pack file, memoized by the same stamp.
+    pub(crate) pack_sha1: Mutex<HashMap<crate::packs::PackStamp, String>>,
 }
 
 impl Engine {
@@ -264,6 +274,10 @@ pub struct ImportMrpackReply {
 pub struct ImportProfileRequest {
     pub source_id: String,
     pub overwrite_policy: OverwritePolicy,
+    /// Also copy the source's resource packs: the ones its options.txt enables, or every pack in
+    /// its folder when options.txt names none (see `import::import_profile_with_packs`).
+    #[serde(default)]
+    pub include_resourcepacks: bool,
 }
 
 /// GET /api/servers -> `{ servers }`
@@ -649,7 +663,15 @@ impl Engine {
             return Err(EngineError::bad_request("BAD_REQUEST", "source_id is required"));
         }
         let merge = instance.merge_optionslc == Some(true);
-        crate::import::import_profile(self, &instance, &req.source_id, req.overwrite_policy, merge).await
+        crate::import::import_profile_with_packs(
+            self,
+            &instance,
+            &req.source_id,
+            req.overwrite_policy,
+            merge,
+            req.include_resourcepacks,
+        )
+        .await
     }
 
     /// GET /api/servers -> `{ servers }` (150 s cache).
@@ -665,6 +687,115 @@ impl Engine {
     /// PATCH /api/instances/:name/client -> `{ config, errors }` (crate::client::patch_client_config).
     pub async fn patch_client(&self, name: &str, patch: ClientPatch) -> EngineResult<ClientInfo> {
         crate::client::patch_client_config(self, name, patch).await
+    }
+
+    // ---- resource packs & shader packs (packs.rs) -------------------------
+
+    /// GET .../resource-packs -> ResourcePackEntry[] (enabled packs first, by priority).
+    pub async fn list_resource_packs(&self, name: &str) -> EngineResult<Vec<ResourcePackEntry>> {
+        crate::packs::list_resource_packs(self, name).await.map_err(|e| send_error(e, 500, "resource_packs_list_failed"))
+    }
+
+    /// GET .../shaders -> ShadersState (Iris state plus the shader packs).
+    pub async fn shaders_state(&self, name: &str) -> EngineResult<ShadersState> {
+        crate::packs::shaders_state(self, name).await.map_err(|e| send_error(e, 500, "shaders_state_failed"))
+    }
+
+    /// `pack.png` of a resource pack (root or nested), at most 2 MiB; None when it has none.
+    pub async fn resource_pack_icon(&self, name: &str, filename: &str) -> EngineResult<Option<Vec<u8>>> {
+        crate::packs::resource_pack_icon(self, name, filename).await.map_err(|e| send_error(e, 500, "pack_icon_failed"))
+    }
+
+    /// PUT .../resource-packs/order: active packs, highest priority first (409 `ALREADY_RUNNING`).
+    pub async fn set_resource_packs_order(&self, name: &str, active_top_first: &[String]) -> EngineResult<()> {
+        crate::packs::set_resource_packs_order(self, name, active_top_first)
+            .await
+            .map_err(|e| send_error(e, 500, "pack_order_failed"))
+    }
+
+    /// POST .../resource-packs/:filename/unwrap (409 `ALREADY_RUNNING`).
+    pub async fn unwrap_nested_resource_pack(&self, name: &str, filename: &str) -> EngineResult<PackUnwrapResult> {
+        crate::packs::unwrap_nested_resource_pack(self, name, filename)
+            .await
+            .map_err(|e| send_error(e, 500, "pack_unwrap_failed"))
+    }
+
+    /// POST .../packs/install-modrinth: SHA-1 verified install; `activated: false` + `note: "running"`
+    /// when the instance runs.
+    pub async fn install_modrinth_pack(
+        &self,
+        name: &str,
+        project_id: &str,
+        version_id: Option<String>,
+        kind: PackKind,
+        auto_activate: bool,
+    ) -> EngineResult<PackInstallResult> {
+        crate::packs::install_modrinth_pack(self, name, project_id, version_id.as_deref(), kind, auto_activate)
+            .await
+            .map_err(|e| send_error(e, 500, "pack_install_failed"))
+    }
+
+    /// POST .../shaders/active: the shader to use (`Some`) or shaders off (`None`).
+    pub async fn set_active_shader(&self, name: &str, filename: Option<String>) -> EngineResult<ShadersState> {
+        crate::packs::set_active_shader(self, name, filename.as_deref())
+            .await
+            .map_err(|e| send_error(e, 500, "shader_select_failed"))
+    }
+
+    /// DELETE .../resource-packs/:filename (409 `ALREADY_RUNNING`).
+    pub async fn delete_resource_pack(&self, name: &str, filename: &str) -> EngineResult<DeletedReply> {
+        let deleted = crate::packs::delete_resource_pack(self, name, filename)
+            .await
+            .map_err(|e| send_error(e, 500, "pack_delete_failed"))?;
+        Ok(DeletedReply { deleted, trash: None })
+    }
+
+    /// DELETE .../shaders/:filename (409 `ALREADY_RUNNING`).
+    pub async fn delete_shader_pack(&self, name: &str, filename: &str) -> EngineResult<DeletedReply> {
+        let deleted = crate::packs::delete_shader_pack(self, name, filename)
+            .await
+            .map_err(|e| send_error(e, 500, "shader_delete_failed"))?;
+        Ok(DeletedReply { deleted, trash: None })
+    }
+
+    /// Newer Modrinth builds of the installed resource packs or shaders (one batched request).
+    pub async fn check_pack_updates(&self, name: &str, kind: PackKind) -> EngineResult<Vec<PackUpdate>> {
+        crate::packs::check_pack_updates(self, name, kind).await.map_err(|e| send_error(e, 502, "pack_updates_failed"))
+    }
+
+    /// POST .../resource-packs/copy-from: copy packs from `source` (identical files skipped).
+    pub async fn copy_resource_packs_from_instance(
+        &self,
+        target: &str,
+        source: &str,
+        filenames: Vec<String>,
+        preserve_order: bool,
+    ) -> EngineResult<PackCopyResult> {
+        crate::packs::copy_resource_packs_from_instance(self, target, source, &filenames, preserve_order)
+            .await
+            .map_err(|e| send_error(e, 500, "pack_copy_failed"))
+    }
+
+    /// `<game dir>/downloads/` size (server resource-pack cache).
+    pub async fn server_pack_cache_info(&self, name: &str) -> EngineResult<ServerPackCacheInfo> {
+        crate::packs::server_pack_cache_info(self, name).await.map_err(|e| send_error(e, 500, "pack_cache_failed"))
+    }
+
+    /// Empties `<game dir>/downloads/` (409 `ALREADY_RUNNING`); returns what was removed.
+    pub async fn clear_server_pack_cache(&self, name: &str) -> EngineResult<ServerPackCacheInfo> {
+        crate::packs::clear_server_pack_cache(self, name).await.map_err(|e| send_error(e, 500, "pack_cache_failed"))
+    }
+
+    /// Classify a local `.zip` (resource pack, shader pack, modpack or unknown).
+    pub fn classify_zip_pack(&self, path: &str) -> EngineResult<ZipPackKind> {
+        crate::packs::classify_zip_pack(std::path::Path::new(path))
+    }
+
+    /// Copy a local `.zip` into the instance's `resourcepacks/` or `shaderpacks/`.
+    pub async fn install_local_pack(&self, name: &str, path: &str) -> EngineResult<PackInstallResult> {
+        crate::packs::install_local_pack(self, name, std::path::Path::new(path))
+            .await
+            .map_err(|e| send_error(e, 500, "pack_install_failed"))
     }
 }
 
@@ -723,7 +854,11 @@ mod tests {
         assert_eq!(err.envelope().code, "BAD_MEMORY");
         let err = e.import_mrpack(ImportMrpackRequest::default()).await.unwrap_err();
         assert_eq!(err.envelope().code, "BAD_PATH");
-        let r = ImportProfileRequest { source_id: "vanilla".into(), overwrite_policy: OverwritePolicy::Never };
+        let r = ImportProfileRequest {
+            source_id: "vanilla".into(),
+            overwrite_policy: OverwritePolicy::Never,
+            include_resourcepacks: false,
+        };
         assert_eq!(e.import_profile("a.b", r.clone()).await.unwrap_err().envelope().code, "INVALID_NAME");
         assert_eq!(e.import_profile("zz", r.clone()).await.unwrap_err().status(), 404);
         let empty = ImportProfileRequest { source_id: String::new(), ..r };
