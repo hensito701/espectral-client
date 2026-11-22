@@ -1079,25 +1079,25 @@ component ResultCard inherits GlassCard {
                     wrap: word-wrap;
                 }
             }
-            if !root.card.installed && root.card.conflict != "": VerticalLayout {
+            if !root.card.installed: VerticalLayout {
                 alignment: center;
+                // install / install-anyway share one button: the two branches
+                // compiled the same subtree twice (Phase 4A)
                 Btn {
                     variant: BtnVariant.secondary;
                     size: BtnSize.sm;
-                    text: T.tr("mods.installAnyway");
+                    text: root.card.conflict != ""
+                        ? T.tr("mods.installAnyway")
+                        : (LibraryBridge.m-installing-id == root.card.project-id ? T.tr("mods.installingMod") : T.tr("mods.install"));
+                    loading: root.card.conflict == "" && LibraryBridge.m-installing-id == root.card.project-id;
                     enabled: LibraryBridge.m-installing-id == "";
-                    clicked => { LibraryBridge.m-install(root.card.project-id, root.card.title, true); }
-                }
-            }
-            if !root.card.installed && root.card.conflict == "": VerticalLayout {
-                alignment: center;
-                Btn {
-                    variant: BtnVariant.secondary;
-                    size: BtnSize.sm;
-                    text: LibraryBridge.m-installing-id == root.card.project-id ? T.tr("mods.installingMod") : T.tr("mods.install");
-                    loading: LibraryBridge.m-installing-id == root.card.project-id;
-                    enabled: LibraryBridge.m-installing-id == "";
-                    clicked => { LibraryBridge.m-install(root.card.project-id, root.card.title, false); }
+                    clicked => {
+                        if root.card.conflict != "" {
+                            LibraryBridge.m-install(root.card.project-id, root.card.title, true);
+                        } else {
+                            LibraryBridge.m-install(root.card.project-id, root.card.title, false);
+                        }
+                    }
                 }
             }
         }

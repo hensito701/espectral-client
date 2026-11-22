@@ -99,25 +99,25 @@ component VerifyRow inherits IdentityRow {
     HorizontalLayout {
         spacing: Theme.space-2;
         alignment: end;
-        if !root.acc.verified: VerticalLayout {
+        // verify (unverified) / refresh (verified) share one button: two
+        // conditional branches compiled the same subtree twice (Phase 4A)
+        VerticalLayout {
             alignment: center;
             Btn {
-                variant: BtnVariant.primary;
+                variant: root.acc.verified ? BtnVariant.ghost : BtnVariant.primary;
                 size: BtnSize.sm;
-                loading: AccountBridge.identity-verifying;
-                enabled: !root.acc.offline;
-                text: AccountBridge.identity-verifying ? T.tr("wardrobe.identity.verifying") : T.tr("wardrobe.identity.verify");
-                clicked => { AccountBridge.identity-verify(); }
-            }
-        }
-        if root.acc.verified: VerticalLayout {
-            alignment: center;
-            Btn {
-                variant: BtnVariant.ghost;
-                size: BtnSize.sm;
-                loading: AccountBridge.identity-refreshing;
-                text: AccountBridge.identity-refreshing ? T.tr("wardrobe.identity.refreshing") : T.tr("wardrobe.identity.refresh");
-                clicked => { AccountBridge.identity-refresh-flags(); }
+                loading: root.acc.verified ? AccountBridge.identity-refreshing : AccountBridge.identity-verifying;
+                enabled: root.acc.verified || !root.acc.offline;
+                text: root.acc.verified
+                    ? (AccountBridge.identity-refreshing ? T.tr("wardrobe.identity.refreshing") : T.tr("wardrobe.identity.refresh"))
+                    : (AccountBridge.identity-verifying ? T.tr("wardrobe.identity.verifying") : T.tr("wardrobe.identity.verify"));
+                clicked => {
+                    if root.acc.verified {
+                        AccountBridge.identity-refresh-flags();
+                    } else {
+                        AccountBridge.identity-verify();
+                    }
+                }
             }
         }
     }
