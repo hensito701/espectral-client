@@ -1065,17 +1065,27 @@ export component ImportPage inherits Rectangle {
                 }
             }
         }
-        // lanes (grid 1fr 1fr, single column below 1024px)
-        if root.width > 1024px: HorizontalLayout {
-            spacing: Theme.space-6;
-            alignment: start;
-            LaneA { width: root.lane-width; }
-            LaneB { width: root.lane-width; }
-        }
-        if root.width <= 1024px: VerticalLayout {
-            spacing: Theme.space-6;
-            LaneA { }
-            LaneB { }
+        // lanes (grid 1fr 1fr, single column below 1024px): one instance of
+        // each lane, positioned by width; the two conditional branches compiled
+        // both lane trees twice (Phase 4A)
+        Rectangle {
+            property <length> gap: Theme.space-6;
+            property <bool> side-by-side: root.width > 1024px;
+            height: self.side-by-side
+                ? max(lane-a.preferred-height, lane-b.preferred-height)
+                : lane-a.preferred-height + self.gap + lane-b.preferred-height;
+            lane-a := LaneA {
+                x: 0px;
+                y: 0px;
+                width: parent.side-by-side ? root.lane-width : parent.width;
+                height: parent.side-by-side ? parent.height : self.preferred-height;
+            }
+            lane-b := LaneB {
+                x: parent.side-by-side ? root.lane-width + parent.gap : 0px;
+                y: parent.side-by-side ? 0px : lane-a.preferred-height + parent.gap;
+                width: parent.side-by-side ? root.lane-width : parent.width;
+                height: parent.side-by-side ? parent.height : self.preferred-height;
+            }
         }
         RecentSection { }
     }

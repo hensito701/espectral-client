@@ -866,18 +866,29 @@ component MsAlert inherits Rectangle {
         padding-bottom: Theme.space-3;
         VerticalLayout {
             spacing: 4px;
-            if root.pending: HorizontalLayout {
+            // pending / error share one row: two conditional branches compiled
+            // this icon+text subtree twice (Phase 4A)
+            HorizontalLayout {
                 spacing: Theme.space-2;
                 alignment: start;
-                VerticalLayout { alignment: center; Icon { data: Icons.clock; size: 14px; color: Theme.accent-alt; } }
-                SelectableText { text: T.tr("vault.msaPending"); color: Theme.accent-alt; font-size: Theme.text-sm; font-weight: 700; wrap: word-wrap; horizontal-stretch: 1; }
+                VerticalLayout {
+                    alignment: root.pending ? center : start;
+                    Icon {
+                        data: root.pending ? Icons.clock : Icons.alert-triangle;
+                        size: 14px;
+                        color: root.pending ? Theme.accent-alt : Theme.accent-red;
+                    }
+                }
+                SelectableText {
+                    text: root.pending ? T.tr("vault.msaPending") : AccountBridge.ms-error;
+                    color: root.pending ? Theme.accent-alt : Theme.accent-red;
+                    font-size: root.pending ? Theme.text-sm : Theme.text-xs;
+                    font-weight: root.pending ? 700 : 600;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
             }
             if root.pending: SelectableText { text: T.tr("vault.msaPendingHint"); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; wrap: word-wrap; }
-            if !root.pending: HorizontalLayout {
-                spacing: Theme.space-2;
-                VerticalLayout { alignment: start; Icon { data: Icons.alert-triangle; size: 14px; color: Theme.accent-red; } }
-                SelectableText { text: AccountBridge.ms-error; color: Theme.accent-red; font-size: Theme.text-xs; font-weight: 600; wrap: word-wrap; horizontal-stretch: 1; }
-            }
         }
     }
 }
@@ -1187,26 +1198,27 @@ export component AccountPage inherits Rectangle {
                 scroll-request(top, bottom) => { root.ensure-visible(top, bottom); }
             }
         }
-        if !root.narrow: HorizontalLayout {
-            spacing: Theme.space-6;
-            min-width: 0px;
+        // Wide (side by side) and narrow (stacked) share one instance of each
+        // column, positioned by root.narrow: two conditional layout branches
+        // compiled both column trees twice (Phase 4A).
+        Rectangle {
+            property <length> gap: Theme.space-6;
+            height: root.narrow
+                ? roster.preferred-height + self.gap + forge.preferred-height
+                : max(roster.preferred-height, forge.preferred-height);
             // fixed split (1.4 / 1) computed from the page width, so no child's
             // intrinsic min-width can stretch the content column
-            Roster {
-                width: root.roster-width;
+            roster := Roster {
+                x: 0px;
+                y: 0px;
+                width: root.narrow ? parent.width : root.roster-width;
+                height: root.narrow ? self.preferred-height : parent.height;
             }
-            ForgeColumn {
-                width: root.forge-width;
-                tab <=> root.forge-tab;
-                advanced-open <=> root.advanced-open;
-            }
-        }
-        if root.narrow: VerticalLayout {
-            spacing: Theme.space-6;
-            min-width: 0px;
-            Roster { min-width: 0px; }
-            ForgeColumn {
-                min-width: 0px;
+            forge := ForgeColumn {
+                x: root.narrow ? 0px : root.roster-width + parent.gap;
+                y: root.narrow ? roster.preferred-height + parent.gap : 0px;
+                width: root.narrow ? parent.width : root.forge-width;
+                height: root.narrow ? self.preferred-height : parent.height;
                 tab <=> root.forge-tab;
                 advanced-open <=> root.advanced-open;
             }

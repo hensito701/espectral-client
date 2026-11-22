@@ -639,22 +639,33 @@ export component DonationsPage inherits Rectangle {
         VerticalLayout {
             spacing: 20px;
             SectionHeader { title: T.tr("pav.channelsTitle"); subtitle: T.tr("pav.channelsSubtitle"); }
-            if root.wide: HorizontalLayout {
-                spacing: 20px;
-                PaypalCard { width: (root.content-w - 40px) / 3; }
-                TebexCard { width: (root.content-w - 40px) / 3; }
-                DiscordCard { width: (root.content-w - 40px) / 3; }
-            }
-            if !root.wide: VerticalLayout {
-                spacing: 20px;
-                HorizontalLayout {
-                    spacing: 20px;
-                    PaypalCard { width: (root.content-w - 20px) / 2; }
-                    TebexCard { width: (root.content-w - 20px) / 2; }
+            // One instance of each channel card, positioned by root.wide: the
+            // two conditional branches compiled the card trees twice (Phase 4A).
+            Rectangle {
+                property <length> gap: 20px;
+                property <length> card-w: root.wide
+                    ? (root.content-w - 2 * self.gap) / 3
+                    : (root.content-w - self.gap) / 2;
+                // side-by-side row height: both cards stretch to the taller one
+                property <length> top-h: max(paypal.preferred-height, tebex.preferred-height);
+                height: root.wide ? max(self.top-h, discord.preferred-height) : self.top-h + self.gap + discord.preferred-height;
+                paypal := PaypalCard {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.card-w;
+                    height: root.wide ? parent.height : parent.top-h;
                 }
-                HorizontalLayout {
-                    alignment: start;
-                    DiscordCard { width: (root.content-w - 20px) / 2; }
+                tebex := TebexCard {
+                    x: parent.card-w + parent.gap;
+                    y: 0px;
+                    width: parent.card-w;
+                    height: root.wide ? parent.height : parent.top-h;
+                }
+                discord := DiscordCard {
+                    x: root.wide ? 2 * (parent.card-w + parent.gap) : 0px;
+                    y: root.wide ? 0px : parent.top-h + parent.gap;
+                    width: parent.card-w;
+                    height: root.wide ? parent.height : self.preferred-height;
                 }
             }
         }

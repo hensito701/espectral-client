@@ -125,19 +125,21 @@ component Stage inherits VerticalLayout {
 component ResetActions inherits HorizontalLayout {
     spacing: Theme.space-2;
     alignment: start;
-    if !AccountBridge.confirming-skin-reset: Btn {
+    // reset (idle) / confirm-reset share one button: the two conditional
+    // branches compiled the same subtree twice (Phase 4A)
+    Btn {
         variant: BtnVariant.danger;
         size: BtnSize.sm;
-        enabled: !AccountBridge.skin-busy && AccountBridge.skin-info && AccountBridge.skin-has-skin;
+        enabled: AccountBridge.confirming-skin-reset || (!AccountBridge.skin-busy && AccountBridge.skin-info && AccountBridge.skin-has-skin);
+        loading: AccountBridge.confirming-skin-reset && AccountBridge.skin-busy;
         text: T.tr("vault.skin.reset");
-        clicked => { AccountBridge.confirming-skin-reset = true; }
-    }
-    if AccountBridge.confirming-skin-reset: Btn {
-        variant: BtnVariant.danger;
-        size: BtnSize.sm;
-        loading: AccountBridge.skin-busy;
-        text: T.tr("vault.skin.reset");
-        clicked => { AccountBridge.reset-skin(); }
+        clicked => {
+            if AccountBridge.confirming-skin-reset {
+                AccountBridge.reset-skin();
+            } else {
+                AccountBridge.confirming-skin-reset = true;
+            }
+        }
     }
     if AccountBridge.confirming-skin-reset: Btn {
         variant: BtnVariant.ghost;
