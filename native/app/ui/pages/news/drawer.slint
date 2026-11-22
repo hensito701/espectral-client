@@ -84,12 +84,15 @@ component NewsCard inherits Rectangle {
                     }
                 }
             }
-            SelectableText {
+            // Title + meta stay plain Text: they are the card's click target
+            // (expand/collapse). Only the expanded body is selectable.
+            Text {
                 text: post.title != "" ? post.title : T.tr("news.untitled");
                 font-size: Theme.text-sm;
                 font-weight: 600;
                 color: Theme.text;
                 wrap: word-wrap;
+                overflow: elide;
                 height: min(self.preferred-height, Theme.text-sm * 1.4 * 2);
                 horizontal-stretch: 1;
                 vertical-alignment: top;
@@ -106,11 +109,12 @@ component NewsCard inherits Rectangle {
         }
 
         // ---- meta: author · relative time ----
-        SelectableText {
+        Text {
             text: post.author + " · " + Util.relative-time(post.created-at, T.lang);
             font-size: Theme.text-xs;
             font-weight: 500;
             color: Theme.muted;
+            overflow: elide;
         }
 
         // ---- collapsed: first image preview ----
@@ -144,6 +148,7 @@ component NewsCard inherits Rectangle {
             font-weight: 400;
             color: Theme.text;
             wrap: word-wrap;
+            line-height-factor: 1.45 / 1.28;
         }
         if root.expanded: VerticalLayout {
             spacing: Theme.space-2;
@@ -242,7 +247,7 @@ export component NewsDrawer inherits Rectangle {
                             background: Theme.accent;
                         }
                     }
-                    SelectableText {
+                    Text {
                         text: T.tr("news.title").to-uppercase();
                         font-family: Theme.font-title;
                         font-size: Theme.text-sm;
