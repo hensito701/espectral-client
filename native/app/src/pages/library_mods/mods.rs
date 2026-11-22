@@ -5,7 +5,8 @@
 //! Port of pages/ModCatalog.svelte (same terminal-event rules and fallbacks).
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::time::Duration;
 
 use espectral_engine::events::{EngineEvent, ProgressEvent};
@@ -14,17 +15,18 @@ use espectral_engine::fabric_compat::{
     ModCompatReport,
 };
 use espectral_engine::types::{
-    InstanceSummary, ModEntry, ModPreset, ModPresetInfo, ModVersionItem, ModVersionSwitchPlan,
+    InstanceSummary, ModEntry, ModPreset, ModPresetInfo, ModUpdateEntry, ModVersionItem, ModVersionSwitchPlan,
+    OrphanLib, ReleaseChannel,
 };
-use slint::{ComponentHandle, SharedString, Timer, TimerMode};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
-use super::{browse, model, ss};
+use super::{browse, icons, model, ss};
 use crate::bridge::{self, Ctx};
 use crate::i18n::{self, Lang};
 use crate::router::Route;
 use crate::{
     prefs, store, toast, util, AppWindow, LibraryBridge, ModChangeSummary, ModCompatNote, ModRow, ModVersionOption,
-    PinnedPill,
+    OrphanLibRow, PinnedPill,
 };
 
 const PREFS_INSTANCE: &str = "mods.instance";
@@ -65,10 +67,29 @@ struct State {
     ver_plan: Option<ModVersionSwitchPlan>,
     ver_seq: u64,
     ver_plan_seq: u64,
+    // Installed-tab intelligence (updates, pins, batch fix)
+    updates: Vec<ModUpdateEntry>,
+    upd_checking: bool,
+    upd_applying: bool,
+    upd_undo: bool,
+    upd_seq: u64,
+    fix_busy: bool,
+    // Disable guard: the mod whose off-switch awaits confirmation
+    guard_filename: String,
+    guard_name: String,
+    guard_dependents: Vec<(String, String)>,
+    // Delete modal: orphaned libraries the deleted mod was the last dependent of
+    orphans: Vec<OrphanLib>,
+    orphans_checked: HashSet<String>,
+    orphans_loading: bool,
+    // Embedded icon cache keys in flight: key -> (instance, filename)
+    icon_keys: HashMap<String, (String, String)>,
 }
 
 thread_local! {
     static S: RefCell<State> = RefCell::new(State::default());
+    /// Installed rows kept in one model so a late icon can patch its own row.
+    static MOD_ROWS: Rc<VecModel<ModRow>> = Rc::new(VecModel::default());
     static PRESET_FALLBACK: Timer = Timer::default();
 }
 
@@ -83,6 +104,7 @@ fn win() -> Option<AppWindow> {
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
     super::set_ctx(ctx);
     let b = ui.global::<LibraryBridge>();
+    b.set_m_rows(ModelRc::from(MOD_ROWS.with(|m| m.clone())));
     if let Some(saved) = prefs::get_str(PREFS_INSTANCE) {
         with(|s| s.target = saved);
     }
@@ -119,6 +141,17 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     b.on_m_apply_version(apply_version);
     b.on_m_close_versions(close_versions);
     b.on_m_apply_fix(|kind, target, arg| apply_fix(kind.to_string(), target.to_string(), arg.to_string()));
+    // Installed-tab intelligence: batch fix, updates, pins, guards, orphans.
+    b.on_m_fix_all(fix_all_safe);
+    b.on_m_check_updates(check_updates);
+    b.on_m_apply_updates(|| apply_updates(None));
+    b.on_m_apply_update(|filename| apply_updates(Some(vec![filename.to_string()])));
+    b.on_m_undo_updates(undo_updates);
+    b.on_m_pin_set(|filename, pinned| set_pinned(filename.to_string(), pinned));
+    b.on_m_cancel_guard(cancel_guard);
+    b.on_m_disable_guard(disable_guard_with_dependents);
+    b.on_m_disable_guard_anyway(disable_guard_anyway);
+    b.on_m_orphan_toggle(|filename, checked| orphan_toggle(filename.to_string(), checked));
 
     bridge::on_event(|ui, ev| {
         if let EngineEvent::ModProgress(p) = ev {
@@ -233,10 +266,20 @@ fn select_instance(name: String) {
             s.mods.clear();
             s.compat = None;
             s.preset = None;
+            s.updates.clear();
+            s.upd_seq += 1;
+            s.upd_checking = false;
+            s.upd_applying = false;
+            s.upd_undo = false;
+            clear_guard(s);
+            s.orphans.clear();
+            s.orphans_checked.clear();
+            s.orphans_loading = false;
         });
         browse::instance_switched(&ui);
         ui.global::<LibraryBridge>().set_m_filter(0);
         push_mods(&ui);
+        push_orphans(&ui);
         load_mods();
         load_preset();
         load_compat();
@@ -511,6 +554,8 @@ pub(super) fn push_mods(ui: &AppWindow) {
             filter = 0;
             b.set_m_filter(0);
         }
+        let updates_by_file: HashMap<&str, &ModUpdateEntry> =
+            s.updates.iter().map(|u| (u.filename.as_str(), u)).collect();
         let rows: Vec<ModRow> = s
             .mods
             .iter()
@@ -526,7 +571,15 @@ pub(super) fn push_mods(ui: &AppWindow) {
                     || m.project_slug.as_deref().is_some_and(|p| p.to_lowercase().contains(&q))
                     || m.display_name.as_deref().is_some_and(|n| n.to_lowercase().contains(&q))
             })
-            .map(|m| mod_row(m, issues_by_file.get(m.filename.as_str()).map(Vec::as_slice).unwrap_or(&[]), iris_enabled))
+            .map(|m| {
+                mod_row(
+                    m,
+                    issues_by_file.get(m.filename.as_str()).map(Vec::as_slice).unwrap_or(&[]),
+                    iris_enabled,
+                    updates_by_file.get(m.filename.as_str()).copied(),
+                    &s.target,
+                )
+            })
             .collect();
         let pinned: Vec<PinnedPill> = PINNED_SET
             .iter()
@@ -541,13 +594,26 @@ pub(super) fn push_mods(ui: &AppWindow) {
             .iter()
             .filter(|m| PINNED_SET.iter().any(|(slug, _, _)| m.project_slug.as_deref() == Some(*slug)) && !m.installed)
             .count();
-        b.set_m_rows(model(rows));
         b.set_m_count(s.mods.len() as i32);
         b.set_m_enabled_count(enabled as i32);
         b.set_m_disabled_count((s.mods.len() - enabled) as i32);
         b.set_m_problem_count(problem_count as i32);
         b.set_m_compat_errors(compat_errors as i32);
         b.set_m_compat_warnings(compat_warnings as i32);
+        b.set_m_fix_count(safe_fix_count(s.compat.as_ref()) as i32);
+        b.set_m_fix_busy(s.fix_busy);
+        b.set_m_upd_checking(s.upd_checking);
+        b.set_m_upd_applying(s.upd_applying);
+        b.set_m_upd_count(s.updates.iter().filter(|u| !u.pinned).count() as i32);
+        b.set_m_upd_undo(s.upd_undo);
+        b.set_m_guard_filename(ss(&s.guard_filename));
+        b.set_m_guard_name(ss(&s.guard_name));
+        b.set_m_guard_dependents(ss(s
+            .guard_dependents
+            .iter()
+            .map(|(_, name)| name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")));
         b.set_m_loading(s.loading);
         b.set_m_error(ss(&s.error));
         b.set_m_pinned(model(pinned));
@@ -569,10 +635,20 @@ pub(super) fn push_mods(ui: &AppWindow) {
             }
             None => b.set_m_progress_active(false),
         }
+        MOD_ROWS.with(|m| m.set_vec(rows));
     });
+    // Icons load after the rows are on screen: cache hits paint immediately,
+    // misses are fetched/decoded on the runtime and patched into their row.
+    request_mod_icons();
 }
 
-fn mod_row(m: &ModEntry, raw_issues: &[&ModCompatIssue], iris_enabled: bool) -> ModRow {
+fn mod_row(
+    m: &ModEntry,
+    raw_issues: &[&ModCompatIssue],
+    iris_enabled: bool,
+    update: Option<&ModUpdateEntry>,
+    target: &str,
+) -> ModRow {
     let pin = m.project_slug.as_deref().and_then(|slug| PINNED_SET.iter().find(|p| p.0 == slug));
     let mut meta = String::new();
     if let Some(size) = m.size.filter(|s| *s > 0) {
@@ -600,6 +676,12 @@ fn mod_row(m: &ModEntry, raw_issues: &[&ModCompatIssue], iris_enabled: bool) -> 
         .filter(|n| !n.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| display_name(&m.filename, m.project_slug.as_deref()));
+    let icon_url = m.icon_url.clone().unwrap_or_default();
+    // The Modrinth icon wins; the jar's embedded tile (cached by its own key)
+    // keeps the row icon when the project is unknown or its fetch failed.
+    let project_icon = if icon_url.is_empty() { None } else { icons::get(&icon_url) };
+    let icon = project_icon.or_else(|| icons::get(&embedded_icon_key(target, m)));
+    let has_icon = icon.is_some();
     ModRow {
         filename: ss(&m.filename),
         name: ss(nice_name),
@@ -610,6 +692,14 @@ fn mod_row(m: &ModEntry, raw_issues: &[&ModCompatIssue], iris_enabled: bool) -> 
         installed: m.installed,
         can_delete,
         can_switch_version,
+        can_pin: !branding,
+        pinned: m.pinned,
+        pin_key: ss(m.project_id.as_deref().unwrap_or(m.filename.as_str())),
+        icon_url: ss(&icon_url),
+        icon: icon.unwrap_or_default(),
+        has_icon,
+        update_from: ss(update.map(|u| u.from_version.as_str()).unwrap_or("")),
+        update_to: ss(update.map(|u| u.to_version_number.as_str()).unwrap_or("")),
         requires: ss(pin
             .filter(|p| !p.1.is_empty())
             .map(|p| i18n::tf("mods.requires", &[("mods", &p.1.join(", "))]))
@@ -624,46 +714,507 @@ fn mod_row(m: &ModEntry, raw_issues: &[&ModCompatIssue], iris_enabled: bool) -> 
     }
 }
 
+/// Issues `apply_safe_compat_fixes` can resolve without switching off a
+/// gameplay mod: enable a disabled dependency, install a resolvable missing
+/// one, update an incompatible one, re-pin Fabric Loader, and only disable a
+/// server-only mod or the older jar of a semver duplicate (a warning).
+fn safe_fix_count(report: Option<&ModCompatReport>) -> usize {
+    let Some(report) = report else { return 0 };
+    report
+        .issues
+        .iter()
+        .filter(|i| match &i.fix {
+            Some(CompatFix::Enable { .. } | CompatFix::InstallMod { .. } | CompatFix::UpdateMod { .. })
+            | Some(CompatFix::UpdateFabricLoader { .. }) => true,
+            Some(CompatFix::Disable { .. }) => match i.kind {
+                CompatIssueKind::ServerOnly => true,
+                CompatIssueKind::DuplicateMod => i.severity == CompatSeverity::Warning,
+                _ => false,
+            },
+            Some(CompatFix::ChangeVersion { .. }) | None => false,
+        })
+        .count()
+}
+
+/// Cache key of a jar's embedded icon (instance + filename + hash, so a
+/// version switch re-reads it).
+fn embedded_icon_key(target: &str, m: &ModEntry) -> String {
+    format!("jar:{target}#{}#{}", m.filename, m.sha1.as_deref().unwrap_or(""))
+}
+
+/// Start the async icon loads for the installed list. The Modrinth project
+/// icon wins; a jar with no project falls back to its own icon, and so does a
+/// failed download. Every load is deduplicated by the icons LRU (cache, in
+/// flight, known-bad), so rebuilding the list costs nothing.
+fn request_mod_icons() {
+    let Some(c) = super::ctx() else { return };
+    let mut embedded: Vec<(String, String)> = Vec::new();
+    let target = with(|s| {
+        if s.target.is_empty() {
+            return String::new();
+        }
+        for m in s.mods.iter().filter(|m| m.installed) {
+            match m.icon_url.as_deref().filter(|u| !u.is_empty()) {
+                Some(url) => icons::request_with(&c, url, mod_icon_ready, mod_icon_failed),
+                None => {
+                    let key = embedded_icon_key(&s.target, m);
+                    if icons::claim(&key) {
+                        embedded.push((m.filename.clone(), key));
+                    }
+                }
+            }
+        }
+        s.target.clone()
+    });
+    queue_embedded_icons(&c, target, embedded);
+}
+
+/// One background pass reading the listed jars (sequential: a listing of 40
+/// local mods would otherwise block every tokio worker at once).
+fn queue_embedded_icons(c: &Ctx, target: String, queue: Vec<(String, String)>) {
+    if queue.is_empty() {
+        return;
+    }
+    with(|s| {
+        for (filename, key) in &queue {
+            s.icon_keys.insert(key.clone(), (target.clone(), filename.clone()));
+        }
+    });
+    let engine = c.engine().clone();
+    let c2 = c.clone();
+    c.spawn(async move {
+        for (filename, key) in queue {
+            match engine.mod_embedded_icon(&target, &filename).await {
+                Ok(Some(bytes)) => {
+                    let buf = tokio::task::spawn_blocking(move || icons::decode(&bytes)).await.ok().flatten();
+                    c2.on_ui(move |ui| {
+                        if icons::settle(&key, buf) {
+                            mod_icon_embedded_ready(ui, &key);
+                        }
+                    });
+                }
+                // No declared icon or an unreadable jar: mark the key bad.
+                _ => c2.on_ui(move |_ui| {
+                    icons::settle(&key, None);
+                }),
+            }
+        }
+    });
+}
+
+/// A Modrinth icon landed: patch the installed rows waiting on that URL.
+fn mod_icon_ready(_ui: &AppWindow, url: &str) {
+    let Some(img) = icons::get(url) else { return };
+    MOD_ROWS.with(|m| {
+        for i in 0..m.row_count() {
+            let Some(mut row) = m.row_data(i) else { continue };
+            if row.icon_url.as_str() == url && !row.has_icon {
+                row.icon = img.clone();
+                row.has_icon = true;
+                m.set_row_data(i, row);
+            }
+        }
+    });
+}
+
+/// The Modrinth icon could not be fetched: try the jar's embedded icon.
+fn mod_icon_failed(_ui: &AppWindow, url: &str) {
+    let Some(c) = super::ctx() else { return };
+    let (target, mods) = with(|s| (s.target.clone(), s.mods.clone()));
+    let mut embedded: Vec<(String, String)> = Vec::new();
+    for m in mods.iter().filter(|m| m.installed && m.icon_url.as_deref() == Some(url)) {
+        let key = embedded_icon_key(&target, m);
+        if icons::claim(&key) {
+            embedded.push((m.filename.clone(), key));
+        }
+    }
+    queue_embedded_icons(&c, target, embedded);
+}
+
+/// An embedded icon landed: patch the row of that jar (same instance only).
+fn mod_icon_embedded_ready(_ui: &AppWindow, key: &str) {
+    let Some(img) = icons::get(key) else { return };
+    let Some((target, filename)) = with(|s| s.icon_keys.get(key).cloned()) else { return };
+    if with(|s| s.target != target) {
+        return;
+    }
+    MOD_ROWS.with(|m| {
+        for i in 0..m.row_count() {
+            let Some(mut row) = m.row_data(i) else { continue };
+            if row.filename.as_str() == filename && !row.has_icon {
+                row.icon = img.clone();
+                row.has_icon = true;
+                m.set_row_data(i, row);
+            }
+        }
+    });
+}
+
 // ---------------------------------------------------------------- actions
 
+/// Flip a mod's switch. Switching one off first asks the engine which enabled
+/// mods require it; if any do, the row shows an inline confirm instead of
+/// switching it off behind the player's back.
 fn toggle(filename: String) {
-    let Some(c) = super::ctx() else { return };
-    let (target, next, name, installed) = with(|s| {
-        let target = s.target.clone();
-        let Some(m) = s.mods.iter_mut().find(|m| m.filename == filename) else {
-            return (target, None, String::new(), true);
-        };
-        m.enabled = !m.enabled;
-        (target, Some(m.enabled), display_name(&m.filename, m.project_slug.as_deref()), m.installed)
+    let (next, name) = with(|s| {
+        let Some(m) = s.mods.iter().find(|m| m.filename == filename) else { return (None, String::new()) };
+        (Some(!m.enabled), display_name(&m.filename, m.project_slug.as_deref()))
     });
     let Some(next) = next else { return };
+    if next {
+        set_enabled(filename, true, Vec::new());
+        return;
+    }
+    let Some(c) = super::ctx() else { return };
+    let target = with(|s| s.target.clone());
+    if target.is_empty() {
+        return;
+    }
+    let (fe, te) = (filename.clone(), target.clone());
+    let (fu, tu, nu) = (filename.clone(), target, name);
+    let ff = filename;
+    c.call_with(
+        move |e| async move { e.dependents_of_mod(&te, &fe).await },
+        move |ui, deps| {
+            // The switch may have been flipped again (or the instance changed).
+            let still_enabled = with(|s| s.target == tu && s.mods.iter().any(|m| m.filename == fu && m.enabled));
+            if !still_enabled {
+                return;
+            }
+            if deps.is_empty() {
+                set_enabled(fu, false, Vec::new());
+            } else {
+                with(|s| {
+                    s.guard_filename = fu.clone();
+                    s.guard_name = nu.clone();
+                    s.guard_dependents = deps;
+                });
+                push_mods(ui);
+            }
+        },
+        // The guard is advisory: a failed check must not block the switch.
+        move |_ui, _err| set_enabled(ff, false, Vec::new()),
+    );
+}
+
+/// Optimistic enable/disable of one mod (plus `also` dependents that go down
+/// with it), then one engine call per file; any failure resyncs the list.
+fn set_enabled(filename: String, next: bool, also: Vec<String>) {
+    let Some(c) = super::ctx() else { return };
+    let mut files: Vec<String> = vec![filename];
+    files.extend(also);
+    let (target, name, installed) = with(|s| {
+        let target = s.target.clone();
+        let (mut name, mut installed) = (String::new(), true);
+        for f in &files {
+            if let Some(m) = s.mods.iter_mut().find(|m| &m.filename == f) {
+                m.enabled = next;
+                if f == &files[0] {
+                    name = display_name(&m.filename, m.project_slug.as_deref());
+                    installed = m.installed;
+                }
+            }
+        }
+        if s.guard_filename == files[0] {
+            clear_guard(s);
+        }
+        (target, name, installed)
+    });
+    if target.is_empty() {
+        return;
+    }
     if let Some(ui) = win() {
         push_mods(&ui);
     }
-    let f2 = filename.clone();
-    let t2 = target.clone();
+    let count = files.len();
+    let (fe, te) = (files.clone(), target.clone());
+    let (fr, n2) = (files, name);
     c.call_with(
-        move |e| async move { e.set_mod_enabled(&target, &filename, next).await },
-        move |_ui, _r| {
-            toast::ok(format!("{name} {}", i18n::t(if next { "mods.enabled" } else { "mods.disabled" })));
+        move |e| async move {
+            for f in &fe {
+                e.set_mod_enabled(&te, f, next).await?;
+            }
+            Ok(())
+        },
+        move |ui, ()| {
+            let text = if count > 1 {
+                i18n::tf("mods.guard.disabledWith", &[("count", &count.to_string()), ("mod", &n2)])
+            } else {
+                format!("{n2} {}", i18n::t(if next { "mods.enabled" } else { "mods.disabled" }))
+            };
+            toast::ok(text);
             // A pinned mod that wasn't on disk was just downloaded: re-list it.
             if !installed {
                 load_mods();
             }
             load_compat();
             store::refresh_instances();
+            push_mods(ui);
         },
         move |ui, err| {
             with(|s| {
-                if s.target == t2 {
-                    if let Some(m) = s.mods.iter_mut().find(|m| m.filename == f2) {
+                for f in &fr {
+                    if let Some(m) = s.mods.iter_mut().find(|m| &m.filename == f) {
                         m.enabled = !next;
                     }
                 }
             });
             push_mods(ui);
+            load_mods();
             let msg = err.envelope().message;
             toast::err(if msg.is_empty() { i18n::t("mods.toggleError") } else { msg });
+        },
+    );
+}
+
+fn clear_guard(s: &mut State) {
+    s.guard_filename.clear();
+    s.guard_name.clear();
+    s.guard_dependents.clear();
+}
+
+fn cancel_guard() {
+    let Some(ui) = win() else { return };
+    with(clear_guard);
+    push_mods(&ui);
+}
+
+fn disable_guard_anyway() {
+    let filename = with(|s| s.guard_filename.clone());
+    if filename.is_empty() {
+        return;
+    }
+    set_enabled(filename, false, Vec::new());
+}
+
+fn disable_guard_with_dependents() {
+    let (filename, dependents) = with(|s| (s.guard_filename.clone(), s.guard_dependents.clone()));
+    if filename.is_empty() {
+        return;
+    }
+    let others: Vec<String> = dependents.into_iter().map(|(f, _)| f).collect();
+    set_enabled(filename, false, others);
+}
+
+// ---------------------------------------------------------------- updates
+
+/// Batched "Check for updates" (one Modrinth request for the whole list).
+fn check_updates() {
+    let Some(c) = super::ctx() else { return };
+    let (target, seq) = with(|s| {
+        if s.upd_checking || s.upd_applying || s.target.is_empty() {
+            return (String::new(), 0);
+        }
+        s.upd_checking = true;
+        s.upd_seq += 1;
+        (s.target.clone(), s.upd_seq)
+    });
+    if let Some(ui) = win() {
+        push_mods(&ui);
+    }
+    if target.is_empty() {
+        return;
+    }
+    let te = target;
+    c.call_with(
+        move |e| async move { e.check_mod_updates(&te, ReleaseChannel::Release).await },
+        move |ui, report| {
+            let counts = with(|s| {
+                if s.upd_seq != seq {
+                    return None;
+                }
+                s.upd_checking = false;
+                let total = report.updates.len();
+                s.updates = report.updates;
+                Some((report.checked, total))
+            });
+            let Some((checked, total)) = counts else { return };
+            push_mods(ui);
+            if total == 0 {
+                toast::ok(i18n::tf("mods.upd.checkDone", &[("count", &checked.to_string())]));
+            } else {
+                toast::ok(i18n::tf("mods.upd.checkDoneSome", &[("count", &total.to_string())]));
+            }
+        },
+        move |ui, err| {
+            let current = with(|s| {
+                if s.upd_seq != seq {
+                    return false;
+                }
+                s.upd_checking = false;
+                true
+            });
+            if current {
+                push_mods(ui);
+                let msg = err.envelope().message;
+                toast::err(if msg.is_empty() { i18n::t("mods.upd.error") } else { msg });
+            }
+        },
+    );
+}
+
+/// "Update all" (`None`) or a chosen set of filenames (`Some`).
+fn apply_updates(filenames: Option<Vec<String>>) {
+    let Some(c) = super::ctx() else { return };
+    let target = with(|s| {
+        if s.upd_applying || s.target.is_empty() {
+            return String::new();
+        }
+        s.upd_applying = true;
+        s.target.clone()
+    });
+    if let Some(ui) = win() {
+        push_mods(&ui);
+    }
+    if target.is_empty() {
+        return;
+    }
+    c.call_with(
+        move |e| async move { e.apply_mod_updates(&target, filenames).await },
+        move |ui, res| {
+            let applied: HashSet<String> = res.updated.iter().map(|u| u.filename.clone()).collect();
+            with(|s| {
+                s.upd_applying = false;
+                if !res.changed.is_empty() {
+                    s.upd_undo = true;
+                }
+                s.updates.retain(|u| !applied.contains(&u.filename));
+            });
+            load_mods();
+            load_compat();
+            load_preset();
+            store::refresh_instances();
+            push_mods(ui);
+            let mut parts: Vec<String> = Vec::new();
+            if res.updated.is_empty() {
+                parts.push(i18n::t("mods.upd.noneApplied"));
+            } else {
+                parts.push(i18n::tf("mods.upd.applied", &[("count", &res.updated.len().to_string())]));
+            }
+            if !res.skipped_pinned.is_empty() {
+                parts.push(i18n::tf("mods.upd.pinnedSkipped", &[("count", &res.skipped_pinned.len().to_string())]));
+            }
+            if !res.warnings.is_empty() {
+                parts.push(i18n::tf("mods.upd.warnings", &[("count", &res.warnings.len().to_string())]));
+            }
+            let text = parts.join(" · ");
+            if res.updated.is_empty() {
+                toast::info(text);
+            } else {
+                toast::ok(text);
+            }
+        },
+        move |ui, err| {
+            with(|s| s.upd_applying = false);
+            push_mods(ui);
+            let msg = err.envelope().message;
+            toast::err(if msg.is_empty() { i18n::t("mods.upd.error") } else { msg });
+        },
+    );
+}
+
+/// Restore the jars saved by the last batch update (local backups).
+fn undo_updates() {
+    let Some(c) = super::ctx() else { return };
+    let target = with(|s| {
+        if s.upd_applying || s.target.is_empty() {
+            return String::new();
+        }
+        s.upd_applying = true;
+        s.target.clone()
+    });
+    if let Some(ui) = win() {
+        push_mods(&ui);
+    }
+    if target.is_empty() {
+        return;
+    }
+    c.call_with(
+        move |e| async move { e.undo_last_mod_update(&target).await },
+        move |ui, res| {
+            with(|s| {
+                s.upd_applying = false;
+                s.upd_undo = false;
+                s.updates.clear();
+            });
+            load_mods();
+            load_compat();
+            load_preset();
+            store::refresh_instances();
+            push_mods(ui);
+            toast::ok(i18n::tf("mods.upd.undoDone", &[("count", &res.restored.len().to_string())]));
+        },
+        move |ui, err| {
+            // A consumed/missing manifest means the button is stale.
+            let stale = err.raw_code() == Some("no_mod_update");
+            with(|s| {
+                s.upd_applying = false;
+                if stale {
+                    s.upd_undo = false;
+                }
+            });
+            push_mods(ui);
+            let msg = err.envelope().message;
+            toast::err(if msg.is_empty() { i18n::t("mods.upd.error") } else { msg });
+        },
+    );
+}
+
+/// Pin/unpin a mod against "Update all" (optimistic; the engine reply is the
+/// canonical pin state so a project-id pin is reflected too). `pin_key` is the
+/// project id when known, else the filename.
+fn set_pinned(pin_key: String, pinned: bool) {
+    let Some(c) = super::ctx() else { return };
+    let (target, name, filename) = with(|s| {
+        let found =
+            s.mods.iter().find(|m| m.filename == pin_key || m.project_id.as_deref() == Some(pin_key.as_str()));
+        let filename = found.map(|m| m.filename.clone()).unwrap_or_else(|| pin_key.clone());
+        let name = found
+            .map(|m| display_name(&m.filename, m.project_slug.as_deref()))
+            .unwrap_or_else(|| display_name(&pin_key, None));
+        for m in s.mods.iter_mut().filter(|m| m.filename == filename) {
+            m.pinned = pinned;
+        }
+        for u in s.updates.iter_mut().filter(|u| u.filename == filename) {
+            u.pinned = pinned;
+        }
+        (s.target.clone(), name, filename)
+    });
+    if target.is_empty() {
+        return;
+    }
+    if let Some(ui) = win() {
+        push_mods(&ui);
+    }
+    let (fe, te) = (pin_key.clone(), target);
+    let (f1, f2, n2) = (filename.clone(), filename, name);
+    c.call_with(
+        move |e| async move { e.set_mod_pinned(&te, &fe, pinned).await },
+        move |ui, reply| {
+            with(|s| {
+                for m in s.mods.iter_mut().filter(|m| m.filename == f1) {
+                    m.pinned = reply.pinned;
+                }
+                for u in s.updates.iter_mut().filter(|u| u.filename == f1) {
+                    u.pinned = reply.pinned;
+                }
+            });
+            push_mods(ui);
+            let key = if reply.pinned { "mods.pin.success" } else { "mods.pin.removed" };
+            toast::ok(i18n::tf(key, &[("name", &n2)]));
+        },
+        move |ui, err| {
+            with(|s| {
+                for m in s.mods.iter_mut().filter(|m| m.filename == f2) {
+                    m.pinned = !pinned;
+                }
+                for u in s.updates.iter_mut().filter(|u| u.filename == f2) {
+                    u.pinned = !pinned;
+                }
+            });
+            push_mods(ui);
+            let msg = err.envelope().message;
+            toast::err(if msg.is_empty() { i18n::t("mods.pin.error") } else { msg });
         },
     );
 }
@@ -756,6 +1307,9 @@ fn ask_delete(filename: String) {
     let Some(ui) = win() else { return };
     let (target, name) = with(|s| {
         s.delete_filename = filename.clone();
+        s.orphans.clear();
+        s.orphans_checked.clear();
+        s.orphans_loading = true;
         let name = s
             .mods
             .iter()
@@ -770,23 +1324,16 @@ fn ask_delete(filename: String) {
     b.set_m_delete_dependents(ss(""));
     b.set_m_deleting(false);
     b.set_m_delete_open(true);
+    push_orphans(&ui);
 
-    // Check locally if any enabled mod depends on this jar so the confirm dialog can warn!
-    let f2 = filename.clone();
+    // Enabled mods that need this jar (delete warning) and the libraries this
+    // jar is the last dependent of (orphan checkboxes), both from the engine.
+    let (fe, te) = (filename.clone(), target.clone());
+    let fu = filename.clone();
     c.call_with(
-        move |e| async move {
-            let inst = espectral_engine::resolver::load_instance_meta(&e, &target)?;
-            let dir = espectral_engine::instances::effective_mods_dir(&e, &inst);
-            let deps = tokio::task::spawn_blocking(move || {
-                let jars = espectral_engine::fabric_compat::scan_mods_dir(&dir);
-                espectral_engine::fabric_compat::dependents_of_jar(&jars, &f2)
-            })
-            .await
-            .unwrap_or_default();
-            Ok(deps)
-        },
+        move |e| async move { e.dependents_of_mod(&te, &fe).await },
         move |ui, deps| {
-            let still_same = with(|s| s.delete_filename == filename);
+            let still_same = with(|s| s.delete_filename == fu);
             if still_same && !deps.is_empty() {
                 let names: Vec<String> = deps.into_iter().map(|(_, n)| n).collect();
                 ui.global::<LibraryBridge>().set_m_delete_dependents(ss(names.join(", ")));
@@ -794,6 +1341,68 @@ fn ask_delete(filename: String) {
         },
         |_ui, _err| {},
     );
+    let (fo1, fo2, fo3) = (filename.clone(), filename.clone(), filename);
+    c.call_with(
+        move |e| async move { e.orphaned_libraries_after_delete(&target, &fo1).await },
+        move |ui, libs| {
+            let still_same = with(|s| {
+                if s.delete_filename != fo2 {
+                    return false;
+                }
+                s.orphans = libs;
+                s.orphans_loading = false;
+                true
+            });
+            if still_same {
+                push_orphans(ui);
+            }
+        },
+        move |ui, _err| {
+            let still_same = with(|s| {
+                if s.delete_filename != fo3 {
+                    return false;
+                }
+                s.orphans_loading = false;
+                true
+            });
+            if still_same {
+                push_orphans(ui);
+            }
+        },
+    );
+}
+
+/// The delete modal's orphaned-library checkboxes (all unchecked = keep).
+fn push_orphans(ui: &AppWindow) {
+    let (rows, loading) = with(|s| {
+        let rows: Vec<OrphanLibRow> = s
+            .orphans
+            .iter()
+            .map(|o| OrphanLibRow {
+                filename: ss(&o.filename),
+                name: ss(&o.display_name),
+                checked: s.orphans_checked.contains(&o.filename),
+            })
+            .collect();
+        (rows, s.orphans_loading)
+    });
+    let b = ui.global::<LibraryBridge>();
+    b.set_m_orphan_libs(model(rows));
+    b.set_m_orphans_loading(loading);
+}
+
+/// Check/uncheck a library the delete is about to orphan (unchecked keeps it).
+fn orphan_toggle(filename: String, checked: bool) {
+    with(|s| {
+        if checked {
+            s.orphans_checked.insert(filename);
+        } else {
+            s.orphans_checked.remove(&filename);
+        }
+    });
+    if let Some(ui) = win() {
+        push_orphans(&ui);
+    }
 }
 
 fn cancel_delete() {
@@ -803,7 +1412,13 @@ fn cancel_delete() {
         return;
     }
     b.set_m_delete_open(false);
-    with(|s| s.delete_filename.clear());
+    with(|s| {
+        s.delete_filename.clear();
+        s.orphans.clear();
+        s.orphans_checked.clear();
+        s.orphans_loading = false;
+    });
+    push_orphans(&ui);
 }
 
 fn confirm_delete() {
@@ -813,7 +1428,7 @@ fn confirm_delete() {
     if b.get_m_deleting() {
         return;
     }
-    let (target, filename, name) = with(|s| {
+    let (target, filename, name, orphans) = with(|s| {
         let f = s.delete_filename.clone();
         let name = s
             .mods
@@ -821,7 +1436,13 @@ fn confirm_delete() {
             .find(|m| m.filename == f)
             .and_then(|m| m.display_name.clone())
             .unwrap_or_else(|| display_name(&f, None));
-        (s.target.clone(), f, name)
+        let orphans: Vec<String> = s
+            .orphans
+            .iter()
+            .filter(|o| s.orphans_checked.contains(&o.filename))
+            .map(|o| o.filename.clone())
+            .collect();
+        (s.target.clone(), f, name, orphans)
     });
     if target.is_empty() || filename.is_empty() {
         return;
@@ -829,21 +1450,42 @@ fn confirm_delete() {
     b.set_m_deleting(true);
     let f2 = filename.clone();
     c.call_with(
-        move |e| async move { e.delete_mod(&target, &filename).await },
-        move |ui, _| {
+        move |e| async move {
+            e.delete_mod(&target, &filename).await?;
+            // Checked orphaned libraries go too; one failure does not undo the
+            // rest (the main delete already happened).
+            let mut removed = 0usize;
+            for f in &orphans {
+                if e.delete_mod(&target, f).await.is_ok() {
+                    removed += 1;
+                }
+            }
+            Ok((removed, orphans.len()))
+        },
+        move |ui, (removed, requested)| {
             let b = ui.global::<LibraryBridge>();
             b.set_m_deleting(false);
             b.set_m_delete_open(false);
             with(|s| {
                 s.delete_filename.clear();
+                s.orphans.clear();
+                s.orphans_checked.clear();
+                s.orphans_loading = false;
                 s.mods.retain(|m| m.filename != f2);
             });
             push_mods(ui);
+            push_orphans(ui);
             load_mods();
             load_preset();
             load_compat();
             store::refresh_instances();
             toast::ok(i18n::tf("mods.deleted", &[("name", &name)]));
+            if removed > 0 {
+                toast::info(i18n::tf("mods.orphan.deleted", &[("count", &removed.to_string())]));
+            }
+            if removed < requested {
+                toast::err(i18n::tf("mods.orphan.partial", &[("count", &(requested - removed).to_string())]));
+            }
         },
         |ui, err| {
             ui.global::<LibraryBridge>().set_m_deleting(false);
@@ -1100,21 +1742,32 @@ fn apply_fix(kind: String, target: String, arg: String) {
         "change_version" => open_versions(target, None),
         "update" => open_versions(target, (!arg.is_empty()).then_some(arg)),
         "install" => install_missing_mod_id(target, arg),
-        "loader" => fix_safe_mods(),
+        "loader" => fix_all_safe(),
         _ => {}
     }
 }
 
-/// "Fix" on a Fabric Loader issue: the batch fix re-pins the loader and applies the other safe fixes.
-fn fix_safe_mods() {
+/// "Fix" on a Fabric Loader issue, and the banner's "Fix all": the batch re-pins
+/// the loader and applies every safe fix (see `safe_fix_count`).
+fn fix_all_safe() {
     let Some(c) = super::ctx() else { return };
-    let target = with(|s| s.target.clone());
+    let target = with(|s| {
+        if s.fix_busy || s.target.is_empty() {
+            return String::new();
+        }
+        s.fix_busy = true;
+        s.target.clone()
+    });
+    if let Some(ui) = win() {
+        push_mods(&ui);
+    }
     if target.is_empty() {
         return;
     }
     c.call_with(
         move |e| async move { e.apply_safe_compat_fixes(&target).await },
-        |_ui, r| {
+        |ui, r| {
+            with(|s| s.fix_busy = false);
             let text = fix_summary(&r);
             if r.remaining_errors == 0 {
                 toast::ok(text);
@@ -1123,8 +1776,14 @@ fn fix_safe_mods() {
             }
             load_mods();
             load_compat();
+            store::refresh_instances();
+            push_mods(ui);
         },
-        |_ui, e| toast::engine_error(&e),
+        |ui, e| {
+            with(|s| s.fix_busy = false);
+            push_mods(ui);
+            toast::engine_error(&e);
+        },
     );
 }
 
@@ -1307,10 +1966,93 @@ mod tests {
             pinned: false,
             icon_url: None,
         };
-        let r = mod_row(&m, &[], true);
+        let r = mod_row(&m, &[], true, None, "");
         assert_eq!(r.meta.as_str(), "· 1.5 KB · 01234567");
-        assert!(r.can_delete && r.can_switch_version);
+        assert!(r.can_delete && r.can_switch_version && r.can_pin);
         assert!(!r.requires.is_empty());
         assert!(r.required_by.is_empty());
+        assert!(!r.has_icon);
+        assert!(r.update_to.is_empty());
+    }
+
+    fn issue(kind: CompatIssueKind, severity: CompatSeverity, fix: Option<CompatFix>) -> ModCompatIssue {
+        ModCompatIssue {
+            filename: "a.jar".into(),
+            mod_id: "a".into(),
+            mod_name: "A".into(),
+            severity,
+            kind,
+            target_id: "dep".into(),
+            target_name: "Dep".into(),
+            target_filename: None,
+            required: "*".into(),
+            actual: None,
+            fix,
+            reason: None,
+        }
+    }
+
+    #[test]
+    fn safe_fix_count_skips_unsafe_disables() {
+        let report = ModCompatReport {
+            supported: true,
+            mc_version: "26.3".into(),
+            loader_version: None,
+            java_major: 21,
+            error_count: 6,
+            warning_count: 3,
+            issues: vec![
+                issue(
+                    CompatIssueKind::DisabledDep,
+                    CompatSeverity::Error,
+                    Some(CompatFix::Enable { filename: "d.jar".into(), name: "D".into() }),
+                ),
+                issue(
+                    CompatIssueKind::MissingDep,
+                    CompatSeverity::Error,
+                    Some(CompatFix::InstallMod { mod_id: "d".into(), name: "D".into() }),
+                ),
+                issue(
+                    CompatIssueKind::IncompatibleDep,
+                    CompatSeverity::Error,
+                    Some(CompatFix::UpdateMod {
+                        filename: "x.jar".into(),
+                        target_id: "x".into(),
+                        target_name: "X".into(),
+                        required: ">=1".into(),
+                    }),
+                ),
+                issue(
+                    CompatIssueKind::LoaderVersion,
+                    CompatSeverity::Error,
+                    Some(CompatFix::UpdateFabricLoader { required: ">=0.16".into() }),
+                ),
+                issue(
+                    CompatIssueKind::ServerOnly,
+                    CompatSeverity::Warning,
+                    Some(CompatFix::Disable { filename: "s.jar".into() }),
+                ),
+                issue(
+                    CompatIssueKind::DuplicateMod,
+                    CompatSeverity::Warning,
+                    Some(CompatFix::Disable { filename: "old.jar".into() }),
+                ),
+                // Not safe: disabling a gameplay mod stays the player's call.
+                issue(
+                    CompatIssueKind::BreaksMod,
+                    CompatSeverity::Error,
+                    Some(CompatFix::Disable { filename: "b.jar".into() }),
+                ),
+                issue(
+                    CompatIssueKind::MinecraftVersion,
+                    CompatSeverity::Error,
+                    Some(CompatFix::ChangeVersion { filename: "m.jar".into() }),
+                ),
+                issue(CompatIssueKind::ServerOnly, CompatSeverity::Error, None),
+            ],
+            jar_info: Default::default(),
+        };
+        assert_eq!(safe_fix_count(Some(&report)), 6);
+        assert_eq!(safe_fix_count(None), 0);
     }
 }

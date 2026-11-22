@@ -12,6 +12,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use espectral_engine::api::content::ModrinthSearchQuery;
+use espectral_engine::fabric_compat::CompatSeverity;
 use espectral_engine::packs::PackKind;
 use espectral_engine::types::{
     InstanceSummary, Loader, ModInstallPlan, ModInstallPreview, ModRef, ModVersionItem, ModrinthProject,
@@ -20,10 +21,11 @@ use espectral_engine::types::{
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
 use super::{gallery, icons, mods, model, ss};
+use crate::bridge::Ctx;
 use crate::i18n::{self, Lang};
 use crate::{
     router, store, toast, util, AppWindow, LibraryBridge, ModChangeSummary, ModRefRow, ModVersionOption, ModrinthCard,
-    ModrinthChip,
+    ModrinthChip, OptionalDepRow, SelectOption,
 };
 
 const SEARCH_PAGE_SIZE: usize = 12;
@@ -63,6 +65,10 @@ struct State {
     /// `instance::project_id` installs confirmed by a terminal event.
     confirmed: HashSet<String>,
     preview: Option<ModInstallPreview>,
+    /// Install preview modal: version picker and optional companions (the modal's extras).
+    preview_versions: Vec<ModVersionItem>,
+    preview_optional_checked: HashSet<String>,
+    preview_seq: u64,
     /// Project detail modal: the opened project, its request sequence and the shown gallery image.
     detail_seq: u64,
     detail: Option<ModrinthProjectDetail>,
@@ -125,6 +131,8 @@ pub fn init(ui: &AppWindow) {
     b.on_m_install(|id, title, force| install_card(id.to_string(), title.to_string(), force));
     b.on_m_prev_confirm(confirm_preview);
     b.on_m_prev_cancel(cancel_preview);
+    b.on_m_prev_select_version(|version_id| preview_select_version(version_id.to_string()));
+    b.on_m_prev_toggle_optional(|project_id, checked| preview_toggle_optional(project_id.to_string(), checked));
     b.on_m_open_detail(|id| open_detail(id.to_string()));
     b.on_md_close(close_detail);
     b.on_md_install(|version| detail_install(version.to_string()));
@@ -148,7 +156,13 @@ pub(super) fn instance_switched(ui: &AppWindow) {
         reset_results(s);
         s.conflict = None;
         s.optional.clear();
+        s.preview_versions.clear();
+        s.preview_optional_checked.clear();
+        s.preview_seq += 1;
     });
+    let b = ui.global::<LibraryBridge>();
+    b.set_m_prev_version_options(model(vec![]));
+    b.set_m_prev_optional(model(vec![]));
     rebuild_cards(ui);
     if ui.global::<LibraryBridge>().get_m_tab() == super::mods::MODRINTH_TAB {
         enter(ui);
@@ -744,7 +758,7 @@ pub(super) fn install_mod(project_id: String, title: String, force: bool) {
     let Some(c) = super::ctx() else { return };
     let Some(target) = begin_install(&project_id) else { return };
     if force {
-        commit_install(target, project_id, true, true);
+        commit_install(target, project_id, true, true, None, Vec::new());
         return;
     }
     // Pre-install compatibility & upgrade check before touching mods/
@@ -753,42 +767,21 @@ pub(super) fn install_mod(project_id: String, title: String, force: bool) {
         move |e| async move { e.preview_modrinth_install(&target, &project_id, None, Vec::new()).await },
         move |ui, preview| {
             if !preview.needs_confirmation {
-                commit_install(t_ok, pid_ok, false, false);
+                commit_install(t_ok, pid_ok, false, false, None, Vec::new());
                 return;
             }
-            // Show pre-install confirmation modal with upgrades / conflicts / compat warnings!
-            let upgrades: Vec<ModChangeSummary> = preview
-                .upgrades
-                .iter()
-                .map(|u| ModChangeSummary {
-                    title: ss(&u.title),
-                    from_ver: ss(&u.from_version),
-                    to_ver: ss(&u.to_version_number),
-                })
-                .collect();
-            let enables: Vec<SharedString> = preview.enable_disabled.iter().map(ss).collect();
-            let conflicts = preview.conflicts.iter().map(|c| c.title.as_str()).collect::<Vec<_>>().join(", ");
-            let missing = preview.missing.iter().map(|m| m.title.as_str()).collect::<Vec<_>>().join(", ");
-            let issues: Vec<SharedString> =
-                preview.compat_issues.iter().map(|i| ss(mods::format_issue_text(i))).collect();
-            let has_errors = !preview.conflicts.is_empty()
-                || preview.compat_issues.iter().any(|i| i.severity == espectral_engine::fabric_compat::CompatSeverity::Error);
-            let modal_title = if preview.title.is_empty() { title } else { preview.title.clone() };
+            // Confirmation modal with upgrades / conflicts / compat warnings.
+            let (pid_modal, title_modal, t_modal) = (pid_ok.clone(), title.clone(), t_ok.clone());
             with(|s| {
                 s.installing_id = None;
-                s.preview = Some(preview);
+                s.preview_optional_checked.clear();
+                s.preview = Some(preview.clone());
             });
-            let b = ui.global::<LibraryBridge>();
-            b.set_m_prev_project_id(ss(&pid_ok));
-            b.set_m_prev_title(ss(modal_title));
-            b.set_m_prev_upgrades(model(upgrades));
-            b.set_m_prev_enables(model(enables));
-            b.set_m_prev_conflicts(ss(conflicts));
-            b.set_m_prev_missing(ss(missing));
-            b.set_m_prev_issues(model(issues));
-            b.set_m_prev_has_errors(has_errors);
-            b.set_m_prev_committing(false);
-            b.set_m_prev_open(true);
+            fill_preview_modal(ui, &preview, &title_modal, &pid_modal);
+            if let Some(c) = super::ctx() {
+                preview_open_extras(ui, &c, &t_modal, &pid_modal);
+            }
+            ui.global::<LibraryBridge>().set_m_prev_open(true);
             refresh_cards(ui);
         },
         move |ui, err| {
@@ -803,6 +796,205 @@ pub(super) fn install_mod(project_id: String, title: String, force: bool) {
     );
 }
 
+/// Fill every preview-modal field from a preview (`open` and the extra version
+/// picker state stay with the caller).
+fn fill_preview_modal(ui: &AppWindow, preview: &ModInstallPreview, fallback_title: &str, project_id: &str) {
+    let upgrades: Vec<ModChangeSummary> = preview
+        .upgrades
+        .iter()
+        .map(|u| ModChangeSummary {
+            title: ss(&u.title),
+            from_ver: ss(&u.from_version),
+            to_ver: ss(&u.to_version_number),
+        })
+        .collect();
+    let enables: Vec<SharedString> = preview.enable_disabled.iter().map(ss).collect();
+    let conflicts = preview.conflicts.iter().map(|c| c.title.as_str()).collect::<Vec<_>>().join(", ");
+    let missing = preview.missing.iter().map(|m| m.title.as_str()).collect::<Vec<_>>().join(", ");
+    let issues: Vec<SharedString> = preview.compat_issues.iter().map(|i| ss(mods::format_issue_text(i))).collect();
+    let has_errors =
+        !preview.conflicts.is_empty() || preview.compat_issues.iter().any(|i| i.severity == CompatSeverity::Error);
+    let title = if preview.title.is_empty() { fallback_title.to_string() } else { preview.title.clone() };
+    let index = with(|s| {
+        s.preview_versions.iter().position(|v| v.version_id == preview.version_id).map(|i| i as i32).unwrap_or(-1)
+    });
+    let b = ui.global::<LibraryBridge>();
+    b.set_m_prev_project_id(ss(project_id));
+    b.set_m_prev_title(ss(title));
+    b.set_m_prev_upgrades(model(upgrades));
+    b.set_m_prev_enables(model(enables));
+    b.set_m_prev_conflicts(ss(conflicts));
+    b.set_m_prev_missing(ss(missing));
+    b.set_m_prev_issues(model(issues));
+    b.set_m_prev_has_errors(has_errors);
+    b.set_m_prev_committing(false);
+    b.set_m_prev_version(ss(&preview.version_number));
+    b.set_m_prev_version_index(index);
+    b.set_m_prev_replanning(false);
+}
+
+/// Version picker + optional-companion checkboxes of the preview modal. Kept
+/// in its own functions (with the preview_* helpers below) so the Modrinth
+/// controller can relocate without touching them.
+fn preview_open_extras(ui: &AppWindow, c: &Ctx, target: &str, project_id: &str) {
+    {
+        let b = ui.global::<LibraryBridge>();
+        b.set_m_prev_version_options(model(vec![]));
+        b.set_m_prev_version_index(-1);
+        b.set_m_prev_replanning(false);
+    }
+    push_preview_optional(ui);
+    let seq = with(|s| {
+        s.preview_seq += 1;
+        s.preview_seq
+    });
+    if target.is_empty() || project_id.is_empty() {
+        return;
+    }
+    let (te, pe) = (target.to_string(), project_id.to_string());
+    c.call_with(
+        move |e| async move { e.modrinth_project_detail(&pe, Some(&te)).await },
+        move |ui, detail| {
+            let picked = with(|s| {
+                if s.preview_seq != seq {
+                    return None;
+                }
+                let selected = s.preview.as_ref().map(|p| p.version_id.clone()).unwrap_or_default();
+                s.preview_versions = detail.versions;
+                let index =
+                    s.preview_versions.iter().position(|v| v.version_id == selected).map(|i| i as i32).unwrap_or(-1);
+                let options: Vec<SelectOption> = s.preview_versions.iter().map(preview_version_option).collect();
+                Some((index, options))
+            });
+            let Some((index, options)) = picked else { return };
+            let b = ui.global::<LibraryBridge>();
+            b.set_m_prev_version_options(model(options));
+            b.set_m_prev_version_index(index);
+        },
+        |_ui, _err| {},
+    );
+}
+
+/// One entry of the preview version picker (non-release builds say so).
+fn preview_version_option(v: &ModVersionItem) -> SelectOption {
+    let label = if v.version_type == "release" {
+        v.version_number.clone()
+    } else {
+        format!("{} ({})", v.version_number, v.version_type)
+    };
+    SelectOption { value: ss(&v.version_id), label: ss(label) }
+}
+
+/// The preview's optional companions with their checked state (none by default).
+fn push_preview_optional(ui: &AppWindow) {
+    let rows: Vec<OptionalDepRow> = with(|s| {
+        let Some(p) = s.preview.as_ref() else { return Vec::new() };
+        p.optional
+            .iter()
+            .map(|o| OptionalDepRow {
+                project_id: ss(&o.project_id),
+                title: ss(&o.title),
+                checked: s.preview_optional_checked.contains(&o.project_id),
+            })
+            .collect()
+    });
+    ui.global::<LibraryBridge>().set_m_prev_optional(model(rows));
+}
+
+/// Preview modal version picker: re-run the preview for another build so the
+/// upgrades, conflicts and optional companions follow that version.
+fn preview_select_version(version_id: String) {
+    let Some(c) = super::ctx() else { return };
+    let Some(ui) = win() else { return };
+    let (target, project_id, current) = with(|s| {
+        let Some(p) = s.preview.as_ref() else { return (String::new(), String::new(), String::new()) };
+        (s.target.clone(), p.project_id.clone(), p.version_id.clone())
+    });
+    if target.is_empty() || project_id.is_empty() || version_id == current {
+        return;
+    }
+    let seq = with(|s| {
+        s.preview_seq += 1;
+        s.preview_seq
+    });
+    with(|s| s.preview_optional_checked.clear());
+    ui.global::<LibraryBridge>().set_m_prev_replanning(true);
+    let (te, pe) = (target, project_id);
+    c.call_with(
+        move |e| async move { e.preview_modrinth_install(&te, &pe, Some(version_id), Vec::new()).await },
+        move |ui, preview| {
+            let applied = with(|s| {
+                if s.preview_seq != seq {
+                    return false;
+                }
+                s.preview = Some(preview.clone());
+                true
+            });
+            if !applied {
+                return;
+            }
+            let (title, pid) = (preview.title.clone(), preview.project_id.clone());
+            fill_preview_modal(ui, &preview, &title, &pid);
+            push_preview_optional(ui);
+        },
+        move |ui, err| {
+            let current = with(|s| {
+                if s.preview_seq != seq {
+                    return false;
+                }
+                s.preview_optional_checked.clear();
+                true
+            });
+            if !current {
+                return;
+            }
+            // Keep the picker on the build the modal still previews.
+            let index = with(|s| {
+                s.preview
+                    .as_ref()
+                    .and_then(|p| s.preview_versions.iter().position(|v| v.version_id == p.version_id))
+                    .map(|i| i as i32)
+                    .unwrap_or(-1)
+            });
+            let b = ui.global::<LibraryBridge>();
+            b.set_m_prev_replanning(false);
+            b.set_m_prev_version_index(index);
+            let msg = err.envelope().message;
+            toast::err(if msg.is_empty() { i18n::t("mods.prev.replanError") } else { msg });
+        },
+    );
+}
+
+/// Tick/untick an optional companion (`commit` sends the checked project ids).
+fn preview_toggle_optional(project_id: String, checked: bool) {
+    with(|s| {
+        if checked {
+            s.preview_optional_checked.insert(project_id);
+        } else {
+            s.preview_optional_checked.remove(&project_id);
+        }
+    });
+    if let Some(ui) = win() {
+        push_preview_optional(&ui);
+    }
+}
+
+/// The build and optional companions chosen in the preview modal.
+fn preview_commit_args() -> (Option<String>, Vec<String>) {
+    with(|s| {
+        let Some(p) = s.preview.as_ref() else { return (None, Vec::new()) };
+        let version = Some(p.version_id.clone()).filter(|v| !v.is_empty());
+        let mut optional: Vec<String> = p
+            .optional
+            .iter()
+            .filter(|o| s.preview_optional_checked.contains(&o.project_id))
+            .map(|o| o.project_id.clone())
+            .collect();
+        optional.sort();
+        (version, optional)
+    })
+}
+
 fn cancel_preview() {
     let Some(ui) = win() else { return };
     let b = ui.global::<LibraryBridge>();
@@ -810,7 +1002,15 @@ fn cancel_preview() {
         return;
     }
     b.set_m_prev_open(false);
-    with(|s| s.preview = None);
+    b.set_m_prev_optional(model(vec![]));
+    b.set_m_prev_version_options(model(vec![]));
+    b.set_m_prev_replanning(false);
+    with(|s| {
+        s.preview = None;
+        s.preview_seq += 1;
+        s.preview_versions.clear();
+        s.preview_optional_checked.clear();
+    });
 }
 
 fn confirm_preview(apply_upgrades: bool) {
@@ -826,10 +1026,19 @@ fn confirm_preview(apply_upgrades: bool) {
         return;
     }
     b.set_m_prev_committing(true);
-    commit_install(target, pid, apply_upgrades, true);
+    // Version build + optional companions picked in the preview modal.
+    let (version_id, include_optional) = preview_commit_args();
+    commit_install(target, pid, apply_upgrades, true, version_id, include_optional);
 }
 
-fn commit_install(target: String, project_id: String, apply_upgrades: bool, force: bool) {
+fn commit_install(
+    target: String,
+    project_id: String,
+    apply_upgrades: bool,
+    force: bool,
+    version_id: Option<String>,
+    include_optional: Vec<String>,
+) {
     let Some(c) = super::ctx() else { return };
     with(|s| {
         s.installing_id = Some(project_id.clone());
@@ -841,12 +1050,15 @@ fn commit_install(target: String, project_id: String, apply_upgrades: bool, forc
     let (pid, pid_err, inst) = (project_id.clone(), project_id.clone(), target.clone());
     c.call_with(
         move |e| async move {
-            e.commit_modrinth_install(&target, &project_id, apply_upgrades, force, None, Vec::new()).await
+            e.commit_modrinth_install(&target, &project_id, apply_upgrades, force, version_id, include_optional)
+                .await
         },
         move |ui, plan| {
             let b = ui.global::<LibraryBridge>();
             b.set_m_prev_committing(false);
             b.set_m_prev_open(false);
+            b.set_m_prev_optional(model(vec![]));
+            b.set_m_prev_version_options(model(vec![]));
             let text = if plan.dependencies.is_empty() {
                 format!("{} {}…", i18n::t("mods.installingMod"), plan.project.title)
             } else {
@@ -857,6 +1069,9 @@ fn commit_install(target: String, project_id: String, apply_upgrades: bool, forc
             };
             with(|s| {
                 s.preview = None;
+                s.preview_versions.clear();
+                s.preview_optional_checked.clear();
+                s.preview_seq += 1;
                 if let Some(p) = s.pending.as_mut().filter(|p| p.project_id == pid) {
                     p.plan = Some(plan);
                 }
@@ -905,10 +1120,15 @@ fn commit_install(target: String, project_id: String, apply_upgrades: bool, forc
             let b = ui.global::<LibraryBridge>();
             b.set_m_prev_committing(false);
             b.set_m_prev_open(false);
+            b.set_m_prev_optional(model(vec![]));
+            b.set_m_prev_version_options(model(vec![]));
             let conflict = err.raw_code() == Some("mod_conflicts");
             let msg = err.envelope().message;
             with(|s| {
                 s.preview = None;
+                s.preview_versions.clear();
+                s.preview_optional_checked.clear();
+                s.preview_seq += 1;
                 s.pending = None;
                 s.installing_id = None;
                 if conflict {

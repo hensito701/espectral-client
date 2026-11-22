@@ -55,11 +55,39 @@ export struct ModRow {
     installed: bool,
     can-delete: bool,
     can-switch-version: bool,
+    /// Pin toggle (excluded from "Update all"); branding jars hide it.
+    can-pin: bool,
+    pinned: bool,
+    /// Token `set_mod_pinned` gets: the Modrinth project id when known (also
+    /// matches a pin created for a jar that is not on disk), else the filename.
+    pin-key: string,
+    /// Modrinth project icon ("" when the project is unknown; the jar's
+    /// embedded icon is tried then, and a MonogramTile is the last fallback).
+    icon-url: string,
+    icon: image,
+    has-icon: bool,
+    /// "" = no update found for this row.
+    update-from: string,
+    update-to: string,
     requires: string,        // "" or "Requiere sodium"
     required-by: string,     // "" or "Necesario para iris"
     has-error: bool,
     has-warn: bool,
     issues: [ModCompatNote],
+}
+
+/// A library the deleted mod was the last dependent of (delete modal checkbox).
+export struct OrphanLibRow {
+    filename: string,
+    name: string,
+    checked: bool,
+}
+
+/// Optional companion of a previewed install (checkbox, unchecked by default).
+export struct OptionalDepRow {
+    project-id: string,
+    title: string,
+    checked: bool,
 }
 
 /// Performance preset pill.
@@ -241,6 +269,40 @@ export global LibraryBridge {
     in property <int> m-compat-warnings;
     in property <bool> m-loading;
     in property <string> m-error;
+    // ------------------------------------------- installed tab intelligence
+    // Batch "fix all safe issues" (compat banner)
+    in property <int> m-fix-count;           // safe auto-fixes available
+    in property <bool> m-fix-busy;
+    callback m-fix-all();
+    // Batched updates ("Check updates" / "Update all" / undo) + version pinning
+    in property <bool> m-upd-checking;
+    in property <bool> m-upd-applying;
+    in property <int> m-upd-count;           // updates "Update all" would apply (unpinned)
+    in property <bool> m-upd-undo;           // last batch update can be undone
+    callback m-check-updates();
+    callback m-apply-updates();
+    callback m-apply-update(string);         // filename
+    callback m-undo-updates();
+    callback m-pin-set(string, bool);        // filename, pinned
+    // Disable guard: switching off a mod other enabled mods require
+    in property <string> m-guard-filename;   // "" = no prompt
+    in property <string> m-guard-name;
+    in property <string> m-guard-dependents; // comma-separated dependent names
+    callback m-cancel-guard();
+    callback m-disable-guard();              // the mod + its dependents
+    callback m-disable-guard-anyway();       // only this mod
+    // Delete modal: orphaned libraries of the mod being deleted
+    in property <[OrphanLibRow]> m-orphan-libs;
+    in property <bool> m-orphans-loading;
+    callback m-orphan-toggle(string, bool);  // filename, checked
+    // Install preview modal: version picker + optional companions
+    in property <string> m-prev-version;     // previewed root version number
+    in property <[SelectOption]> m-prev-version-options;
+    in-out property <int> m-prev-version-index; // two-way: the Select writes the picked build
+    in property <bool> m-prev-replanning;
+    in property <[OptionalDepRow]> m-prev-optional;
+    callback m-prev-select-version(string);  // version_id
+    callback m-prev-toggle-optional(string, bool); // project id, checked
     // Delete confirmation modal
     in-out property <bool> m-delete-open;
     in property <string> m-delete-filename;

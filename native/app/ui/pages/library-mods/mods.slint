@@ -6,7 +6,7 @@
 // when the query is empty), tracks mod-progress events and loads the result
 // icons from cdn.modrinth.com through the engine HTTP client (LRU cache).
 
-import { Theme, T, AppState, Router, GlassCard, Elevation, Btn, IconBtn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji, ProgressBar, ProgressThickness, MonogramTile, MonogramShape, LoaderBadge, LoaderBadgeSize, Toggle, SelectableText, Modal, ModalFooter, ConfirmDialog, ScrollArea } from "../../widgets.slint";
+import { Theme, T, AppState, Router, GlassCard, Elevation, Btn, IconBtn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji, ProgressBar, ProgressThickness, MonogramTile, MonogramShape, LoaderBadge, LoaderBadgeSize, Toggle, Checkbox, Select, SelectableText, Modal, ModalFooter, ConfirmDialog, ScrollArea } from "../../widgets.slint";
 import { LibraryBridge, ModRow, ModCompatNote, ModVersionOption, ModChangeSummary, PinnedPill } from "api.slint";
 import { LibScroll, GlassPanel, GlowDot, VText, StatePanel, CenterText, ModIcons, LoadingPanel, ErrorBanner, EmptyPanel } from "parts.slint";
 import { ResourcePacksPane, ShadersPane, CopyFromModal, RpDeleteDialog, ShDeleteDialog } from "packs.slint";
@@ -351,9 +351,9 @@ component SmallSearch inherits Rectangle {
     }
 }
 
-component InventoryToolbar inherits Rectangle {
-    height: row.preferred-height;
-    row := HorizontalLayout {
+component InventoryToolbar inherits VerticalLayout {
+    spacing: 0px;
+    HorizontalLayout {
         padding-top: Theme.space-2;
         padding-bottom: Theme.space-2;
         padding-left: Theme.space-3;
@@ -439,6 +439,41 @@ component InventoryToolbar inherits Rectangle {
             alignment: center;
             horizontal-stretch: 0;
             SmallSearch { width: 240px; }
+        }
+    }
+    // Update strip: one row so the filter chips and the search keep their width
+    // at the window minimum (960px).
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        padding-bottom: Theme.space-2;
+        spacing: Theme.space-2;
+        alignment: start;
+        Btn {
+            variant: BtnVariant.secondary;
+            size: BtnSize.sm;
+            icon: Icons.refresh;
+            text: LibraryBridge.m-upd-checking ? T.tr("mods.upd.checking") : T.tr("mods.upd.check");
+            loading: LibraryBridge.m-upd-checking;
+            enabled: LibraryBridge.m-has-target && !LibraryBridge.m-upd-checking && !LibraryBridge.m-upd-applying;
+            clicked => { LibraryBridge.m-check-updates(); }
+        }
+        if LibraryBridge.m-upd-count > 0: Btn {
+            variant: BtnVariant.primary;
+            size: BtnSize.sm;
+            icon: Icons.download;
+            text: T.tr1("mods.upd.applyAll", "count", LibraryBridge.m-upd-count);
+            loading: LibraryBridge.m-upd-applying;
+            enabled: !LibraryBridge.m-upd-applying;
+            clicked => { LibraryBridge.m-apply-updates(); }
+        }
+        if LibraryBridge.m-upd-undo: Btn {
+            variant: BtnVariant.ghost;
+            size: BtnSize.sm;
+            icon: Icons.clock;
+            text: T.tr("mods.upd.undo");
+            enabled: !LibraryBridge.m-upd-applying;
+            clicked => { LibraryBridge.m-undo-updates(); }
         }
     }
 }
@@ -533,7 +568,23 @@ component ModEntryRow inherits Rectangle {
             spacing: Theme.space-3;
             VerticalLayout {
                 alignment: center;
-                MonogramTile { name: root.entry.name; size: 32px; shape: MonogramShape.rounded; }
+                if root.entry.has-icon: Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: Theme.radius-md;
+                    clip: true;
+                    Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.entry.icon;
+                        image-fit: cover;
+                    }
+                }
+                if !root.entry.has-icon: MonogramTile {
+                    name: root.entry.name;
+                    size: 32px;
+                    shape: MonogramShape.rounded;
+                }
             }
             VerticalLayout {
                 horizontal-stretch: 1;
@@ -568,6 +619,10 @@ component ModEntryRow inherits Rectangle {
                         color: Theme.muted;
                         font-weight: 500;
                     }
+                    if root.entry.pinned: Badge {
+                        text: T.tr("mods.pin.pinned");
+                        variant: BadgeVariant.accent;
+                    }
                 }
                 HorizontalLayout {
                     spacing: 5.6px;
@@ -600,6 +655,19 @@ component ModEntryRow inherits Rectangle {
                 horizontal-stretch: 0;
                 spacing: 6px;
                 alignment: end;
+                if root.entry.update-to != "": VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        variant: BtnVariant.ghost;
+                        size: BtnSize.sm;
+                        icon: Icons.download;
+                        max-width: 260px;
+                        text: root.entry.update-from == "" ? root.entry.update-to
+                            : root.entry.update-from + " → " + root.entry.update-to;
+                        enabled: !LibraryBridge.m-upd-applying;
+                        clicked => { LibraryBridge.m-apply-update(root.entry.filename); }
+                    }
+                }
                 if root.entry.can-switch-version: VerticalLayout {
                     alignment: center;
                     Btn {
@@ -629,11 +697,84 @@ component ModEntryRow inherits Rectangle {
                         }
                     }
                 }
+                if root.entry.can-pin: VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: Theme.radius-sm;
+                        background: root.entry.pinned ? Theme.accent.with-alpha(0.14)
+                            : pin-ta.has-hover ? Theme.surface-up : transparent;
+                        animate background { duration: Theme.dur-fast; }
+                        Icon {
+                            data: ModIcons.pin;
+                            size: 14px;
+                            color: root.entry.pinned ? Theme.accent-bright : Theme.muted;
+                        }
+                        pin-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { LibraryBridge.m-pin-set(root.entry.pin-key, !root.entry.pinned); }
+                        }
+                    }
+                }
                 VerticalLayout {
                     alignment: center;
                     ModSwitch {
                         on: root.entry.enabled;
                         flipped => { LibraryBridge.m-toggle(root.entry.filename); }
+                    }
+                }
+            }
+        }
+        if LibraryBridge.m-guard-filename == root.entry.filename: VerticalLayout {
+            padding-left: 44px;
+            spacing: 4px;
+            Rectangle {
+                height: guard-inner.preferred-height;
+                border-radius: Theme.radius-sm;
+                background: Theme.accent-alt.with-alpha(0.10);
+                border-width: Theme.hairline;
+                border-color: Theme.accent-alt.with-alpha(0.38);
+                guard-inner := VerticalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    spacing: 6px;
+                    Text {
+                        text: T.tr1("mods.guard.title", "mod", LibraryBridge.m-guard-name);
+                        font-size: Theme.text-xs;
+                        font-weight: 600;
+                        color: Theme.accent-alt;
+                        wrap: word-wrap;
+                    }
+                    SelectableText {
+                        text: LibraryBridge.m-guard-dependents;
+                        font-size: Theme.text-xs;
+                        color: Theme.text;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        alignment: start;
+                        Btn {
+                            variant: BtnVariant.danger;
+                            size: BtnSize.sm;
+                            text: T.tr1("mods.guard.withDeps", "mod", LibraryBridge.m-guard-name);
+                            clicked => { LibraryBridge.m-disable-guard(); }
+                        }
+                        Btn {
+                            variant: BtnVariant.secondary;
+                            size: BtnSize.sm;
+                            text: T.tr("mods.guard.anyway");
+                            clicked => { LibraryBridge.m-disable-guard-anyway(); }
+                        }
+                        Btn {
+                            variant: BtnVariant.ghost;
+                            size: BtnSize.sm;
+                            text: T.tr("mods.guard.cancel");
+                            clicked => { LibraryBridge.m-cancel-guard(); }
+                        }
                     }
                 }
             }
@@ -677,6 +818,17 @@ component CompatSummaryBanner inherits GlassPanel {
                 font-size: Theme.text-sm;
                 font-weight: 600;
                 wrap: word-wrap;
+            }
+        }
+        if LibraryBridge.m-fix-count > 0: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.primary;
+                size: BtnSize.sm;
+                text: T.tr1("mods.fix.all", "count", LibraryBridge.m-fix-count);
+                loading: LibraryBridge.m-fix-busy;
+                enabled: !LibraryBridge.m-fix-busy;
+                clicked => { LibraryBridge.m-fix-all(); }
             }
         }
         if LibraryBridge.m-filter != 3: VerticalLayout {
@@ -878,6 +1030,47 @@ component DeleteModModal inherits Modal {
                     font-size: Theme.text-xs;
                     font-weight: 500;
                     wrap: word-wrap;
+                }
+            }
+        }
+        if LibraryBridge.m-orphans-loading: HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            ModSpinner { }
+            VText { text: T.tr("mods.orphan.checking"); font-size: Theme.text-xs; color: Theme.muted; }
+        }
+        if LibraryBridge.m-orphan-libs.length > 0: GlassPanel {
+            fill: Theme.accent-alt.with-alpha(0.08);
+            stroke: Theme.accent-alt.with-alpha(0.4);
+            height: orphan-col.preferred-height;
+            orphan-col := VerticalLayout {
+                padding: Theme.space-3;
+                spacing: 6px;
+                Text {
+                    text: T.tr("mods.orphan.header");
+                    font-size: Theme.text-xs;
+                    font-weight: 700;
+                    color: Theme.accent-alt;
+                    wrap: word-wrap;
+                }
+                for lib in LibraryBridge.m-orphan-libs: VerticalLayout {
+                    spacing: 2px;
+                    Checkbox {
+                        checked: lib.checked;
+                        text: lib.name;
+                        enabled: !LibraryBridge.m-deleting;
+                        toggled(v) => { LibraryBridge.m-orphan-toggle(lib.filename, v); }
+                    }
+                    HorizontalLayout {
+                        padding-left: 26px;
+                        SelectableText {
+                            text: lib.filename;
+                            font-family: Theme.font-mono;
+                            font-size: Theme.text-xs;
+                            color: Theme.muted;
+                            wrap: word-wrap;
+                        }
+                    }
                 }
             }
         }
@@ -1088,6 +1281,62 @@ component InstallPreviewModal inherits Modal {
     VerticalLayout {
         padding: Theme.space-5;
         spacing: Theme.space-3;
+        // Version picker: defaults to the previewed build; another choice re-runs
+        // the preview so upgrades/conflicts/optional deps follow that version.
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: T.tr("mods.prev.version");
+                    font-size: Theme.text-xs;
+                    font-weight: 600;
+                    color: Theme.muted;
+                }
+            }
+            Select {
+                options: LibraryBridge.m-prev-version-options;
+                current-index <=> LibraryBridge.m-prev-version-index;
+                placeholder: LibraryBridge.m-prev-version;
+                enabled: !LibraryBridge.m-prev-committing && !LibraryBridge.m-prev-replanning
+                    && LibraryBridge.m-prev-version-options.length > 0;
+                selected(index, v) => { LibraryBridge.m-prev-select-version(v); }
+            }
+        }
+        if LibraryBridge.m-prev-replanning: HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            ModSpinner { }
+            VText { text: T.tr("mods.prev.rechecking"); font-size: Theme.text-xs; color: Theme.muted; }
+        }
+        if LibraryBridge.m-prev-optional.length > 0: GlassPanel {
+            fill: Theme.accent-cyan.with-alpha(0.08);
+            stroke: Theme.accent-cyan.with-alpha(0.4);
+            height: opt-col.preferred-height;
+            opt-col := VerticalLayout {
+                padding: Theme.space-3;
+                spacing: 4px;
+                Text {
+                    text: T.tr("mods.prev.optional");
+                    font-size: Theme.text-xs;
+                    font-weight: 700;
+                    color: Theme.accent-cyan;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: T.tr("mods.prev.optionalHint");
+                    font-size: Theme.text-xs;
+                    color: Theme.muted;
+                    wrap: word-wrap;
+                }
+                for o in LibraryBridge.m-prev-optional: Checkbox {
+                    checked: o.checked;
+                    text: o.title;
+                    enabled: !LibraryBridge.m-prev-committing && !LibraryBridge.m-prev-replanning;
+                    toggled(v) => { LibraryBridge.m-prev-toggle-optional(o.project-id, v); }
+                }
+            }
+        }
         if LibraryBridge.m-prev-upgrades.length > 0: GlassPanel {
             fill: Theme.accent-cyan.with-alpha(0.08);
             stroke: Theme.accent-cyan.with-alpha(0.4);
@@ -1199,7 +1448,7 @@ component InstallPreviewModal inherits Modal {
                 ? T.tr("mods.previewInstallAndUpdate")
                 : T.tr("mods.previewInstallAnyway");
             loading: LibraryBridge.m-prev-committing;
-            enabled: !LibraryBridge.m-prev-committing;
+            enabled: !LibraryBridge.m-prev-committing && !LibraryBridge.m-prev-replanning;
             clicked => { LibraryBridge.m-prev-confirm(true); }
         }
     }
