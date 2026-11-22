@@ -20,7 +20,27 @@ fn main() {
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
 
     // ---- .slint sources (compiled by native/ui; read here for the key lint) ----
-    println!("cargo:rerun-if-changed={}", manifest.join("ui").display());
+    // Watch every .slint file plus every directory on the path to one: a new
+    // .slint file still reruns the lint, while unrelated files under
+    // ui/assets/ or ui/fonts/ no longer do (a bare `ui` watch was both too
+    // shallow for ui/pages/* and too broad for assets).
+    let ui_dir = manifest.join("ui");
+    let mut slint_files = Vec::new();
+    collect_slint(&ui_dir, &mut slint_files);
+    let mut slint_dirs: BTreeSet<PathBuf> = BTreeSet::new();
+    for f in &slint_files {
+        println!("cargo:rerun-if-changed={}", f.display());
+        let mut d = f.parent();
+        while let Some(dir) = d {
+            if !dir.starts_with(&ui_dir) || !slint_dirs.insert(dir.to_path_buf()) || dir == ui_dir {
+                break;
+            }
+            d = dir.parent();
+        }
+    }
+    for d in &slint_dirs {
+        println!("cargo:rerun-if-changed={}", d.display());
+    }
 
     // ---- i18n ----
     let i18n_dir = manifest.join("i18n");
@@ -48,11 +68,9 @@ fn main() {
         src.push_str(&format!("    ({ns:?}, include_str!({:?})),\n", f.display().to_string()));
     }
     src.push_str("];\n");
-    fs::write(out.join("i18n_files.rs"), src).unwrap();
+    write_if_changed(&out.join("i18n_files.rs"), &src);
 
     // ---- missing-key lint ----
-    let mut slint_files = Vec::new();
-    collect_slint(&manifest.join("ui"), &mut slint_files);
     for f in slint_files {
         let text = fs::read_to_string(&f).unwrap_or_default();
         // ignore comment lines (usage examples)
@@ -132,8 +150,24 @@ END
         icon = icon.display().to_string().replace('\\', "/"),
     );
     let rc_path = out.join("espectral-client.rc");
-    fs::write(&rc_path, rc).expect("failed to write the Windows resource script");
+    let rc_changed = write_if_changed(&rc_path, &rc);
     let obj = out.join("espectral-client.res.o");
+
+    // The object is always linked, so emit the link arg unconditionally; the
+    // icon watch and WINDRES env watch already cover the inputs that matter.
+    println!("cargo:rustc-link-arg-bins={}", obj.display());
+    println!("cargo:rerun-if-env-changed=WINDRES");
+
+    // Skip windres when its output is still valid: the .rc is unchanged, the
+    // object exists, and icon.ico is not newer than it.
+    let icon_newer = fs::metadata(&icon)
+        .and_then(|m| m.modified())
+        .ok()
+        .zip(fs::metadata(&obj).and_then(|m| m.modified()).ok())
+        .is_some_and(|(icon_mtime, obj_mtime)| icon_mtime > obj_mtime);
+    if !rc_changed && obj.is_file() && !icon_newer {
+        return;
+    }
 
     let candidates: Vec<String> = std::env::var("WINDRES")
         .ok()
@@ -147,8 +181,6 @@ END
         let exe = tool.trim_matches('"');
         match Command::new(exe).args(["-c", "65001", "-O", "coff", "-o"]).arg(&obj).arg(&rc_path).status() {
             Ok(s) if s.success() => {
-                println!("cargo:rustc-link-arg-bins={}", obj.display());
-                println!("cargo:rerun-if-env-changed=WINDRES");
                 return;
             }
             Ok(s) => errors.push(format!("{exe}: exited with {s}")),
@@ -173,6 +205,19 @@ fn collect_slint(dir: &Path, out: &mut Vec<PathBuf>) {
             collect_slint(&p, out);
         } else if p.extension().is_some_and(|x| x == "slint") {
             out.push(p);
+        }
+    }
+}
+
+/// Writes `content` to `path` only when it differs, returning whether it did.
+/// Skipping identical writes keeps Cargo from seeing a fresh mtime and
+/// rebuilding dependents on every build-script run.
+fn write_if_changed(path: &Path, content: &str) -> bool {
+    match fs::read_to_string(path) {
+        Ok(existing) if existing == content => false,
+        _ => {
+            fs::write(path, content).unwrap();
+            true
         }
     }
 }

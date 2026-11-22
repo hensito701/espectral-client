@@ -65,14 +65,18 @@ ed25519-dalek = { version = "2", features = ["pkcs8", "alloc"] }
 # Tauri updater used, so latest.json and its .sig files stay drop-in.
 minisign-verify = "0.2"
 semver = "1"
-rand = "0.8"
+rand = "0.10"
 uuid = { version = "1", features = ["v4"] }
 
 # misc
 url = "2"
-regex = "1"
+# Audited: every Regex::new in engine/app is ASCII-safe (log/version/URL/host
+# matching); unicode-perl stays because several patterns use \d, \s and \b.
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-perl"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dirs = "5"
+# Forge/NeoForge mods.toml parsing (engine).
+toml = "1"
 
 # platform
 libc = "0.2"
@@ -97,7 +101,10 @@ tempfile = "3"
 # Slint is GPL-3.0 / royalty-free / commercial; this project is GPL-3.0-only.
 # winit backend with the femtovg (OpenGL) renderer, plus the software renderer
 # as a fallback (SLINT_BACKEND=winit-software) and for headless screenshots.
-slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "software-renderer-path", "software-renderer-systemfonts"] }
+# unstable-winit-030: OS file drag & drop (.mrpack) via WinitWindowAccessor (library-mods).
+# Declared here (not only in app/Cargo.toml) so espectral-client-ui and espectral-client
+# always unify to the exact same slint feature hash.
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "unstable-winit-030", "renderer-femtovg", "renderer-software", "software-renderer-path", "software-renderer-systemfonts"] }
 slint-build = "=1.18.1"
 # Native file dialogs (xdg-desktop-portal on Linux, Win32 on Windows).
 rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
@@ -122,21 +129,21 @@ opt-level = 1
 [profile.dev.package.espectral-skin3d]
 opt-level = 3
 
-# The UI crate is the Slint-generated module (~60 MB of Rust): rustc peaks at
-# ~12.7 GB on it with full debug info; line tables keep backtraces usable.
-# Incremental caches of it run to several GB per session and add memory, and
-# it only rebuilds on a .slint change anyway: keep incremental for the small
-# crates only.
+# Machine-generated ~55 MB Slint module: debug info bloats the debug .rlib
+# to ~900 MB and dominates link time; backtraces still have full frames
+# from espectral-client and espectral-engine (line-tables-only).
 [profile.dev.package.espectral-client-ui]
-debug = "line-tables-only"
+debug = false
 incremental = false
 
 [profile.dev.package.espectral-client]
 debug = "line-tables-only"
 
 [profile.release]
+# With ThinLTO LLVM inlines across codegen units anyway, so 16 units unlock
+# multi-core codegen for the engine/app crates with negligible runtime cost.
 lto = "thin"
-codegen-units = 4
+codegen-units = 16
 strip = "symbols"
 
 # The UI crate is one very large generated module (~2/3 of the binary's
@@ -149,3 +156,18 @@ strip = "symbols"
 [profile.release.package.espectral-client-ui]
 codegen-units = 16
 opt-level = "s"
+
+# Keep maximum optimization on the CPU skin rasterizer (tiny crate: ~1.5k LOC).
+[profile.release.package.espectral-skin3d]
+codegen-units = 1
+
+# slint-build / i-slint-compiler compiles 824 KB of .slint -> ~55 MB Rust;
+# running it at opt-level 1 instead of 0 speeds up codegen significantly
+# while adding minimal build-dep compile time (and zero runtime impact).
+[profile.release.build-override]
+opt-level = 1
+
+# Local release-like testing without ThinLTO wait (never use for shipped releases).
+[profile.release-fast]
+inherits = "release"
+lto = false

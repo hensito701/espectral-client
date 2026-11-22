@@ -22,8 +22,10 @@ tracing-subscriber = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 dirs = { workspace = true }
-# unstable-winit-030: OS file drag & drop (.mrpack) via WinitWindowAccessor (library-mods).
-slint = { workspace = true, features = ["unstable-winit-030"] }
+# unstable-winit-030 is declared in the workspace slint features (see
+# native/Cargo.toml) so this crate and espectral-client-ui share the same
+# slint feature hash.
+slint = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }
 png = { workspace = true }

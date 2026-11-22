@@ -551,7 +551,7 @@ fn base36(mut n: u64) -> String {
 /// `l<base36 ms><6 hex>` (JS makeKey).
 fn make_key() -> String {
     let mut b = [0u8; 3];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut b);
+    rand::Rng::fill_bytes(&mut rand::rng(), &mut b);
     format!("l{}{}", base36(crate::platform::now_ms().max(0) as u64), hex::encode(b))
 }
 

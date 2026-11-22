@@ -24,7 +24,7 @@
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
-use rand::RngCore;
+use rand::Rng;
 use serde_json::Value;
 
 use crate::api::accounts_skins::{ImportFramesPackRequest, ImportImagePackRequest};
@@ -139,7 +139,7 @@ fn unique_pack_id(engine: &Engine, name: &str) -> String {
         }
     }
     let mut b = [0u8; 3];
-    rand::thread_rng().fill_bytes(&mut b);
+    rand::rng().fill_bytes(&mut b);
     format!("{base}-{}", hex::encode(b))
 }
 
@@ -320,7 +320,7 @@ fn commit_pack(engine: &Engine, id: &str, write: impl FnOnce(&Path) -> std::io::
     let root = backgrounds_root(engine);
     std::fs::create_dir_all(&root)?;
     let mut b = [0u8; 6];
-    rand::thread_rng().fill_bytes(&mut b);
+    rand::rng().fill_bytes(&mut b);
     let tmp = root.join(format!(".tmp-{}", hex::encode(b)));
     std::fs::create_dir_all(&tmp)?;
     let r = write(&tmp).and_then(|_| std::fs::rename(&tmp, pack_dir(engine, id)));

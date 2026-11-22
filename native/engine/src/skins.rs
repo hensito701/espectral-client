@@ -17,7 +17,7 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use rand::RngCore;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -245,7 +245,7 @@ fn base36(mut n: u64) -> String {
 /// `skin_<ms base36>_<6 hex>`
 fn new_skin_id() -> String {
     let mut b = [0u8; 3];
-    rand::thread_rng().fill_bytes(&mut b);
+    rand::rng().fill_bytes(&mut b);
     format!("skin_{}_{}", base36(crate::platform::now_ms().max(0) as u64), hex::encode(b))
 }
 

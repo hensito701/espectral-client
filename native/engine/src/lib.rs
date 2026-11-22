@@ -36,6 +36,7 @@ pub mod proof;
 pub mod rules;
 pub mod stats;
 #[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub mod types;
 pub mod updater;

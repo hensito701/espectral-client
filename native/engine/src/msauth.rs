@@ -35,7 +35,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use rand::RngCore;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
@@ -899,7 +899,7 @@ async fn send_skin_upload(
     method: reqwest::Method,
 ) -> EngineResult<SkinResponse> {
     let mut rnd = [0u8; 12];
-    rand::thread_rng().fill_bytes(&mut rnd);
+    rand::rng().fill_bytes(&mut rnd);
     let boundary = format!("----espectral{}", hex::encode(rnd));
     let url = format!("{}/skins", endpoints(engine).mc_profile);
     let req = engine
