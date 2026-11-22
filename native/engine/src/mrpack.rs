@@ -352,6 +352,31 @@ async fn resolve_pack_file_url(engine: &Engine, raw: &str) -> EngineResult<Strin
     ))
 }
 
+/// Download a Modrinth `.mrpack` into `<data>/cache/mrpacks/<sha1>.mrpack`, SHA-1 verified. The URL
+/// goes through the same host allowlist as the pack's own files. A cached copy with the right hash
+/// is reused.
+pub(crate) async fn fetch_modrinth_mrpack(
+    engine: &Engine,
+    url: &str,
+    sha1: &str,
+    size: Option<u64>,
+) -> EngineResult<PathBuf> {
+    // The hash names the cache file: only a plain 40-digit hex digest can reach the filesystem.
+    if sha1.len() != 40 || !sha1.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(EngineError::api(502, "BAD_MRPACK_HASH", "modpack file hash is not a SHA-1 digest"));
+    }
+    let dest = engine.paths().data_dir().join("cache").join("mrpacks").join(format!("{sha1}.mrpack"));
+    if dest.is_file() && crate::download::sha1_file(&dest).await.ok().as_deref() == Some(sha1) {
+        return Ok(dest);
+    }
+    let final_url = resolve_pack_file_url(engine, url).await?;
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let opts = crate::download::DownloadOptions { sha1: Some(sha1.to_string()), size, ..Default::default() };
+    engine.http().download_file(&final_url, &dest, &opts).await
+}
+
 /// Resolve every pack-file URL once (deduplicated, <= 8 concurrent). Every
 /// `downloads[]` entry is validated so a dead mirror can fall back to the
 /// next; the error text is kept beside the URL it belongs to.

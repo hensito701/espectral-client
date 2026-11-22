@@ -55,7 +55,8 @@ use crate::types::{
     ClientInfo, ClientPatch, CompatBatchFixResult, CreateInstanceRequest, ImportResult, ImportSource, InstanceDetail,
     InstanceMeta, InstancePatch, InstanceSummary, Loader, ModEntry, ModInstallPlan, ModInstallPreview, ModPreset,
     ModPresetInfo, ModRef, ModVersionItem, ModVersionSwitchPlan, ModVersionSwitchResult, ModVersionsReply,
-    ModrinthSearchResult, OptionsPair, OverwritePolicy, ServerEntry, ServerStatus,
+    ModrinthCategory, ModrinthProjectDetail, ModrinthSearchResult, OptionsPair, OverwritePolicy, ServerEntry,
+    ServerStatus,
 };
 
 use super::{DeletedReply, PathReply, QueuedReply};
@@ -131,6 +132,11 @@ pub struct ContentState {
     /// Install previews by `instance\0project\0root version`, so committing right after a
     /// preview reuses its planned upgrades instead of repeating the network work.
     pub(crate) install_previews: Mutex<HashMap<String, (Instant, ModInstallPreview)>>,
+    /// Modrinth search responses keyed by request URL (newest first, 60 s, at most 32 entries).
+    /// The instance's installed flags are applied after the cache, so they are never stale.
+    pub(crate) search_cache: Mutex<Vec<(String, Instant, Value)>>,
+    /// `GET /v2/tag/category` as (project type, category), refetched after 24 h.
+    pub(crate) category_tags: Mutex<Option<(Instant, Vec<(String, ModrinthCategory)>)>>,
     /// servers.mjs cache: host -> (fetched_at ms, status).
     pub(crate) server_status: Mutex<HashMap<String, (i64, ServerStatus)>>,
     /// reqwest client that never follows redirects (mrpack pack-file host checks).
@@ -255,6 +261,15 @@ pub struct ModrinthSearchQuery {
     /// (`["client_side!=unsupported"]` facet); true keeps them listed.
     #[serde(default)]
     pub include_server_only: bool,
+    /// "mod" (default) | "resourcepack" | "shader" | "modpack"; other values are 400 `invalid_project_type`.
+    #[serde(default)]
+    pub project_type: Option<String>,
+    /// Selected category slugs: OR within the list, AND with the other facets.
+    #[serde(default)]
+    pub categories: Vec<String>,
+    /// Drop the Minecraft version facet (explore every version).
+    #[serde(default)]
+    pub any_version: bool,
 }
 
 /// POST install-modrinth body.
@@ -614,22 +629,57 @@ impl Engine {
 
     /// GET /api/modrinth/search -> `{ results, total, offset, limit }` (502 `modrinth_search_failed`).
     pub async fn search_modrinth(&self, query: ModrinthSearchQuery) -> EngineResult<ModrinthSearchResult> {
-        let q = query.q.trim();
-        let version = query.version.as_deref().filter(|v| !v.is_empty());
-        let loader = query.loader.as_deref().filter(|v| !v.is_empty());
-        let instance = query.instance.as_deref().filter(|v| !v.is_empty());
-        crate::mods::search_modrinth(
-            self,
-            q,
-            version,
-            loader,
-            instance,
-            query.offset,
-            query.sort.as_deref(),
-            query.include_server_only,
-        )
-        .await
-        .map_err(|e| send_error(e, 502, "modrinth_search_failed"))
+        crate::mods::search_modrinth(self, &query).await.map_err(|e| send_error(e, 502, "modrinth_search_failed"))
+    }
+
+    /// Modrinth tags of one project type (`GET /v2/tag/category`, 24 h cache; a built-in list
+    /// when Modrinth is unreachable). 400 `invalid_project_type` for unknown types.
+    pub async fn modrinth_categories(&self, project_type: &str) -> EngineResult<Vec<ModrinthCategory>> {
+        crate::mods::modrinth_categories(self, project_type)
+            .await
+            .map_err(|e| send_error(e, 502, "modrinth_categories_failed"))
+    }
+
+    /// Project detail for the Modrinth modal. `instance` limits the versions to its Minecraft
+    /// version (and loader for mods/modpacks) and fills the `installed` flags.
+    pub async fn modrinth_project_detail(
+        &self,
+        id_or_slug: &str,
+        instance: Option<&str>,
+    ) -> EngineResult<ModrinthProjectDetail> {
+        crate::mods::modrinth_project_detail(self, id_or_slug, instance.filter(|i| !i.is_empty()))
+            .await
+            .map_err(|e| send_error(e, 502, "modrinth_project_failed"))
+    }
+
+    /// Install a Modrinth modpack as a new instance. `version_id` None = the newest release.
+    /// The `.mrpack` is SHA-1 verified into `cache/mrpacks/` and imported like a local file
+    /// (400 `modrinth_project_id_required`, 400 `BAD_MEMORY` below 512 MiB).
+    pub async fn install_modrinth_modpack(
+        &self,
+        project_id: &str,
+        version_id: Option<&str>,
+        memory_mb: Option<u32>,
+    ) -> EngineResult<ImportMrpackReply> {
+        if project_id.is_empty() {
+            return Err(EngineError::api_verbatim(400, "modrinth_project_id_required", "missing project_id"));
+        }
+        if let Some(mb) = memory_mb {
+            if mb < 512 {
+                return Err(EngineError::bad_request("BAD_MEMORY", "memory_mb must be an integer >= 512"));
+            }
+        }
+        let version_id = version_id.filter(|v| !v.is_empty());
+        let r = crate::mods::install_modrinth_modpack(self, project_id, version_id, memory_mb)
+            .await
+            .map_err(|e| send_error(e, 500, "modpack_install_failed"))?;
+        Ok(ImportMrpackReply { summary: r.summary, already_exists: r.already_exists.then_some(true) })
+    }
+
+    /// A Modrinth project link (`modrinth.com/<type>/<slug>`) pasted into the search box:
+    /// `(project_type, slug)`, or None for anything else.
+    pub fn parse_modrinth_url(&self, text: &str) -> Option<(String, String)> {
+        crate::mods::parse_modrinth_url(text)
     }
 
     /// POST .../mods/install-modrinth -> plan summary + `queued: true`

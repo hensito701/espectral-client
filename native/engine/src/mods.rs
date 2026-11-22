@@ -28,6 +28,7 @@ use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
+use crate::api::content::ModrinthSearchQuery;
 use crate::download::{DownloadAllOptions, DownloadItem, FetchOptions};
 use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult, HttpError, HttpErrorKind};
@@ -36,8 +37,8 @@ use crate::instances::effective_mods_dir;
 use crate::types::{
     CompanionChange, CompatBatchFixResult, InstanceMeta, Loader, ModDependencyRef, ModEntry, ModInstallPlan,
     ModInstallPreview, ModInstallUpgrade, ModPreset, ModRef, ModRename, ModVersionItem, ModVersionSwitchPlan,
-    ModVersionSwitchResult, ModVersionsReply, ModrinthProject, ModrinthSearchResult, PresetInstallResult,
-    ReleaseChannel, VersionTarget,
+    ModVersionSwitchResult, ModVersionsReply, ModrinthCategory, ModrinthGalleryItem, ModrinthProject,
+    ModrinthProjectDetail, ModrinthSearchResult, PresetInstallResult, ReleaseChannel, VersionTarget,
 };
 
 pub const MODRINTH_API: &str = "https://api.modrinth.com/v2";
@@ -1740,87 +1741,534 @@ pub fn installed_mod_filenames(engine: &Engine, instance_name: &str) -> EngineRe
 /// Sort values Modrinth's `index` parameter accepts.
 const SEARCH_SORTS: [&str; 5] = ["relevance", "downloads", "follows", "newest", "updated"];
 
-/// Browse Modrinth (12 per page). Empty query = explore (`index=downloads`);
-/// a real query ranks by `index=relevance` unless `sort` names a valid index.
-/// Server-only mods are hidden unless `include_server_only` (Modrinth's
-/// `client_side!=unsupported` facet keeps required/optional/unknown).
-pub async fn search_modrinth(
-    engine: &Engine,
-    query: &str,
-    game_version: Option<&str>,
+/// Project types the browser searches, in the order the UI lists them.
+const SEARCH_PROJECT_TYPES: [&str; 4] = ["mod", "resourcepack", "shader", "modpack"];
+
+/// Loaders Iris runs on: shader searches narrow to Iris packs only for these.
+const IRIS_LOADERS: [&str; 4] = ["fabric", "quilt", "forge", "neoforge"];
+
+/// Project types a modrinth.com project link can name.
+const MODRINTH_URL_TYPES: [&str; 6] = ["mod", "resourcepack", "shader", "modpack", "datapack", "plugin"];
+
+/// How long a Modrinth search response is reused, and how many responses are kept.
+const SEARCH_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+const SEARCH_CACHE_MAX: usize = 32;
+
+/// Category tags are refetched after this long.
+const CATEGORY_TTL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Built-in category list, used when Modrinth cannot be reached (`modrinth_categories`). Captured
+/// from `GET /v2/tag/category` on 2026-11-22, for the four browsable project types.
+const STATIC_CATEGORIES: &[(&str, &str, &str)] = &[
+    ("resourcepack", "128x", "resolutions"),
+    ("resourcepack", "16x", "resolutions"),
+    ("resourcepack", "256x", "resolutions"),
+    ("resourcepack", "32x", "resolutions"),
+    ("resourcepack", "48x", "resolutions"),
+    ("resourcepack", "512x+", "resolutions"),
+    ("resourcepack", "64x", "resolutions"),
+    ("resourcepack", "8x-", "resolutions"),
+    ("mod", "adventure", "categories"),
+    ("modpack", "adventure", "categories"),
+    ("shader", "atmosphere", "features"),
+    ("resourcepack", "audio", "features"),
+    ("resourcepack", "blocks", "features"),
+    ("shader", "bloom", "features"),
+    ("shader", "cartoon", "categories"),
+    ("modpack", "challenging", "categories"),
+    ("shader", "colored-lighting", "features"),
+    ("modpack", "combat", "categories"),
+    ("resourcepack", "combat", "categories"),
+    ("resourcepack", "core-shaders", "features"),
+    ("shader", "cursed", "categories"),
+    ("resourcepack", "cursed", "categories"),
+    ("mod", "cursed", "categories"),
+    ("mod", "decoration", "categories"),
+    ("resourcepack", "decoration", "categories"),
+    ("mod", "economy", "categories"),
+    ("resourcepack", "entities", "features"),
+    ("resourcepack", "environment", "features"),
+    ("mod", "equipment", "categories"),
+    ("resourcepack", "equipment", "features"),
+    ("shader", "fantasy", "categories"),
+    ("shader", "foliage", "features"),
+    ("resourcepack", "fonts", "features"),
+    ("mod", "food", "categories"),
+    ("mod", "game-mechanics", "categories"),
+    ("resourcepack", "gui", "features"),
+    ("shader", "high", "performance impact"),
+    ("resourcepack", "items", "features"),
+    ("modpack", "kitchen-sink", "categories"),
+    ("mod", "library", "categories"),
+    ("modpack", "lightweight", "categories"),
+    ("resourcepack", "locale", "features"),
+    ("shader", "low", "performance impact"),
+    ("mod", "magic", "categories"),
+    ("modpack", "magic", "categories"),
+    ("mod", "management", "categories"),
+    ("shader", "medium", "performance impact"),
+    ("mod", "minigame", "categories"),
+    ("mod", "mobs", "categories"),
+    ("resourcepack", "modded", "categories"),
+    ("resourcepack", "models", "features"),
+    ("modpack", "multiplayer", "categories"),
+    ("modpack", "optimization", "categories"),
+    ("mod", "optimization", "categories"),
+    ("shader", "path-tracing", "features"),
+    ("shader", "pbr", "features"),
+    ("shader", "potato", "performance impact"),
+    ("modpack", "quests", "categories"),
+    ("shader", "realistic", "categories"),
+    ("resourcepack", "realistic", "categories"),
+    ("shader", "reflections", "features"),
+    ("shader", "screenshot", "performance impact"),
+    ("shader", "semi-realistic", "categories"),
+    ("shader", "shadows", "features"),
+    ("resourcepack", "simplistic", "categories"),
+    ("mod", "social", "categories"),
+    ("mod", "storage", "categories"),
+    ("modpack", "technology", "categories"),
+    ("mod", "technology", "categories"),
+    ("resourcepack", "themed", "categories"),
+    ("mod", "transportation", "categories"),
+    ("resourcepack", "tweaks", "categories"),
+    ("mod", "utility", "categories"),
+    ("resourcepack", "utility", "categories"),
+    ("resourcepack", "vanilla-like", "categories"),
+    ("shader", "vanilla-like", "categories"),
+    ("mod", "worldgen", "categories"),
+];
+
+/// Installed-project lookup of an instance: resolved project ids, plus the jar names that could not
+/// be resolved (those fall back to slug/title matching).
+type InstalledSet = (HashSet<String>, Vec<String>);
+
+/// Validate a browser project type; None or empty means `mod`.
+fn normalize_project_type(raw: Option<&str>) -> EngineResult<&'static str> {
+    let wanted = raw.map(str::trim).filter(|t| !t.is_empty()).unwrap_or("mod");
+    SEARCH_PROJECT_TYPES
+        .iter()
+        .copied()
+        .find(|t| *t == wanted)
+        .ok_or_else(|| code_err(400, "invalid_project_type", format!("unknown project type: {wanted}")))
+}
+
+/// Modrinth search facets. Groups are ANDed; a group with several entries is ORed (the category
+/// selection). Mods filter by loader and hide server-only mods, modpacks filter by loader, shaders
+/// narrow to Iris packs on Iris-capable loaders, and resource packs have no loader facet at all.
+fn search_facets(
+    project_type: &str,
     loader: Option<&str>,
-    instance_name: Option<&str>,
-    offset: u64,
-    sort: Option<&str>,
+    version: Option<&str>,
+    any_version: bool,
     include_server_only: bool,
-) -> EngineResult<ModrinthSearchResult> {
-    let mut facets = vec![json!(["project_type:mod"])];
-    if !include_server_only {
-        facets.push(json!(["client_side!=unsupported"]));
+    categories: &[String],
+) -> Value {
+    let mut groups = vec![json!([format!("project_type:{project_type}")])];
+    match project_type {
+        "mod" | "modpack" => {
+            if let Some(l) = loader {
+                groups.push(json!([format!("categories:{l}")]));
+            }
+            if project_type == "mod" && !include_server_only {
+                groups.push(json!(["client_side!=unsupported"]));
+            }
+        }
+        "shader" => {
+            if loader.is_some_and(|l| IRIS_LOADERS.contains(&l)) {
+                groups.push(json!(["categories:iris"]));
+            }
+        }
+        _ => {}
     }
-    if let Some(l) = loader.filter(|l| !l.is_empty()) {
-        facets.push(json!([format!("loaders:{l}")]));
+    if !any_version {
+        if let Some(v) = version {
+            groups.push(json!([format!("versions:{v}")]));
+        }
     }
-    if let Some(v) = game_version.filter(|v| !v.is_empty()) {
-        facets.push(json!([format!("versions:{v}")]));
+    if !categories.is_empty() {
+        groups.push(Value::Array(categories.iter().map(|c| Value::String(format!("categories:{c}"))).collect()));
     }
-    let index = match sort.filter(|s| SEARCH_SORTS.contains(s)) {
+    Value::Array(groups)
+}
+
+/// String entries of `v[key]` (absent or not an array = empty).
+fn string_list(v: &Value, key: &str) -> Vec<String> {
+    v.get(key)
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .unwrap_or_default()
+}
+
+/// Card data of one Modrinth search hit (`installed` is filled in by the caller).
+fn search_hit_project(hit: &Value) -> ModrinthProject {
+    ModrinthProject {
+        project_id: s(hit, "project_id").unwrap_or_default(),
+        slug: s(hit, "slug").unwrap_or_default(),
+        title: s(hit, "title").unwrap_or_default(),
+        description: s(hit, "description").unwrap_or_default(),
+        icon_url: s(hit, "icon_url"),
+        downloads: hit.get("downloads").and_then(Value::as_u64).unwrap_or(0),
+        game_versions: string_list(hit, "versions"),
+        latest_version_number: s(hit, "latest_version").unwrap_or_default(),
+        installed: None,
+        client_side: s(hit, "client_side"),
+        server_side: s(hit, "server_side"),
+        project_type: s(hit, "project_type").unwrap_or_default(),
+        author: s(hit, "author").unwrap_or_default(),
+        categories: string_list(hit, "categories"),
+        date_modified: s(hit, "date_modified").unwrap_or_default(),
+        follows: hit.get("follows").and_then(Value::as_u64).unwrap_or(0),
+    }
+}
+
+/// Whether a project is installed: its id is among the resolved jars, or an unresolved jar's name
+/// matches the project's slug or title.
+fn installed_match(installed: &InstalledSet, project_id: &str, slug: &str, title: &str) -> bool {
+    let (pids, unresolved) = installed;
+    if pids.contains(project_id) {
+        return true;
+    }
+    let slug_t = slugify_title(title);
+    unresolved.iter().any(|f| is_filename_for_slug(f, slug) || is_filename_for_slug(f, &slug_t))
+}
+
+fn search_cache_get(engine: &Engine, url: &str) -> Option<Value> {
+    let mut cache = engine.content_state().search_cache.lock().unwrap_or_else(|p| p.into_inner());
+    cache.retain(|(_, at, _)| at.elapsed() < SEARCH_CACHE_TTL);
+    let pos = cache.iter().position(|(key, _, _)| key.as_str() == url)?;
+    let entry = cache.remove(pos);
+    let data = entry.2.clone();
+    cache.insert(0, entry);
+    Some(data)
+}
+
+fn search_cache_put(engine: &Engine, url: String, data: Value) {
+    let mut cache = engine.content_state().search_cache.lock().unwrap_or_else(|p| p.into_inner());
+    cache.retain(|(key, at, _)| *key != url && at.elapsed() < SEARCH_CACHE_TTL);
+    cache.insert(0, (url, std::time::Instant::now(), data));
+    cache.truncate(SEARCH_CACHE_MAX);
+}
+
+/// Browse Modrinth (12 per page). Empty query = explore (`index=downloads`); a real query ranks by
+/// `index=relevance` unless `sort` names a valid index. Server-only mods are hidden unless
+/// `include_server_only`. Raw responses are cached for `SEARCH_CACHE_TTL`; installed flags (mods
+/// only) are computed after the cache, so they always reflect the disk.
+pub async fn search_modrinth(engine: &Engine, query: &ModrinthSearchQuery) -> EngineResult<ModrinthSearchResult> {
+    let project_type = normalize_project_type(query.project_type.as_deref())?;
+    let text = query.q.trim();
+    let version = query.version.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let loader = query.loader.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let instance = query.instance.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    // Sorted and de-duplicated so the same selection always produces the same request URL (cache key).
+    let mut categories: Vec<String> =
+        query.categories.iter().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()).collect();
+    categories.sort();
+    categories.dedup();
+    let facets = search_facets(project_type, loader, version, query.any_version, query.include_server_only, &categories);
+    let index = match query.sort.as_deref().filter(|s| SEARCH_SORTS.contains(s)) {
         Some(s) => s,
-        None if query.trim().is_empty() => "downloads",
+        None if text.is_empty() => "downloads",
         None => "relevance",
     };
     let params = url::form_urlencoded::Serializer::new(String::new())
-        .append_pair("query", query)
-        .append_pair("facets", &Value::Array(facets).to_string())
+        .append_pair("query", text)
+        .append_pair("facets", &facets.to_string())
         .append_pair("limit", "12")
-        .append_pair("offset", &offset.to_string())
+        .append_pair("offset", &query.offset.to_string())
         .append_pair("index", index)
         .finish();
     let url = format!("{}/search?{params}", api(engine));
-    let data = match fetch_json_with_retry(engine, &url, 2).await {
-        Ok(d) => d,
-        Err(err) => {
-            let status = if let EngineError::Http(h) = &err { h.status().unwrap_or(502) } else { 502 };
-            return Err(EngineError::api(status, "MODRINTH_SEARCH_FAILED", format!("Modrinth search failed: {err}")));
+    let data = match search_cache_get(engine, &url) {
+        Some(cached) => cached,
+        None => {
+            let fresh = match fetch_json_with_retry(engine, &url, 2).await {
+                Ok(d) => d,
+                Err(err) => {
+                    let status = if let EngineError::Http(h) = &err { h.status().unwrap_or(502) } else { 502 };
+                    return Err(EngineError::api(
+                        status,
+                        "MODRINTH_SEARCH_FAILED",
+                        format!("Modrinth search failed: {err}"),
+                    ));
+                }
+            };
+            search_cache_put(engine, url, fresh.clone());
+            fresh
         }
     };
     let mut results: Vec<ModrinthProject> = data
         .get("hits")
         .and_then(Value::as_array)
-        .map(|hits| {
-            hits.iter()
-                .map(|hit| ModrinthProject {
-                    project_id: s(hit, "project_id").unwrap_or_default(),
-                    slug: s(hit, "slug").unwrap_or_default(),
-                    title: s(hit, "title").unwrap_or_default(),
-                    description: s(hit, "description").unwrap_or_default(),
-                    icon_url: s(hit, "icon_url"),
-                    downloads: hit.get("downloads").and_then(Value::as_u64).unwrap_or(0),
-                    game_versions: hit
-                        .get("versions")
-                        .and_then(Value::as_array)
-                        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
-                        .unwrap_or_default(),
-                    latest_version_number: s(hit, "latest_version").unwrap_or_default(),
-                    installed: None,
-                    client_side: s(hit, "client_side"),
-                    server_side: s(hit, "server_side"),
+        .map(|hits| hits.iter().map(search_hit_project).collect())
+        .unwrap_or_default();
+    if let Some(name) = instance.filter(|_| project_type == "mod") {
+        let installed = installed_project_ids_fast(engine, name).await?;
+        for hit in &mut results {
+            hit.installed = Some(installed_match(&installed, &hit.project_id, &hit.slug, &hit.title));
+        }
+    }
+    let total = data.get("total_hits").and_then(Value::as_u64).unwrap_or(results.len() as u64);
+    Ok(ModrinthSearchResult { results, total, offset: query.offset, limit: 12 })
+}
+
+/// `GET /v2/tag/category` as (project type, category). None when Modrinth is unreachable or the
+/// body is not a list; the caller then serves the built-in list.
+async fn fetch_category_tags(engine: &Engine) -> Option<Vec<(String, ModrinthCategory)>> {
+    let url = format!("{}/tag/category", api(engine));
+    let Ok(Value::Array(items)) = fetch_json_with_retry(engine, &url, 1).await else {
+        return None;
+    };
+    Some(
+        items
+            .iter()
+            .filter_map(|item| {
+                let name = s(item, "name")?;
+                let project_type = s(item, "project_type")?;
+                let icon_svg = s(item, "icon").filter(|i| !i.trim().is_empty());
+                let header = s(item, "header").unwrap_or_default();
+                Some((project_type, ModrinthCategory { name, icon_svg, header }))
+            })
+            .collect(),
+    )
+}
+
+/// Modrinth tags of one project type. Cached for `CATEGORY_TTL`; a built-in list (not cached, so the
+/// next call retries) when Modrinth is unreachable.
+pub async fn modrinth_categories(engine: &Engine, project_type: &str) -> EngineResult<Vec<ModrinthCategory>> {
+    let project_type = normalize_project_type(Some(project_type))?;
+    let cached = engine
+        .content_state()
+        .category_tags
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .filter(|(at, _)| at.elapsed() < CATEGORY_TTL)
+        .map(|(_, tags)| tags.clone());
+    let tags = match cached {
+        Some(tags) => tags,
+        None => match fetch_category_tags(engine).await {
+            Some(tags) => {
+                *engine.content_state().category_tags.lock().unwrap_or_else(|p| p.into_inner()) =
+                    Some((std::time::Instant::now(), tags.clone()));
+                tags
+            }
+            None => return Ok(static_categories(project_type)),
+        },
+    };
+    Ok(tags.into_iter().filter(|(t, _)| t.as_str() == project_type).map(|(_, c)| c).collect())
+}
+
+fn static_categories(project_type: &str) -> Vec<ModrinthCategory> {
+    STATIC_CATEGORIES
+        .iter()
+        .filter(|(t, _, _)| *t == project_type)
+        .map(|(_, name, header)| ModrinthCategory {
+            name: name.to_string(),
+            icon_svg: None,
+            header: header.to_string(),
+        })
+        .collect()
+}
+
+/// Newest release of a project's listed versions (any Minecraft version); when it has no release,
+/// the newest build of any type. Modrinth lists versions newest first.
+async fn latest_modpack_version(engine: &Engine, project_id: &str) -> EngineResult<Value> {
+    let url = format!("{}/project/{}/version", api(engine), encode_uri_component(project_id));
+    let Value::Array(list) = fetch_json_with_retry(engine, &url, 2).await? else {
+        return Err(code_err(502, "MODRINTH_PROJECT_FAILED", "unexpected version list from Modrinth"));
+    };
+    let listed: Vec<Value> = list
+        .into_iter()
+        .filter(|v| {
+            matches!(v.get("status").and_then(Value::as_str), Some("listed") | Some("approved") | None)
+                && primary_file(v).is_some()
+        })
+        .collect();
+    listed
+        .iter()
+        .find(|v| s(v, "version_type").as_deref() == Some("release"))
+        .or(listed.first())
+        .cloned()
+        .ok_or_else(|| code_err(404, "MODPACK_VERSION_NOT_FOUND", format!("no downloadable version of {project_id}")))
+}
+
+/// Install a Modrinth modpack as a new instance. `version_id` None = the newest release. The
+/// `.mrpack` is downloaded SHA-1 verified into `cache/mrpacks/` and imported like a local file.
+pub async fn install_modrinth_modpack(
+    engine: &Engine,
+    project_id: &str,
+    version_id: Option<&str>,
+    memory_mb: Option<u32>,
+) -> EngineResult<crate::mrpack::MrpackImport> {
+    let version = match version_id {
+        Some(vid) => {
+            let meta = version_meta(engine, vid).await?;
+            if s(&meta, "project_id").as_deref() != Some(project_id) {
+                return Err(code_err(
+                    400,
+                    "modpack_version_mismatch",
+                    format!("version {vid} does not belong to project {project_id}"),
+                ));
+            }
+            meta
+        }
+        None => latest_modpack_version(engine, project_id).await?,
+    };
+    let file = primary_file(&version).ok_or_else(|| no_file_error(&version))?;
+    let fname = safe_download_name(file)?;
+    if !fname.to_ascii_lowercase().ends_with(".mrpack") {
+        return Err(code_err(400, "not_a_modpack", format!("{fname} is not a .mrpack file")));
+    }
+    let sha1 = file_sha1(file)
+        .ok_or_else(|| code_err(502, "MODPACK_HASH_MISSING", "Modrinth gave no SHA-1 for the modpack file"))?;
+    let size = file.get("size").and_then(Value::as_u64);
+    let path = crate::mrpack::fetch_modrinth_mrpack(engine, &s(file, "url").unwrap_or_default(), &sha1, size).await?;
+    crate::mrpack::import_mrpack(engine, &path.to_string_lossy(), memory_mb, None).await
+}
+
+/// `(project_type, slug)` of a pasted modrinth.com project link (`https://modrinth.com/mod/sodium`,
+/// `www.` allowed). Anything after the slug (versions, query, fragment) is ignored.
+pub fn parse_modrinth_url(text: &str) -> Option<(String, String)> {
+    let url = url::Url::parse(text.trim()).ok()?;
+    if !matches!(url.scheme(), "https" | "http") {
+        return None;
+    }
+    if !matches!(url.host_str(), Some("modrinth.com") | Some("www.modrinth.com")) {
+        return None;
+    }
+    let mut segments = url.path_segments()?;
+    let project_type = segments.next()?;
+    let slug = segments.next()?;
+    let slug_ok = !slug.is_empty() && slug.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+    (MODRINTH_URL_TYPES.contains(&project_type) && slug_ok).then(|| (project_type.to_string(), slug.to_string()))
+}
+
+/// Modrinth project detail for the modal. `instance_name` limits the versions to the instance's
+/// Minecraft version (and loader for mods and modpacks) and fills the `installed` flags, which are
+/// only tracked for mods.
+pub async fn modrinth_project_detail(
+    engine: &Engine,
+    id_or_slug: &str,
+    instance_name: Option<&str>,
+) -> EngineResult<ModrinthProjectDetail> {
+    let key = id_or_slug.trim();
+    if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err(code_err(400, "invalid_project_id", format!("invalid project id or slug: {id_or_slug}")));
+    }
+    let project_url = format!("{}/project/{}", api(engine), encode_uri_component(key));
+    let project = fetch_json_with_retry(engine, &project_url, 2).await.map_err(|err| {
+        let status = if let EngineError::Http(h) = &err { h.status().unwrap_or(502) } else { 502 };
+        code_err(status, "MODRINTH_PROJECT_FAILED", format!("Modrinth project lookup failed: {err}"))
+    })?;
+    let id = s(&project, "id").unwrap_or_else(|| key.to_string());
+    let slug = s(&project, "slug").unwrap_or_default();
+    let project_type = s(&project, "project_type").unwrap_or_default();
+    let title = s(&project, "title").unwrap_or_default();
+    // The author name is cosmetic: a failed team lookup leaves it empty, like project titles.
+    let team_url = format!("{}/project/{}/team", api(engine), encode_uri_component(&id));
+    let author = fetch_json_with_retry(engine, &team_url, 1)
+        .await
+        .ok()
+        .and_then(|team| {
+            let members = team.as_array()?;
+            let owner = members.iter().find(|m| s(m, "role").as_deref() == Some("owner")).or(members.first())?;
+            s(owner.get("user")?, "username")
+        })
+        .unwrap_or_default();
+
+    let mut params: Vec<String> = Vec::new();
+    let mut installed = false;
+    let mut installed_version_ids: HashSet<String> = HashSet::new();
+    if let Some(name) = instance_name {
+        let inst = crate::resolver::load_instance_meta(engine, name)?;
+        params.push(format!("game_versions={}", encode_uri_component(&json!([inst.version]).to_string())));
+        if matches!(project_type.as_str(), "mod" | "modpack") {
+            let loader = inst.loader.content_loader();
+            params.push(format!("loaders={}", encode_uri_component(&json!([loader]).to_string())));
+        }
+        if project_type == "mod" {
+            let set = installed_project_ids_fast(engine, name).await?;
+            installed = installed_match(&set, &id, &slug, &title);
+            let mods_dir = effective_mods_dir(engine, &inst);
+            let files: Vec<String> = read_names(&mods_dir).into_iter().filter(|f| is_mod_file(f)).collect();
+            installed_version_ids = installed_version_docs(engine, &mods_dir, &files)
+                .await
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|d| s(d, "id"))
+                .collect();
+        }
+    }
+    let versions_url = format!(
+        "{}/project/{}/version{}",
+        api(engine),
+        encode_uri_component(&id),
+        if params.is_empty() { String::new() } else { format!("?{}", params.join("&")) }
+    );
+    let versions: Vec<ModVersionItem> = match fetch_json_with_retry(engine, &versions_url, 2).await? {
+        Value::Array(list) => list
+            .iter()
+            .filter(|v| {
+                matches!(v.get("status").and_then(Value::as_str), Some("listed") | Some("approved") | None)
+                    && primary_file(v).is_some()
+            })
+            .map(|v| {
+                let version_id = s(v, "id").unwrap_or_default();
+                ModVersionItem {
+                    installed: installed_version_ids.contains(&version_id),
+                    version_number: s(v, "version_number").unwrap_or_default(),
+                    name: s(v, "name").unwrap_or_default(),
+                    version_type: s(v, "version_type").unwrap_or_else(|| "release".to_string()),
+                    date_published: s(v, "date_published").unwrap_or_default(),
+                    filename: primary_file(v).map(file_name).unwrap_or_default(),
+                    version_id,
+                }
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let gallery = project
+        .get("gallery")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|g| {
+                    Some(ModrinthGalleryItem {
+                        url: s(g, "url")?,
+                        title: s(g, "title").unwrap_or_default(),
+                        description: s(g, "description").unwrap_or_default(),
+                        featured: g.get("featured").and_then(Value::as_bool).unwrap_or(false),
+                    })
                 })
                 .collect()
         })
         .unwrap_or_default();
-    if let Some(name) = instance_name.filter(|n| !n.is_empty()) {
-        let (installed_pids, unresolved) = installed_project_ids_fast(engine, name).await?;
-        for hit in &mut results {
-            let slug_t = slugify_title(&hit.title);
-            let filename_match = unresolved
-                .iter()
-                .any(|f| is_filename_for_slug(f, &hit.slug) || is_filename_for_slug(f, &slug_t));
-            hit.installed = Some(installed_pids.contains(&hit.project_id) || filename_match);
-        }
-    }
-    let total = data.get("total_hits").and_then(Value::as_u64).unwrap_or(results.len() as u64);
-    Ok(ModrinthSearchResult { results, total, offset, limit: 12 })
+    Ok(ModrinthProjectDetail {
+        project_url: format!("https://modrinth.com/{project_type}/{slug}"),
+        description: s(&project, "description").unwrap_or_default(),
+        body: s(&project, "body").unwrap_or_default(),
+        icon_url: s(&project, "icon_url").filter(|u| !u.is_empty()),
+        downloads: project.get("downloads").and_then(Value::as_u64).unwrap_or(0),
+        followers: project.get("followers").and_then(Value::as_u64).unwrap_or(0),
+        updated: s(&project, "updated").unwrap_or_default(),
+        license_id: project.pointer("/license/id").and_then(Value::as_str).unwrap_or_default().to_string(),
+        client_side: s(&project, "client_side").unwrap_or_default(),
+        server_side: s(&project, "server_side").unwrap_or_default(),
+        categories: string_list(&project, "categories"),
+        gallery,
+        source_url: s(&project, "source_url"),
+        issues_url: s(&project, "issues_url"),
+        wiki_url: s(&project, "wiki_url"),
+        versions,
+        installed,
+        project_id: id,
+        slug,
+        project_type,
+        title,
+        author,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -4231,8 +4679,15 @@ mod tests {
         let (_d, e) = engine_with(Some(&server));
         let mods = write_instance(&e, "s", "26.2", "fabric");
         std::fs::write(mods.join("ferrite-core-9.0.0.jar.disabled"), "x").unwrap();
-        let r =
-            search_modrinth(&e, "fer core", Some("26.2"), Some("fabric"), Some("s"), 12, None, false).await.unwrap();
+        let fer = ModrinthSearchQuery {
+            q: "fer core".into(),
+            version: Some("26.2".into()),
+            loader: Some("fabric".into()),
+            instance: Some("s".into()),
+            offset: 12,
+            ..Default::default()
+        };
+        let r = search_modrinth(&e, &fer).await.unwrap();
         assert_eq!((r.total, r.offset, r.limit), (40, 12, 12));
         assert_eq!(r.results[0].installed, Some(true));
         assert_eq!(r.results[1].installed, Some(true), "slugified title matches");
@@ -4243,9 +4698,10 @@ mod tests {
         assert!(facets.contains("limit=12&offset=12&index=relevance"));
         let q: Vec<(String, String)> =
             url::form_urlencoded::parse(facets.split_once('?').unwrap().1.as_bytes()).into_owned().collect();
-        let want = r#"[["project_type:mod"],["client_side!=unsupported"],["loaders:fabric"],["versions:26.2"]]"#;
+        let want = r#"[["project_type:mod"],["categories:fabric"],["client_side!=unsupported"],["versions:26.2"]]"#;
         assert_eq!(q[1].1, want);
-        let err = search_modrinth(&e, "", None, None, Some("bad/name"), 0, None, false).await.unwrap_err();
+        let bad = ModrinthSearchQuery { instance: Some("bad/name".into()), ..Default::default() };
+        let err = search_modrinth(&e, &bad).await.unwrap_err();
         assert_eq!(err.status(), 409);
     }
 
@@ -4253,7 +4709,7 @@ mod tests {
     async fn search_failure_is_modrinth_search_failed() {
         let server = MockServer::start(|_| MockResponse::status(404)).await;
         let (_d, e) = engine_with(Some(&server));
-        let err = search_modrinth(&e, "", None, None, None, 0, None, false).await.unwrap_err();
+        let err = search_modrinth(&e, &ModrinthSearchQuery::default()).await.unwrap_err();
         assert_eq!((err.status(), err.raw_code()), (404, Some("MODRINTH_SEARCH_FAILED")));
         assert_eq!(server.hits(), 3, "2 retries");
     }
@@ -4576,15 +5032,28 @@ mod tests {
                 .map(|(_, v)| v)
                 .unwrap_or_default()
         };
-        search_modrinth(&e, "zoomify", None, None, None, 0, None, false).await.unwrap();
+        // Identical URLs would be served from the search cache; clear it so every call hits the mock.
+        let fresh = |e: &Engine| e.content_state().search_cache.lock().unwrap_or_else(|p| p.into_inner()).clear();
+        let zoom = |sort: Option<&str>| ModrinthSearchQuery {
+            q: "zoomify".into(),
+            sort: sort.map(str::to_string),
+            ..Default::default()
+        };
+        let explore = |sort: Option<&str>| ModrinthSearchQuery { sort: sort.map(str::to_string), ..Default::default() };
+        fresh(&e);
+        search_modrinth(&e, &zoom(None)).await.unwrap();
         assert_eq!(index_of(0), "relevance");
-        search_modrinth(&e, "", None, None, None, 0, None, false).await.unwrap();
+        fresh(&e);
+        search_modrinth(&e, &explore(None)).await.unwrap();
         assert_eq!(index_of(1), "downloads");
-        search_modrinth(&e, "zoomify", None, None, None, 0, Some("newest"), false).await.unwrap();
+        fresh(&e);
+        search_modrinth(&e, &zoom(Some("newest"))).await.unwrap();
         assert_eq!(index_of(2), "newest");
-        search_modrinth(&e, "zoomify", None, None, None, 0, Some("bogus"), false).await.unwrap();
+        fresh(&e);
+        search_modrinth(&e, &zoom(Some("bogus"))).await.unwrap();
         assert_eq!(index_of(3), "relevance", "invalid sort falls back to relevance");
-        search_modrinth(&e, "", None, None, None, 0, Some("bogus"), false).await.unwrap();
+        fresh(&e);
+        search_modrinth(&e, &explore(Some("bogus"))).await.unwrap();
         assert_eq!(index_of(4), "downloads", "invalid sort falls back to downloads on explore");
     }
 
@@ -4622,7 +5091,8 @@ mod tests {
         // The slug says ferrite-core but the jar is actually POTHER's file.
         std::fs::write(mods.join("ferrite-core-9.0.0.jar"), b"other-jar").unwrap();
         std::fs::write(mods.join("unknown-mod.jar"), b"not-on-modrinth").unwrap();
-        let r = search_modrinth(&e, "x", None, None, Some("inst"), 0, None, false).await.unwrap();
+        let inst = ModrinthSearchQuery { q: "x".into(), instance: Some("inst".into()), ..Default::default() };
+        let r = search_modrinth(&e, &inst).await.unwrap();
         let by_pid: std::collections::HashMap<String, Option<bool>> =
             r.results.iter().map(|p| (p.project_id.clone(), p.installed)).collect();
         assert_eq!(by_pid["POTHER"], Some(true), "project-id match despite odd filename");
@@ -4971,5 +5441,259 @@ mod compat_preview_tests {
         assert!(!after.issues.iter().any(|i| {
             matches!(i.kind, CompatIssueKind::IncompatibleDep | CompatIssueKind::DisabledDep | CompatIssueKind::ServerOnly)
         }));
+    }
+}
+
+#[cfg(test)]
+mod search_v2_tests {
+    use super::*;
+    use crate::test_support::{temp_engine, MockResponse, MockServer};
+
+    fn engine_with(server: &MockServer) -> (tempfile::TempDir, Engine) {
+        let (d, e) = temp_engine();
+        let api = server.url("/v2");
+        e.update_content_settings(|s| {
+            s.modrinth_api = api;
+            s.modrinth_retry_backoff = std::time::Duration::from_millis(1);
+            s.background_on_create = false;
+        });
+        (d, e)
+    }
+
+    /// Decoded `facets` parameter of request `i`.
+    fn facets_at(server: &MockServer, i: usize) -> Value {
+        let path = server.requests()[i].path.clone();
+        let pairs: Vec<(String, String)> =
+            url::form_urlencoded::parse(path.split_once('?').unwrap().1.as_bytes()).into_owned().collect();
+        let raw = pairs.iter().find(|(k, _)| k == "facets").unwrap().1.clone();
+        serde_json::from_str::<Value>(&raw).unwrap()
+    }
+
+    #[tokio::test]
+    async fn search_modrinth_facets_for_resourcepack_shader_modpack_and_categories() {
+        let server = MockServer::start(|_| MockResponse::json(&json!({ "hits": [], "total_hits": 0 }))).await;
+        let (_d, e) = engine_with(&server);
+
+        // Mods: loader facet, server-only filter, version, and the category group (sorted, de-duplicated).
+        let mods = ModrinthSearchQuery {
+            loader: Some("fabric".into()),
+            version: Some("1.21.1".into()),
+            categories: vec!["utility".into(), "optimization".into(), "utility".into()],
+            ..Default::default()
+        };
+        e.search_modrinth(mods).await.unwrap();
+        assert_eq!(
+            facets_at(&server, 0),
+            json!([
+                ["project_type:mod"],
+                ["categories:fabric"],
+                ["client_side!=unsupported"],
+                ["versions:1.21.1"],
+                ["categories:optimization", "categories:utility"]
+            ])
+        );
+
+        // Resource packs: no loader facet, even when the instance has one.
+        let packs = ModrinthSearchQuery {
+            project_type: Some("resourcepack".into()),
+            loader: Some("fabric".into()),
+            version: Some("1.21.1".into()),
+            categories: vec!["16x".into()],
+            ..Default::default()
+        };
+        e.search_modrinth(packs).await.unwrap();
+        assert_eq!(
+            facets_at(&server, 1),
+            json!([["project_type:resourcepack"], ["versions:1.21.1"], ["categories:16x"]])
+        );
+
+        // Shaders on an Iris loader narrow to Iris packs; any_version drops the version facet.
+        let shaders = ModrinthSearchQuery {
+            project_type: Some("shader".into()),
+            loader: Some("fabric".into()),
+            version: Some("1.21.1".into()),
+            any_version: true,
+            ..Default::default()
+        };
+        e.search_modrinth(shaders).await.unwrap();
+        assert_eq!(facets_at(&server, 2), json!([["project_type:shader"], ["categories:iris"]]));
+
+        // Vanilla has no Iris: no loader facet, but the version facet stays.
+        let vanilla_shaders = ModrinthSearchQuery {
+            project_type: Some("shader".into()),
+            loader: Some("vanilla".into()),
+            version: Some("1.21.1".into()),
+            ..Default::default()
+        };
+        e.search_modrinth(vanilla_shaders).await.unwrap();
+        assert_eq!(facets_at(&server, 3), json!([["project_type:shader"], ["versions:1.21.1"]]));
+
+        // Modpacks: loader facet and version; the server-only filter is mod-only.
+        let modpacks = ModrinthSearchQuery {
+            project_type: Some("modpack".into()),
+            loader: Some("forge".into()),
+            version: Some("1.21.1".into()),
+            ..Default::default()
+        };
+        e.search_modrinth(modpacks).await.unwrap();
+        assert_eq!(
+            facets_at(&server, 4),
+            json!([["project_type:modpack"], ["categories:forge"], ["versions:1.21.1"]])
+        );
+
+        // include_server_only drops the client_side facet from mod searches.
+        let all_sides =
+            ModrinthSearchQuery { loader: Some("fabric".into()), include_server_only: true, ..Default::default() };
+        e.search_modrinth(all_sides).await.unwrap();
+        assert_eq!(facets_at(&server, 5), json!([["project_type:mod"], ["categories:fabric"]]));
+
+        let unknown = ModrinthSearchQuery { project_type: Some("datapack".into()), ..Default::default() };
+        let err = e.search_modrinth(unknown).await.unwrap_err();
+        assert_eq!((err.status(), err.raw_code()), (400, Some("invalid_project_type")));
+        assert_eq!(server.hits(), 6, "rejected types never reach Modrinth");
+    }
+
+    #[tokio::test]
+    async fn search_results_are_cached_for_a_minute() {
+        let server = MockServer::start(|_| MockResponse::json(&json!({ "hits": [], "total_hits": 0 }))).await;
+        let (_d, e) = engine_with(&server);
+        e.search_modrinth(ModrinthSearchQuery { q: "sodium".into(), ..Default::default() }).await.unwrap();
+        e.search_modrinth(ModrinthSearchQuery { q: "sodium".into(), ..Default::default() }).await.unwrap();
+        assert_eq!(server.hits(), 1, "an identical search within 60 s is served from the cache");
+    }
+
+    #[tokio::test]
+    async fn modrinth_categories_filter_by_type_cache_and_fall_back_offline() {
+        let server = MockServer::start(|req| match req.path.as_str() {
+            "/v2/tag/category" => MockResponse::json(&json!([
+                { "icon": "<svg/>", "name": "optimization", "project_type": "mod", "header": "categories" },
+                { "icon": "", "name": "16x", "project_type": "resourcepack", "header": "resolutions" },
+                { "icon": "", "name": "orphan", "header": "categories" }
+            ])),
+            _ => MockResponse::status(404),
+        })
+        .await;
+        let (_d, e) = engine_with(&server);
+        let mods = e.modrinth_categories("mod").await.unwrap();
+        assert_eq!(
+            mods,
+            vec![ModrinthCategory {
+                name: "optimization".into(),
+                icon_svg: Some("<svg/>".into()),
+                header: "categories".into(),
+            }]
+        );
+        let packs = e.modrinth_categories("resourcepack").await.unwrap();
+        assert_eq!(packs.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), vec!["16x"]);
+        assert_eq!(server.hits(), 1, "one tag fetch serves every project type for 24 h");
+        assert!(e.modrinth_categories("datapack").await.is_err());
+
+        let (_d2, offline) = temp_engine();
+        offline.update_content_settings(|s| {
+            s.modrinth_api = "http://127.0.0.1:9/v2".into();
+            s.modrinth_retry_backoff = std::time::Duration::from_millis(1);
+        });
+        let fallback = offline.modrinth_categories("mod").await.unwrap();
+        assert!(fallback.iter().any(|c| c.name == "optimization" && c.header == "categories"));
+        assert!(!fallback.iter().any(|c| c.name == "16x"), "only mod tags for a mod search");
+    }
+
+    #[test]
+    fn modrinth_url_parser_extracts_type_and_slug() {
+        let found = |t: &str, s: &str| Some((t.to_string(), s.to_string()));
+        assert_eq!(parse_modrinth_url("https://modrinth.com/mod/sodium"), found("mod", "sodium"));
+        assert_eq!(
+            parse_modrinth_url("  https://www.modrinth.com/resourcepack/fresh-animations/versions?g=1#x  "),
+            found("resourcepack", "fresh-animations")
+        );
+        assert_eq!(
+            parse_modrinth_url("https://modrinth.com/shader/complementary-reimagined/"),
+            found("shader", "complementary-reimagined")
+        );
+        assert_eq!(parse_modrinth_url("http://modrinth.com/modpack/all-the_mods.9"), found("modpack", "all-the_mods.9"));
+        assert_eq!(parse_modrinth_url("https://modrinth.com/datapack/x"), found("datapack", "x"));
+        assert_eq!(parse_modrinth_url("https://modrinth.com/plugin/y"), found("plugin", "y"));
+        for bad in [
+            "sodium",
+            "ftp://modrinth.com/mod/sodium",
+            "https://evil.example/mod/sodium",
+            "https://modrinth.com.evil.test/mod/x",
+            "https://modrinth.com/user/someone",
+            "https://modrinth.com/mod/",
+            "https://modrinth.com/mod/bad%2Fslug",
+            "https://modrinth.com/mod/a b",
+        ] {
+            assert_eq!(parse_modrinth_url(bad), None, "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn install_modrinth_modpack_downloads_and_creates_instance() {
+        use std::io::Write;
+        let index = json!({
+            "formatVersion": 1, "game": "minecraft", "versionId": "1.0.0", "name": "Test Pack", "files": [],
+            "dependencies": { "minecraft": "1.21.1", "fabric-loader": "0.16.5" }
+        });
+        let pack_bytes = {
+            let mut zw = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            zw.start_file("modrinth.index.json", zip::write::SimpleFileOptions::default()).unwrap();
+            zw.write_all(index.to_string().as_bytes()).unwrap();
+            zw.finish().unwrap().into_inner()
+        };
+        let sha = crate::download::sha1_hex(&pack_bytes);
+        let size = pack_bytes.len();
+        let cdn = MockServer::start({
+            let bytes = pack_bytes.clone();
+            move |req| match req.path.as_str() {
+                "/test-pack.mrpack" => MockResponse::bytes(bytes.clone()),
+                _ => MockResponse::status(404),
+            }
+        })
+        .await;
+        let pack_url = cdn.url("/test-pack.mrpack");
+        let api = MockServer::start({
+            let sha = sha.clone();
+            move |req| {
+                let version = json!({
+                    "id": "vPACK", "project_id": "PACK01", "version_number": "1.0.0", "version_type": "release",
+                    "status": "listed", "date_published": "2026-11-20T00:00:00Z", "dependencies": [],
+                    "files": [{ "primary": true, "filename": "test-pack-1.0.0.mrpack", "url": pack_url,
+                                "size": size, "hashes": { "sha1": sha } }]
+                });
+                match req.path.as_str() {
+                    p if p.starts_with("/v2/project/PACK01/version") => MockResponse::json(&json!([version])),
+                    "/v2/version/vPACK" => MockResponse::json(&version),
+                    _ => MockResponse::status(404),
+                }
+            }
+        })
+        .await;
+        let (_d, e) = engine_with(&api);
+        e.update_content_settings(|s| {
+            s.pack_file_hosts = vec![cdn.host()];
+            s.pack_file_allow_http = true;
+        });
+        // The importer resolves the Minecraft version from the local manifest cache (no network).
+        let versions = e.paths().versions_dir();
+        std::fs::create_dir_all(&versions).unwrap();
+        let version_json = json!({ "id": "1.21.1", "javaVersion": { "majorVersion": 21 } });
+        std::fs::write(versions.join("1.21.1.json"), version_json.to_string()).unwrap();
+        let manifest = json!({
+            "fetched_at": crate::platform::now_ms(), "latest_release": "1.21.1", "latest_snapshot": "1.21.1",
+            "versions": [{ "id": "1.21.1", "type": "release", "release_time": "2026-01-01T00:00:00+00:00",
+                           "url": "http://127.0.0.1:9/1.21.1.json" }]
+        });
+        std::fs::write(e.paths().version_manifest_cache(), manifest.to_string()).unwrap();
+        e.game_resolve_state().clear_manifest_memo();
+
+        let mismatch = e.install_modrinth_modpack("OTHER", Some("vPACK"), None).await.unwrap_err();
+        assert_eq!(mismatch.raw_code(), Some("modpack_version_mismatch"));
+
+        let reply = e.install_modrinth_modpack("PACK01", None, None).await.unwrap();
+        assert_eq!(reply.summary.loader, Loader::Fabric);
+        assert_eq!(reply.already_exists, None);
+        assert!(e.paths().instance_json(&reply.summary.name).is_file());
+        let cached = e.paths().data_dir().join("cache").join("mrpacks").join(format!("{sha}.mrpack"));
+        assert_eq!(std::fs::read(&cached).unwrap(), pack_bytes, "downloaded verbatim under its SHA-1");
     }
 }

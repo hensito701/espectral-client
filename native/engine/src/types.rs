@@ -828,7 +828,71 @@ pub struct ModrinthProject {
     pub client_side: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_side: Option<String>,
+    /// `mod` | `resourcepack` | `shader` | `modpack` (from the search hit).
+    #[serde(default)]
+    pub project_type: String,
+    #[serde(default)]
+    pub author: String,
+    /// Modrinth category and loader slugs of the project (cards show the first few).
+    #[serde(default)]
+    pub categories: Vec<String>,
+    /// RFC 3339 timestamp of the project's last update.
+    #[serde(default)]
+    pub date_modified: String,
+    #[serde(default)]
+    pub follows: u64,
 }
+
+/// One selectable Modrinth tag (`GET /v2/tag/category`, filtered by project type).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModrinthCategory {
+    pub name: String,
+    /// Inline SVG icon (None when Modrinth or the offline fallback has none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_svg: Option<String>,
+    /// Group heading Modrinth files the tag under (`categories`, `resolutions`, ...).
+    pub header: String,
+}
+
+/// One screenshot of a Modrinth project gallery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModrinthGalleryItem {
+    pub url: String,
+    pub title: String,
+    pub description: String,
+    pub featured: bool,
+}
+
+/// Project detail for the Modrinth detail modal (`Engine::modrinth_project_detail`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModrinthProjectDetail {
+    pub project_id: String,
+    pub slug: String,
+    pub project_type: String,
+    pub title: String,
+    pub description: String,
+    /// Full markdown body, as Modrinth serves it.
+    pub body: String,
+    pub author: String,
+    pub icon_url: Option<String>,
+    pub downloads: u64,
+    pub followers: u64,
+    /// RFC 3339 timestamp of the project's last update.
+    pub updated: String,
+    pub license_id: String,
+    pub client_side: String,
+    pub server_side: String,
+    pub categories: Vec<String>,
+    pub gallery: Vec<ModrinthGalleryItem>,
+    pub source_url: Option<String>,
+    pub issues_url: Option<String>,
+    pub wiki_url: Option<String>,
+    /// `https://modrinth.com/<type>/<slug>`.
+    pub project_url: String,
+    /// Versions for the instance's Minecraft version and loader when an instance is given.
+    pub versions: Vec<ModVersionItem>,
+    pub installed: bool,
+ }
 
 /// GET /api/modrinth/search.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
