@@ -135,6 +135,12 @@ export global HomeBridge {
     in-out property <[string]> compat-modal-issues;
     callback compat-open-mods(instance: string);
     callback compat-launch-anyway(instance: string);
+    in-out property <bool> compat-modal-busy;
+    /// Some blocking issue has a safe batch fix (shows the auto-fix button).
+    in-out property <bool> compat-modal-has-auto-fix;
+    /// Every blocking issue has one: "Fix & play" rather than "Fix safe issues".
+    in-out property <bool> compat-modal-all-auto-fixable;
+    callback compat-auto-fix-launch(instance: string);
     // Post-crash diagnosis (launchlog.rs fills these after a non-zero game exit).
     in-out property <bool> crash-open;
     in-out property <string> crash-instance;

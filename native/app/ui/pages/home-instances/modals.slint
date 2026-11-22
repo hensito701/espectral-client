@@ -428,12 +428,18 @@ export component ModCompatLaunchModal inherits Rectangle {
                 clicked => { HomeBridge.compat-modal-open = false; }
             }
             Btn {
-                variant: BtnVariant.primary;
+                variant: HomeBridge.compat-modal-has-auto-fix ? BtnVariant.secondary : BtnVariant.primary;
                 text: T.tr("home.compatGoToMods");
                 clicked => {
                     HomeBridge.compat-modal-open = false;
                     HomeBridge.compat-open-mods(HomeBridge.compat-modal-instance);
                 }
+            }
+            if HomeBridge.compat-modal-has-auto-fix: Btn {
+                variant: BtnVariant.primary;
+                text: HomeBridge.compat-modal-all-auto-fixable ? T.tr("home.compatAutoFixLaunch") : T.tr("home.compatAutoFix");
+                loading: HomeBridge.compat-modal-busy;
+                clicked => { HomeBridge.compat-auto-fix-launch(HomeBridge.compat-modal-instance); }
             }
         }
     }

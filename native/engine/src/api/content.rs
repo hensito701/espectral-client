@@ -834,6 +834,12 @@ impl Engine {
             .await
             .map_err(|e| send_error(e, 500, "pack_install_failed"))
     }
+
+    /// Copy a dropped `.jar` into the instance's `mods/` (409 `ALREADY_RUNNING` while running).
+    pub fn install_local_mod(&self, name: &str, path: &str) -> EngineResult<String> {
+        crate::mods::install_local_mod(self, name, std::path::Path::new(path))
+            .map_err(|e| send_error(e, 500, "mod_install_failed"))
+    }
 }
 
 #[cfg(test)]

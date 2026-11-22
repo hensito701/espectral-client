@@ -3607,6 +3607,54 @@ pub async fn plan_mods_for_target(
     Ok(Value::Array(out.into_iter().map(Value::Object).collect()))
 }
 
+/// Copy a dropped `.jar` into the instance's `mods/` under a safe, unused name (`name.jar`, then
+/// `name-2.jar`, ...): an installed mod is never overwritten. Returns the stored filename.
+/// 409 `ALREADY_RUNNING` while the instance runs.
+pub fn install_local_mod(engine: &Engine, instance_name: &str, src: &std::path::Path) -> EngineResult<String> {
+    if engine.active_instances().contains(instance_name) {
+        return Err(code_err(
+            409,
+            "ALREADY_RUNNING",
+            format!("instance '{instance_name}' is running; stop it before adding mods"),
+        ));
+    }
+    let is_jar = src.extension().is_some_and(|e| e.eq_ignore_ascii_case("jar"));
+    if !is_jar || !src.is_file() {
+        return Err(code_err(400, "NOT_A_JAR", format!("not a .jar file: {}", src.display())));
+    }
+    let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
+    let stem = src.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    // Only the characters `assert_safe_filename` accepts survive; `..` would fail that check.
+    let base: String = stem
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || " _.+@-".contains(c) { c } else { '_' })
+        .take(100)
+        .collect::<String>()
+        .replace("..", "_");
+    let base = base.trim_start_matches('.').trim().to_string();
+    if base.is_empty() {
+        return Err(code_err(400, "invalid_filename", format!("invalid mod filename: {}", src.display())));
+    }
+    let mods_dir = effective_mods_dir(engine, &instance);
+    std::fs::create_dir_all(&mods_dir)?;
+    let mut n = 1u32;
+    let stored = loop {
+        let name = if n == 1 { format!("{base}.jar") } else { format!("{base}-{n}.jar") };
+        if !mods_dir.join(&name).exists() && !mods_dir.join(format!("{name}.disabled")).exists() {
+            break name;
+        }
+        n += 1;
+    };
+    let tmp = mods_dir.join(format!("{stored}.{}.tmp", std::process::id()));
+    std::fs::copy(src, &tmp)?;
+    if let Err(e) = std::fs::rename(&tmp, mods_dir.join(&stored)) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    tracing::info!("[mods] added {stored} to {}", instance.name);
+    Ok(stored)
+}
+
 /// Apply a plan from plan_mods_for_target -> `{ updated, added, disabled, errors }`.
 pub async fn apply_mods_plan(engine: &Engine, instance_name: &str, plan: &Value) -> EngineResult<Value> {
     let instance = crate::resolver::load_instance_meta(engine, instance_name)?;

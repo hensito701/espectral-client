@@ -147,7 +147,9 @@
     "home.compatModalTitle": "Problemas en tus mods",
     "home.compatModalSubtitle": "Fabric probablemente detendrá el juego si arrancas así. Puedes arreglarlo en la página de Mods.",
     "home.compatGoToMods": "Ir a Mods",
-    "home.compatLaunchAnyway": "Jugar igualmente"
+    "home.compatLaunchAnyway": "Jugar igualmente",
+    "home.compatAutoFix": "Arreglar lo seguro",
+    "home.compatAutoFixLaunch": "Arreglar y jugar"
   },
   "en": {
     "home.title": "Home",
@@ -297,6 +299,8 @@
     "home.compatModalTitle": "Issues in your mods",
     "home.compatModalSubtitle": "Fabric will likely stop the game from starting like this. You can fix it on the Mods page.",
     "home.compatGoToMods": "Go to Mods",
-    "home.compatLaunchAnyway": "Play anyway"
+    "home.compatLaunchAnyway": "Play anyway",
+    "home.compatAutoFix": "Fix safe issues",
+    "home.compatAutoFixLaunch": "Fix & play"
   }
 }

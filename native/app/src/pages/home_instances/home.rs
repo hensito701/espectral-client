@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use espectral_engine::api::game_launch::{LaunchOutcome, LaunchRequest};
 use espectral_engine::events::EngineEvent;
 use espectral_engine::types::{AotStatus, CreateInstanceRequest, Loader, VersionManifest};
+use espectral_engine::fabric_compat::{CompatFix, CompatIssueKind, CompatSeverity, ModCompatIssue, ModCompatReport};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use super::launchlog;
@@ -15,6 +16,7 @@ use crate::bridge::Ctx;
 use crate::router::{self, Route};
 use crate::{dialogs, i18n, store, toast, util};
 use crate::{AppState, AppWindow, HiVersion, HomeBridge, Page, SelectOption, ServerRow, Shell};
+use crate::pages::library_mods::fix_summary;
 
 thread_local! {
     static MANIFEST: RefCell<Option<VersionManifest>> = const { RefCell::new(None) };
@@ -93,6 +95,8 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     hb.on_launch(move |name| launch(&c, name.to_string(), false));
     let c = ctx.clone();
     hb.on_compat_launch_anyway(move |name| launch(&c, name.to_string(), true));
+    let c = ctx.clone();
+    hb.on_compat_auto_fix_launch(move |name| auto_fix_and_launch(&c, name.to_string()));
     let w = ui.as_weak();
     hb.on_compat_open_mods(move |name| {
         if let Some(ui) = w.upgrade() {
@@ -454,15 +458,7 @@ pub(super) fn launch(c: &Ctx, name: String, force_compat: bool) {
                 hb.set_compat_instance(name.as_str().into());
                 hb.set_compat_error_count(report.error_count as i32);
                 if report.error_count > 0 {
-                    let lines: Vec<SharedString> = report
-                        .issues
-                        .iter()
-                        .filter(|i| i.severity == espectral_engine::fabric_compat::CompatSeverity::Error)
-                        .map(|i| SharedString::from(format!("{}: {}", i.mod_name, format_compat_issue_short(i))))
-                        .collect();
-                    hb.set_compat_modal_instance(name.as_str().into());
-                    hb.set_compat_modal_issues(ModelRc::new(VecModel::from(lines)));
-                    hb.set_compat_modal_open(true);
+                    show_compat_modal(ui, &name, &report);
                     return;
                 }
                 start_launch(&c_ok, name);
@@ -475,6 +471,69 @@ pub(super) fn launch(c: &Ctx, name: String, force_compat: bool) {
         return;
     }
     start_launch(c, name);
+}
+
+/// Fill the pre-launch modal with the blocking issues and say whether the batch fix can clear them.
+fn show_compat_modal(ui: &AppWindow, name: &str, report: &ModCompatReport) {
+    let hb = ui.global::<HomeBridge>();
+    let errors: Vec<&ModCompatIssue> = report.issues.iter().filter(|i| i.severity == CompatSeverity::Error).collect();
+    let lines: Vec<SharedString> = errors
+        .iter()
+        .map(|i| SharedString::from(format!("{}: {}", i.mod_name, format_compat_issue_short(i))))
+        .collect();
+    hb.set_compat_modal_instance(name.into());
+    hb.set_compat_modal_issues(ModelRc::new(VecModel::from(lines)));
+    hb.set_compat_modal_has_auto_fix(errors.iter().any(|i| is_safe_fix(i)));
+    hb.set_compat_modal_all_auto_fixable(!errors.is_empty() && errors.iter().all(|i| is_safe_fix(i)));
+    hb.set_compat_modal_open(true);
+}
+
+/// A blocking issue the batch fix resolves without the player's choice (the rules of
+/// `apply_safe_compat_fixes`). A missing dependency with no install target is not one.
+fn is_safe_fix(i: &ModCompatIssue) -> bool {
+    matches!(
+        (i.kind, &i.fix),
+        (_, Some(CompatFix::Enable { .. }))
+            | (CompatIssueKind::MissingDep, Some(CompatFix::InstallMod { .. }))
+            | (CompatIssueKind::IncompatibleDep, Some(CompatFix::UpdateMod { .. }))
+            | (CompatIssueKind::LoaderVersion, Some(CompatFix::UpdateFabricLoader { .. }))
+            | (CompatIssueKind::ServerOnly, Some(CompatFix::Disable { .. }))
+    )
+}
+
+/// "Auto-fix & Launch" in the pre-launch modal: run the batch fix, launch once nothing blocks,
+/// otherwise show what is left.
+fn auto_fix_and_launch(c: &Ctx, name: String) {
+    let Some(ui) = c.ui() else { return };
+    let hb = ui.global::<HomeBridge>();
+    if hb.get_compat_modal_busy() {
+        return;
+    }
+    hb.set_compat_modal_busy(true);
+    let (fix_name, relaunch) = (name.clone(), c.clone());
+    c.call_with(
+        move |e| async move {
+            let fixed = e.apply_safe_compat_fixes(&fix_name).await?;
+            let report = e.check_mods_compat(&fix_name).await?;
+            Ok::<_, espectral_engine::EngineError>((fixed, report))
+        },
+        move |ui, (fixed, report)| {
+            ui.global::<HomeBridge>().set_compat_modal_busy(false);
+            let summary = fix_summary(&fixed);
+            if fixed.remaining_errors == 0 {
+                ui.global::<HomeBridge>().set_compat_modal_open(false);
+                toast::ok(summary);
+                start_launch(&relaunch, name);
+            } else {
+                toast::err(summary);
+                show_compat_modal(ui, &name, &report);
+            }
+        },
+        |ui, e| {
+            ui.global::<HomeBridge>().set_compat_modal_busy(false);
+            toast::engine_error(&e);
+        },
+    );
 }
 
 fn start_launch(c: &Ctx, name: String) {

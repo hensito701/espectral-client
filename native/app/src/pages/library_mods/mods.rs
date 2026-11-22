@@ -428,7 +428,7 @@ fn is_branding_jar(filename: &str) -> bool {
     l.starts_with("espectral-menu-") || l.starts_with("espectral-brand-")
 }
 
-fn format_issue_text(i: &ModCompatIssue) -> String {
+pub(crate) fn format_issue_text(i: &ModCompatIssue) -> String {
     let es = i18n::lang() == Lang::Es;
     let req = format_predicate_human(&i.required, es);
     let actual = i.actual.as_deref().unwrap_or("?");
@@ -502,6 +502,12 @@ fn format_compat_note(i: &ModCompatIssue, can_switch_self: bool, iris_enabled: b
             "install".to_string(),
             mod_id.clone(),
             name.clone(),
+        ),
+        Some(CompatFix::UpdateFabricLoader { required }) => (
+            i18n::tf("mods.fixLoader", &[("req", &format_predicate_human(required, i18n::lang() == Lang::Es))]),
+            "loader".to_string(),
+            String::new(),
+            String::new(),
         ),
         None => (String::new(), String::new(), String::new(), String::new()),
     };
@@ -1337,8 +1343,64 @@ fn apply_fix(kind: String, target: String, arg: String) {
         "change_version" => open_versions(target, None),
         "update" => open_versions(target, (!arg.is_empty()).then_some(arg)),
         "install" => install_missing_mod_id(target, arg),
+        "loader" => fix_safe_mods(),
         _ => {}
     }
+}
+
+/// "Fix" on a Fabric Loader issue: the batch fix re-pins the loader and applies the other safe fixes.
+fn fix_safe_mods() {
+    let Some(c) = super::ctx() else { return };
+    let target = with(|s| s.target.clone());
+    if target.is_empty() {
+        return;
+    }
+    c.call_with(
+        move |e| async move { e.apply_safe_compat_fixes(&target).await },
+        |_ui, r| {
+            let text = fix_summary(&r);
+            if r.remaining_errors == 0 {
+                toast::ok(text);
+            } else {
+                toast::err(text);
+            }
+            load_mods();
+            load_compat();
+        },
+        |_ui, e| toast::engine_error(&e),
+    );
+}
+
+/// The instance the Mods page shows; a dropped mod lands in it.
+pub(crate) fn target_instance() -> String {
+    with(|s| s.target.clone())
+}
+
+/// One-line summary of a batch fix for a toast; `remaining_errors` says what still blocks a launch.
+pub(crate) fn fix_summary(r: &espectral_engine::types::CompatBatchFixResult) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if !r.enabled.is_empty() {
+        parts.push(i18n::tf("mods.batch.enabled", &[("count", &r.enabled.len().to_string())]));
+    }
+    if !r.disabled.is_empty() {
+        parts.push(i18n::tf("mods.batch.disabled", &[("count", &r.disabled.len().to_string())]));
+    }
+    if !r.installed.is_empty() {
+        parts.push(i18n::tf("mods.batch.installed", &[("count", &r.installed.len().to_string())]));
+    }
+    if !r.updated.is_empty() {
+        parts.push(i18n::tf("mods.batch.updated", &[("count", &r.updated.len().to_string())]));
+    }
+    if r.loader_refreshed {
+        parts.push(i18n::t("mods.batch.loader"));
+    }
+    if parts.is_empty() {
+        parts.push(i18n::t("mods.batch.none"));
+    }
+    if r.remaining_errors > 0 {
+        parts.push(i18n::tf("mods.batch.remaining", &[("count", &r.remaining_errors.to_string())]));
+    }
+    parts.join(" · ")
 }
 
 fn install_missing_mod_id(mod_id: String, display: String) {
