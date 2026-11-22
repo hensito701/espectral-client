@@ -75,9 +75,10 @@ component Hero inherits VerticalLayout {
             }
             HorizontalLayout {
                 alignment: start;
-                SelectableText {
+                Text {
                     max-width: 650px;
                     text: T.tr("dash.subtitle");
+                    font-family: Theme.font-body;
                     color: Theme.muted;
                     font-size: 15.2px;
                     line-height-factor: 1.17;
@@ -383,9 +384,10 @@ component AccentCard inherits SettingCard {
                     horizontal-stretch: 1;
                     spacing: 2.4px;
                     alignment: center;
-                    SelectableText { text: T.tr("dash.motion.title"); font-size: 15.2px; font-weight: 700; color: Theme.text; line-height-factor: 1.25; }
-                    SelectableText {
+                    Text { text: T.tr("dash.motion.title"); font-family: Theme.font-body; font-size: 15.2px; font-weight: 700; color: Theme.text; line-height-factor: 1.25; }
+                    Text {
                         text: T.tr("dash.motion.desc");
+                        font-family: Theme.font-body;
                         font-size: 12.5px;
                         color: Theme.muted;
                         line-height-factor: 1.13;
@@ -554,14 +556,16 @@ component BackdropCard inherits SettingCard {
                 BackdropChoice { mode: "glass"; label: T.tr("settings.backdrop.modeGlass"); icon: SetIcons.sparkles; }
             }
             if Backdrop.mode == "image": BackdropGrid { }
-            if Backdrop.mode == "image": SelectableText {
+            if Backdrop.mode == "image": Text {
                 text: T.tr("settings.backdrop.hint");
+                font-family: Theme.font-body;
                 font-size: 12px;
                 color: Theme.muted;
                 wrap: word-wrap;
             }
-            if Backdrop.mode == "glass" && !Theme.glass: SelectableText {
+            if Backdrop.mode == "glass" && !Theme.glass: Text {
                 text: T.tr("settings.backdrop.glassNote");
+                font-family: Theme.font-body;
                 font-size: 12px;
                 color: Theme.muted;
                 wrap: word-wrap;
@@ -608,8 +612,9 @@ component SliderRow inherits HorizontalLayout {
             text: root.shown;
             edited(t) => { root.text-edited(t); }
         }
-        SelectableText {
+        Text {
             text: root.unit;
+            font-family: Theme.font-body;
             font-size: 13.6px;
             font-weight: 500;
             color: Theme.muted;
@@ -643,7 +648,7 @@ component RamBadge inherits Rectangle {
         padding-top: 5.6px;
         padding-bottom: 5.6px;
         spacing: 4px;
-        SelectableText { text: root.value; font-family: Theme.font-mono; font-size: Theme.text-lg; font-weight: 700; color: Theme.title-color; vertical-alignment: bottom; }
+        Text { text: root.value; font-family: Theme.font-mono; font-size: Theme.text-lg; font-weight: 700; color: Theme.title-color; vertical-alignment: bottom; }
         VerticalLayout {
             alignment: end;
             padding-bottom: 2px;
@@ -750,7 +755,7 @@ component JvmKv inherits VerticalLayout {
     in property <string> value;
     spacing: 4px;
     horizontal-stretch: 1;
-    SelectableText { text: root.key; font-size: 12px; font-weight: 500; color: Theme.muted; line-height-factor: 1.25; }
+    Text { text: root.key; font-family: Theme.font-body; font-size: 12px; font-weight: 500; color: Theme.muted; line-height-factor: 1.25; }
     @children
     if root.value != "": SelectableText { text: root.value; font-size: 14px; font-weight: 600; color: Theme.text; line-height-factor: 1.25; wrap: word-wrap; }
 }
@@ -910,7 +915,7 @@ component ToggleCard inherits GlassCard {
                 spacing: 8px;
                 alignment: start;
                 Badge { text: root.badge; variant: root.badge-variant; }
-                if root.speedup != "": SelectableText {
+                if root.speedup != "": Text {
                     horizontal-stretch: 1;
                     min-width: 0px;
                     wrap: word-wrap;
@@ -923,7 +928,7 @@ component ToggleCard inherits GlassCard {
                     vertical-alignment: center;
                 }
             }
-            SelectableText {
+            Text {
                 text: root.heading;
                 font-family: Theme.font-title;
                 font-size: Theme.text-base;
@@ -932,8 +937,9 @@ component ToggleCard inherits GlassCard {
                 color: Theme.title-color;
                 wrap: word-wrap;
             }
-            SelectableText {
+            Text {
                 text: root.desc;
+                font-family: Theme.font-body;
                 font-size: 12.8px;
                 color: Theme.muted;
                 line-height-factor: 1.09;
@@ -1139,7 +1145,7 @@ component HealthRow inherits Rectangle {
         padding-top: 12px;
         padding-bottom: 12px;
         spacing: 12px;
-        SelectableText { text: root.key; font-size: 13.6px; color: Theme.muted; line-height-factor: 1.25; vertical-alignment: center; horizontal-stretch: 1; }
+        Text { text: root.key; font-family: Theme.font-body; font-size: 13.6px; color: Theme.muted; line-height-factor: 1.25; vertical-alignment: center; horizontal-stretch: 1; }
         @children
         if root.value != "": SelectableText {
             text: root.value;
@@ -1230,8 +1236,8 @@ component VipBanner inherits Rectangle {
             }
             VerticalLayout {
                 spacing: 5.6px;
-                SelectableText { text: T.tr("dash.about.supportBanner"); font-family: Theme.font-title; font-size: Theme.text-base; font-weight: 700; color: Theme.title-color; line-height-factor: 1.25; horizontal-alignment: center; wrap: word-wrap; }
-                SelectableText { text: T.tr("dash.about.rankPerks"); font-size: 12.8px; color: Theme.muted; line-height-factor: 1.09; horizontal-alignment: center; wrap: word-wrap; }
+                Text { text: T.tr("dash.about.supportBanner"); font-family: Theme.font-title; font-size: Theme.text-base; font-weight: 700; color: Theme.title-color; line-height-factor: 1.25; horizontal-alignment: center; wrap: word-wrap; }
+                Text { text: T.tr("dash.about.rankPerks"); font-family: Theme.font-body; font-size: 12.8px; color: Theme.muted; line-height-factor: 1.09; horizontal-alignment: center; wrap: word-wrap; }
             }
             HorizontalLayout {
                 alignment: center;
@@ -1263,7 +1269,7 @@ component AboutLeft inherits VerticalLayout {
             font-size: 24px;
         }
     }
-    SelectableText { text: T.tr("dash.about.tagline"); font-size: 14.4px; color: Theme.muted; wrap: word-wrap; }
+    Text { text: T.tr("dash.about.tagline"); font-family: Theme.font-body; font-size: 14.4px; color: Theme.muted; wrap: word-wrap; }
     VerticalLayout {
         padding-top: 12px;
         spacing: 12px;
@@ -1354,8 +1360,9 @@ component AgentHeader inherits HorizontalLayout {
                 font-size: 24px;
             }
         }
-        SelectableText {
+        Text {
             text: T.tr("dash.agent.subtitle");
+            font-family: Theme.font-body;
             color: Theme.muted;
             font-size: 13.6px;
             line-height-factor: 1.25;
@@ -1409,10 +1416,11 @@ component RuleItem inherits HorizontalLayout {
         line-height-factor: 1.13;
         vertical-alignment: top;
     }
-    SelectableText {
+    Text {
         horizontal-stretch: 1;
         min-width: 0px;
         text: root.text;
+        font-family: Theme.font-body;
         color: Theme.muted;
         font-size: 12.8px;
         line-height-factor: 1.13;
@@ -1563,15 +1571,17 @@ component AgentToggleCard inherits SettingCard {
                 spacing: 9.6px;
                 VerticalLayout {
                     spacing: 2.4px;
-                    SelectableText {
+                    Text {
                         text: T.tr("dash.agent.tokenTitle");
+                        font-family: Theme.font-body;
                         font-size: 15.2px;
                         font-weight: 600;
                         color: Theme.text;
                         line-height-factor: 1.25;
                     }
-                    SelectableText {
+                    Text {
                         text: T.tr("dash.agent.tokenDesc");
+                        font-family: Theme.font-body;
                         font-size: 12.5px;
                         color: Theme.muted;
                         line-height-factor: 1.13;
@@ -1589,8 +1599,9 @@ component AgentToggleCard inherits SettingCard {
                         padding-top: 12px;
                         padding-bottom: 12px;
                         spacing: 12px;
-                        SelectableText {
+                        Text {
                             text: T.tr("dash.agent.tokenPath");
+                            font-family: Theme.font-body;
                             font-size: 13.6px;
                             color: Theme.muted;
                             line-height-factor: 1.25;
@@ -1619,10 +1630,11 @@ component AgentToggleCard inherits SettingCard {
                 }
                 HorizontalLayout {
                     spacing: 12px;
-                    if SettingsBridge.agent-confirming-rotate: SelectableText {
+                    if SettingsBridge.agent-confirming-rotate: Text {
                         horizontal-stretch: 1;
                         min-width: 0px;
                         text: T.tr("dash.agent.rotateConfirm");
+                        font-family: Theme.font-body;
                         font-size: 12.8px;
                         color: Theme.text;
                         line-height-factor: 1.13;
@@ -1691,8 +1703,9 @@ component AgentConfigCard inherits SettingCard {
                 copy => { SettingsBridge.agent-copy("toml"); }
             }
         }
-        if !SettingsBridge.agent-active || SettingsBridge.agent-json == "": SelectableText {
+        if !SettingsBridge.agent-active || SettingsBridge.agent-json == "": Text {
             text: T.tr("dash.agent.configEmpty");
+            font-family: Theme.font-body;
             font-size: 12.8px;
             color: Theme.muted;
             line-height-factor: 1.25;
@@ -1759,8 +1772,9 @@ component AgentAllowCard inherits SettingCard {
         VerticalLayout {
             spacing: 6.4px;
             for h in SettingsBridge.agent-allow-list: AgentAllowRow { host: h; }
-            if SettingsBridge.agent-allow-list.length == 0: SelectableText {
+            if SettingsBridge.agent-allow-list.length == 0: Text {
                 text: T.tr("dash.agent.allowEmpty");
+                font-family: Theme.font-body;
                 font-size: 12.8px;
                 color: Theme.muted;
                 line-height-factor: 1.25;

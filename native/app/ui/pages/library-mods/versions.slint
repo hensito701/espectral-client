@@ -28,9 +28,10 @@ component QuickStat inherits Rectangle {
         padding-top: Theme.space-3;
         padding-bottom: Theme.space-3;
         spacing: Theme.space-1;
-        SelectableText {
+        Text {
             text: root.label.to-uppercase();
             color: Theme.muted;
+            font-family: Theme.font-body;
             font-size: Theme.text-xs;
             font-weight: 600;
             letter-spacing: 0.44px;
@@ -266,7 +267,7 @@ component Controls inherits GlassCard {
         padding-left: Theme.space-4;
         padding-right: Theme.space-4;
         padding-bottom: Theme.space-2;
-        SelectableText {
+        Text {
             min-height: 22px;
             vertical-alignment: center;
             text: T.tr2("versions.showingCount", "shown", LibraryBridge.v-rows.length, "total", LibraryBridge.v-filtered);
@@ -398,7 +399,7 @@ component VersionRowCard inherits Rectangle {
         // date + action
         HorizontalLayout {
             spacing: Theme.space-3;
-            SelectableText {
+            Text {
                 text: root.entry.date;
                 color: Theme.muted;
                 font-size: Theme.text-xs;
@@ -428,7 +429,7 @@ component LoadingBlock inherits VerticalLayout {
         alignment: center;
         Spinner { size: 36px; tint: Theme.accent; }
     }
-    SelectableText { text: T.tr("versions.loading"); color: Theme.muted-strong; horizontal-alignment: center; wrap: word-wrap; }
+    Text { text: T.tr("versions.loading"); font-family: Theme.font-body; color: Theme.muted-strong; horizontal-alignment: center; wrap: word-wrap; }
 }
 
 component ErrorBlock inherits GlassCard {
@@ -474,16 +475,19 @@ component EmptyBlock inherits GlassCard {
                 alignment: center;
                 Emoji { char: "🔍"; size: 32px; opacity: 0.6; }
             }
-            SelectableText {
+            Text {
                 text: LibraryBridge.v-query != "" ? T.tr1("versions.noResults", "query", LibraryBridge.v-query) : T.tr("versions.none");
                 color: Theme.text;
+                font-family: Theme.font-body;
                 font-size: Theme.text-base;
                 font-weight: 700;
                 horizontal-alignment: center;
                 wrap: word-wrap;
             }
-            SelectableText {
+            Text {
                 text: T.tr("versions.noResultsDesc");
+                color: Theme.text;
+                font-family: Theme.font-body;
                 font-size: Theme.text-xs;
                 horizontal-alignment: center;
                 wrap: word-wrap;
@@ -516,7 +520,7 @@ component Matrix inherits VerticalLayout {
         padding-top: Theme.space-4;
         padding-bottom: Theme.space-4;
         alignment: center;
-        SelectableText {
+        Text {
             text: LibraryBridge.v-has-more
                 ? T.tr1("versions.loadMore", "remaining", LibraryBridge.v-filtered - LibraryBridge.v-rows.length)
                 : T.tr("versions.allLoaded");
@@ -556,7 +560,7 @@ export component VersionsPage inherits Rectangle {
                         alignment: center;
                         Badge { text: T.tr("versions.badge"); variant: BadgeVariant.accent; dot: true; }
                     }
-                    SelectableText {
+                    Text {
                         text: T.tr1("versions.totalVersions", "count", LibraryBridge.v-total);
                         color: Theme.muted;
                         font-size: Theme.text-xs;
@@ -568,9 +572,10 @@ export component VersionsPage inherits Rectangle {
                     text: T.tr("versions.title");
                     font-size: 32px;
                 }
-                SelectableText {
+                Text {
                     text: T.tr("versions.subtitle");
                     color: Theme.muted-strong;
+                    font-family: Theme.font-body;
                     font-size: Theme.text-sm;
                     wrap: word-wrap;
                 }
