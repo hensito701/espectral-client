@@ -1,0 +1,386 @@
+// OWNER: library-mods agent. The Modrinth browser of ModCatalog (tab 2): content-type
+// pills, search with sort, category chips and filters, result cards and the grid.
+// Rust side: library_mods/browse.rs. The project detail modal is project-detail-modal.slint.
+import { Theme, T, GlassCard, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Icon, MonogramTile, MonogramShape, Segmented, Select, SelectOption, SelectableText } from "../../widgets.slint";
+import { LibraryBridge, ModrinthCard } from "api.slint";
+import { GlowDot, StatePanel, Chip, ModIcons, LoadingPanel, ErrorBanner, EmptyPanel } from "parts.slint";
+
+component ModrinthInput inherits Rectangle {
+    horizontal-stretch: 1;
+    height: max(36px, input.preferred-height + 16px);
+    border-radius: Theme.radius-md;
+    background: Theme.card-bg-soft;
+    border-width: Theme.hairline;
+    border-color: input.has-focus ? Theme.hover-border : Theme.border-solid;
+    TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    input := TextInput {
+        x: 13.6px;
+        width: parent.width - 27.2px;
+        height: self.preferred-height;
+        y: (parent.height - self.height) / 2;
+        text <=> LibraryBridge.m-search-query;
+        font-size: Theme.text-sm;
+        color: Theme.text;
+        single-line: true;
+        selection-background-color: Theme.accent.with-alpha(0.3);
+        edited => { LibraryBridge.m-search-edited(self.text); }
+        accepted => { LibraryBridge.m-search(); }
+    }
+    if LibraryBridge.m-search-query == "": Text {
+        x: 13.6px;
+        width: parent.width - 27.2px;
+        height: parent.height;
+        text: T.tr("mods.searchPlaceholder");
+        color: Theme.muted;
+        font-size: Theme.text-sm;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component SearchHeader inherits GlassCard {
+    padding-size: 0px;
+    height: col.preferred-height;
+    col := VerticalLayout {
+        padding: Theme.space-4;
+        spacing: Theme.space-3;
+        // row 1: the Modrinth mark and the content-type pills
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                Icon { data: ModIcons.modrinth; size: 20px; filled: true; color: Theme.accent-green; }
+            }
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: T.tr("mods.modrinthTab");
+                    font-family: Theme.label-family(8px);
+                    font-size: Theme.label-size(8px);
+                    font-weight: 700;
+                    color: Theme.accent-green;
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Segmented {
+                items: [T.tr("browse.type.mods"), T.tr("browse.type.resourcepacks"), T.tr("browse.type.shaders"), T.tr("browse.type.modpacks")];
+                current <=> LibraryBridge.m-search-type;
+                selected(i) => { LibraryBridge.m-set-type(i); }
+            }
+        }
+        // row 2: search, sort, search button
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            ModrinthInput { }
+            Select {
+                horizontal-stretch: 0;
+                min-width: 176px;
+                placeholder: T.tr("browse.sort.label");
+                options: [
+                    SelectOption { value: "relevance", label: T.tr("browse.sort.relevance") },
+                    SelectOption { value: "downloads", label: T.tr("browse.sort.downloads") },
+                    SelectOption { value: "follows", label: T.tr("browse.sort.follows") },
+                    SelectOption { value: "updated", label: T.tr("browse.sort.updated") },
+                    SelectOption { value: "newest", label: T.tr("browse.sort.newest") }
+                ];
+                current-index <=> LibraryBridge.m-search-sort;
+                selected(i, value) => { LibraryBridge.m-set-sort(i); }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    size: BtnSize.sm;
+                    text: T.tr("mods.search");
+                    loading: LibraryBridge.m-searching;
+                    enabled: !LibraryBridge.m-searching;
+                    clicked => { LibraryBridge.m-search(); }
+                }
+            }
+        }
+        // row 3: category chips of the current content type, scrolling sideways
+        Flickable {
+            height: cats.preferred-height;
+            content-width: cats.preferred-width;
+            interactive: true;
+            cats := HorizontalLayout {
+                y: 0;
+                height: self.preferred-height;
+                spacing: Theme.space-2;
+                alignment: start;
+                for c in LibraryBridge.m-cat-list: Chip {
+                    text: c.label;
+                    active: c.selected;
+                    clicked => { LibraryBridge.m-cat-toggle(c.slug); }
+                }
+            }
+        }
+        // row 4: filters
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            Chip {
+                text: T.tr("browse.anyVersion");
+                active: LibraryBridge.m-search-any-version;
+                clicked => { LibraryBridge.m-set-any-version(!LibraryBridge.m-search-any-version); }
+            }
+            if LibraryBridge.m-search-type == 0: Chip {
+                text: T.tr("browse.includeServer");
+                active: LibraryBridge.m-search-server-only;
+                clicked => { LibraryBridge.m-set-server-only(!LibraryBridge.m-search-server-only); }
+            }
+        }
+        if LibraryBridge.m-has-target && LibraryBridge.m-sel-version != "": Text {
+            text: T.tr2("mods.searchHint", "loader", LibraryBridge.m-sel-loader, "version", LibraryBridge.m-sel-version);
+            font-family: Theme.font-mono;
+            font-size: Theme.text-xs;
+            color: Theme.muted;
+            font-weight: 500;
+        }
+    }
+}
+
+/// One search hit. Clicking the card (icon, title, meta, tags) opens the detail modal;
+/// the footer Install keeps its own press.
+component ResultCard inherits GlassCard {
+    padding-size: 0px;
+    in property <ModrinthCard> card;
+    clickable: true;
+    clicked => { LibraryBridge.m-open-detail(root.card.project-id); }
+    VerticalLayout {
+        padding: Theme.space-4;
+        spacing: 0px;
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            padding-bottom: Theme.space-2;
+            VerticalLayout {
+                alignment: start;
+                if root.card.has-icon: Rectangle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: Theme.radius-md;
+                    background: Theme.card-bg-soft;
+                    border-width: Theme.hairline;
+                    border-color: Theme.border-solid;
+                    clip: true;
+                    Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.card.icon;
+                        image-fit: cover;
+                    }
+                }
+                if !root.card.has-icon && root.card.icon-url != "": Rectangle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: Theme.radius-md;
+                    background: Theme.card-bg-soft;
+                    border-width: Theme.hairline;
+                    border-color: Theme.border-solid;
+                }
+                if !root.card.has-icon && root.card.icon-url == "": MonogramTile {
+                    name: root.card.title;
+                    size: 44px;
+                    shape: MonogramShape.rounded;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2.4px;
+                alignment: start;
+                Text {
+                    text: root.card.title;
+                    font-size: 15px;
+                    font-weight: 700;
+                    color: Theme.text;
+                    overflow: elide;
+                }
+                if root.card.author != "": SelectableText {
+                    text: T.tr1("browse.author", "name", root.card.author);
+                    font-size: Theme.text-xs;
+                    color: Theme.muted;
+                    font-weight: 500;
+                }
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    Text {
+                        text: T.tr1("mods.downloads", "count", root.card.downloads);
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        font-weight: 500;
+                    }
+                    if root.card.updated != "": Text {
+                        text: T.tr1("browse.updatedAgo", "when", root.card.updated);
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        font-weight: 500;
+                    }
+                    if root.card.side != "": Badge {
+                        text: root.card.side == "both" ? T.tr("browse.side.both")
+                            : root.card.side == "client" ? T.tr("browse.side.client") : T.tr("browse.side.server");
+                        variant: BadgeVariant.neutral;
+                    }
+                }
+            }
+        }
+        Text {
+            text: root.card.description;
+            color: Theme.muted;
+            font-size: 13px;
+            line-height-factor: 1.6 / 1.28;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-alignment: top;
+            height: 3 * 13px * 1.6;
+        }
+        if root.card.categories.length > 0: HorizontalLayout {
+            padding-top: Theme.space-1;
+            spacing: Theme.space-1;
+            alignment: start;
+            for tag in root.card.categories: Badge {
+                text: tag;
+                variant: BadgeVariant.neutral;
+            }
+        }
+        Rectangle { min-height: Theme.space-3; vertical-stretch: 1; }
+        Rectangle { height: Theme.hairline; background: Theme.border-solid; }
+        HorizontalLayout {
+            padding-top: 9.6px;
+            spacing: Theme.space-2;
+            alignment: end;
+            if root.card.installed: VerticalLayout {
+                alignment: center;
+                Badge { text: T.tr("mods.alreadyInstalled"); variant: BadgeVariant.ok; }
+            }
+            if !root.card.installed && root.card.conflict != "": VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                SelectableText {
+                    text: T.tr1("mods.conflictWarn", "mods", root.card.conflict);
+                    font-size: Theme.text-xs;
+                    color: Theme.accent-alt;
+                    wrap: word-wrap;
+                }
+            }
+            if !root.card.installed: VerticalLayout {
+                alignment: center;
+                // install / install-anyway share one button: the two branches
+                // compiled the same subtree twice (Phase 4A)
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    text: root.card.conflict != ""
+                        ? T.tr("mods.installAnyway")
+                        : (LibraryBridge.m-installing-id == root.card.project-id ? T.tr("mods.installingMod") : T.tr("mods.install"));
+                    loading: root.card.conflict == "" && LibraryBridge.m-installing-id == root.card.project-id;
+                    enabled: LibraryBridge.m-installing-id == "";
+                    clicked => {
+                        if root.card.conflict != "" {
+                            LibraryBridge.m-install(root.card.project-id, root.card.title, true);
+                        } else {
+                            LibraryBridge.m-install(root.card.project-id, root.card.title, false);
+                        }
+                    }
+                }
+            }
+        }
+        if root.card.optional.length > 0: HorizontalLayout {
+            padding-top: Theme.space-1;
+            spacing: Theme.space-1;
+            alignment: start;
+            Text { text: T.tr("mods.optionalDeps"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
+            for opt in root.card.optional: VerticalLayout {
+                alignment: center;
+                Btn {
+                    variant: BtnVariant.ghost;
+                    size: BtnSize.sm;
+                    text: "+ " + opt.title;
+                    enabled: LibraryBridge.m-installing-id == "";
+                    clicked => { LibraryBridge.m-install(opt.project-id, opt.title, false); }
+                }
+            }
+        }
+    }
+}
+
+/// CSS grid repeat(auto-fit, minmax(340px, 1fr)) with gap 16px (equal row heights).
+component ResultsGrid inherits Rectangle {
+    property <int> cols: max(1, floor((self.width + 16px) / 356px));
+    property <length> cell-w: (self.width - (cols - 1) * 16px) / cols;
+    property <length> cell-h: LibraryBridge.m-any-optional ? 300px : 262px;
+    property <int> n: LibraryBridge.m-results.length;
+    height: n == 0 ? 0px : ceil(n / cols) * (cell-h + 16px) - 16px;
+    for card[i] in LibraryBridge.m-results: ResultCard {
+        card: card;
+        x: mod(i, root.cols) * (root.cell-w + 16px);
+        y: floor(i / root.cols) * (root.cell-h + 16px);
+        width: root.cell-w;
+        height: root.cell-h;
+    }
+}
+
+export component ModrinthPane inherits VerticalLayout {
+    // the vanilla state shows its own hint instead of results
+    property <bool> browsing: !LibraryBridge.m-mods-blocked;
+    spacing: Theme.space-4;
+    SearchHeader { }
+    if !browsing: StatePanel {
+        Text {
+            text: T.tr("browse.vanillaModsTitle");
+            color: Theme.text;
+            font-size: Theme.text-xl;
+            font-weight: 700;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        Text {
+            text: T.tr("browse.vanillaModsHint");
+            color: Theme.muted;
+            font-size: Theme.text-sm;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    if browsing && LibraryBridge.m-search-error != "": ErrorBanner { text: LibraryBridge.m-search-error; }
+    if browsing && !LibraryBridge.m-has-results && (LibraryBridge.m-searching || LibraryBridge.m-search-error == ""): LoadingPanel { text: T.tr("mods.searching"); }
+    if browsing && !LibraryBridge.m-has-results && !LibraryBridge.m-searching && LibraryBridge.m-search-error != "": StatePanel {
+        HorizontalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.secondary;
+                text: T.tr("mods.search");
+                clicked => { LibraryBridge.m-search(); }
+            }
+        }
+    }
+    if browsing && LibraryBridge.m-has-results && LibraryBridge.m-results.length == 0: EmptyPanel {
+        emoji: "🔍";
+        title: T.tr("mods.noResults");
+        hint: T.tr("mods.noResultsHint");
+    }
+    if browsing && LibraryBridge.m-has-results && LibraryBridge.m-results.length > 0 && LibraryBridge.m-search-query == "": HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            GlowDot { tint: Theme.accent; }
+        }
+        Text { text: T.tr("mods.exploreTitle"); font-size: 15px; font-weight: 700; color: Theme.text; }
+    }
+    if browsing && LibraryBridge.m-has-results && LibraryBridge.m-results.length > 0: ResultsGrid { }
+    if browsing && LibraryBridge.m-has-results && LibraryBridge.m-has-more: HorizontalLayout {
+        padding-bottom: Theme.space-2;
+        alignment: center;
+        Btn {
+            variant: BtnVariant.secondary;
+            text: T.tr("mods.showMore");
+            loading: LibraryBridge.m-loading-more;
+            enabled: !LibraryBridge.m-loading-more;
+            clicked => { LibraryBridge.m-load-more(); }
+        }
+    }
+}

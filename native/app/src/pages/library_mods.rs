@@ -9,6 +9,7 @@
 //! |-------------|--------------|
 //! | `versions`  | VersionArmory (`#/library/versions`) |
 //! | `mods`      | ModCatalog (`#/mods`) + `icons` (Modrinth icon LRU) |
+//! | `browse`    | ModCatalog Modrinth tab: search, result cards, detail modal, installs (`gallery` = screenshot LRU) |
 //! | `import`    | ImportCenter (`#/library/import`) |
 //! | `mrpack`    | MrpackModal (any page hosting `MrpackModal {}`) |
 //! | `drop`      | OS drag & drop of `.mrpack` files onto the window |
@@ -21,9 +22,11 @@ use crate::bridge::Ctx;
 use crate::router::{self, Route};
 use crate::{AppWindow, LibraryBridge, Page};
 
+mod browse;
 mod debug;
 mod donations;
 mod drop;
+mod gallery;
 mod icons;
 mod import;
 mod mods;
@@ -34,6 +37,7 @@ mod versions;
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
     versions::init(ctx, ui);
     mods::init(ctx, ui);
+    browse::init(ui);
     import::init(ctx, ui);
     mrpack::init(ctx, ui);
     drop::init(ctx, ui);

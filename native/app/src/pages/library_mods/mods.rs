@@ -1,39 +1,34 @@
 //! ModCatalog (`#/mods`): instance chips, installed mods inventory (filters,
 //! optimistic enable/disable), performance preset (engine install_mod_preset),
-//! Modrinth search/explore (12 per page, offset paging, infinite scroll) with
-//! single-mod installs + dependency plans, and live `mod-progress` tracking.
+//! and live `mod-progress` tracking. The Modrinth tab lives in `browse.rs`; this file
+//! keeps the installed-mods side and the page wiring.
 //! Port of pages/ModCatalog.svelte (same terminal-event rules and fallbacks).
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::collections::HashMap;
 use std::time::Duration;
 
-use espectral_engine::api::content::ModrinthSearchQuery;
 use espectral_engine::events::{EngineEvent, ProgressEvent};
 use espectral_engine::fabric_compat::{
     format_predicate_human, known_modrinth_for_id, CompatFix, CompatIssueKind, CompatSeverity, ModCompatIssue,
     ModCompatReport,
 };
 use espectral_engine::types::{
-    InstanceSummary, ModEntry, ModInstallPlan, ModInstallPreview, ModPreset, ModPresetInfo, ModRef, ModVersionItem,
-    ModVersionSwitchPlan, ModrinthProject,
+    InstanceSummary, ModEntry, ModPreset, ModPresetInfo, ModVersionItem, ModVersionSwitchPlan,
 };
-use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
+use slint::{ComponentHandle, SharedString, Timer, TimerMode};
 
-use super::{icons, model, ss};
+use super::{browse, model, ss};
 use crate::bridge::{self, Ctx};
 use crate::i18n::{self, Lang};
 use crate::router::Route;
 use crate::{
-    prefs, store, toast, util, AppWindow, LibraryBridge, ModChangeSummary, ModCompatNote, ModRefRow, ModRow,
-    ModVersionOption, ModrinthCard, PinnedPill,
+    prefs, store, toast, util, AppWindow, LibraryBridge, ModChangeSummary, ModCompatNote, ModRow, ModVersionOption,
+    PinnedPill,
 };
 
 const PREFS_INSTANCE: &str = "mods.instance";
-const SEARCH_PAGE_SIZE: usize = 12;
-const FALLBACK: Duration = Duration::from_secs(90);
-const DEBOUNCE: Duration = Duration::from_millis(450);
+pub(super) const FALLBACK: Duration = Duration::from_secs(90);
 
 /// Pinned performance set: (slug, requires, required by).
 const PINNED_SET: [(&str, &[&str], &[&str]); 8] = [
@@ -46,12 +41,6 @@ const PINNED_SET: [(&str, &[&str], &[&str]); 8] = [
     ("modmenu", &[], &[]),
     ("fabric-api", &[], &[]),
 ];
-
-struct PendingInstall {
-    project_id: String,
-    instance: String,
-    plan: Option<ModInstallPlan>,
-}
 
 #[derive(Default)]
 struct State {
@@ -76,31 +65,11 @@ struct State {
     ver_plan: Option<ModVersionSwitchPlan>,
     ver_seq: u64,
     ver_plan_seq: u64,
-    // Modrinth install preview modal
-    preview: Option<ModInstallPreview>,
-    // Modrinth
-    results: Option<Vec<ModrinthProject>>,
-    total: Option<u64>,
-    last_batch: usize,
-    search_seq: u64,
-    searching: bool,
-    loading_more: bool,
-    search_error: String,
-    installing_id: Option<String>,
-    pending: Option<PendingInstall>,
-    /// (project id, conflicting titles)
-    conflict: Option<(String, String)>,
-    optional: HashMap<String, Vec<ModRef>>,
-    /// `instance::project_id` installs confirmed by a terminal event.
-    confirmed: HashSet<String>,
 }
 
 thread_local! {
     static S: RefCell<State> = RefCell::new(State::default());
-    static CARDS: Rc<VecModel<ModrinthCard>> = Rc::new(VecModel::default());
     static PRESET_FALLBACK: Timer = Timer::default();
-    static SINGLE_FALLBACK: Timer = Timer::default();
-    static DEBOUNCE_TIMER: Timer = Timer::default();
 }
 
 fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
@@ -114,7 +83,6 @@ fn win() -> Option<AppWindow> {
 pub fn init(ctx: &Ctx, ui: &AppWindow) {
     super::set_ctx(ctx);
     let b = ui.global::<LibraryBridge>();
-    b.set_m_results(ModelRc::from(CARDS.with(|c| c.clone())));
     if let Some(saved) = prefs::get_str(PREFS_INSTANCE) {
         with(|s| s.target = saved);
     }
@@ -124,10 +92,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
         let Some(ui) = win() else { return };
         ui.global::<LibraryBridge>().set_m_tab(tab);
         if tab == 2 {
-            let need = with(|s| s.results.is_none() && !s.searching);
-            if need {
-                run_search(false);
-            }
+            browse::enter(&ui);
         }
     });
     b.on_m_set_filter(|f| {
@@ -143,20 +108,6 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     b.on_m_toggle(|filename| toggle(filename.to_string()));
     b.on_m_install_preset(install_preset);
     b.on_m_open_folder(open_folder);
-    b.on_m_search_edited(|_q| {
-        DEBOUNCE_TIMER.with(|t| t.start(TimerMode::SingleShot, DEBOUNCE, || run_search(false)));
-    });
-    b.on_m_search(|| {
-        DEBOUNCE_TIMER.with(|t| t.stop());
-        run_search(false);
-    });
-    b.on_m_load_more(|| {
-        let ok = with(|s| !s.loading_more && !s.searching && has_more(s));
-        if ok {
-            run_search(true);
-        }
-    });
-    b.on_m_install(|id, title, force| install_mod(id.to_string(), title.to_string(), force));
     b.on_m_reload(|| {
         load_mods();
         load_preset();
@@ -169,8 +120,6 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     b.on_m_select_version(|vid| select_version(vid.to_string()));
     b.on_m_apply_version(apply_version);
     b.on_m_close_versions(close_versions);
-    b.on_m_prev_confirm(confirm_preview);
-    b.on_m_prev_cancel(cancel_preview);
     b.on_m_apply_fix(|kind, target, arg| apply_fix(kind.to_string(), target.to_string(), arg.to_string()));
 
     bridge::on_event(|ui, ev| {
@@ -195,13 +144,9 @@ pub fn on_enter(ui: &AppWindow, route: &Route) {
             s.mods = super::debug::fake_mods();
             s.compat = None;
             s.loading = false;
-            let r = super::debug::fake_projects();
-            s.total = Some(40);
-            s.last_batch = r.len();
-            s.results = Some(r);
         });
         push_all(ui);
-        rebuild_cards(ui);
+        browse::show_fake(ui);
         return;
     }
     push_all(ui);
@@ -236,7 +181,12 @@ fn ensure_target(_ui: &AppWindow) {
     });
 }
 
-fn selected_instance(target: &str) -> Option<InstanceSummary> {
+/// Instance the Mods page manages (the Modrinth tab in browse.rs reads it too).
+pub(super) fn target() -> String {
+    with(|s| s.target.clone())
+}
+
+pub(super) fn selected_instance(target: &str) -> Option<InstanceSummary> {
     store::instances().into_iter().find(|i| i.name == target)
 }
 
@@ -252,33 +202,21 @@ fn select_instance(name: String) {
     if changed {
         // Modrinth results belong to the previous instance: drop them and the
         // cards so nothing stale flashes, and re-search if the tab is open.
-        let on_modrinth_tab = ui.global::<LibraryBridge>().get_m_tab() == 2;
         with(|s| {
             s.mods.clear();
             s.compat = None;
             s.preset = None;
-            s.results = None;
-            s.total = None;
-            s.last_batch = 0;
-            s.conflict = None;
-            s.optional.clear();
-            s.search_seq += 1;
-            s.searching = false;
-            s.loading_more = false;
         });
+        browse::instance_switched(&ui);
         ui.global::<LibraryBridge>().set_m_filter(0);
         push_mods(&ui);
-        rebuild_cards(&ui);
         load_mods();
         load_preset();
         load_compat();
-        if on_modrinth_tab {
-            run_search(false);
-        }
     }
 }
 
-fn load_compat() {
+pub(super) fn load_compat() {
     if super::debug::has("mods-fake") {
         return;
     }
@@ -310,7 +248,7 @@ fn load_compat() {
 
 // ---------------------------------------------------------------- loading
 
-fn load_mods() {
+pub(super) fn load_mods() {
     if super::debug::has("mods-fake") {
         return;
     }
@@ -359,7 +297,7 @@ fn load_mods() {
     );
 }
 
-fn load_preset() {
+pub(super) fn load_preset() {
     let Some(c) = super::ctx() else { return };
     let target = with(|s| {
         s.preset = None;
@@ -392,7 +330,7 @@ fn load_preset() {
 fn push_all(ui: &AppWindow) {
     push_target(ui);
     push_mods(ui);
-    push_search(ui);
+    browse::push_search(ui);
 }
 
 fn push_target(ui: &AppWindow) {
@@ -521,7 +459,7 @@ fn format_compat_note(i: &ModCompatIssue, can_switch_self: bool, iris_enabled: b
     }
 }
 
-fn push_mods(ui: &AppWindow) {
+pub(super) fn push_mods(ui: &AppWindow) {
     let b = ui.global::<LibraryBridge>();
     let mut filter = b.get_m_filter();
     let q = b.get_m_filter_query().trim().to_lowercase();
@@ -659,128 +597,6 @@ fn mod_row(m: &ModEntry, raw_issues: &[&ModCompatIssue], iris_enabled: bool) -> 
     }
 }
 
-fn has_more(s: &State) -> bool {
-    match &s.results {
-        Some(r) if !r.is_empty() => match s.total {
-            Some(t) => (r.len() as u64) < t,
-            None => s.last_batch == SEARCH_PAGE_SIZE,
-        },
-        _ => false,
-    }
-}
-
-fn push_search(ui: &AppWindow) {
-    let b = ui.global::<LibraryBridge>();
-    with(|s| {
-        b.set_m_searching(s.searching);
-        b.set_m_loading_more(s.loading_more);
-        b.set_m_search_error(ss(&s.search_error));
-        b.set_m_has_results(s.results.is_some());
-        b.set_m_has_more(has_more(s));
-        b.set_m_installing_id(ss(s.installing_id.as_deref().unwrap_or("")));
-        b.set_m_any_optional(s.optional.values().any(|v| !v.is_empty()));
-    });
-}
-
-/// Rebuild every card (keeps the model object so the grid stays bound).
-fn rebuild_cards(ui: &AppWindow) {
-    let cards: Vec<ModrinthCard> = with(|s| {
-        let prefix = format!("{}::", s.target);
-        s.results.as_ref().map(|r| r.iter().map(|p| card(s, p, &prefix)).collect()).unwrap_or_default()
-    });
-    request_icons(&cards);
-    CARDS.with(|m| m.set_vec(cards));
-    push_search(ui);
-}
-
-/// Refresh the cards' dynamic fields in place (installed / conflict / optional).
-fn refresh_cards(ui: &AppWindow) {
-    CARDS.with(|m| {
-        with(|s| {
-            let prefix = format!("{}::", s.target);
-            let Some(results) = s.results.as_ref() else { return };
-            for (i, p) in results.iter().enumerate() {
-                if i >= m.row_count() {
-                    break;
-                }
-                let c = card(s, p, &prefix);
-                m.set_row_data(i, c);
-            }
-        });
-    });
-    push_search(ui);
-}
-
-fn card(s: &State, p: &ModrinthProject, prefix: &str) -> ModrinthCard {
-    let url = p.icon_url.clone().unwrap_or_default();
-    let icon = if url.is_empty() { None } else { icons::get(&url) };
-    let installed = p.installed == Some(true) || s.confirmed.contains(&format!("{prefix}{}", p.project_id));
-    let optional: Vec<ModRefRow> = s
-        .optional
-        .get(&p.project_id)
-        .map(|v| v.iter().map(|o| ModRefRow { project_id: ss(&o.project_id), title: ss(&o.title) }).collect())
-        .unwrap_or_default();
-    ModrinthCard {
-        project_id: ss(&p.project_id),
-        title: ss(&p.title),
-        description: ss(&p.description),
-        downloads: ss(group_digits(p.downloads, i18n::lang())),
-        icon_url: ss(&url),
-        has_icon: icon.is_some(),
-        icon: icon.unwrap_or_default(),
-        installed,
-        conflict: ss(s
-            .conflict
-            .as_ref()
-            .filter(|(id, _)| *id == p.project_id)
-            .map(|(_, m)| m.clone())
-            .unwrap_or_default()),
-        optional: model(optional),
-    }
-}
-
-fn request_icons(cards: &[ModrinthCard]) {
-    let Some(c) = super::ctx() else { return };
-    for card in cards.iter().filter(|c| !c.has_icon && !c.icon_url.is_empty()) {
-        icons::request(&c, &card.icon_url, icon_ready);
-    }
-}
-
-fn icon_ready(_ui: &AppWindow, url: &str) {
-    let Some(img) = icons::get(url) else { return };
-    CARDS.with(|m| {
-        for i in 0..m.row_count() {
-            if let Some(mut c) = m.row_data(i) {
-                if c.icon_url.as_str() == url && !c.has_icon {
-                    c.icon = img.clone();
-                    c.has_icon = true;
-                    m.set_row_data(i, c);
-                }
-            }
-        }
-    });
-}
-
-/// `Number.toLocaleString()` for es (grouping from 5 digits, '.') / en (',').
-pub fn group_digits(n: u64, lang: Lang) -> String {
-    let digits = n.to_string();
-    let sep = match lang {
-        Lang::Es => '.',
-        Lang::En => ',',
-    };
-    if lang == Lang::Es && digits.len() <= 4 {
-        return digits;
-    }
-    let mut out = String::new();
-    for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(sep);
-        }
-        out.push(ch);
-    }
-    out
-}
-
 // ---------------------------------------------------------------- actions
 
 fn toggle(filename: String) {
@@ -892,106 +708,6 @@ fn open_folder() {
         },
         |_ui, _err| toast::err(i18n::t("mods.openFolderError")),
     );
-}
-
-fn run_search(append: bool) {
-    let Some(c) = super::ctx() else { return };
-    let Some(ui) = win() else { return };
-    let q = ui.global::<LibraryBridge>().get_m_search_query().trim().to_string();
-    let (seq, offset, target) = with(|s| {
-        let offset = if append { s.results.as_ref().map(|r| r.len()).unwrap_or(0) } else { 0 };
-        s.search_seq += 1;
-        if append {
-            s.loading_more = true;
-        } else {
-            s.searching = true;
-            s.search_error.clear();
-        }
-        (s.search_seq, offset as u64, s.target.clone())
-    });
-    push_search(&ui);
-    let sel = selected_instance(&target);
-    let query = ModrinthSearchQuery {
-        q,
-        version: sel.as_ref().map(|i| i.version.clone()),
-        loader: sel.as_ref().map(|i| i.loader.content_loader().to_string()),
-        instance: sel.as_ref().map(|i| i.name.clone()),
-        offset,
-        sort: None,
-        include_server_only: false,
-    };
-    c.call_with(
-        move |e| async move { e.search_modrinth(query).await },
-        move |ui, data| {
-            let current = with(|s| {
-                if s.search_seq != seq {
-                    return false;
-                }
-                s.last_batch = data.results.len();
-                s.total = Some(data.total);
-                s.searching = false;
-                s.loading_more = false;
-                match (append, s.results.as_mut()) {
-                    (true, Some(r)) => r.extend(data.results),
-                    _ => s.results = Some(data.results),
-                }
-                true
-            });
-            if !current {
-                return;
-            }
-            if append {
-                // append the new cards only (keeps the scroll position)
-                let new_cards: Vec<ModrinthCard> = with(|s| {
-                    let prefix = format!("{}::", s.target);
-                    let r = s.results.as_deref().unwrap_or(&[]);
-                    let start = CARDS.with(|m| m.row_count()).min(r.len());
-                    r[start..].iter().map(|p| card(s, p, &prefix)).collect()
-                });
-                request_icons(&new_cards);
-                CARDS.with(|m| {
-                    for c in new_cards {
-                        m.push(c);
-                    }
-                });
-                push_search(ui);
-            } else {
-                rebuild_cards(ui);
-            }
-        },
-        move |ui, _err| {
-            let current = with(|s| {
-                if s.search_seq != seq {
-                    return false;
-                }
-                s.search_error = i18n::t("mods.searchError");
-                if !append {
-                    s.results = None;
-                    s.total = None;
-                    s.last_batch = 0;
-                }
-                s.searching = false;
-                s.loading_more = false;
-                true
-            });
-            if current {
-                if !append {
-                    rebuild_cards(ui);
-                } else {
-                    push_search(ui);
-                }
-            }
-        },
-    );
-}
-
-fn mark_installed(s: &mut State, project_id: &str) {
-    s.confirmed.insert(format!("{}::{project_id}", s.target));
-    if let Some(r) = s.results.as_mut() {
-        for p in r.iter_mut().filter(|p| p.project_id == project_id) {
-            p.installed = Some(true);
-        }
-    }
 }
 
 fn ask_delete(filename: String) {
@@ -1405,7 +1121,7 @@ pub(crate) fn fix_summary(r: &espectral_engine::types::CompatBatchFixResult) -> 
 
 fn install_missing_mod_id(mod_id: String, display: String) {
     let Some(c) = super::ctx() else { return };
-    let inst = with(|s| s.target.clone());
+    let inst = target();
     if inst.is_empty() {
         return;
     }
@@ -1415,214 +1131,13 @@ fn install_missing_mod_id(mod_id: String, display: String) {
         move |e| async move { e.resolve_modrinth_for_mod_id(&inst, &id2).await },
         move |ui, found| {
             if let Some(mref) = found {
-                install_mod(mref.project_id, mref.title, false);
+                browse::install_mod(mref.project_id, mref.title, false);
             } else {
                 // Fallback: switch to Explorar Modrinth pre-filled with the missing mod id.
-                let b = ui.global::<LibraryBridge>();
-                b.set_m_tab(2);
-                b.set_m_search_query(ss(if display.is_empty() { mod_id } else { display }));
-                run_search(false);
+                browse::open_search(ui, if display.is_empty() { mod_id } else { display });
             }
         },
-        move |ui, _err| {
-            let b = ui.global::<LibraryBridge>();
-            b.set_m_tab(2);
-            b.set_m_search_query(ss(id_err));
-            run_search(false);
-        },
-    );
-}
-
-fn install_mod(project_id: String, title: String, force: bool) {
-    let Some(c) = super::ctx() else { return };
-    let target = with(|s| {
-        if s.target.is_empty() {
-            return None;
-        }
-        s.installing_id = Some(project_id.clone());
-        Some(s.target.clone())
-    });
-    let Some(target) = target else { return };
-    if let Some(ui) = win() {
-        push_search(&ui);
-    }
-    if force {
-        commit_install(target, project_id, true, true);
-        return;
-    }
-    // Pre-install compatibility & upgrade check before touching mods/
-    let (pid_ok, t_ok) = (project_id.clone(), target.clone());
-    c.call_with(
-        move |e| async move { e.preview_modrinth_install(&target, &project_id, None, Vec::new()).await },
-        move |ui, preview| {
-            if !preview.needs_confirmation {
-                commit_install(t_ok, pid_ok, false, false);
-                return;
-            }
-            // Show pre-install confirmation modal with upgrades / conflicts / compat warnings!
-            let upgrades: Vec<ModChangeSummary> = preview
-                .upgrades
-                .iter()
-                .map(|u| ModChangeSummary {
-                    title: ss(&u.title),
-                    from_ver: ss(&u.from_version),
-                    to_ver: ss(&u.to_version_number),
-                })
-                .collect();
-            let enables: Vec<SharedString> = preview.enable_disabled.iter().map(ss).collect();
-            let conflicts = preview.conflicts.iter().map(|c| c.title.as_str()).collect::<Vec<_>>().join(", ");
-            let missing = preview.missing.iter().map(|m| m.title.as_str()).collect::<Vec<_>>().join(", ");
-            let issues: Vec<SharedString> =
-                preview.compat_issues.iter().map(|i| ss(format_issue_text(i))).collect();
-            let has_errors = !preview.conflicts.is_empty()
-                || preview.compat_issues.iter().any(|i| i.severity == CompatSeverity::Error);
-            let modal_title = if preview.title.is_empty() { title } else { preview.title.clone() };
-            with(|s| {
-                s.installing_id = None;
-                s.preview = Some(preview);
-            });
-            let b = ui.global::<LibraryBridge>();
-            b.set_m_prev_project_id(ss(&pid_ok));
-            b.set_m_prev_title(ss(modal_title));
-            b.set_m_prev_upgrades(model(upgrades));
-            b.set_m_prev_enables(model(enables));
-            b.set_m_prev_conflicts(ss(conflicts));
-            b.set_m_prev_missing(ss(missing));
-            b.set_m_prev_issues(model(issues));
-            b.set_m_prev_has_errors(has_errors);
-            b.set_m_prev_committing(false);
-            b.set_m_prev_open(true);
-            refresh_cards(ui);
-        },
-        move |ui, err| {
-            with(|s| {
-                s.installing_id = None;
-                s.pending = None;
-            });
-            refresh_cards(ui);
-            let msg = err.envelope().message;
-            toast::err(if msg.is_empty() { "Error installing mod".to_string() } else { msg });
-        },
-    );
-}
-
-fn cancel_preview() {
-    let Some(ui) = win() else { return };
-    let b = ui.global::<LibraryBridge>();
-    if b.get_m_prev_committing() {
-        return;
-    }
-    b.set_m_prev_open(false);
-    with(|s| s.preview = None);
-}
-
-fn confirm_preview(apply_upgrades: bool) {
-    let Some(ui) = win() else { return };
-    let b = ui.global::<LibraryBridge>();
-    if b.get_m_prev_committing() {
-        return;
-    }
-    let (target, pid) = with(|s| {
-        let pid = s.preview.as_ref().map(|p| p.project_id.clone()).unwrap_or_default();
-        (s.target.clone(), pid)
-    });
-    if target.is_empty() || pid.is_empty() {
-        b.set_m_prev_open(false);
-        return;
-    }
-    b.set_m_prev_committing(true);
-    commit_install(target, pid, apply_upgrades, true);
-}
-
-fn commit_install(target: String, project_id: String, apply_upgrades: bool, force: bool) {
-    let Some(c) = super::ctx() else { return };
-    with(|s| {
-        s.installing_id = Some(project_id.clone());
-        s.pending = Some(PendingInstall { project_id: project_id.clone(), instance: target.clone(), plan: None });
-    });
-    if let Some(ui) = win() {
-        push_search(&ui);
-    }
-    let (pid, pid_err, inst) = (project_id.clone(), project_id.clone(), target.clone());
-    c.call_with(
-        move |e| async move {
-            e.commit_modrinth_install(&target, &project_id, apply_upgrades, force, None, Vec::new()).await
-        },
-        move |ui, plan| {
-            let b = ui.global::<LibraryBridge>();
-            b.set_m_prev_committing(false);
-            b.set_m_prev_open(false);
-            let text = if plan.dependencies.is_empty() {
-                format!("{} {}…", i18n::t("mods.installingMod"), plan.project.title)
-            } else {
-                i18n::tf(
-                    "mods.installingWithDeps",
-                    &[("name", &plan.project.title), ("count", &plan.dependencies.len().to_string())],
-                )
-            };
-            with(|s| {
-                s.preview = None;
-                if let Some(p) = s.pending.as_mut().filter(|p| p.project_id == pid) {
-                    p.plan = Some(plan);
-                }
-                if s.conflict.as_ref().is_some_and(|(id, _)| *id == pid) {
-                    s.conflict = None;
-                }
-            });
-            refresh_cards(ui);
-            toast::info(text);
-            let (pending_id, pending_inst) = (pid.clone(), inst.clone());
-            SINGLE_FALLBACK.with(|t| {
-                t.start(TimerMode::SingleShot, FALLBACK, move || {
-                    let reload = with(|s| {
-                        let same = s
-                            .pending
-                            .as_ref()
-                            .is_some_and(|p| p.project_id == pending_id && p.instance == pending_inst);
-                        if !same {
-                            return false;
-                        }
-                        s.pending = None;
-                        s.installing_id = None;
-                        if pending_inst == s.target {
-                            mark_installed(s, &pending_id);
-                            true
-                        } else {
-                            false
-                        }
-                    });
-                    if let Some(ui) = win() {
-                        refresh_cards(&ui);
-                    }
-                    if reload {
-                        load_mods();
-                        load_preset();
-                        load_compat();
-                        store::refresh_instances();
-                    }
-                })
-            });
-        },
-        move |ui, err| {
-            SINGLE_FALLBACK.with(|t| t.stop());
-            let b = ui.global::<LibraryBridge>();
-            b.set_m_prev_committing(false);
-            b.set_m_prev_open(false);
-            let conflict = err.raw_code() == Some("mod_conflicts");
-            let msg = err.envelope().message;
-            with(|s| {
-                s.preview = None;
-                s.pending = None;
-                s.installing_id = None;
-                if conflict {
-                    s.conflict = Some((pid_err, msg.clone()));
-                }
-            });
-            refresh_cards(ui);
-            if !conflict {
-                toast::err(if msg.is_empty() { "Error installing mod".to_string() } else { msg });
-            }
-        },
+        move |ui, _err| browse::open_search(ui, id_err),
     );
 }
 
@@ -1633,7 +1148,7 @@ fn as_u64(v: &serde_json::Value) -> Option<u64> {
 }
 
 fn on_mod_progress(ui: &AppWindow, p: &ProgressEvent) {
-    let target = with(|s| s.target.clone());
+    let target = target();
     if p.instance.as_deref().is_some_and(|i| i != target) {
         return;
     }
@@ -1651,12 +1166,9 @@ fn on_mod_progress(ui: &AppWindow, p: &ProgressEvent) {
         .or_else(|| p.error.clone().filter(|m| !m.is_empty()))
         .unwrap_or_else(|| "Error installing preset".to_string());
     let completed = phase == "done" && matches!((index, total), (Some(i), Some(t)) if i >= t);
-    let (was_active, is_single) = with(|s| {
-        (
-            s.installing_preset || s.progress.is_some(),
-            !filename.is_empty() && p.preset.is_none() && s.pending.as_ref().is_some_and(|pi| pi.instance == s.target),
-        )
-    });
+    let was_active = with(|s| s.installing_preset || s.progress.is_some());
+    // A single-mod install reports through the same channel; its terminal events belong to browse.rs.
+    let is_single = browse::awaiting_single(&target, !filename.is_empty() && p.preset.is_none());
     let clear_terminal = |s: &mut State| {
         s.progress = None;
         s.installing_preset = false;
@@ -1666,24 +1178,7 @@ fn on_mod_progress(ui: &AppWindow, p: &ProgressEvent) {
         PRESET_FALLBACK.with(|t| t.stop());
         with(clear_terminal);
         if is_single {
-            SINGLE_FALLBACK.with(|t| t.stop());
-            with(|s| {
-                if let Some(pi) = s.pending.take() {
-                    let key = format!("{}::{}", s.target, pi.project_id);
-                    s.confirmed.remove(&key);
-                    if let Some(r) = s.results.as_mut() {
-                        for pr in r.iter_mut().filter(|pr| pr.project_id == pi.project_id) {
-                            pr.installed = Some(false);
-                        }
-                    }
-                }
-                s.installing_id = None;
-            });
-            refresh_cards(ui);
-            push_mods(ui);
-            load_mods();
-            load_preset();
-            toast::err(message);
+            browse::single_failed(ui, message);
             return;
         }
         push_mods(ui);
@@ -1699,41 +1194,7 @@ fn on_mod_progress(ui: &AppWindow, p: &ProgressEvent) {
         PRESET_FALLBACK.with(|t| t.stop());
         with(clear_terminal);
         if is_single {
-            SINGLE_FALLBACK.with(|t| t.stop());
-            let plan = with(|s| {
-                let pi = s.pending.take()?;
-                s.installing_id = None;
-                mark_installed(s, &pi.project_id);
-                if let Some(plan) = pi.plan.as_ref() {
-                    for dep in &plan.dependencies {
-                        mark_installed(s, &dep.project_id);
-                    }
-                    if !plan.optional.is_empty() {
-                        s.optional.insert(pi.project_id.clone(), plan.optional.clone());
-                    }
-                }
-                Some(pi.plan)
-            });
-            refresh_cards(ui);
-            push_mods(ui);
-            load_mods();
-            load_preset();
-            load_compat();
-            store::refresh_instances();
-            let plan = plan.flatten();
-            let text = match plan.as_ref() {
-                Some(pl) if !pl.dependencies.is_empty() => {
-                    let deps: Vec<&str> = pl.dependencies.iter().map(|d| d.title.as_str()).collect();
-                    i18n::tf("mods.installedWithDeps", &[("name", &pl.project.title), ("deps", &deps.join(", "))])
-                }
-                Some(pl) => format!("{} {}", pl.project.title, i18n::t("mods.installed")),
-                None => format!("{filename} {}", i18n::t("mods.installed")),
-            };
-            toast::ok(text);
-            if let Some(pl) = plan.as_ref().filter(|pl| !pl.missing.is_empty()) {
-                let deps: Vec<&str> = pl.missing.iter().map(|d| d.title.as_str()).collect();
-                toast::err(i18n::tf("mods.depsMissing", &[("deps", &deps.join(", "))]));
-            }
+            browse::single_done(ui, &filename);
             return;
         }
         push_mods(ui);
@@ -1776,15 +1237,6 @@ fn on_mod_progress(ui: &AppWindow, p: &ProgressEvent) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn locale_digits() {
-        assert_eq!(group_digits(1234, Lang::Es), "1234");
-        assert_eq!(group_digits(12345, Lang::Es), "12.345");
-        assert_eq!(group_digits(1234567, Lang::Es), "1.234.567");
-        assert_eq!(group_digits(1234, Lang::En), "1,234");
-        assert_eq!(group_digits(999, Lang::En), "999");
-    }
 
     #[test]
     fn names() {
