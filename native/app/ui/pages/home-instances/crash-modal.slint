@@ -1,0 +1,101 @@
+// OWNER: home-instances agent. Post-crash diagnosis (smart-mods plan 1.4), in the
+// ModCompatLaunchModal style. launchlog.rs fills HomeBridge crash-* after a game
+// exits non-zero and runs the buttons; this file only lays them out.
+
+import { Theme, T, Icon, Icons, Btn, BtnVariant, Badge, BadgeVariant, Modal, SelectableText } from "../../widgets.slint";
+import { HomeBridge } from "api.slint";
+import { ModalHead, ModalFoot } from "modals.slint";
+
+export component CrashDiagnosisModal inherits Rectangle {
+    Modal {
+        open: HomeBridge.crash-open;
+        show-close: false;
+        dialog-width: 560px;
+        close => { HomeBridge.crash-open = false; }
+
+        ModalHead {
+            title: T.tr("crash.title");
+            subtitle: T.tr("crash.subtitle");
+            badge: HomeBridge.crash-instance;
+            close => { HomeBridge.crash-open = false; }
+        }
+        VerticalLayout {
+            padding-left: Theme.space-6;
+            padding-right: Theme.space-6;
+            padding-top: Theme.space-5;
+            padding-bottom: Theme.space-5;
+            spacing: Theme.space-3;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                VerticalLayout {
+                    alignment: start;
+                    Icon { data: Icons.alert-triangle; size: 16px; color: Theme.accent-red; }
+                }
+                SelectableText {
+                    text: HomeBridge.crash-cause;
+                    color: Theme.text;
+                    font-size: Theme.text-sm;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+            }
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                alignment: start;
+                for pill in HomeBridge.crash-suspects: Badge { text: pill; variant: BadgeVariant.warn; }
+            }
+            Rectangle {
+                border-radius: Theme.radius-md;
+                background: Theme.card-bg-soft;
+                border-width: Theme.hairline;
+                border-color: Theme.border-solid;
+                VerticalLayout {
+                    padding: Theme.space-3;
+                    spacing: 2px;
+                    for line in HomeBridge.crash-excerpt: SelectableText {
+                        text: line;
+                        color: Theme.muted;
+                        font-family: Theme.font-mono;
+                        font-size: Theme.text-xs;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            if HomeBridge.crash-mclogs-url != "": SelectableText {
+                text: HomeBridge.crash-mclogs-url;
+                color: Theme.text;
+                font-size: Theme.text-xs;
+                wrap: word-wrap;
+            }
+        }
+        ModalFoot {
+            Btn {
+                variant: BtnVariant.ghost;
+                text: T.tr("crash.viewLog");
+                clicked => { HomeBridge.crash-view-log(); }
+            }
+            if HomeBridge.crash-has-report: Btn {
+                variant: BtnVariant.ghost;
+                text: T.tr("crash.openReport");
+                clicked => { HomeBridge.crash-open-report(); }
+            }
+            Btn {
+                variant: BtnVariant.secondary;
+                text: HomeBridge.crash-busy ? T.tr("crash.uploading") : T.tr("crash.copyLink");
+                loading: HomeBridge.crash-busy;
+                clicked => { HomeBridge.crash-copy-link(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Btn {
+                variant: BtnVariant.secondary;
+                text: T.tr("crash.close");
+                clicked => { HomeBridge.crash-open = false; }
+            }
+            if HomeBridge.crash-primary-label != "": Btn {
+                variant: BtnVariant.primary;
+                text: HomeBridge.crash-primary-label;
+                clicked => { HomeBridge.crash-primary(); }
+            }
+        }
+    }
+}

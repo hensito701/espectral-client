@@ -433,7 +433,7 @@ fn update_aot_chip(ui: &AppWindow) {
     hb.set_aot_chip_title(title.into());
 }
 
-fn launch(c: &Ctx, name: String, force_compat: bool) {
+pub(super) fn launch(c: &Ctx, name: String, force_compat: bool) {
     let Some(ui) = c.ui() else { return };
     let hb = ui.global::<HomeBridge>();
     if name.is_empty()

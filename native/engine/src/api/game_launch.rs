@@ -26,6 +26,7 @@
 //! [`presence_event_from_log`]) live here too.
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::Duration;
@@ -104,6 +105,13 @@ struct LaunchBuffer {
     /// Agent launch (`agent: true`): tagged so `/api/launches` rows carry it,
     /// Discord presence is skipped and the agent registry tracks this key.
     agent: bool,
+    /// Where the game ran; per-account profiles get their own dir (set at spawn).
+    game_dir: Option<PathBuf>,
+    /// How the game ended (crash diagnostics read them).
+    exit_code: Option<i32>,
+    exit_signal: Option<String>,
+    /// The player pressed Stop: a kill is not a crash.
+    user_stopped: bool,
 }
 
 impl LaunchBuffer {
@@ -136,6 +144,21 @@ struct RunningProcess {
     /// None for a game adopted from an earlier launcher session (pid only).
     process: Option<ProcessHandle>,
     finalize: Arc<dyn Fn(GameExit) + Send + Sync>,
+}
+
+/// What crash diagnostics read from one launch buffer ([`Engine::crash_source`]).
+#[derive(Debug, Clone)]
+pub(crate) struct CrashSource {
+    pub instance: String,
+    /// None when the launch never spawned a game (cancelled or failed prepare).
+    pub game_dir: Option<PathBuf>,
+    pub started_at: i64,
+    pub running: bool,
+    pub user_stopped: bool,
+    pub exit_code: Option<i32>,
+    pub exit_signal: Option<String>,
+    /// Every retained output line, oldest first.
+    pub lines: Vec<String>,
 }
 
 /// game-launch in-memory state.
@@ -205,6 +228,10 @@ impl GameLaunchState {
                 phases: Map::new(),
                 needs_auto_train: false,
                 agent: false,
+                game_dir: None,
+                exit_code: None,
+                exit_signal: None,
+                user_stopped: false,
             },
         );
     }
@@ -245,6 +272,20 @@ impl Engine {
     /// This cluster's in-memory state.
     pub(crate) fn game_launch_state(&self) -> &GameLaunchState {
         &self.inner.game_launch
+    }
+
+    /// Crash diagnostics' read of one launch buffer (None once pruned or unknown).
+    pub(crate) fn crash_source(&self, key: &str) -> Option<CrashSource> {
+        self.game_launch_state().with_buffer(key, |b| CrashSource {
+            instance: b.instance.clone(),
+            game_dir: b.game_dir.clone(),
+            started_at: b.started_at,
+            running: b.running,
+            user_stopped: b.user_stopped,
+            exit_code: b.exit_code,
+            exit_signal: b.exit_signal.clone(),
+            lines: b.entries.iter().map(|(_, line)| line.clone()).collect(),
+        })
     }
 
     /// Install test seams (resolve / spawn doubles, quiet presence).
@@ -789,6 +830,8 @@ async fn run_launch(
             let snap = st.with_buffer(&key, |b| {
                 b.running = false;
                 b.ended_at = Some(ended_at);
+                b.exit_code = x.code;
+                b.exit_signal = x.signal.clone();
                 let auto = std::mem::take(&mut b.needs_auto_train);
                 (b.clone(), auto)
             });
@@ -898,7 +941,10 @@ async fn run_launch(
             let token = bridge_token.clone();
             let spawned_agent = agent;
             Arc::new(move |at| {
-                e.game_launch_state().with_buffer(&key, |b| b.spawned_at = Some(at));
+                e.game_launch_state().with_buffer(&key, |b| {
+                    b.spawned_at = Some(at);
+                    b.game_dir = Some(game_dir.clone());
+                });
                 // The agent entry was registered when the key was minted; the
                 // resolved gameDir (per-account profile dirs) is only known now.
                 if spawned_agent {
@@ -1143,11 +1189,13 @@ impl Engine {
             return Ok(reply(None, Some(true)));
         }
         let st = self.game_launch_state();
-        let proc = lock(&st.running).get(name).map(|p| (p.pid, p.process.clone()));
-        let Some((pid, process)) = proc else {
+        let proc = lock(&st.running).get(name).map(|p| (p.pid, p.process.clone(), p.key.clone()));
+        let Some((pid, process, key)) = proc else {
             lock(&st.pending_stops).insert(name.to_string());
             return Ok(reply(Some("starting"), None));
         };
+        // A stop the player asked for is not a crash: crash diagnostics skip it.
+        st.with_buffer(&key, |b| b.user_stopped = true);
         force_kill_process(pid, process).await;
         reconcile_running(self);
         Ok(reply(None, None))
