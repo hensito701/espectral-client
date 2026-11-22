@@ -687,6 +687,9 @@ pub enum CompatIssueKind {
     /// Advisory: a mod known to break an Espectral Client feature (only
     /// emitted while an espectral-menu/espectral-brand jar is enabled).
     EspectralConflict,
+    /// The jar's descriptors target a different loader than the instance
+    /// (e.g. a Forge jar in a Fabric instance).
+    WrongLoader,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -733,7 +736,7 @@ pub struct JarModInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ModCompatReport {
-    /// True for Fabric instances; false for Vanilla/Forge/NeoForge.
+    /// True for modded instances (Fabric/Forge/NeoForge); false for Vanilla.
     pub supported: bool,
     pub mc_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1447,23 +1450,46 @@ pub fn scan_mods_dir(mods_dir: &Path) -> Vec<ScannedJar> {
     out
 }
 
-/// Run the full Fabric compatibility check for an instance (synchronous local I/O).
+/// Run the full mod compatibility check for an instance (synchronous local
+/// I/O): Fabric evaluation for Fabric instances, `loader_meta` for
+/// Forge/NeoForge (legacy Forge jars included), wrong-loader issues on top.
+/// Vanilla reports `supported: false`.
 pub fn check_instance_mods_compat_sync(engine: &Engine, instance_name: &str) -> EngineResult<ModCompatReport> {
     let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
-    if instance.loader != Loader::Fabric {
-        let java_major = crate::runtimes::java_major_for_version_id(&instance.version);
-        return Ok(ModCompatReport {
-            supported: false,
-            mc_version: instance.version,
-            loader_version: instance.loader_version,
-            java_major,
-            ..Default::default()
-        });
+    match instance.loader {
+        Loader::Fabric => {
+            let env = discover_fabric_env(engine, &instance);
+            let mods_dir = effective_mods_dir(engine, &instance);
+            let jars = scan_mods_dir(&mods_dir);
+            let mut report = evaluate_fabric_compat(&env, &jars);
+            // Enabled jars that ship no Fabric descriptor (Forge/NeoForge-only
+            // jars, which the Fabric scan drops) get a WrongLoader error.
+            let all = crate::loader_meta::scan_mods_dir(&mods_dir);
+            report.issues.extend(crate::loader_meta::wrong_loader_issues(&all, Loader::Fabric));
+            report.error_count = report.issues.iter().filter(|i| i.severity == CompatSeverity::Error).count();
+            Ok(report)
+        }
+        Loader::Neoforge | Loader::Forge => {
+            let env = crate::loader_meta::LoaderEnv {
+                mc_version: instance.version.clone(),
+                loader: instance.loader,
+                loader_version: instance.loader_version.clone(),
+                java_major: crate::runtimes::java_major_for_version_id(&instance.version),
+            };
+            let jars = crate::loader_meta::scan_mods_dir(&effective_mods_dir(engine, &instance));
+            Ok(crate::loader_meta::evaluate_loader_compat(&env, &jars))
+        }
+        Loader::Vanilla => {
+            let java_major = crate::runtimes::java_major_for_version_id(&instance.version);
+            Ok(ModCompatReport {
+                supported: false,
+                mc_version: instance.version,
+                loader_version: instance.loader_version,
+                java_major,
+                ..Default::default()
+            })
+        }
     }
-    let env = discover_fabric_env(engine, &instance);
-    let mods_dir = effective_mods_dir(engine, &instance);
-    let jars = scan_mods_dir(&mods_dir);
-    Ok(evaluate_fabric_compat(&env, &jars))
 }
 
 /// Async wrapper (runs zip scanning on blocking pool so UI/tokio stay snappy).

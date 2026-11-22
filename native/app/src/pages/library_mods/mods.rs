@@ -457,6 +457,9 @@ fn format_issue_text(i: &ModCompatIssue) -> String {
             let key = format!("mods.espectralConflict.{}", i.reason.as_deref().unwrap_or("unknown"));
             i18n::tf(&key, &[("mod", &i.mod_name)])
         }
+        CompatIssueKind::WrongLoader => {
+            i18n::tf("mods.compatWrongLoader", &[("req", &i.required), ("actual", actual)])
+        }
     }
 }
 

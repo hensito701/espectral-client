@@ -741,7 +741,9 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
             size = Some(st.len());
             sha1 = crate::download::sha1_file(&abs).await.ok();
         }
-        let fabric_meta = crate::fabric_compat::read_fabric_jar(&abs, &base, false);
+        // One multi-descriptor scan covers fabric.mod.json plus
+        // mods.toml / neoforge.mods.toml / mcmod.info jars.
+        let jar_scan = crate::loader_meta::scan_jar(&abs, &base, false);
         let version_id = pin_filename_to_version.get(&base).cloned();
         let pin = version_id.as_ref().and_then(|v| pins.iter().find(|p| &p.version_id == v));
         entries.push(ModEntry {
@@ -754,9 +756,10 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
                         .unwrap_or_else(|| p.version_number.clone())
                 })
                 .or_else(|| {
-                    fabric_meta
+                    jar_scan
                         .as_ref()
-                        .map(|f| crate::fabric_compat::clean_version_display(&f.root.version).to_string())
+                        .and_then(|j| j.primary_version())
+                        .map(str::to_string)
                         .filter(|v| !v.is_empty())
                 }),
             version_id,
@@ -765,8 +768,8 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
             enabled: !disabled,
             installed: true,
             project_id: pin.map(|p| p.project_id.clone()),
-            mod_id: fabric_meta.as_ref().map(|f| f.root.id.clone()),
-            display_name: fabric_meta.as_ref().map(|f| f.root.name.clone()),
+            mod_id: jar_scan.as_ref().and_then(|j| j.primary_id()).map(str::to_string),
+            display_name: jar_scan.as_ref().and_then(|j| j.primary_name()).map(str::to_string),
         });
     }
     // Enrich on-disk non-branding jars with cached Modrinth project_id/version_id
