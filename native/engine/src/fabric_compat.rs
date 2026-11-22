@@ -700,6 +700,9 @@ pub enum CompatFix {
     UpdateMod { filename: String, target_id: String, target_name: String, required: String },
     ChangeVersion { filename: String },
     InstallMod { mod_id: String, name: String },
+    /// Fabric Loader is outside the mod's `fabricloader` range: re-pin the instance to a
+    /// loader version that satisfies `required` (refreshing the cached loader list first).
+    UpdateFabricLoader { required: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1024,7 +1027,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
                                 target_filename: None,
                                 required: pred.raw_string(),
                                 actual: env.loader_version.clone(),
-                                fix: Some(CompatFix::Disable { filename: j.filename.clone() }),
+                                fix: Some(CompatFix::UpdateFabricLoader { required: pred.raw_string() }),
                                 reason: None,
                             });
                         }

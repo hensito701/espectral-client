@@ -309,6 +309,17 @@ pub(crate) fn get_instance_raw(engine: &Engine, name: &str) -> EngineResult<Map<
     Ok(raw)
 }
 
+/// Pin the Fabric loader version of an instance (the compat "re-pin loader" fix).
+/// Validates the version string before it reaches `instance.json`.
+pub(crate) fn set_loader_version(engine: &Engine, name: &str, version: &str) -> EngineResult<()> {
+    validate_loader_version(version)?;
+    let mut raw = get_instance_raw(engine, name)?;
+    raw.insert("loader_version".into(), Value::String(version.to_string()));
+    raw.insert("updated_at".into(), Value::String(crate::platform::now_iso()));
+    write_raw(engine, name, &raw)?;
+    Ok(())
+}
+
 /// Load an instance (409 INVALID_NAME, 404 NOT_FOUND; applies the memory migration).
 pub async fn get_instance(engine: &Engine, name: &str) -> EngineResult<InstanceMeta> {
     get_instance_raw(engine, name).map(|r| meta_from_raw(&r))

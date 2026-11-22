@@ -34,9 +34,10 @@ use crate::error::{EngineError, EngineResult, HttpError, HttpErrorKind};
 use crate::events::{EngineEvent, ProgressChannel, ProgressEvent};
 use crate::instances::effective_mods_dir;
 use crate::types::{
-    CompanionChange, InstanceMeta, Loader, ModDependencyRef, ModEntry, ModInstallPlan, ModInstallPreview,
-    ModInstallUpgrade, ModPreset, ModRef, ModRename, ModVersionItem, ModVersionSwitchPlan, ModVersionSwitchResult,
-    ModVersionsReply, ModrinthProject, ModrinthSearchResult, PresetInstallResult, ReleaseChannel, VersionTarget,
+    CompanionChange, CompatBatchFixResult, InstanceMeta, Loader, ModDependencyRef, ModEntry, ModInstallPlan,
+    ModInstallPreview, ModInstallUpgrade, ModPreset, ModRef, ModRename, ModVersionItem, ModVersionSwitchPlan,
+    ModVersionSwitchResult, ModVersionsReply, ModrinthProject, ModrinthSearchResult, PresetInstallResult,
+    ReleaseChannel, VersionTarget,
 };
 
 pub const MODRINTH_API: &str = "https://api.modrinth.com/v2";
@@ -1847,8 +1848,9 @@ async fn post_version_files(engine: &Engine, hashes: &[String]) -> Result<Map<St
     }
 }
 
-/// Project ids of the jars already in the mods dir (by sha1); None when the lookup fails.
-async fn installed_project_ids(engine: &Engine, mods_dir: &Path, files: &[String]) -> Option<HashSet<String>> {
+/// Modrinth version records of the jars already in the mods dir (one batched lookup by sha1);
+/// None when the lookup fails. Each record carries `project_id` and `dependencies`.
+async fn installed_version_docs(engine: &Engine, mods_dir: &Path, files: &[String]) -> Option<Vec<Value>> {
     let mut hashes = vec![];
     for f in files {
         if let Ok(h) = crate::download::sha1_file(&mods_dir.join(f)).await {
@@ -1856,10 +1858,16 @@ async fn installed_project_ids(engine: &Engine, mods_dir: &Path, files: &[String
         }
     }
     if hashes.is_empty() {
-        return Some(HashSet::new());
+        return Some(vec![]);
     }
     let by_hash = post_version_files(engine, &hashes).await.ok()?;
-    Some(by_hash.values().filter_map(|v| s(v, "project_id")).collect())
+    Some(by_hash.values().cloned().collect())
+}
+
+/// Project ids of the jars already in the mods dir; None when the lookup fails.
+async fn installed_project_ids(engine: &Engine, mods_dir: &Path, files: &[String]) -> Option<HashSet<String>> {
+    let docs = installed_version_docs(engine, mods_dir, files).await?;
+    Some(docs.iter().filter_map(|v| s(v, "project_id")).collect())
 }
 
 
@@ -1989,7 +1997,9 @@ pub async fn plan_mod_install(
     }
     let mods_dir = effective_mods_dir(engine, instance);
     let files: Vec<String> = read_names(&mods_dir).into_iter().filter(|f| is_mod_file(f)).collect();
-    let installed_ids = installed_project_ids(engine, &mods_dir, &files).await;
+    let installed_docs = installed_version_docs(engine, &mods_dir, &files).await;
+    let installed_ids: Option<HashSet<String>> =
+        installed_docs.as_ref().map(|docs| docs.iter().filter_map(|v| s(v, "project_id")).collect());
     let on_disk: HashSet<String> = files.iter().map(|f| f.strip_suffix(".disabled").unwrap_or(f).to_string()).collect();
     let installed_has = |pid: &str| installed_ids.as_ref().map(|s| s.contains(pid)).unwrap_or(false);
     let already_installed = |pid: &str, meta: &Value| match &installed_ids {
@@ -2051,6 +2061,23 @@ pub async fn plan_mod_install(
                 continue;
             }
             installs.insert(dep_id, dep_meta);
+        }
+    }
+    // Reverse direction: an installed jar whose Modrinth record lists a planned project as
+    // incompatible would break once the new mod is in, even though the new mod says nothing.
+    for doc in installed_docs.iter().flatten() {
+        let Some(owner) = s(doc, "project_id") else { continue };
+        if installs.contains_key(&owner) {
+            continue;
+        }
+        let breaks_plan = doc.get("dependencies").and_then(Value::as_array).is_some_and(|deps| {
+            deps.iter().any(|d| {
+                d.get("dependency_type").and_then(Value::as_str) == Some("incompatible")
+                    && s(d, "project_id").is_some_and(|p| installs.contains_key(&p))
+            })
+        });
+        if breaks_plan {
+            conflicts.insert(owner);
         }
     }
     for m in &missing {
@@ -2840,12 +2867,79 @@ fn staging_path(engine: &Engine, sha1: &str) -> PathBuf {
     engine.paths().data_dir().join("cache").join("mod-staging").join(format!("{sha1}.jar"))
 }
 
-/// Pre-install compatibility & upgrade preview for installing a Modrinth mod.
-/// For Fabric instances, downloads the root jar (if <= 15 MiB) into a SHA-1
-/// staging cache and runs the full `fabric.mod.json` compatibility check
-/// BEFORE touching `mods/`, detecting outdated dependencies (like Sodium) and
-/// planning companion updates (like Iris).
+/// Most newly planned dependency jars a preview stages and checks (the rest are only listed).
+const MAX_STAGED_DEPS: usize = 6;
+
+/// How long an install preview stays reusable by the commit that follows it.
+const INSTALL_PREVIEW_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Stage a Modrinth file into `cache/mod-staging/` (SHA-1 verified, size capped) and parse its
+/// `fabric.mod.json`. None when the file is too large, has no SHA-1, or cannot be fetched.
+async fn stage_file_jar(engine: &Engine, file: &Value, fname: &str) -> Option<crate::fabric_compat::ScannedJar> {
+    if file.get("size").and_then(Value::as_u64).unwrap_or(0) > MAX_STAGE_BYTES {
+        return None;
+    }
+    let sha = file_sha1(file)?;
+    let st = staging_path(engine, &sha);
+    let cached = st.exists() && crate::download::sha1_file(&st).await.ok().as_deref() == Some(sha.as_str());
+    if !cached {
+        if let Some(parent) = st.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let dl = crate::download::DownloadOptions {
+            sha1: Some(sha.clone()),
+            size: file.get("size").and_then(Value::as_u64),
+            ..Default::default()
+        };
+        engine.http().download_file(&s(file, "url").unwrap_or_default(), &st, &dl).await.ok()?;
+    }
+    crate::fabric_compat::read_fabric_jar(&st, fname, true)
+}
+
+/// `stage_file_jar` for the primary file of a Modrinth version record.
+async fn stage_meta_jar(engine: &Engine, meta: &Value) -> Option<crate::fabric_compat::ScannedJar> {
+    let file = primary_file(meta)?;
+    let fname = safe_download_name(file).ok()?;
+    stage_file_jar(engine, file, &fname).await
+}
+
+/// `stage_meta_jar` for a Modrinth version id (upgrade targets).
+async fn stage_version_jar(engine: &Engine, version_id: &str) -> Option<crate::fabric_compat::ScannedJar> {
+    let meta = version_meta(engine, version_id).await.ok()?;
+    stage_meta_jar(engine, &meta).await
+}
+
+fn install_preview_key(instance_name: &str, project_id: &str, root_version_id: &str) -> String {
+    format!("{instance_name}\0{project_id}\0{root_version_id}")
+}
+
+/// Take a cached preview (removing it, so a later commit re-plans) when it is still fresh.
+fn take_cached_install_preview(engine: &Engine, key: &str) -> Option<ModInstallPreview> {
+    let mut cache = engine.content_state().install_previews.lock().unwrap_or_else(|p| p.into_inner());
+    let (at, preview) = cache.remove(key)?;
+    (at.elapsed() < INSTALL_PREVIEW_TTL).then_some(preview)
+}
+
+/// Pre-install compatibility & upgrade preview for installing a Modrinth mod. The result is
+/// kept for `INSTALL_PREVIEW_TTL` so the commit that follows reuses its planned upgrades.
 pub async fn preview_modrinth_install(
+    engine: &Engine,
+    instance_name: &str,
+    project_id: &str,
+) -> EngineResult<ModInstallPreview> {
+    let preview = preview_modrinth_install_uncached(engine, instance_name, project_id).await?;
+    let key = install_preview_key(instance_name, project_id, &preview.version_id);
+    let mut cache = engine.content_state().install_previews.lock().unwrap_or_else(|p| p.into_inner());
+    cache.retain(|_, (at, _)| at.elapsed() < INSTALL_PREVIEW_TTL);
+    cache.insert(key, (std::time::Instant::now(), preview.clone()));
+    Ok(preview)
+}
+
+/// The preview work itself: stages the root jar and up to `MAX_STAGED_DEPS` new required
+/// dependencies (in parallel) into a SHA-1 verified cache, runs the compatibility check with
+/// them in place of `mods/`, then re-checks with each upgrade jar swapped in. Only the errors the
+/// upgrades introduce are added on top, so the user sees the full blast radius before installing.
+async fn preview_modrinth_install_uncached(
     engine: &Engine,
     instance_name: &str,
     project_id: &str,
@@ -2868,44 +2962,24 @@ pub async fn preview_modrinth_install(
         let env = crate::fabric_compat::discover_fabric_env(engine, &instance);
         let existing_jars = crate::fabric_compat::scan_mods_dir(&mods_dir);
 
-        // Stage the root jar to inspect its real `fabric.mod.json`.
-        let file_size = root_file.get("size").and_then(Value::as_u64).unwrap_or(0);
-        let root_sha1 = file_sha1(root_file);
-        let staged_jar = if file_size <= MAX_STAGE_BYTES {
-            if let Some(ref sha) = root_sha1 {
-                let st = staging_path(engine, sha);
-                let ok = if st.exists()
-                    && crate::download::sha1_file(&st).await.ok().as_deref() == Some(sha.as_str())
-                {
-                    true
-                } else {
-                    if let Some(parent) = st.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    let dl = crate::download::DownloadOptions {
-                        sha1: Some(sha.clone()),
-                        size: root_file.get("size").and_then(Value::as_u64),
-                        ..Default::default()
-                    };
-                    engine.http().download_file(&s(root_file, "url").unwrap_or_default(), &st, &dl).await.is_ok()
-                };
-                if ok {
-                    crate::fabric_compat::read_fabric_jar(&st, &root_fname, true)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let dep_metas = plan.installs.iter().skip(1).take(MAX_STAGED_DEPS).map(|(_, meta)| meta);
+        let mut staged = futures_util::future::join_all(
+            std::iter::once(&plan.root).chain(dep_metas).map(|meta| stage_meta_jar(engine, meta)),
+        )
+        .await
+        .into_iter();
+        let root_candidate = staged.next().flatten();
+        let dep_candidates: Vec<crate::fabric_compat::ScannedJar> = staged.flatten().collect();
 
-        if let Some(candidate) = staged_jar {
-            // Simulate adding candidate to the existing jars.
+        if let Some(candidate) = root_candidate {
+            // Filenames of the jars this install adds: issues touching them are the install's own.
+            let mut added: HashSet<String> = HashSet::from([root_fname.clone()]);
+            added.extend(dep_candidates.iter().map(|j| j.filename.clone()));
             let mut sim_jars = existing_jars.clone();
-            sim_jars.push(candidate.clone());
+            sim_jars.push(candidate);
+            sim_jars.extend(dep_candidates);
             let sim_report = crate::fabric_compat::evaluate_fabric_compat(&env, &sim_jars);
+            let baseline = sim_report.issues.clone();
 
             // Collect project ids of newly planned deps so we don't report them as missing.
             let planned_dep_files: HashSet<String> =
@@ -2913,9 +2987,9 @@ pub async fn preview_modrinth_install(
             let planned_dep_pids: HashSet<String> = plan.dependencies.iter().map(|d| d.project_id.clone()).collect();
 
             for issue in sim_report.issues {
-                // Only surface issues caused by or targeting the new candidate mod.
-                let touches_candidate = issue.filename == root_fname
-                    || issue.target_filename.as_deref() == Some(root_fname.as_str());
+                // Only surface issues caused by or targeting the jars this install adds.
+                let touches_candidate = added.contains(&issue.filename)
+                    || issue.target_filename.as_ref().is_some_and(|t| added.contains(t));
                 if !touches_candidate {
                     continue;
                 }
@@ -2985,6 +3059,42 @@ pub async fn preview_modrinth_install(
                         }
                     }
                     _ => compat_issues.push(issue),
+                }
+            }
+
+            if !upgrades.is_empty() {
+                // An upgrade that cannot be staged (too large or unreachable) keeps its old jar.
+                let staged_up =
+                    futures_util::future::join_all(upgrades.iter().map(|u| stage_version_jar(engine, &u.to_version_id)))
+                        .await;
+                let upgraded: Vec<(String, crate::fabric_compat::ScannedJar)> = upgrades
+                    .iter()
+                    .zip(staged_up)
+                    .filter_map(|(up, jar)| {
+                        let mut jar = jar?;
+                        jar.enabled = sim_jars.iter().any(|j| j.filename == up.filename && j.enabled)
+                            || enable_disabled.contains(&up.filename);
+                        Some((up.filename.clone(), jar))
+                    })
+                    .collect();
+                let mut after: Vec<crate::fabric_compat::ScannedJar> = {
+                    let replaced: HashSet<&str> = upgraded.iter().map(|(old, _)| old.as_str()).collect();
+                    sim_jars.iter().filter(|j| !replaced.contains(j.filename.as_str())).cloned().collect()
+                };
+                let mut new_names = added;
+                for (_, jar) in &upgraded {
+                    new_names.insert(jar.filename.clone());
+                }
+                after.extend(upgraded.into_iter().map(|(_, jar)| jar));
+                for issue in crate::fabric_compat::evaluate_fabric_compat(&env, &after).issues {
+                    let touches = new_names.contains(&issue.filename)
+                        || issue.target_filename.as_ref().is_some_and(|t| new_names.contains(t));
+                    if touches
+                        && issue.severity == crate::fabric_compat::CompatSeverity::Error
+                        && !baseline.contains(&issue)
+                    {
+                        compat_issues.push(issue);
+                    }
                 }
             }
         }
@@ -3122,7 +3232,13 @@ pub async fn commit_modrinth_install(
     }
 
     if apply_upgrades {
-        if let Ok(preview) = preview_modrinth_install(engine, instance_name, project_id).await {
+        // The preview the UI just showed already planned the upgrades; reuse it when fresh.
+        let key = install_preview_key(instance_name, project_id, &s(&plan.root, "id").unwrap_or_default());
+        let preview = match take_cached_install_preview(engine, &key) {
+            Some(cached) => Some(cached),
+            None => preview_modrinth_install_uncached(engine, instance_name, project_id).await.ok(),
+        };
+        if let Some(preview) = preview {
             for fname in &preview.enable_disabled {
                 let _ = set_mod_enabled(engine, instance_name, fname, true).await;
             }
@@ -3168,6 +3284,157 @@ pub async fn commit_modrinth_install(
     });
     spawn_staging_prune(engine);
     Ok(reply)
+}
+
+/// Batch "Fix all safe issues" (`Engine::apply_safe_compat_fixes`). Only fixes that cannot
+/// cost a player a gameplay mod run: switching on disabled dependencies, installing missing
+/// dependencies that resolve for this instance (skipped on a conflict), updating incompatible
+/// dependencies with their companions, re-pinning the Fabric loader, and disabling server-only
+/// mods and the older jar of a semver duplicate. Everything else stays in `remaining_errors`.
+pub async fn apply_safe_compat_fixes(engine: &Engine, instance_name: &str) -> EngineResult<CompatBatchFixResult> {
+    use crate::fabric_compat::{check_instance_mods_compat, CompatFix, CompatIssueKind, CompatSeverity};
+
+    let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
+    let loader = instance.loader.content_loader();
+    let issues = check_instance_mods_compat(engine, instance_name).await?.issues;
+    let mut out = CompatBatchFixResult::default();
+
+    for issue in &issues {
+        let Some(CompatFix::Enable { filename, .. }) = &issue.fix else { continue };
+        if out.enabled.contains(filename) {
+            continue;
+        }
+        match set_mod_enabled(engine, instance_name, filename, true).await {
+            Ok(_) => out.enabled.push(filename.clone()),
+            Err(e) => out.notes.push(format!("could not enable {filename}: {e}")),
+        }
+    }
+
+    let mut tried_ids: HashSet<String> = HashSet::new();
+    for issue in issues.iter().filter(|i| i.kind == CompatIssueKind::MissingDep) {
+        if !tried_ids.insert(issue.target_id.clone()) {
+            continue;
+        }
+        let pid = match resolve_modrinth_for_mod_id(engine, instance_name, &issue.target_id).await {
+            Ok(Some(found)) => found.project_id,
+            Ok(None) => {
+                out.notes.push(format!("no Modrinth build of {} for this instance", issue.target_id));
+                continue;
+            }
+            Err(e) => {
+                out.notes.push(format!("lookup of {} failed: {e}", issue.target_id));
+                continue;
+            }
+        };
+        let plan = match plan_mod_install(engine, &instance, &pid, loader).await {
+            Ok(plan) => plan,
+            Err(e) => {
+                out.notes.push(format!("could not plan {}: {e}", issue.target_id));
+                continue;
+            }
+        };
+        if !plan.conflicts.is_empty() {
+            out.notes.push(format!("{} conflicts with an installed mod; not installed", issue.target_id));
+            continue;
+        }
+        match install_modrinth_mod(engine, instance_name, &pid, Some(loader), Some(plan)).await {
+            Ok(res) => {
+                for file in res.installed {
+                    if !out.installed.contains(&file) {
+                        out.installed.push(file);
+                    }
+                }
+            }
+            Err(e) => out.notes.push(format!("could not install {}: {e}", issue.target_id)),
+        }
+    }
+
+    let mut attempted: HashSet<String> = HashSet::new();
+    for issue in &issues {
+        // Only incompatible dependencies: a disabled one needs its own enable step first.
+        if issue.kind != CompatIssueKind::IncompatibleDep {
+            continue;
+        }
+        let Some(CompatFix::UpdateMod { filename, required, .. }) = &issue.fix else { continue };
+        if out.updated.iter().any(|r| r.from == *filename) || !attempted.insert(filename.clone()) {
+            continue;
+        }
+        let target = match find_mod_version_for_predicate(engine, instance_name, filename, required).await {
+            Ok(Some(target)) => target,
+            Ok(None) => {
+                out.notes.push(format!("no {filename} build satisfies {required}"));
+                continue;
+            }
+            Err(e) => {
+                out.notes.push(format!("version lookup for {filename} failed: {e}"));
+                continue;
+            }
+        };
+        match apply_mod_version_switch(engine, instance_name, filename, &target.version_id, true).await {
+            Ok(switched) => out.updated.extend(switched.changed),
+            Err(e) => out.notes.push(format!("could not update {filename}: {e}")),
+        }
+    }
+
+    let mut loader_ranges: Vec<String> = Vec::new();
+    for issue in &issues {
+        if let Some(CompatFix::UpdateFabricLoader { required }) = &issue.fix {
+            if !loader_ranges.contains(required) {
+                loader_ranges.push(required.clone());
+            }
+        }
+    }
+    for required in &loader_ranges {
+        match refresh_fabric_loader(engine, instance_name, required).await {
+            Ok(changed) => out.loader_refreshed |= changed,
+            Err(e) => out.notes.push(format!("Fabric Loader refresh failed: {e}")),
+        }
+    }
+
+    for issue in &issues {
+        let Some(CompatFix::Disable { filename }) = &issue.fix else { continue };
+        let safe = match issue.kind {
+            CompatIssueKind::ServerOnly => true,
+            // Fabric reports only semver duplicates as warnings; non-semver ones are errors.
+            CompatIssueKind::DuplicateMod => issue.severity == CompatSeverity::Warning,
+            _ => false,
+        };
+        if !safe || out.disabled.contains(filename) {
+            continue;
+        }
+        match set_mod_enabled(engine, instance_name, filename, false).await {
+            Ok(_) => out.disabled.push(filename.clone()),
+            Err(e) => out.notes.push(format!("could not disable {filename}: {e}")),
+        }
+    }
+
+    let after = check_instance_mods_compat(engine, instance_name).await?;
+    out.remaining_errors = after.issues.iter().filter(|i| i.severity == CompatSeverity::Error).count();
+    Ok(out)
+}
+
+/// Re-pin the instance to the newest stable Fabric Loader satisfying `required`. The loader
+/// list is refetched first so a stale cache cannot hide a newer build. False when nothing changed.
+async fn refresh_fabric_loader(engine: &Engine, instance_name: &str, required: &str) -> EngineResult<bool> {
+    let loaders = crate::resolver::get_fabric_loaders(engine, true).await?;
+    let pred = crate::fabric_compat::VersionPredicate::parse_str(required);
+    let version_of = |l: &Value| l.get("version").and_then(Value::as_str).map(str::to_string);
+    let fits = |v: &String| pred.matches(&crate::fabric_compat::FabricVersion::parse(v));
+    let stable = loaders
+        .loaders
+        .iter()
+        .filter(|l| crate::config::json_truthy(l.get("stable")))
+        .filter_map(version_of)
+        .find(fits);
+    let Some(target) = stable.or_else(|| loaders.loaders.iter().filter_map(version_of).find(fits)) else {
+        return Ok(false);
+    };
+    let current = crate::resolver::load_instance_meta(engine, instance_name)?;
+    if current.loader_version.as_deref() == Some(target.as_str()) {
+        return Ok(false);
+    }
+    crate::instances::set_loader_version(engine, instance_name, &target)?;
+    Ok(true)
 }
 
 /// Resolve a Fabric mod id (e.g. `fabric-api`, `cloth-config`) to a Modrinth
@@ -4416,5 +4683,293 @@ mod tests {
         // Under the caps, nothing is evicted.
         prune_staging_cache(&e);
         assert_eq!(read_names(&dir).len(), 32);
+    }
+}
+
+#[cfg(test)]
+mod compat_preview_tests {
+    use super::*;
+    use crate::fabric_compat::{CompatIssueKind, CompatSeverity};
+    use crate::test_support::{temp_engine, MockResponse, MockServer};
+
+    const ADDON: &str = "PADDON";
+    const OLD_ADDON: &str = "POLDADDON";
+
+    fn engine_with(server: &MockServer) -> (tempfile::TempDir, Engine) {
+        let (d, e) = temp_engine();
+        let api = server.url("/v2");
+        e.update_content_settings(|s| {
+            s.modrinth_api = api;
+            s.modrinth_retry_backoff = std::time::Duration::from_millis(1);
+            s.background_on_create = false;
+        });
+        (d, e)
+    }
+
+    fn write_instance(e: &Engine, name: &str, version: &str, loader: &str) -> PathBuf {
+        let dir = e.paths().instance_dir(name);
+        std::fs::create_dir_all(dir.join("mods")).unwrap();
+        std::fs::write(
+            dir.join("instance.json"),
+            json!({ "name": name, "version": version, "loader": loader }).to_string(),
+        )
+        .unwrap();
+        dir.join("mods")
+    }
+
+    fn make_fabric_jar(meta: Value) -> Vec<u8> {
+        use std::io::Write;
+        let buf = std::io::Cursor::new(Vec::new());
+        let mut zw = zip::ZipWriter::new(buf);
+        zw.start_file("fabric.mod.json", zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(meta.to_string().as_bytes()).unwrap();
+        zw.finish().unwrap().into_inner()
+    }
+
+    /// Modrinth records of Sodium 0.9.2 (release, installed) and 0.9.3 (beta).
+    fn sodium_records(cdn: &str, s92_sha: &str, s93_sha: &str, s93_len: usize) -> (Value, Value) {
+        let s92 = json!({
+            "id": "vS92", "project_id": SODIUM_PROJECT_ID, "version_number": "mc26.3-0.9.2-fabric",
+            "name": "Sodium 0.9.2", "version_type": "release", "status": "listed",
+            "date_published": "2026-11-01T00:00:00Z", "dependencies": [],
+            "files": [{ "primary": true, "filename": "sodium-fabric-0.9.2+mc26.3.jar",
+                        "url": format!("{cdn}/sodium-092.jar"), "hashes": { "sha1": s92_sha } }]
+        });
+        let s93 = json!({
+            "id": "vS93", "project_id": SODIUM_PROJECT_ID, "version_number": "mc26.3-0.9.3-fabric",
+            "name": "Sodium 0.9.3", "version_type": "beta", "status": "listed",
+            "date_published": "2026-11-15T00:00:00Z", "dependencies": [],
+            "files": [{ "primary": true, "filename": "sodium-fabric-0.9.3+mc26.3.jar",
+                        "url": format!("{cdn}/sodium-093.jar"), "size": s93_len, "hashes": { "sha1": s93_sha } }]
+        });
+        (s92, s93)
+    }
+
+    /// Installing an addon that needs Sodium >= 0.9.3 must show the blast radius before
+    /// install: an installed jar that Modrinth lists as incompatible with the addon becomes a
+    /// conflict, and an installed addon that tolerates only Sodium < 0.9.3 is reported broken
+    /// by the planned upgrade (not by the current Sodium).
+    #[tokio::test]
+    async fn preview_catches_post_upgrade_break_and_reverse_incompatible() {
+        let sha = crate::download::sha1_hex;
+        let sodium_092 = make_fabric_jar(json!({
+            "id": "sodium", "name": "Sodium", "version": "0.9.2+mc26.3", "depends": { "minecraft": "26.3.x" }
+        }));
+        let sodium_093 = make_fabric_jar(json!({
+            "id": "sodium", "name": "Sodium", "version": "0.9.3+mc26.3", "depends": { "minecraft": "26.3.x" }
+        }));
+        let legacy_addon = make_fabric_jar(json!({
+            "id": "legacy-addon", "name": "Legacy Addon", "version": "1.0.0",
+            "depends": { "minecraft": "26.3.x", "sodium": "<0.9.3" }
+        }));
+        let cool_addon = make_fabric_jar(json!({
+            "id": "cool-addon", "name": "Cool Addon", "version": "1.0.0",
+            "depends": { "minecraft": "26.3.x", "sodium": ">=0.9.3" }
+        }));
+        let old_addon = b"not a fabric jar".to_vec();
+        let (s92_sha, s93_sha, add_sha, old_sha) = (sha(&sodium_092), sha(&sodium_093), sha(&cool_addon), sha(&old_addon));
+        let (s93_len, add_len) = (sodium_093.len(), cool_addon.len());
+
+        let cdn = MockServer::start({
+            let (s93, add) = (sodium_093.clone(), cool_addon.clone());
+            move |req| match req.path.as_str() {
+                "/sodium-093.jar" => MockResponse::bytes(s93.clone()),
+                "/cool-addon.jar" => MockResponse::bytes(add.clone()),
+                _ => MockResponse::status(404),
+            }
+        })
+        .await;
+        let cdn_url = cdn.url("");
+        let api = MockServer::start(move |req| {
+            let p = req.path.as_str();
+            let (s92_v, s93_v) = sodium_records(&cdn_url, &s92_sha, &s93_sha, s93_len);
+            let add_v = json!({
+                "id": "vADD", "project_id": ADDON, "version_number": "1.0.0", "name": "Cool Addon 1.0",
+                "version_type": "release", "status": "listed", "date_published": "2026-11-16T00:00:00Z",
+                "dependencies": [{ "dependency_type": "required", "project_id": SODIUM_PROJECT_ID }],
+                "files": [{ "primary": true, "filename": "cool-addon-1.0.0.jar",
+                            "url": format!("{cdn_url}/cool-addon.jar"), "size": add_len, "hashes": { "sha1": add_sha } }]
+            });
+            let old_v = json!({
+                "id": "vOLD", "project_id": OLD_ADDON, "version_number": "1.0.0", "version_type": "release",
+                "status": "listed", "dependencies": [{ "dependency_type": "incompatible", "project_id": ADDON }],
+                "files": []
+            });
+            if p == "/v2/version_files" {
+                let mut m = Map::new();
+                m.insert(s92_sha.clone(), s92_v);
+                m.insert(old_sha.clone(), old_v);
+                return MockResponse::json(&Value::Object(m));
+            }
+            if p == "/v2/version/vS93" {
+                return MockResponse::json(&s93_v);
+            }
+            if p.starts_with(&format!("/v2/project/{SODIUM_PROJECT_ID}/version")) {
+                return MockResponse::json(&json!([s93_v, s92_v]));
+            }
+            if p.starts_with(&format!("/v2/project/{ADDON}/version")) {
+                return MockResponse::json(&json!([add_v]));
+            }
+            if p.starts_with("/v2/projects?ids=") {
+                return MockResponse::json(&json!([
+                    { "id": SODIUM_PROJECT_ID, "title": "Sodium" },
+                    { "id": ADDON, "title": "Cool Addon" },
+                    { "id": OLD_ADDON, "title": "Old Addon" }
+                ]));
+            }
+            MockResponse::status(404)
+        })
+        .await;
+
+        let (_d, e) = engine_with(&api);
+        let mods = write_instance(&e, "post-upgrade", "26.3", "fabric");
+        std::fs::write(mods.join("sodium-fabric-0.9.2+mc26.3.jar"), &sodium_092).unwrap();
+        std::fs::write(mods.join("legacy-addon-1.0.jar"), &legacy_addon).unwrap();
+        std::fs::write(mods.join("old-addon-1.0.jar"), &old_addon).unwrap();
+
+        let preview = e.preview_modrinth_install("post-upgrade", ADDON).await.unwrap();
+        assert!(preview.conflicts.iter().any(|c| c.project_id == OLD_ADDON), "conflicts: {:?}", preview.conflicts);
+        assert!(
+            preview.upgrades.iter().any(|u| u.project_id == SODIUM_PROJECT_ID && u.to_version_id == "vS93"),
+            "upgrades: {:?}",
+            preview.upgrades
+        );
+        let broken = preview.compat_issues.iter().find(|i| i.filename == "legacy-addon-1.0.jar");
+        assert!(
+            broken.is_some_and(|i| i.kind == CompatIssueKind::IncompatibleDep
+                && i.severity == CompatSeverity::Error
+                && i.target_filename.as_deref() == Some("sodium-fabric-0.9.3+mc26.3.jar")),
+            "issues: {:?}",
+            preview.compat_issues
+        );
+        assert!(!preview.compat_issues.iter().any(|i| i.kind == CompatIssueKind::MissingDep), "{:?}", preview.compat_issues);
+        assert!(preview.needs_confirmation);
+        // The preview is cached for the commit that follows, keyed by the root version.
+        assert!(take_cached_install_preview(&e, &install_preview_key("post-upgrade", ADDON, "vADD")).is_some());
+    }
+
+    /// The batch fixes only what cannot cost a player a gameplay mod: a disabled dependency is
+    /// switched on, a resolvable missing dependency is installed, an incompatible Sodium is
+    /// updated, and the server-only mod is disabled. A breaking mod stays enabled and an
+    /// unresolvable dependency stays in `remaining_errors`.
+    #[tokio::test]
+    async fn apply_safe_compat_fixes_resolves_deps_and_skips_unsafe() {
+        let sha = crate::download::sha1_hex;
+        let sodium_092 = make_fabric_jar(json!({
+            "id": "sodium", "name": "Sodium", "version": "0.9.2+mc26.3", "depends": { "minecraft": "26.3.x" }
+        }));
+        let sodium_093 = make_fabric_jar(json!({
+            "id": "sodium", "name": "Sodium", "version": "0.9.3+mc26.3", "depends": { "minecraft": "26.3.x" }
+        }));
+        let fabric_api = make_fabric_jar(json!({
+            "id": "fabric-api", "name": "Fabric API", "version": "0.1.0+26.3", "depends": { "minecraft": "26.3.x" }
+        }));
+        let (s92_sha, s93_sha, api_sha) = (sha(&sodium_092), sha(&sodium_093), sha(&fabric_api));
+        let (s93_len, api_len) = (sodium_093.len(), fabric_api.len());
+
+        let cdn = MockServer::start({
+            let (s93, fapi) = (sodium_093.clone(), fabric_api.clone());
+            move |req| match req.path.as_str() {
+                "/sodium-093.jar" => MockResponse::bytes(s93.clone()),
+                "/fabric-api.jar" => MockResponse::bytes(fapi.clone()),
+                _ => MockResponse::status(404),
+            }
+        })
+        .await;
+        let cdn_url = cdn.url("");
+        let api = MockServer::start(move |req| {
+            let p = req.path.as_str();
+            let (s92_v, s93_v) = sodium_records(&cdn_url, &s92_sha, &s93_sha, s93_len);
+            let fapi_v = json!({
+                "id": "vFAPI", "project_id": "P7dR8mSH", "version_number": "0.1.0+26.3",
+                "version_type": "release", "status": "listed", "date_published": "2026-11-01T00:00:00Z",
+                "dependencies": [],
+                "files": [{ "primary": true, "filename": "fabric-api-0.1.0+26.3.jar",
+                            "url": format!("{cdn_url}/fabric-api.jar"), "size": api_len, "hashes": { "sha1": api_sha } }]
+            });
+            if p == "/v2/version_files" {
+                let mut m = Map::new();
+                m.insert(s92_sha.clone(), s92_v);
+                return MockResponse::json(&Value::Object(m));
+            }
+            if p == "/v2/version/vS93" {
+                return MockResponse::json(&s93_v);
+            }
+            if p.starts_with(&format!("/v2/project/{SODIUM_PROJECT_ID}/version")) {
+                return MockResponse::json(&json!([s93_v, s92_v]));
+            }
+            if p.starts_with("/v2/project/P7dR8mSH/version") {
+                return MockResponse::json(&json!([fapi_v]));
+            }
+            MockResponse::status(404)
+        })
+        .await;
+
+        let (_d, e) = engine_with(&api);
+        let mods = write_instance(&e, "safe-fix", "26.3", "fabric");
+        std::fs::write(mods.join("sodium-fabric-0.9.2+mc26.3.jar"), &sodium_092).unwrap();
+        std::fs::write(
+            mods.join("dep-lib-1.0.jar.disabled"),
+            make_fabric_jar(json!({ "id": "dep-lib", "name": "Dep Lib", "version": "1.0.0" })),
+        )
+        .unwrap();
+        std::fs::write(
+            mods.join("server-tool-1.0.jar"),
+            make_fabric_jar(json!({
+                "id": "server-tool", "name": "Server Tool", "version": "1.0.0", "environment": "server"
+            })),
+        )
+        .unwrap();
+        std::fs::write(
+            mods.join("breaker-1.0.jar"),
+            make_fabric_jar(json!({
+                "id": "breaker", "name": "Breaker", "version": "1.0.0", "breaks": { "user-mod": "*" }
+            })),
+        )
+        .unwrap();
+        std::fs::write(
+            mods.join("user-mod-1.0.jar"),
+            make_fabric_jar(json!({
+                "id": "user-mod", "name": "User Mod", "version": "1.0.0",
+                "depends": {
+                    "minecraft": "26.3.x", "dep-lib": "*", "fabric-api": ">=0.1.0",
+                    "sodium": ">=0.9.3", "mystery-lib": "*"
+                }
+            })),
+        )
+        .unwrap();
+
+        let res = e.apply_safe_compat_fixes("safe-fix").await.unwrap();
+        assert_eq!(res.enabled, vec!["dep-lib-1.0.jar"], "{res:?}");
+        assert_eq!(res.installed, vec!["fabric-api-0.1.0+26.3.jar"], "{res:?}");
+        assert_eq!(
+            res.updated,
+            vec![ModRename {
+                from: "sodium-fabric-0.9.2+mc26.3.jar".into(),
+                to: "sodium-fabric-0.9.3+mc26.3.jar".into(),
+            }],
+            "{res:?}"
+        );
+        assert_eq!(res.disabled, vec!["server-tool-1.0.jar"], "{res:?}");
+        assert!(!res.loader_refreshed, "{res:?}");
+        assert!(mods.join("dep-lib-1.0.jar").exists());
+        assert!(mods.join("fabric-api-0.1.0+26.3.jar").exists());
+        assert!(mods.join("sodium-fabric-0.9.3+mc26.3.jar").exists());
+        assert!(!mods.join("sodium-fabric-0.9.2+mc26.3.jar").exists());
+        assert!(mods.join("server-tool-1.0.jar.disabled").exists());
+        assert!(mods.join("breaker-1.0.jar").exists(), "a BreaksMod is never auto-disabled");
+
+        let after = e.check_mods_compat("safe-fix").await.unwrap();
+        assert_eq!(res.remaining_errors, after.error_count, "{:?}", after.issues);
+        assert!(res.remaining_errors >= 2, "{res:?}");
+        assert!(after.issues.iter().any(|i| i.kind == CompatIssueKind::BreaksMod), "{:?}", after.issues);
+        assert!(
+            after.issues.iter().any(|i| i.kind == CompatIssueKind::MissingDep && i.target_id == "mystery-lib"),
+            "{:?}",
+            after.issues
+        );
+        assert!(!after.issues.iter().any(|i| {
+            matches!(i.kind, CompatIssueKind::IncompatibleDep | CompatIssueKind::DisabledDep | CompatIssueKind::ServerOnly)
+        }));
     }
 }

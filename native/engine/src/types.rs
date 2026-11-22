@@ -953,6 +953,24 @@ pub struct ModInstallPreview {
     pub needs_confirmation: bool,
 }
 
+/// Result of `Engine::apply_safe_compat_fixes` (the "Fix all safe issues" batch).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CompatBatchFixResult {
+    /// Disabled dependencies that were switched back on.
+    pub enabled: Vec<String>,
+    /// Only server-only mods and the older jar of a semver duplicate.
+    pub disabled: Vec<String>,
+    /// Filenames installed for resolvable missing dependencies.
+    pub installed: Vec<String>,
+    /// Incompatible dependencies updated (companions included).
+    pub updated: Vec<ModRename>,
+    pub loader_refreshed: bool,
+    /// Error-severity issues still present after the batch.
+    pub remaining_errors: usize,
+    /// Skipped or failed fixes, English, for logs.
+    pub notes: Vec<String>,
+}
+
 // =========================================================================
 // Import (content)
 // =========================================================================
