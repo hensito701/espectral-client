@@ -36,7 +36,8 @@ use crate::instances::effective_mods_dir;
 use crate::types::{
     CompanionChange, InstanceMeta, Loader, ModDependencyRef, ModEntry, ModInstallPlan, ModInstallPreview,
     ModInstallUpgrade, ModPreset, ModRef, ModRename, ModVersionItem, ModVersionSwitchPlan, ModVersionSwitchResult,
-    ModVersionsReply, ModrinthProject, ModrinthSearchResult, PresetInstallResult, ReleaseChannel, VersionTarget,
+    ModVersionsReply, ModrinthProject, ModrinthSearchResult, OrphanLib, PresetInstallResult, ReleaseChannel,
+    VersionTarget,
 };
 
 pub const MODRINTH_API: &str = "https://api.modrinth.com/v2";
@@ -223,11 +224,11 @@ pub fn encode_uri_component(s: &str) -> String {
     out
 }
 
-fn api(engine: &Engine) -> String {
+pub(crate) fn api(engine: &Engine) -> String {
     engine.content_settings().modrinth_api.trim_end_matches('/').to_string()
 }
 
-fn code_err(status: u16, code: &str, message: impl Into<String>) -> EngineError {
+pub(crate) fn code_err(status: u16, code: &str, message: impl Into<String>) -> EngineError {
     EngineError::api(status, code, message)
 }
 
@@ -517,7 +518,7 @@ pub async fn ensure_branding_seeded(engine: &Engine, instance: &InstanceMeta) ->
     Ok(())
 }
 
-fn is_brand_jar(f: &str) -> bool {
+pub(crate) fn is_brand_jar(f: &str) -> bool {
     let l = f.to_ascii_lowercase();
     (l.starts_with("espectral-menu-") || l.starts_with("espectral-brand-"))
         && (l.ends_with(".jar") || l.ends_with(".jar.disabled"))
@@ -557,13 +558,13 @@ async fn ensure_branding_seeded_inner(engine: &Engine, instance: &InstanceMeta) 
 // Modrinth fetch helpers
 // ---------------------------------------------------------------------------
 
-fn s(v: &Value, k: &str) -> Option<String> {
+pub(crate) fn s(v: &Value, k: &str) -> Option<String> {
     v.get(k).and_then(Value::as_str).map(str::to_string)
 }
 
 /// fetchJsonWithRetry: 2 retries with linear backoff on top of the engine's
 /// own retrying fetch; the final error carries the last status (else 502).
-async fn fetch_json_with_retry(engine: &Engine, url: &str, retries: u32) -> EngineResult<Value> {
+pub(crate) async fn fetch_json_with_retry(engine: &Engine, url: &str, retries: u32) -> EngineResult<Value> {
     let backoff = engine.content_settings().modrinth_retry_backoff;
     let opts = FetchOptions { timeout: std::time::Duration::from_secs(30), ..Default::default() };
     let mut last: Option<EngineError> = None;
@@ -593,7 +594,7 @@ async fn fetch_json_with_retry(engine: &Engine, url: &str, retries: u32) -> Engi
 }
 
 /// Modrinth version metadata (cached per process).
-async fn version_meta(engine: &Engine, version_id: &str) -> EngineResult<Value> {
+pub(crate) async fn version_meta(engine: &Engine, version_id: &str) -> EngineResult<Value> {
     if let Some(v) = engine.content_state().version_meta.lock().unwrap_or_else(|p| p.into_inner()).get(version_id) {
         return Ok(v.clone());
     }
@@ -647,7 +648,7 @@ pub async fn best_version_for_channel(
 
 /// Rank of a Modrinth `version_type` under `channel`: the channel's tier
 /// wins, then the rest fall back by stability (release < beta < alpha).
-fn channel_tier_rank(channel: ReleaseChannel, version_type: &str) -> u8 {
+pub(crate) fn channel_tier_rank(channel: ReleaseChannel, version_type: &str) -> u8 {
     let wanted = match channel {
         ReleaseChannel::Release => "release",
         ReleaseChannel::Beta => "beta",
@@ -671,16 +672,16 @@ async fn best_version_for_cached(engine: &Engine, project_id: &str, game_version
 }
 
 /// The primary file of a version (else the first).
-fn primary_file(meta: &Value) -> Option<&Value> {
+pub(crate) fn primary_file(meta: &Value) -> Option<&Value> {
     let files = meta.get("files")?.as_array()?;
     files.iter().find(|f| f.get("primary") == Some(&Value::Bool(true))).or_else(|| files.first())
 }
 
-fn file_name(f: &Value) -> String {
+pub(crate) fn file_name(f: &Value) -> String {
     s(f, "filename").unwrap_or_default()
 }
 
-fn file_sha1(f: &Value) -> Option<String> {
+pub(crate) fn file_sha1(f: &Value) -> Option<String> {
     f.get("hashes").and_then(|h| s(h, "sha1"))
 }
 
@@ -688,14 +689,14 @@ fn no_file_error(meta: &Value) -> EngineError {
     EngineError::other(format!("version {} has no downloadable file", s(meta, "id").unwrap_or_default()))
 }
 
-fn read_names(dir: &Path) -> Vec<String> {
+pub(crate) fn read_names(dir: &Path) -> Vec<String> {
     match std::fs::read_dir(dir) {
         Ok(rd) => rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect(),
         Err(_) => vec![],
     }
 }
 
-fn is_mod_file(f: &str) -> bool {
+pub(crate) fn is_mod_file(f: &str) -> bool {
     f.ends_with(".jar") || f.ends_with(".jar.disabled")
 }
 
@@ -770,6 +771,8 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
             project_id: pin.map(|p| p.project_id.clone()),
             mod_id: jar_scan.as_ref().and_then(|j| j.primary_id()).map(str::to_string),
             display_name: jar_scan.as_ref().and_then(|j| j.primary_name()).map(str::to_string),
+            pinned: false,
+            icon_url: None,
         });
     }
     // Enrich on-disk non-branding jars with cached Modrinth project_id/version_id
@@ -833,6 +836,8 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
             project_id: Some(p.project_id.clone()),
             mod_id: None,
             display_name: None,
+            pinned: false,
+            icon_url: None,
         });
     }
     if let Some(bp) = branding_pin_for_version(engine, &instance.version, instance.loader) {
@@ -841,11 +846,24 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
             e.version_number = bp.version_number.clone();
         }
     }
+    // Pins + Modrinth icons: one batched GET /projects for every resolved
+    // project id, cached per process (offline leaves icons empty, which the
+    // app renders as its monogram tile).
+    let project_ids: Vec<String> = entries.iter().filter_map(|e| e.project_id.clone()).collect();
+    let projects = if project_ids.is_empty() {
+        IndexMap::new()
+    } else {
+        crate::mod_updates::project_meta(engine, &project_ids).await
+    };
+    for e in &mut entries {
+        e.pinned = crate::mod_updates::is_pinned(&instance.pinned_mods, e.project_id.as_deref(), &e.filename);
+        e.icon_url = e.project_id.as_ref().and_then(|id| projects.get(id)).and_then(|p| s(p, "icon_url"));
+    }
     Ok(entries)
 }
 
 /// `<base>` of a safe mod filename (400 `invalid_filename`).
-fn assert_safe_filename(filename: &str) -> EngineResult<String> {
+pub(crate) fn assert_safe_filename(filename: &str) -> EngineResult<String> {
     let base = filename.strip_suffix(".jar.disabled").or_else(|| filename.strip_suffix(".jar"));
     let ok = base.map(|b| {
         !b.is_empty()
@@ -1339,7 +1357,7 @@ fn assert_safe_pinned_file_name<'a>(name: &'a str, label: &str) -> EngineResult<
 /// The download destination name a Modrinth version file names (400
 /// `invalid_filename` unless it is a plain basename): the API response is
 /// remote data and becomes a path under the mods dir.
-fn safe_download_name(f: &Value) -> EngineResult<String> {
+pub(crate) fn safe_download_name(f: &Value) -> EngineResult<String> {
     let name = file_name(f);
     assert_safe_pinned_file_name(&name, "Modrinth file")?;
     Ok(name)
@@ -1980,10 +1998,36 @@ pub async fn plan_mod_install(
     project_id: &str,
     loader: &str,
 ) -> EngineResult<ModPlan> {
+    plan_mod_install_opts(engine, instance, project_id, loader, None, &[]).await
+}
+
+/// `plan_mod_install` with the pre-install modal's selections:
+/// `version_id` pins the root build (it must belong to `project_id`) and
+/// `include_optional` lists the optional dependency project ids the player
+/// checked, which then become installs instead of suggestions.
+async fn plan_mod_install_opts(
+    engine: &Engine,
+    instance: &InstanceMeta,
+    project_id: &str,
+    loader: &str,
+    version_id: Option<&str>,
+    include_optional: &[String],
+) -> EngineResult<ModPlan> {
     let not_found = |msg: String| code_err(404, "MOD_NOT_FOUND_FOR_VERSION", msg);
-    let root = best_version_for_cached(engine, project_id, &instance.version, loader)
-        .await
-        .ok_or_else(|| not_found(format!("no {loader} build of project {project_id} for {}", instance.version)))?;
+    let root = match version_id {
+        Some(vid) => {
+            let Ok(meta) = version_meta(engine, vid).await else {
+                return Err(not_found(format!("version {vid} not found")));
+            };
+            if s(&meta, "project_id").is_some_and(|p| p != project_id) {
+                return Err(not_found(format!("version {vid} does not belong to project {project_id}")));
+            }
+            meta
+        }
+        None => best_version_for_cached(engine, project_id, &instance.version, loader)
+            .await
+            .ok_or_else(|| not_found(format!("no {loader} build of project {project_id} for {}", instance.version)))?,
+    };
     if primary_file(&root).is_none() {
         return Err(not_found(format!("project {project_id} has no downloadable file")));
     }
@@ -2010,6 +2054,7 @@ pub async fn plan_mod_install(
         qi += 1;
         for dep in meta.get("dependencies").and_then(Value::as_array).cloned().unwrap_or_default() {
             let pid = s(&dep, "project_id");
+            let mut force_install = false;
             match dep.get("dependency_type").and_then(Value::as_str) {
                 Some("incompatible") => {
                     if let Some(p) = pid.filter(|p| installed_has(p)) {
@@ -2018,16 +2063,27 @@ pub async fn plan_mod_install(
                     continue;
                 }
                 Some("optional") => {
-                    if let Some(p) = pid.filter(|p| is_root && !installs.contains_key(p) && !installed_has(p)) {
-                        optional.insert(p);
+                    let Some(p) = pid
+                        .as_ref()
+                        .filter(|p| is_root && !installs.contains_key(p.as_str()) && !installed_has(p.as_str()))
+                    else {
+                        continue;
+                    };
+                    if include_optional.iter().any(|id| id.as_str() == p.as_str()) {
+                        // Checked in the pre-install modal: resolve it exactly
+                        // like a required dependency, below.
+                        force_install = true;
+                    } else {
+                        optional.insert(p.clone());
+                        continue;
                     }
-                    continue;
                 }
                 Some("required") => {}
                 _ => continue, // embedded ships inside the parent
             }
             if let Some(p) = &pid {
-                if installs.contains_key(p) || JAR_IN_JAR.contains(&p.as_str()) || installed_has(p) {
+                let covered = installs.contains_key(p) || JAR_IN_JAR.contains(&p.as_str()) || installed_has(p);
+                if !force_install && covered {
                     continue;
                 }
             }
@@ -2192,9 +2248,20 @@ pub async fn delete_mod(engine: &Engine, instance_name: &str, filename: &str) ->
     Ok(jar_name)
 }
 
+/// Libraries the deleted mod was the last dependent of (delete confirm UI:
+/// "No longer needed by any mod: remove too?"). The library heuristic and the
+/// dependency scan live in `mod_updates`.
+pub async fn orphaned_libraries_after_delete(
+    engine: &Engine,
+    instance_name: &str,
+    filename: &str,
+) -> EngineResult<Vec<OrphanLib>> {
+    crate::mod_updates::orphaned_libraries_after_delete(engine, instance_name, filename).await
+}
+
 /// Batched `POST /version_files` backed by `ContentState::sha1_versions`.
 /// Network failures leave uncached hashes absent (never poisoned as None).
-async fn cached_version_files(engine: &Engine, hashes: &[String]) -> IndexMap<String, Option<Value>> {
+pub(crate) async fn cached_version_files(engine: &Engine, hashes: &[String]) -> IndexMap<String, Option<Value>> {
     let mut out = IndexMap::new();
     let mut missing = Vec::new();
     {
@@ -2221,7 +2288,7 @@ async fn cached_version_files(engine: &Engine, hashes: &[String]) -> IndexMap<St
 }
 
 /// All listed/approved Modrinth versions of `project_id` for `(game_version, loader)`.
-async fn list_project_versions(
+pub(crate) async fn list_project_versions(
     engine: &Engine,
     project_id: &str,
     game_version: &str,
@@ -2258,17 +2325,17 @@ async fn list_project_versions(
     Ok(versions)
 }
 
-struct ResolvedInstalledMod {
-    base_filename: String,
-    sha1: Option<String>,
-    project_id: Option<String>,
-    version_id: Option<String>,
-    version_number: Option<String>,
-    mod_id: Option<String>,
-    display_name: Option<String>,
+pub(crate) struct ResolvedInstalledMod {
+    pub(crate) base_filename: String,
+    pub(crate) sha1: Option<String>,
+    pub(crate) project_id: Option<String>,
+    pub(crate) version_id: Option<String>,
+    pub(crate) version_number: Option<String>,
+    pub(crate) mod_id: Option<String>,
+    pub(crate) display_name: Option<String>,
 }
 
-async fn resolve_installed_mod(
+pub(crate) async fn resolve_installed_mod(
     engine: &Engine,
     instance: &InstanceMeta,
     mods_dir: &Path,
@@ -2849,10 +2916,12 @@ pub async fn preview_modrinth_install(
     engine: &Engine,
     instance_name: &str,
     project_id: &str,
+    version_id: Option<&str>,
+    include_optional: &[String],
 ) -> EngineResult<ModInstallPreview> {
     let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
     let loader = instance.loader.content_loader();
-    let plan = plan_mod_install(engine, &instance, project_id, loader).await?;
+    let plan = plan_mod_install_opts(engine, &instance, project_id, loader, version_id, include_optional).await?;
     let root_file = primary_file(&plan.root).ok_or_else(|| no_file_error(&plan.root))?;
     let root_fname = safe_download_name(root_file)?;
     let root_vid = s(&plan.root, "id").unwrap_or_default();
@@ -3112,17 +3181,21 @@ pub async fn commit_modrinth_install(
     project_id: &str,
     apply_upgrades: bool,
     force: bool,
+    version_id: Option<&str>,
+    include_optional: &[String],
 ) -> EngineResult<ModInstallPlan> {
     let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
     let loader = instance.loader.content_loader();
-    let plan = plan_mod_install(engine, &instance, project_id, loader).await?;
+    let plan = plan_mod_install_opts(engine, &instance, project_id, loader, version_id, include_optional).await?;
     if !plan.conflicts.is_empty() && !force {
         let titles: Vec<&str> = plan.conflicts.iter().map(|c| c.title.as_str()).collect();
         return Err(EngineError::api_verbatim(409, "mod_conflicts", titles.join(", ")));
     }
 
     if apply_upgrades {
-        if let Ok(preview) = preview_modrinth_install(engine, instance_name, project_id).await {
+        if let Ok(preview) =
+            preview_modrinth_install(engine, instance_name, project_id, version_id, include_optional).await
+        {
             for fname in &preview.enable_disabled {
                 let _ = set_mod_enabled(engine, instance_name, fname, true).await;
             }
@@ -4238,7 +4311,7 @@ mod tests {
 
         // 3. Previewing Cool Addon (requires sodium >=0.9.3 in fabric.mod.json)
         //    automatically detects Sodium needs upgrade AND brings Iris along!
-        let preview = e.preview_modrinth_install("guaka", "PADDON").await.unwrap();
+        let preview = e.preview_modrinth_install("guaka", "PADDON", None, Vec::new()).await.unwrap();
         assert!(preview.needs_confirmation);
         assert_eq!(preview.upgrades.len(), 2, "upgrades: {:?}", preview.upgrades);
         assert!(preview.upgrades.iter().any(|u| u.project_id == SODIUM_PROJECT_ID && u.to_version_id == "vS93"));

@@ -49,9 +49,10 @@ use crate::error::{EngineError, EngineResult};
 use crate::fabric_compat::ModCompatReport;
 use crate::types::{
     ClientInfo, ClientPatch, CreateInstanceRequest, ImportResult, ImportSource, InstanceDetail, InstanceMeta,
-    InstancePatch, InstanceSummary, Loader, ModEntry, ModInstallPlan, ModInstallPreview, ModPreset, ModPresetInfo,
-    ModRef, ModVersionItem, ModVersionSwitchPlan, ModVersionSwitchResult, ModVersionsReply, ModrinthSearchResult,
-    OptionsPair, OverwritePolicy, ServerEntry, ServerStatus,
+    InstancePatch, InstanceSummary, Loader, ModBatchUpdateResult, ModEntry, ModInstallPlan, ModInstallPreview,
+    ModPinReply, ModPreset, ModPresetInfo, ModRef, ModUndoResult, ModUpdatesReport, ModVersionItem,
+    ModVersionSwitchPlan, ModVersionSwitchResult, ModVersionsReply, ModrinthSearchResult, OptionsPair, OrphanLib,
+    OverwritePolicy, ReleaseChannel, ServerEntry, ServerStatus,
 };
 
 use super::{DeletedReply, PathReply, QueuedReply};
@@ -119,6 +120,9 @@ pub struct ContentState {
     pub(crate) best_version: Mutex<HashMap<String, Option<Value>>>,
     /// sha1 -> Modrinth version JSON (None = confirmed unknown on Modrinth).
     pub(crate) sha1_versions: Mutex<HashMap<String, Option<Value>>>,
+    /// project id -> Modrinth project JSON (one batched GET /projects feeds
+    /// the mod list icons and the updater titles).
+    pub(crate) project_meta: Mutex<HashMap<String, Value>>,
     /// `sha1_versions` needs each jar's hash first; hashing every jar on every
     /// search is slow, so mod jars memoize by (path, mtime, len) -> sha1.
     pub(crate) jar_sha1: Mutex<HashMap<PathBuf, (std::time::SystemTime, u64, String)>>,
@@ -496,23 +500,114 @@ impl Engine {
             .map_err(|e| send_error(e, 500, "mod_switch_failed"))
     }
 
-    /// Pre-install compatibility & upgrade preview for installing a Modrinth project.
-    pub async fn preview_modrinth_install(&self, name: &str, project_id: &str) -> EngineResult<ModInstallPreview> {
+    /// Pin or unpin a mod against "Update all" (project id or base filename).
+    pub async fn set_mod_pinned(
+        &self,
+        name: &str,
+        filename_or_pid: &str,
+        pinned: bool,
+    ) -> EngineResult<ModPinReply> {
+        crate::mod_updates::set_mod_pinned(self, name, filename_or_pid, pinned)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_pin_failed"))
+    }
+
+    /// Batched "check for updates": one `POST /version_files/update` plus a
+    /// project-version fallback for projects it answered with beta/alpha.
+    pub async fn check_mod_updates(&self, name: &str, channel: ReleaseChannel) -> EngineResult<ModUpdatesReport> {
+        crate::mod_updates::check_mod_updates(self, name, channel)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_updates_failed"))
+    }
+
+    /// "Update all" (or a chosen subset): aligned companion targets, every
+    /// download SHA-1 verified before any jar is swapped, rollback manifest
+    /// under `backups/`. Blocked while running.
+    pub async fn apply_mod_updates(
+        &self,
+        name: &str,
+        filenames: Option<Vec<String>>,
+    ) -> EngineResult<ModBatchUpdateResult> {
+        if self.active_instances().contains(name) {
+            return Err(EngineError::conflict(
+                "ALREADY_RUNNING",
+                format!("instance '{name}' is running; stop it before updating mods"),
+            ));
+        }
+        crate::mod_updates::apply_mod_updates(self, name, filenames)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_update_failed"))
+    }
+
+    /// Restore the jars saved by the last batch update. Blocked while running.
+    pub async fn undo_last_mod_update(&self, name: &str) -> EngineResult<ModUndoResult> {
+        if self.active_instances().contains(name) {
+            return Err(EngineError::conflict(
+                "ALREADY_RUNNING",
+                format!("instance '{name}' is running; stop it before undoing a mod update"),
+            ));
+        }
+        crate::mod_updates::undo_last_mod_update(self, name)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_update_undo_failed"))
+    }
+
+    /// Enabled mods that require this jar (disable guard: `(filename, name)`).
+    pub async fn dependents_of_mod(&self, name: &str, filename: &str) -> EngineResult<Vec<(String, String)>> {
+        crate::mod_updates::dependents_of_mod(self, name, filename)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_dependents_failed"))
+    }
+
+    /// Libraries the deleted mod was the last dependent of (orphan cleanup).
+    pub async fn orphaned_libraries_after_delete(
+        &self,
+        name: &str,
+        filename: &str,
+    ) -> EngineResult<Vec<OrphanLib>> {
+        crate::mods::orphaned_libraries_after_delete(self, name, filename)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_orphans_failed"))
+    }
+
+    /// Icon declared inside the jar (fabric.mod.json `icon` / mods.toml
+    /// `logoFile`), for local mods with no Modrinth project.
+    pub async fn mod_embedded_icon(&self, name: &str, filename: &str) -> EngineResult<Option<Vec<u8>>> {
+        crate::mod_updates::mod_embedded_icon(self, name, filename)
+            .await
+            .map_err(|e| send_error(e, 500, "mod_icon_failed"))
+    }
+
+    /// Pre-install compatibility & upgrade preview for installing a Modrinth
+    /// project. `version_id` selects a specific build (None = newest for this
+    /// instance) and `include_optional` lists optional dependency project ids
+    /// the player checked (they become installs instead of suggestions).
+    pub async fn preview_modrinth_install(
+        &self,
+        name: &str,
+        project_id: &str,
+        version_id: Option<String>,
+        include_optional: Vec<String>,
+    ) -> EngineResult<ModInstallPreview> {
         if project_id.is_empty() {
             return Err(EngineError::api_verbatim(400, "modrinth_project_id_required", "missing project_id"));
         }
-        crate::mods::preview_modrinth_install(self, name, project_id)
+        crate::mods::preview_modrinth_install(self, name, project_id, version_id.as_deref(), &include_optional)
             .await
             .map_err(|e| send_error(e, 500, "mod_preview_failed"))
     }
 
-    /// Commit a Modrinth install, optionally applying dependency/companion upgrades first.
+    /// Commit a Modrinth install, optionally applying dependency/companion
+    /// upgrades first. Same `version_id` / `include_optional` selections as
+    /// the preview.
     pub async fn commit_modrinth_install(
         &self,
         name: &str,
         project_id: &str,
         apply_upgrades: bool,
         force: bool,
+        version_id: Option<String>,
+        include_optional: Vec<String>,
     ) -> EngineResult<ModInstallPlan> {
         if project_id.is_empty() {
             return Err(EngineError::api_verbatim(400, "modrinth_project_id_required", "missing project_id"));
@@ -523,9 +618,17 @@ impl Engine {
                 format!("instance '{name}' is running; stop it before installing mods"),
             ));
         }
-        crate::mods::commit_modrinth_install(self, name, project_id, apply_upgrades, force)
-            .await
-            .map_err(|e| send_error(e, 500, "mod_install_modrinth_failed"))
+        crate::mods::commit_modrinth_install(
+            self,
+            name,
+            project_id,
+            apply_upgrades,
+            force,
+            version_id.as_deref(),
+            &include_optional,
+        )
+        .await
+        .map_err(|e| send_error(e, 500, "mod_install_modrinth_failed"))
     }
 
     /// Resolve a Fabric mod id (e.g. `fabric-api`, `cloth-config`) to a Modrinth project.
