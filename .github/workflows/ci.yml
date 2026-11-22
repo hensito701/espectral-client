@@ -10,6 +10,10 @@ jobs:
   rust:
     name: Rust (Linux)
     runs-on: ubuntu-latest
+    # mold links the integration-test binaries far faster than GNU ld and
+    # produces identical code; every crate in this job targets linux-gnu.
+    env:
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
     defaults:
       run:
         working-directory: native
@@ -21,6 +25,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
+            mold \
             pkg-config \
             libfontconfig1-dev \
             libxkbcommon-dev libxkbcommon-x11-dev \
@@ -35,7 +40,9 @@ jobs:
           workspaces: native
 
       - run: cargo test --workspace
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # The generated UI crate is 55 MB of machine-written Rust that already
+      # allows every lint; running the clippy driver over it only burns time.
+      - run: cargo clippy --workspace --all-targets --exclude espectral-client-ui -- -D warnings
 
   audit:
     name: Rust dependency advisories (cargo audit)
@@ -45,8 +52,8 @@ jobs:
         working-directory: native
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-audit --locked
+      # Prebuilt cargo-audit: compiling it from source cost minutes on every run.
+      - uses: taiki-e/install-action@cargo-audit
       # Fails on any RustSec vulnerability in Cargo.lock; "unmaintained"
       # notices are reported as warnings only.
       - run: cargo audit

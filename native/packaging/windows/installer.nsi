@@ -17,12 +17,20 @@
 ;   OUTFILE      ...\EspectralClient_1.7.0_x64-setup.exe
 ; Optional:
 ;   HOMEPAGE     product URL (written to the uninstall entry)
+;   FAST_COMPRESS (defined)  zlib instead of /SOLID lzma: much faster local
+;                            packaging, larger setup.exe; dev builds only.
 ; ==========================================================================
 
 Unicode true
 ManifestDPIAware true
 
-SetCompressor /SOLID lzma
+; /SOLID lzma gives the smallest shipped installer; zlib is the opt-in dev mode
+; (scripts/build-windows-exe.sh --fast) where packaging time matters more than size.
+!ifdef FAST_COMPRESS
+  SetCompressor zlib
+!else
+  SetCompressor /SOLID lzma
+!endif
 
 !include MUI2.nsh
 !include LogicLib.nsh

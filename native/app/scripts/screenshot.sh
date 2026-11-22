@@ -14,8 +14,9 @@
 # --query <text> (palette).
 #
 # Data: a persistent fixture data dir ($ESPECTRAL_SHOT_DATA, default
-# native/target/shot-data) so onboarding ("Espectral default") runs once and
+# ${CARGO_TARGET_DIR:-native/target}/shot-data) so onboarding ("Espectral default") runs once and
 # your real launcher data is never touched. The gate is skipped unless --open gate.
+# Both builds honour $CARGO_TARGET_DIR (unset = native/target).
 # Reference screenshots of the Svelte UI: see "Reference screenshots" in UI-PORTING.md.
 # Note: the software renderer draws gradient text with its first color stop
 # (femtovg, the default on-screen renderer, draws the real gradient).
@@ -31,15 +32,22 @@ fi
 # small live UI crate) instead of recompiling the ~60 MB generated module.
 # Rust changes (new properties/callbacks) rebuild as usual. Set
 # ESPECTRAL_SHOT_COMPILED=1 to shoot the normal compiled build instead.
+# CARGO_TARGET_DIR is honoured like in scripts/build-*.sh: a relative value
+# resolves against the caller's cwd, which is where cargo runs.
+case "${CARGO_TARGET_DIR:-}" in
+  "") target_dir="$native_dir/target" ;;
+  /*) target_dir="$CARGO_TARGET_DIR" ;;
+  *)  target_dir="$PWD/$CARGO_TARGET_DIR" ;;
+esac
 if [[ -n "${ESPECTRAL_SHOT_COMPILED:-}" ]]; then
-  cargo build -q -p espectral-client --manifest-path "$native_dir/Cargo.toml"
-  bin="$native_dir/target/debug/espectral-client"
+  cargo build -q -p espectral-client --manifest-path "$native_dir/Cargo.toml" --target-dir "$target_dir"
+  bin="$target_dir/debug/espectral-client"
 else
   SLINT_LIVE_PREVIEW=1 cargo build -q -p espectral-client --features live-preview \
-    --manifest-path "$native_dir/Cargo.toml" --target-dir "$native_dir/target/live"
-  bin="$native_dir/target/live/debug/espectral-client"
+    --manifest-path "$native_dir/Cargo.toml" --target-dir "$target_dir/live"
+  bin="$target_dir/live/debug/espectral-client"
 fi
-data="${ESPECTRAL_SHOT_DATA:-$native_dir/target/shot-data}"
+data="${ESPECTRAL_SHOT_DATA:-$target_dir/shot-data}"
 mkdir -p "$data"
 ESPECTRAL_DATA_DIR="$data" ESPECTRAL_LOG="${ESPECTRAL_LOG:-warn}" \
   "$bin" --screenshot "$@"

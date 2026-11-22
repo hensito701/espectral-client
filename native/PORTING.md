@@ -39,16 +39,49 @@ cd native
 cargo build
 cargo test --workspace
 cargo check -p espectral-client --target x86_64-pc-windows-gnu  # gnu target: mingw-w64 required (linker + icon resource)
-cargo clippy --workspace --all-targets -- -D warnings  # keep it warning-free (also with --target x86_64-pc-windows-gnu)
+# The generated UI crate is machine-written and allows every lint; linting its
+# 55 MB only burns clippy time (also with --target x86_64-pc-windows-gnu).
+cargo clippy --workspace --all-targets --exclude espectral-client-ui -- -D warnings
 cargo fmt --all                       # rustfmt.toml: max_width 120
 ```
 
-CI (`.github/workflows/ci.yml`) runs `cargo test --workspace` + `cargo clippy
--- -D warnings` on Linux, the windows-gnu `cargo check` cross-job, and
+CI (`.github/workflows/ci.yml`) runs `cargo test --workspace` and the same
+clippy line on Linux with `mold`, the windows-gnu `cargo check` cross-job, and
 `cargo test -p espectral-engine` on Windows. No npm/Node step is involved.
 
 Use the default `CARGO_TARGET_DIR` (`<worktree>/native/target`) — never share
-a target dir across worktrees.
+a target dir across worktrees. It may point elsewhere (e.g. an ext4
+`~/.cache/...` dir on WSL): the release scripts and
+`app/scripts/screenshot.sh` honour it. `RUSTC_WRAPPER=sccache` is optional and
+safe beside it.
+
+## Build speed knobs
+
+- **Linker:** `scripts/build-linux-deb.sh` uses `mold`, else `lld`, when
+  `RUSTFLAGS` and the target-specific rustflags are unset;
+  `scripts/build-windows-exe.sh` uses lld through mingw gcc only after a
+  throwaway C link probe succeeds, else mingw ld (`WIN_LINKER=ld` skips the
+  probe). Both set the flag in the target-specific `CARGO_TARGET_*_RUSTFLAGS`,
+  so host build scripts and proc-macros are untouched; an explicit `RUSTFLAGS`
+  always wins.
+- **Two stages:** both release scripts build deps + `espectral-engine` +
+  `espectral-skin3d` at `DEP_JOBS` (default `nproc`, capped at 6), then the app
+  and the Slint UI at `JOBS` (default 2 — that stage is the RAM peak).
+- **Dev installers:** `scripts/build-windows-exe.sh --fast` uses zlib NSIS
+  compression and `--profile release-fast` skips LTO; both refuse to run
+  without `--unsigned` and are never signed (releases stay `release` +
+  `/SOLID lzma` + signature).
+- **Stale UI rlibs:** every version/feature-hash drift leaves another
+  `libespectral_client_ui-*.rlib` (hundreds of MB) in `<target-dir>/*/deps`.
+  Keep only the newest one per deps dir:
+
+  ```sh
+  T="${CARGO_TARGET_DIR:-native/target}"
+  for d in "$T"/*/deps "$T"/*/*/deps; do
+    [ -d "$d" ] || continue
+    ls -t "$d"/libespectral_client_ui-*.rlib 2>/dev/null | tail -n +2 | xargs -r rm -v
+  done
+  ```
 
 ## Layout
 

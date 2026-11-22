@@ -18,9 +18,22 @@
 #
 # Usage:
 #   scripts/build-linux-deb.sh                 build + package + sign if key present
-#   scripts/build-linux-deb.sh --skip-build    reuse native/target/release/espectral-client
+#   scripts/build-linux-deb.sh --skip-build    reuse the release binary
 #   BIN=/path/to/espectral-client scripts/build-linux-deb.sh --skip-build   # debug binary smoke test
 #   JOBS=2 scripts/build-linux-deb.sh
+#
+# Knobs (environment):
+#   JOBS=2              stage 2 (app + Slint UI) cargo -j; it is the RAM peak
+#   DEP_JOBS=<n>        stage 1 (deps + engine + skin3d) cargo -j, capped at 6
+#   CARGO_TARGET_DIR    target dir; relative values resolve against the repo
+#                       root. One per worktree, never shared.
+#   RUSTFLAGS or CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS set: the
+#                       caller owns the linker flags, auto-detect is skipped
+#
+# Linker: mold when installed, else lld, else GNU ld — set through the
+# target-specific rustflags (identical code, much faster link). dpkg-deb gets
+# --threads-max=0 (multi-threaded xz) only when the installed dpkg supports it;
+# .deb compression stays xz for Debian 12 / Ubuntu 22.04.
 #
 # Output: build/linux/espectral-client_<ver>_amd64.deb (+ .sig)
 #
@@ -36,18 +49,28 @@ SKIP_BUILD=0
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=1 ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,43p' "$0"; exit 0 ;;
     *) echo "ERROR: unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
 
 JOBS="${JOBS:-2}"
+UI_JOBS="$JOBS"
 PKG=espectral-client
 VERSION="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' native/Cargo.toml | head -1)"
 [ -n "$VERSION" ] || { echo "ERROR: could not read the version from native/Cargo.toml" >&2; exit 1; }
 
+# Respect an explicit CARGO_TARGET_DIR everywhere; a relative
+# value is resolved against the repo root so the binary path and cargo agree
+# even though cargo runs from native/.
+case "${CARGO_TARGET_DIR:-}" in
+  "") TARGET_DIR="$ROOT/native/target" ;;
+  /*) TARGET_DIR="$CARGO_TARGET_DIR" ;;
+  *)  TARGET_DIR="$ROOT/$CARGO_TARGET_DIR" ;;
+esac
+
 OUT_DIR="$ROOT/build/linux"
-BIN="${BIN:-$ROOT/native/target/release/$PKG}"
+BIN="${BIN:-$TARGET_DIR/release/$PKG}"
 # Staged in a Linux temp dir: on a Windows drive (WSL /mnt/*) every file
 # reads as mode 777 and dpkg-deb refuses the control directory.
 STAGE_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/espectral-deb.XXXXXX")"
@@ -60,13 +83,36 @@ need rustc "install the Rust toolchain: https://rustup.rs"
 need dpkg-deb "apt install dpkg-dev"
 need strip "apt install binutils"
 
+# ---- linker -------------------------------------------------------------
+# mold (else lld) produces identical code and links 3-10x faster than GNU ld.
+# The flag goes into the target-specific variable so an explicit RUSTFLAGS from
+# the caller always wins and is never extended behind its back.
+if [ -n "${CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS:-}" ] || [ -n "${RUSTFLAGS:-}" ]; then
+  echo "[deb] linker: caller-provided flags (RUSTFLAGS / CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS); auto-detect skipped"
+elif command -v mold >/dev/null 2>&1; then
+  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=mold"
+  echo "[deb] linker: mold"
+elif command -v lld >/dev/null 2>&1; then
+  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=lld"
+  echo "[deb] linker: lld"
+else
+  echo "[deb] linker: GNU ld (install mold or lld for faster links)"
+fi
+
 # ---- build --------------------------------------------------------------
 if [ "$SKIP_BUILD" = "1" ]; then
   [ -f "$BIN" ] || { echo "ERROR: $BIN missing and --skip-build was given" >&2; exit 1; }
   echo "[deb] --skip-build: using $BIN"
 else
-  echo "[deb] cargo build --release -p $PKG -j $JOBS"
-  ( cd native && CARGO_INCREMENTAL=0 cargo build --release -p "$PKG" -j "$JOBS" )
+  # Stage 1 has a low RAM peak per job, so it gets the full CPU parallelism;
+  # stage 2 (the Slint UI crate) is bounded by JOBS instead.
+  DEP_JOBS="${DEP_JOBS:-$(nproc 2>/dev/null || echo 4)}"
+  if [ "$DEP_JOBS" -gt 6 ]; then DEP_JOBS=6; fi
+  echo "[deb] stage 1/2: espectral-engine + espectral-skin3d (-j $DEP_JOBS)"
+  ( cd native && CARGO_INCREMENTAL=0 cargo build --release -p espectral-engine -p espectral-skin3d \
+      --target-dir "$TARGET_DIR" -j "$DEP_JOBS" )
+  echo "[deb] stage 2/2: $PKG (-j $UI_JOBS)"
+  ( cd native && CARGO_INCREMENTAL=0 cargo build --release -p "$PKG" --target-dir "$TARGET_DIR" -j "$UI_JOBS" )
   [ -f "$BIN" ] || { echo "ERROR: build produced no $BIN" >&2; exit 1; }
 fi
 
@@ -187,7 +233,15 @@ EOF
 # ---- package ------------------------------------------------------------
 mkdir -p "$OUT_DIR"
 rm -f "$DEB"
-dpkg-deb --root-owner-group --build "$STAGE" "$DEB" >/dev/null
+# xz compression is mandatory here (Debian 12 / Ubuntu 22.04 dpkg cannot read
+# zstd .debs). Newer dpkg-deb can spread xz over all cores; older ones reject
+# the flag outright, so probe --help first (Ubuntu 22.04's 1.21.1 lacks it).
+DEB_OPTS=(--root-owner-group)
+DPKG_DEB_HELP="$(dpkg-deb --help 2>/dev/null || true)"
+case "$DPKG_DEB_HELP" in
+  *--threads-max*) DEB_OPTS+=(--threads-max=0) ;;
+esac
+dpkg-deb "${DEB_OPTS[@]}" --build "$STAGE" "$DEB" >/dev/null
 echo "[deb] $DEB ($(du -h "$DEB" | cut -f1))"
 
 # ---- sign ---------------------------------------------------------------
