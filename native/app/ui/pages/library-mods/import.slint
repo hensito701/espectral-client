@@ -66,14 +66,15 @@ component LaneHeader inherits VerticalLayout {
             alignment: center;
             Badge { text: root.badge; variant: root.badge-variant; }
         }
-        SelectableText { text: root.tag; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
+        Text { text: root.tag; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
     }
     McTitle {
         text: root.title;
         font-size: 24px;
     }
-    SelectableText {
+    Text {
         text: root.desc;
+        font-family: Theme.font-body;
         color: Theme.muted;
         font-size: Theme.text-sm;
         line-height-factor: 1.5 / 1.28;
@@ -303,7 +304,7 @@ component MrpackProgress inherits Rectangle {
                     wrap: word-wrap;
                 }
             }
-            if root.phase == 2 || root.phase == 3: SelectableText {
+            if root.phase == 2 || root.phase == 3: Text {
                 text: LibraryBridge.i-done + " / " + LibraryBridge.i-total;
                 font-family: Theme.font-mono;
                 font-size: Theme.text-xs;
@@ -446,7 +447,7 @@ component MetaPill inherits Rectangle {
             alignment: center;
             Emoji { char: root.emoji; size: 11px; }
         }
-        SelectableText { text: root.text; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
+        Text { text: root.text; font-family: Theme.font-body; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
     }
 }
 
@@ -688,7 +689,7 @@ component NoInstancesAlert inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            SelectableText { text: T.tr("import.profile.noInstances"); color: Theme.accent-alt; font-size: Theme.text-xs; wrap: word-wrap; }
+            Text { text: T.tr("import.profile.noInstances"); font-family: Theme.font-body; color: Theme.accent-alt; font-size: Theme.text-xs; wrap: word-wrap; }
         }
         VerticalLayout {
             alignment: center;
@@ -799,8 +800,8 @@ component StatChip inherits Rectangle {
         padding-bottom: Theme.space-2;
         padding-left: Theme.space-3;
         padding-right: Theme.space-3;
-        SelectableText { text: root.label; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; }
-        SelectableText { text: root.value; color: root.tint; font-size: Theme.text-lg; font-weight: 700; font-family: Theme.font-mono; }
+        Text { text: root.label; font-family: Theme.font-body; color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; }
+        Text { text: root.value; color: root.tint; font-size: Theme.text-lg; font-weight: 700; font-family: Theme.font-mono; }
     }
 }
 
@@ -814,7 +815,7 @@ component ResultBox inherits Rectangle {
     col := VerticalLayout {
         padding: Theme.space-3;
         spacing: Theme.space-2;
-        SelectableText { text: root.title; color: Theme.text; font-size: Theme.text-xs; font-weight: 600; }
+        Text { text: root.title; font-family: Theme.font-body; color: Theme.text; font-size: Theme.text-xs; font-weight: 600; }
         @children
     }
 }
@@ -827,7 +828,7 @@ component ProfileResult inherits VerticalLayout {
             alignment: start;
             Badge { text: T.tr("import.result.migrationDone"); variant: BadgeVariant.ok; large: true; }
         }
-        SelectableText { text: T.tr("import.result.title"); color: Theme.text; font-size: Theme.text-lg; font-weight: 700; }
+        Text { text: T.tr("import.result.title"); font-family: Theme.font-body; color: Theme.text; font-size: Theme.text-lg; font-weight: 700; }
         SelectableText { text: T.tr1("import.result.target", "name", LibraryBridge.i-target); color: Theme.muted; font-size: Theme.text-xs; font-weight: 500; }
     }
     GridLayout {
@@ -950,7 +951,7 @@ component RecentItem inherits Rectangle {
         spacing: Theme.space-4;
         HorizontalLayout {
             spacing: Theme.space-2;
-            SelectableText { text: root.item.time; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
+            Text { text: root.item.time; font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
             VerticalLayout {
                 alignment: center;
                 Badge {
@@ -964,7 +965,7 @@ component RecentItem inherits Rectangle {
             spacing: Theme.space-3;
             HorizontalLayout {
                 spacing: 6px;
-                SelectableText { text: T.tr("import.recent.instance"); font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
+                Text { text: T.tr("import.recent.instance"); font-family: Theme.font-body; font-size: Theme.text-xs; color: Theme.muted; font-weight: 500; }
                 VText {
                     text: root.item.instance + " ↗";
                     font-size: Theme.text-xs;
@@ -1002,14 +1003,15 @@ component RecentSection inherits Rectangle {
         spacing: Theme.space-3;
         HorizontalLayout {
             spacing: Theme.space-3;
-            SelectableText { text: T.tr("import.recent.title"); font-size: Theme.text-base; font-weight: 700; }
+            Text { text: T.tr("import.recent.title"); font-family: Theme.font-body; font-size: Theme.text-base; font-weight: 700; color: Theme.text; }
             VerticalLayout {
                 alignment: center;
                 Badge { text: T.tr("import.recent.badge"); variant: BadgeVariant.accent; }
             }
             Rectangle { horizontal-stretch: 1; }
-            SelectableText {
+            Text {
                 text: LibraryBridge.i-recent.length + " " + (LibraryBridge.i-recent.length == 1 ? "registro" : "registros");
+                font-family: Theme.font-body;
                 font-size: Theme.text-xs;
                 color: Theme.muted;
                 font-weight: 500;
@@ -1022,7 +1024,7 @@ component RecentSection inherits Rectangle {
                 alignment: center;
                 Emoji { char: "📑"; size: 28px; opacity: 0.6; }
             }
-            SelectableText { text: T.tr("import.recent.empty"); font-size: 13px; horizontal-alignment: center; wrap: word-wrap; }
+            Text { text: T.tr("import.recent.empty"); font-family: Theme.font-body; font-size: 13px; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
         }
         if LibraryBridge.i-recent.length > 0: VerticalLayout {
             for item in LibraryBridge.i-recent: RecentItem { item: item; }
@@ -1049,15 +1051,16 @@ export component ImportPage inherits Rectangle {
                     alignment: center;
                     Badge { text: T.tr("import.pageBadge"); variant: BadgeVariant.accent; }
                 }
-                SelectableText { text: T.tr("import.pageRoute"); font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; opacity: 0.8; font-weight: 500; }
+                Text { text: T.tr("import.pageRoute"); font-family: Theme.font-mono; font-size: Theme.text-xs; color: Theme.muted; opacity: 0.8; font-weight: 500; }
             }
             McTitle {
                 text: T.tr("import.pageTitle");
                 font-size: 32px;
             }
             HorizontalLayout {
-                SelectableText {
+                Text {
                     text: T.tr("import.pageSubtitle");
+                    font-family: Theme.font-body;
                     color: Theme.muted;
                     font-size: Theme.text-md;
                     max-width: 780px;
