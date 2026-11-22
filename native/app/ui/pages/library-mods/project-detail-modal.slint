@@ -1,0 +1,271 @@
+// OWNER: library-mods agent. Modrinth project detail (ModCatalog Modrinth tab): header
+// (icon, counts, licence, categories, "Open on Modrinth"), Overview (screenshot carousel
+// and plain-text description) and Versions tabs, and the Install footer.
+// Rust side: library_mods/browse.rs (show_detail) and library_mods/gallery.rs.
+import { Theme, T, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Icons, IconBtn, Modal, ModalFooter, SelectableText, Tabs, TabItem, ScrollArea, MonogramTile, MonogramShape } from "../../widgets.slint";
+import { LibraryBridge, ModVersionOption } from "api.slint";
+import { LoadingPanel, ErrorBanner } from "parts.slint";
+
+/// One build of the project. Packs and modpacks install the picked build; a mod
+/// installs the newest compatible one through the preview flow, so no button there.
+component VersionRow inherits Rectangle {
+    in property <ModVersionOption> opt;
+    in property <bool> can-install;
+    height: row.preferred-height;
+    border-radius: Theme.radius-sm;
+    row := HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: Theme.space-2;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                alignment: start;
+                SelectableText {
+                    text: root.opt.version-number;
+                    font-size: Theme.text-sm;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+                Badge {
+                    text: root.opt.version-type == "release" ? T.tr("browse.channel.release")
+                        : root.opt.version-type == "beta" ? T.tr("browse.channel.beta") : T.tr("browse.channel.alpha");
+                    variant: root.opt.version-type == "release" ? BadgeVariant.ok
+                        : root.opt.version-type == "beta" ? BadgeVariant.warn : BadgeVariant.err;
+                }
+                if root.opt.installed: Badge {
+                    text: T.tr("mods.versionCurrent");
+                    variant: BadgeVariant.accent;
+                }
+            }
+            if root.opt.date != "": Text {
+                text: T.tr1("browse.publishedAgo", "when", root.opt.date);
+                font-size: Theme.text-xs;
+                color: Theme.muted;
+            }
+        }
+        if root.can-install && !root.opt.installed: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.secondary;
+                size: BtnSize.sm;
+                text: T.tr("mods.install");
+                enabled: LibraryBridge.m-installing-id == "";
+                clicked => { LibraryBridge.md-install(root.opt.version-id); }
+            }
+        }
+    }
+}
+
+export component ModrinthProjectDetailModal inherits Modal {
+    open <=> LibraryBridge.md-open;
+    title: LibraryBridge.md-title;
+    subtitle: LibraryBridge.md-author != "" ? T.tr1("browse.author", "name", LibraryBridge.md-author) : "";
+    dialog-width: 760px;
+    close => { LibraryBridge.md-close(); }
+
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-3;
+        // header: icon, counts and tags, the Modrinth link
+        HorizontalLayout {
+            spacing: Theme.space-4;
+            if LibraryBridge.md-has-icon: Rectangle {
+                width: 56px;
+                height: 56px;
+                border-radius: Theme.radius-md;
+                background: Theme.card-bg-soft;
+                border-width: Theme.hairline;
+                border-color: Theme.border-solid;
+                clip: true;
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: LibraryBridge.md-icon;
+                    image-fit: cover;
+                }
+            }
+            if !LibraryBridge.md-has-icon: MonogramTile {
+                name: LibraryBridge.md-title;
+                size: 56px;
+                shape: MonogramShape.rounded;
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: Theme.space-1;
+                alignment: center;
+                HorizontalLayout {
+                    spacing: Theme.space-3;
+                    alignment: start;
+                    Text {
+                        text: T.tr1("mods.downloads", "count", LibraryBridge.md-downloads);
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        font-weight: 500;
+                    }
+                    Text {
+                        text: T.tr1("browse.followers", "count", LibraryBridge.md-followers);
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        font-weight: 500;
+                    }
+                    if LibraryBridge.md-updated != "": Text {
+                        text: T.tr1("browse.updatedAgo", "when", LibraryBridge.md-updated);
+                        font-size: Theme.text-xs;
+                        color: Theme.muted;
+                        font-weight: 500;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    if LibraryBridge.md-side != "": Badge {
+                        text: LibraryBridge.md-side == "both" ? T.tr("browse.side.both")
+                            : LibraryBridge.md-side == "client" ? T.tr("browse.side.client") : T.tr("browse.side.server");
+                        variant: BadgeVariant.neutral;
+                    }
+                    if LibraryBridge.md-license != "": Badge {
+                        text: LibraryBridge.md-license;
+                        variant: BadgeVariant.neutral;
+                    }
+                    for c in LibraryBridge.md-categories: Badge {
+                        text: c;
+                        variant: BadgeVariant.neutral;
+                    }
+                }
+            }
+            VerticalLayout {
+                alignment: start;
+                Btn {
+                    variant: BtnVariant.secondary;
+                    size: BtnSize.sm;
+                    icon: Icons.external-link;
+                    text: T.tr("browse.openModrinth");
+                    clicked => { LibraryBridge.md-open-modrinth(); }
+                }
+            }
+        }
+        Tabs {
+            items: [
+                TabItem { label: T.tr("browse.overview"), icon: "", badge: "" },
+                TabItem { label: T.tr("browse.versions"), icon: "", badge: LibraryBridge.md-versions.length > 0 ? "" + LibraryBridge.md-versions.length : "" }
+            ];
+            current <=> LibraryBridge.md-tab;
+        }
+        if LibraryBridge.md-loading: LoadingPanel { text: T.tr("browse.loading"); }
+        if !LibraryBridge.md-loading && LibraryBridge.md-error != "": ErrorBanner { text: LibraryBridge.md-error; }
+        // Overview: screenshots, then the description as wrapped plain text
+        if !LibraryBridge.md-loading && LibraryBridge.md-error == "" && LibraryBridge.md-tab == 0: ScrollArea {
+            height: 400px;
+            VerticalLayout {
+                padding: Theme.space-1;
+                spacing: Theme.space-3;
+                if LibraryBridge.md-gallery-count > 0: VerticalLayout {
+                    spacing: Theme.space-2;
+                    Rectangle {
+                        height: 240px;
+                        border-radius: Theme.radius-md;
+                        background: Theme.card-bg-soft;
+                        border-width: Theme.hairline;
+                        border-color: Theme.border-solid;
+                        clip: true;
+                        if LibraryBridge.md-gallery-has-image: Image {
+                            width: 100%;
+                            height: 100%;
+                            source: LibraryBridge.md-gallery-image;
+                            image-fit: contain;
+                        }
+                        if !LibraryBridge.md-gallery-has-image: Text {
+                            width: 100%;
+                            height: 100%;
+                            text: LibraryBridge.md-gallery-loading ? T.tr("browse.galleryLoading") : "";
+                            color: Theme.muted;
+                            font-size: Theme.text-sm;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-3;
+                        alignment: center;
+                        IconBtn {
+                            icon: Icons.chevron-left;
+                            flat: true;
+                            size: 30px;
+                            clicked => { LibraryBridge.md-gallery-prev(); }
+                        }
+                        Text {
+                            text: "" + (LibraryBridge.md-gallery-index + 1) + " / " + LibraryBridge.md-gallery-count;
+                            font-size: Theme.text-xs;
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                        }
+                        IconBtn {
+                            icon: Icons.chevron-right;
+                            flat: true;
+                            size: 30px;
+                            clicked => { LibraryBridge.md-gallery-next(); }
+                        }
+                    }
+                    if LibraryBridge.md-gallery-title != "": SelectableText {
+                        text: LibraryBridge.md-gallery-title;
+                        font-size: Theme.text-sm;
+                        font-weight: 600;
+                        wrap: word-wrap;
+                    }
+                }
+                SelectableText {
+                    text: LibraryBridge.md-body;
+                    color: Theme.muted-strong;
+                    font-size: Theme.text-sm;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        // Versions: every build for this instance, newest first
+        if !LibraryBridge.md-loading && LibraryBridge.md-error == "" && LibraryBridge.md-tab == 1: ScrollArea {
+            height: 400px;
+            VerticalLayout {
+                padding: Theme.space-1;
+                spacing: 2px;
+                if LibraryBridge.md-project-type == "mod" && LibraryBridge.md-versions.length > 0: SelectableText {
+                    text: T.tr("browse.modVersionNote");
+                    color: Theme.muted;
+                    font-size: Theme.text-xs;
+                    wrap: word-wrap;
+                }
+                if LibraryBridge.md-versions.length == 0: SelectableText {
+                    text: T.tr("browse.noVersions");
+                    color: Theme.muted;
+                    font-size: Theme.text-sm;
+                    wrap: word-wrap;
+                }
+                for v in LibraryBridge.md-versions: VersionRow {
+                    opt: v;
+                    can-install: LibraryBridge.md-project-type != "mod";
+                }
+            }
+        }
+    }
+    ModalFooter {
+        Btn {
+            variant: BtnVariant.secondary;
+            text: T.tr("browse.close");
+            clicked => { LibraryBridge.md-close(); }
+        }
+        Btn {
+            variant: BtnVariant.primary;
+            text: LibraryBridge.md-installed
+                ? T.tr("mods.alreadyInstalled")
+                : LibraryBridge.md-project-type == "modpack" ? T.tr("browse.installModpack") : T.tr("mods.install");
+            loading: LibraryBridge.md-project-id != "" && LibraryBridge.m-installing-id == LibraryBridge.md-project-id;
+            enabled: !LibraryBridge.md-installed && !LibraryBridge.md-loading && LibraryBridge.md-error == ""
+                && LibraryBridge.m-installing-id == "";
+            clicked => { LibraryBridge.md-install(""); }
+        }
+    }
+}

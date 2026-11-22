@@ -74,18 +74,29 @@ export struct ModRefRow {
     title: string,
 }
 
-/// Modrinth search hit.
+/// Modrinth search hit (ModCatalog Modrinth tab, library_mods/browse.rs).
 export struct ModrinthCard {
     project-id: string,
     title: string,
     description: string,
+    author: string,
     downloads: string,       // localized "12,345"
+    updated: string,         // relative date ("hace 3 d"), "" when Modrinth gave none
     icon-url: string,
     icon: image,
     has-icon: bool,
     installed: bool,
     conflict: string,        // "" or the conflicting mods (awaiting "install anyway")
     optional: [ModRefRow],
+    categories: [string],    // up to 3 tags, loader names left out
+    side: string,            // "client" | "both" | "server" | "" (badge)
+}
+
+/// Category chip of the Modrinth tab (multi-select; `slug` goes to the search).
+export struct ModrinthChip {
+    slug: string,
+    label: string,
+    selected: bool,
 }
 
 /// Import source (engine ImportSource).
@@ -252,6 +263,52 @@ export global LibraryBridge {
     callback m-load-more();
     callback m-install(string, string, bool); // project id, title, force
     callback m-reload();
+    // Modrinth browser v2 (browse.rs): content-type pills, sort, categories and filters,
+    // then the project detail modal and its gallery.
+    in-out property <int> m-search-type;      // 0 mod, 1 resourcepack, 2 shader, 3 modpack
+    in-out property <int> m-search-sort;      // sort dropdown index (0 = the engine default)
+    in property <bool> m-search-any-version;  // "All MC versions" chip
+    in property <bool> m-search-server-only;  // "Include server-only" chip (mods only)
+    in property <bool> m-mods-blocked;        // mods on a Vanilla instance: nothing to search for
+    in property <[ModrinthChip]> m-cat-list;
+    callback m-set-type(int);
+    callback m-set-sort(int);
+    callback m-set-any-version(bool);
+    callback m-set-server-only(bool);
+    callback m-cat-toggle(string);            // category slug
+    callback m-open-detail(string);           // project id or slug
+    // Project detail modal
+    in-out property <bool> md-open;
+    in property <bool> md-loading;
+    in property <string> md-error;
+    in-out property <int> md-tab;             // 0 overview, 1 versions
+    in property <string> md-project-id;
+    in property <string> md-title;
+    in property <string> md-author;
+    in property <string> md-project-type;     // mod | resourcepack | shader | modpack
+    in property <string> md-downloads;        // localized
+    in property <string> md-followers;        // localized
+    in property <string> md-updated;          // relative date, "" when unknown
+    in property <string> md-license;
+    in property <string> md-side;             // client | both | server | ""
+    in property <[string]> md-categories;
+    in property <string> md-body;             // plain text paragraphs
+    in property <string> md-project-url;
+    in property <bool> md-installed;
+    in property <image> md-icon;
+    in property <bool> md-has-icon;
+    in property <[ModVersionOption]> md-versions;
+    in property <int> md-gallery-count;
+    in property <int> md-gallery-index;
+    in property <string> md-gallery-title;
+    in property <image> md-gallery-image;
+    in property <bool> md-gallery-has-image;
+    in property <bool> md-gallery-loading;
+    callback md-close();
+    callback md-install(string);              // version id; "" = the newest build
+    callback md-open-modrinth();
+    callback md-gallery-prev();
+    callback md-gallery-next();
 
     // ------------------------------------------------------------------ import (lane A)
     in property <string> i-path;

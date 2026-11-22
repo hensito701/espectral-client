@@ -1,6 +1,7 @@
 // OWNER: library-mods agent. Small building blocks shared by the library pages
 // (VersionArmory, ImportCenter, ModCatalog, MrpackModal, DonationsPavilion).
-import { Theme, Shell, ScrollArea, SelectableText } from "../../widgets.slint";
+import { Theme, T, Shell, Btn, BtnVariant, BtnSize, Emoji, Spinner, ScrollArea, SelectableText } from "../../widgets.slint";
+import { LibraryBridge } from "api.slint";
 
 /// PageScaffold twin that also reports when the viewport nears the bottom
 /// (infinite scroll: VersionArmory sentinel, Modrinth explore paging).
@@ -203,5 +204,87 @@ export component CenterText inherits HorizontalLayout {
         horizontal-alignment: center;
         wrap: word-wrap;
         max-width: root.max-text-width;
+    }
+}
+
+// Feather "box" and "star" glyphs plus the Modrinth logo (ModCatalog tabs and the Modrinth browser).
+export global ModIcons {
+    out property <string> box: "M 21 16 L 21 8 A 2 2 0 0 0 20 6.27 L 13 2.27 A 2 2 0 0 0 11 2.27 L 4 6.27 A 2 2 0 0 0 3 8 L 3 16 A 2 2 0 0 0 4 17.73 L 11 21.73 A 2 2 0 0 0 13 21.73 L 20 17.73 A 2 2 0 0 0 21 16 Z M 3.27 6.96 L 12 12.01 L 20.73 6.96 M 12 22.08 L 12 12";
+    out property <string> star: "M 12 2 L 15.09 8.26 L 22 9.27 L 17 14.14 L 18.18 21.02 L 12 17.77 L 5.82 21.02 L 7 14.14 L 2 9.27 L 8.91 8.26 Z";
+    out property <string> modrinth-tab: "M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.93V17h-2v-.07A6.006 6.006 0 0 1 6.07 12H6v-2h.07A6.006 6.006 0 0 1 11 5.07V5h2v.07A6.006 6.006 0 0 1 17.93 10H18v2h-.07A6.006 6.006 0 0 1 13 16.93z";
+    out property <string> modrinth: "M12.252.004a11.78 11.78 0 0 0-2.5.266A12.3 12.3 0 0 0 0 12.055a12.3 12.3 0 0 0 9.752 11.785 11.78 11.78 0 0 0 2.5.266c6.8 0 12.3-5.5 12.3-12.3s-5.5-12.3-12.3-12.3zm0 2.05c5.66 0 10.25 4.59 10.25 10.25s-4.59 10.25-10.25 10.25S2 17.964 2 12.304 6.59 2.054 12.252 2.054zm-2.05 4.1v4.1H6.102v4.1h4.1v4.1h4.1v-4.1h4.1v-4.1h-4.1v-4.1z";
+}
+
+/// Loading state: spinner and a line of text.
+export component LoadingPanel inherits StatePanel {
+    in property <string> text;
+    HorizontalLayout {
+        alignment: center;
+        Spinner { size: 16px; tint: Theme.accent; }
+    }
+    SelectableText { text: root.text; horizontal-alignment: center; wrap: word-wrap; }
+}
+
+/// Error line in a red-edged panel; `retry` adds a reload button (installed mods).
+export component ErrorBanner inherits GlassPanel {
+    in property <string> text;
+    in property <bool> retry;
+    fill: Theme.card-bg-soft;
+    stroke: Theme.accent-red.with-alpha(0.45);
+    height: row.preferred-height;
+    row := HorizontalLayout {
+        padding-top: Theme.space-3;
+        padding-bottom: Theme.space-3;
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-2;
+        alignment: center;
+        if root.retry: VText { text: "!"; color: Theme.accent-red; font-weight: 700; }
+        VerticalLayout {
+            alignment: center;
+            SelectableText {
+                text: root.text;
+                color: Theme.accent-red;
+                font-size: Theme.text-md;
+                wrap: word-wrap;
+            }
+        }
+        if root.retry: VerticalLayout {
+            alignment: center;
+            Btn {
+                variant: BtnVariant.ghost;
+                size: BtnSize.sm;
+                text: T.tr("versions.retry");
+                clicked => { LibraryBridge.m-reload(); }
+            }
+        }
+    }
+}
+
+/// Empty state: emoji, title and hint; `show-cta` offers the performance preset.
+export component EmptyPanel inherits StatePanel {
+    in property <string> emoji;
+    in property <string> title;
+    in property <string> hint;
+    in property <bool> show-cta;
+    HorizontalLayout {
+        alignment: center;
+        Emoji { char: root.emoji; size: 32px; }
+    }
+    SelectableText {
+        text: root.title;
+        color: Theme.text;
+        font-size: Theme.text-xl;
+        font-weight: 700;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    SelectableText { text: root.hint; horizontal-alignment: center; wrap: word-wrap; }
+    if root.show-cta: HorizontalLayout {
+        alignment: center;
+        Btn {
+            text: T.tr("mods.installPerformance");
+            clicked => { LibraryBridge.m-set-tab(1); }
+        }
     }
 }
