@@ -260,7 +260,7 @@ fn has_compact_headers_archive(java_path: &str) -> bool {
 /// 1.8.9 measured −0.6 s to the main menu with the first three.
 pub fn boot_flags(engine: &Engine, instance: &InstanceMeta, java_major: Option<u32>) -> Vec<String> {
     let mut flags = vec!["-XX:-UsePerfData".to_string()];
-    if java_major.map_or(true, |m| m < 27) {
+    if java_major.is_none_or(|m| m < 27) {
         flags.push("-Xverify:none".into());
     }
     if java_major == Some(8) {
@@ -637,7 +637,7 @@ pub fn build_argv(engine: &Engine, instance: &InstanceMeta, resolved: &mut Resol
         .get("minecraftArguments")
         .and_then(Value::as_str)
         .filter(|_| {
-            resolved.version.json.pointer("/arguments/game").and_then(Value::as_array).map_or(true, |a| a.is_empty())
+            resolved.version.json.pointer("/arguments/game").and_then(Value::as_array).is_none_or(|a| a.is_empty())
         })
         .map(str::to_string);
     let sub = |k: &str| subst.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
@@ -1056,7 +1056,7 @@ pub fn select_game_dir(
     }
     let Some(acc) = launch_account else { return (base, natives) };
     let active = crate::accounts::get_active_account(engine);
-    if active.as_ref().map_or(true, |a| a.uuid != acc.uuid) {
+    if active.as_ref().is_none_or(|a| a.uuid != acc.uuid) {
         let profile = base.join("profiles").join(&acc.uuid);
         if !dry_run {
             let r = std::fs::create_dir_all(profile.join("logs"))

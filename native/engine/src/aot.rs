@@ -238,7 +238,7 @@ pub fn latest_aot_proof_log(engine: &Engine, instance_name: &str) -> Option<Path
     let dir = crate::instances::effective_game_dir_by_name(engine, instance_name);
     let mut best: Option<(PathBuf, f64)> = None;
     for (p, m) in aot_logs_in(&dir) {
-        if best.as_ref().map_or(true, |(_, bm)| m > *bm) {
+        if best.as_ref().is_none_or(|(_, bm)| m > *bm) {
             best = Some((p, m));
         }
     }

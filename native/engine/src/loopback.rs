@@ -100,7 +100,7 @@ fn host_ok(headers: &HeaderMap) -> bool {
         None => (h.as_str(), None),
     };
     (name == "127.0.0.1" || name == "localhost")
-        && port.map_or(true, |p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+        && port.is_none_or(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn json_error(status: u16, code: &str, message: &str) -> Response {

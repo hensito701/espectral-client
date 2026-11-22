@@ -323,7 +323,7 @@ fn opened() {
     }
     sync_unread(&ui);
     load_previews();
-    let stale = with(|s| !s.fetching && s.last_fetch.map_or(true, |t| t.elapsed() > OPENED_REFETCH));
+    let stale = with(|s| !s.fetching && s.last_fetch.is_none_or(|t| t.elapsed() > OPENED_REFETCH));
     if stale {
         fetch(false);
     }

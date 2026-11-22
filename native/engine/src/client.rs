@@ -181,7 +181,7 @@ fn coerce_feature_entry(def: &Map<String, Value>, entry: Option<&Value>) -> Map<
 fn normalize(raw: &Map<String, Value>) -> Map<String, Value> {
     let reg = suite_registry();
     let mut out = raw.clone();
-    if raw.get("schema").map_or(true, Value::is_null) {
+    if raw.get("schema").is_none_or(Value::is_null) {
         out.insert("schema".into(), Value::from(reg.schema));
     }
     let mut suite = obj(raw.get("suite")).cloned().unwrap_or_default();
@@ -310,7 +310,7 @@ pub fn seed_client_config_at(engine: &Engine, path: &Path) {
     let raw = read_raw(path);
     let mut merged = raw.clone();
     let schema = merged.get("schema");
-    if schema.map_or(true, Value::is_null) || schema.and_then(Value::as_f64) == Some(1.0) {
+    if schema.is_none_or(Value::is_null) || schema.and_then(Value::as_f64) == Some(1.0) {
         merged.insert("schema".into(), Value::from(reg.schema));
     }
     let mut suite = obj(merged.get("suite")).cloned().unwrap_or_default();
@@ -538,7 +538,7 @@ pub async fn patch_client_config_value(
     let path = client_config_path(engine, instance_name);
     let mut raw = read_raw(&path);
     let schema = raw.get("schema");
-    if schema.map_or(true, Value::is_null) || schema.and_then(Value::as_f64) == Some(1.0) {
+    if schema.is_none_or(Value::is_null) || schema.and_then(Value::as_f64) == Some(1.0) {
         raw.insert("schema".into(), Value::from(client_config_schema()));
     }
     if let Some(Value::Object(s)) = p.get("suite") {

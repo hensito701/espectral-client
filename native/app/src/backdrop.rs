@@ -72,7 +72,7 @@ enum Source {
 fn source(ctx: &Ctx, key: &str) -> Option<Source> {
     if let Some(n) = key.strip_prefix("builtin:") {
         let i = n.parse::<usize>().ok()?.checked_sub(1)?;
-        return Some(Source::Bytes(*BUILTIN.get(i)?));
+        return Some(Source::Bytes(BUILTIN.get(i)?));
     }
     let name = key.strip_prefix(CUSTOM_PREFIX)?;
     valid_name(name).then(|| Source::File(custom_dir(ctx).join(name)))
@@ -194,7 +194,7 @@ fn step_idx(idx: usize, n: usize, step: isize) -> usize {
 fn select_index(ctx: &Ctx, ui: &AppWindow, idx: usize) {
     let b = ui.global::<Backdrop>();
     let Some(it) = b.get_items().row_data(idx) else { return };
-    select_key(ctx, ui, &it.key.to_string());
+    select_key(ctx, ui, it.key.as_ref());
 }
 
 fn select_key(ctx: &Ctx, ui: &AppWindow, key: &str) {
@@ -402,7 +402,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     let c = ctx.clone();
     b.on_select(move |key| {
         let Some(ui) = c.ui() else { return };
-        select_key(&c, &ui, &key.to_string());
+        select_key(&c, &ui, key.as_ref());
     });
 
     let c = ctx.clone();
