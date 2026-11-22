@@ -425,13 +425,7 @@ struct EspectralServer {
 
 const ESPECTRAL_SERVERS: [EspectralServer; 3] = [
     EspectralServer {
-        hosts: &[
-            "main.uhce.top",
-            "uhc.espectral.es",
-            "uhc2.espectral.es",
-            "uhc3.espectral.es",
-            "bingo.espectral.es",
-        ],
+        hosts: &["main.uhce.top", "uhc.espectral.es", "uhc2.espectral.es", "uhc3.espectral.es", "bingo.espectral.es"],
         details: "Espectral UHC · MAIN",
         state: "main.uhce.top",
         image: "espectral_logo",

@@ -208,7 +208,11 @@ fn bridge_owner(
     .map(|owner| (owner, nonce.to_string()))
     .ok_or_else(|| {
         if h(proof::BRIDGE_ID_HEADER).is_empty() && headers.contains_key(LEGACY_BRIDGE_HEADER) {
-            Box::new(json_error(503, "BRIDGE_OUTDATED", "this game's Espectral mod predates the launcher; restart the game"))
+            Box::new(json_error(
+                503,
+                "BRIDGE_OUTDATED",
+                "this game's Espectral mod predates the launcher; restart the game",
+            ))
         } else {
             Box::new(json_error(403, "BRIDGE_AUTH", "missing or invalid bridge request signature"))
         }

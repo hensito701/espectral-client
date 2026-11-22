@@ -595,16 +595,8 @@ pub async fn import_profile_with_packs(
     include_resourcepacks: bool,
 ) -> EngineResult<ImportResult> {
     let target = engine.paths().instance_dir(&instance.name);
-    import_profile_into_with_packs(
-        engine,
-        instance,
-        &target,
-        source_id,
-        policy,
-        merge_optionslc,
-        include_resourcepacks,
-    )
-    .await
+    import_profile_into_with_packs(engine, instance, &target, source_id, policy, merge_optionslc, include_resourcepacks)
+        .await
 }
 
 /// importProfile with an explicit target dir (JS `instance.dir`).

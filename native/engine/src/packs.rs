@@ -144,7 +144,9 @@ pub struct ShadersState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ZipPackKind {
     /// `pack.mcmeta` at the root (`nested_prefix: None`) or one folder deep.
-    ResourcePack { nested_prefix: Option<String> },
+    ResourcePack {
+        nested_prefix: Option<String>,
+    },
     /// `shaders/gbuffers_*` or `shaders/shaders.properties` (root or one folder deep).
     ShaderPack,
     /// Contains `modrinth.index.json`: a modpack, not a pack.
@@ -201,7 +203,7 @@ pub struct PackUnwrapResult {
 }
 
 /// Size of an instance's `downloads/` (server resource-pack cache).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerPackCacheInfo {
     pub file_count: usize,
     pub total_bytes: u64,
@@ -517,7 +519,11 @@ fn list_zip(path: &Path) -> EngineResult<Vec<Listed>> {
     let mut out = Vec::with_capacity(archive.len());
     for i in 0..archive.len() {
         let entry = archive.by_index_raw(i).map_err(zip_err)?;
-        out.push(Listed { name: entry.name().map_err(zip_err)?.into_owned(), size: entry.size(), is_dir: entry.is_dir() });
+        out.push(Listed {
+            name: entry.name().map_err(zip_err)?.into_owned(),
+            size: entry.size(),
+            is_dir: entry.is_dir(),
+        });
     }
     Ok(out)
 }
@@ -664,12 +670,8 @@ fn scan(entries: &[Listed], prefix: &str) -> PackScan {
 }
 
 fn stamp_of(path: &Path, md: &std::fs::Metadata, len: u64) -> PackStamp {
-    let mtime_ns = md
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
+    let mtime_ns =
+        md.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
     PackStamp { path: path.to_path_buf(), mtime_ns, len }
 }
 
@@ -840,7 +842,10 @@ fn list_pack_names(dir: &Path) -> Vec<String> {
 }
 
 /// Modrinth project, version id and version number of a file hash.
-fn modrinth_ids(map: &IndexMap<String, Option<Value>>, sha1: Option<&String>) -> (Option<String>, Option<String>, Option<String>) {
+fn modrinth_ids(
+    map: &IndexMap<String, Option<Value>>,
+    sha1: Option<&String>,
+) -> (Option<String>, Option<String>, Option<String>) {
     let Some(hash) = sha1 else { return (None, None, None) };
     match map.get(hash).and_then(|v| v.as_ref()) {
         Some(v) => (s(v, "project_id"), s(v, "id"), s(v, "version_number")),
@@ -971,7 +976,7 @@ fn iris_value(game: &Path, key: &str) -> Option<String> {
             let (k, v) = line.split_once('=')?;
             (k.trim() == key).then(|| v.trim().to_string())
         })
-        .last()
+        .next_back()
 }
 
 /// Apply `edit` to iris.properties lines (blank trailing lines dropped) and write it atomically.
@@ -1255,8 +1260,11 @@ pub async fn list_resource_packs(engine: &Engine, name: &str) -> EngineResult<Ve
         });
     }
     out.sort_by(|a, b| {
-        (a.priority.is_none(), a.priority, a.filename.as_str())
-            .cmp(&(b.priority.is_none(), b.priority, b.filename.as_str()))
+        (a.priority.is_none(), a.priority, a.filename.as_str()).cmp(&(
+            b.priority.is_none(),
+            b.priority,
+            b.filename.as_str(),
+        ))
     });
     Ok(out)
 }
@@ -1296,7 +1304,12 @@ pub async fn shaders_state(engine: &Engine, name: &str) -> EngineResult<ShadersS
             }
         })
         .collect();
-    Ok(ShadersState { iris_installed: iris_installed(&game), shaders_enabled: enabled, active_pack: shader_pack, packs })
+    Ok(ShadersState {
+        iris_installed: iris_installed(&game),
+        shaders_enabled: enabled,
+        active_pack: shader_pack,
+        packs,
+    })
 }
 
 /// `pack.png` of a resource pack (root or nested), at most 2 MiB; None when absent.
@@ -1346,7 +1359,11 @@ pub async fn set_resource_packs_order(engine: &Engine, name: &str, active_top_fi
 /// Rewrite a nested resource pack (`Pack/pack.mcmeta`) as a root-level one. The original is kept
 /// under `<instance>/backups/nested-<filename>`; any entry that would escape the pack root aborts
 /// the whole unwrap and leaves the original untouched.
-pub async fn unwrap_nested_resource_pack(engine: &Engine, name: &str, filename: &str) -> EngineResult<PackUnwrapResult> {
+pub async fn unwrap_nested_resource_pack(
+    engine: &Engine,
+    name: &str,
+    filename: &str,
+) -> EngineResult<PackUnwrapResult> {
     ensure_not_running(engine, name)?;
     let inst = get_instance(engine, name).await?;
     let dir = pack_dir(&effective_game_dir(engine, &inst), PackKind::ResourcePack);
@@ -1463,10 +1480,12 @@ pub async fn install_modrinth_pack(
     if s(&meta, "project_id").is_some_and(|p| p != project_id) {
         return Err(EngineError::bad_request("PACK_VERSION_MISMATCH", "that version belongs to another project"));
     }
-    let file = primary_file(&meta).ok_or_else(|| EngineError::not_found("PACK_FILE_NOT_FOUND", "no downloadable file"))?;
+    let file =
+        primary_file(&meta).ok_or_else(|| EngineError::not_found("PACK_FILE_NOT_FOUND", "no downloadable file"))?;
     let fname = safe_basename(&s(file, "filename").unwrap_or_default())?;
     let url = s(file, "url").filter(|u| !u.is_empty()).ok_or_else(|| EngineError::other("pack file has no URL"))?;
-    let sha1 = file_sha1(file).ok_or_else(|| EngineError::api(502, "PACK_NO_SHA1", "Modrinth gave no SHA-1 for the pack"))?;
+    let sha1 =
+        file_sha1(file).ok_or_else(|| EngineError::api(502, "PACK_NO_SHA1", "Modrinth gave no SHA-1 for the pack"))?;
     let size = file.get("size").and_then(Value::as_u64);
 
     let dir = pack_dir(&game, kind);
@@ -1766,7 +1785,11 @@ pub async fn clear_server_pack_cache(engine: &Engine, name: &str) -> EngineResul
 /// Active resource packs that the target version cannot load, with a newer Modrinth build for
 /// that version when one exists. Packs that cannot be read are skipped; the Modrinth lookup
 /// is best-effort.
-pub async fn version_change_packs(engine: &Engine, inst: &InstanceMeta, target_version: &str) -> Vec<VersionChangePack> {
+pub async fn version_change_packs(
+    engine: &Engine,
+    inst: &InstanceMeta,
+    target_version: &str,
+) -> Vec<VersionChangePack> {
     let game = effective_game_dir(engine, inst);
     let dir = pack_dir(&game, PackKind::ResourcePack);
     let order = read_order(&load_options(&game));
@@ -1800,9 +1823,10 @@ pub async fn version_change_packs(engine: &Engine, inst: &InstanceMeta, target_v
     found
         .into_iter()
         .map(|(filename, sha1, compat)| {
-            let update = sha1.as_deref().and_then(|h| hits.get(h)).filter(|to| {
-                primary_file(to).and_then(file_sha1).as_deref() != sha1.as_deref()
-            });
+            let update = sha1
+                .as_deref()
+                .and_then(|h| hits.get(h))
+                .filter(|to| primary_file(to).and_then(file_sha1).as_deref() != sha1.as_deref());
             VersionChangePack {
                 display_name: display_name(&filename),
                 filename,
@@ -1896,7 +1920,10 @@ mod tests {
     #[test]
     fn flattens_section_codes_and_json_text_components() {
         assert_eq!(flatten_text(&json!("§aGreen §lBold §r")), "Green Bold ");
-        assert_eq!(flatten_text(&json!({ "text": "Hi ", "extra": [{ "text": "§cthere" }, { "translate": "x" }] })), "Hi therex");
+        assert_eq!(
+            flatten_text(&json!({ "text": "Hi ", "extra": [{ "text": "§cthere" }, { "translate": "x" }] })),
+            "Hi therex"
+        );
         assert_eq!(flatten_text(&json!(["a", { "text": "b", "color": "red" }, "§4§n!"])), "ab!");
         assert_eq!(flatten_text(&json!("§zkeep")), "§zkeep", "§z is not a format code");
         let meta = parse_pack_mcmeta(
@@ -1936,7 +1963,10 @@ mod tests {
         let res = unwrap_nested_resource_pack(&e, "nested", "Outer.zip").await.unwrap();
         assert_eq!(res.filename, "Outer.zip");
         assert!(Path::new(&res.backup).is_file(), "original kept in backups/");
-        assert_eq!(classify_zip_pack(&rp.join("Outer.zip")).unwrap(), ZipPackKind::ResourcePack { nested_prefix: None });
+        assert_eq!(
+            classify_zip_pack(&rp.join("Outer.zip")).unwrap(),
+            ZipPackKind::ResourcePack { nested_prefix: None }
+        );
 
         // An entry that escapes the pack root aborts the unwrap; the original stays as it was.
         write_zip(&rp.join("Evil.zip"), &[("Pack/pack.mcmeta", PACK_34), ("Pack/../escape.txt", b"x")]);
@@ -2091,7 +2121,10 @@ mod tests {
         write_zip(&unknown, &[("readme.txt", b"hi")]);
 
         assert_eq!(classify_zip_pack(&rp).unwrap(), ZipPackKind::ResourcePack { nested_prefix: None });
-        assert_eq!(classify_zip_pack(&nested).unwrap(), ZipPackKind::ResourcePack { nested_prefix: Some("Pack/".into()) });
+        assert_eq!(
+            classify_zip_pack(&nested).unwrap(),
+            ZipPackKind::ResourcePack { nested_prefix: Some("Pack/".into()) }
+        );
         assert_eq!(classify_zip_pack(&shader).unwrap(), ZipPackKind::ShaderPack);
         assert_eq!(classify_zip_pack(&mrpack).unwrap(), ZipPackKind::Mrpack);
         assert_eq!(classify_zip_pack(&unknown).unwrap(), ZipPackKind::Unknown);

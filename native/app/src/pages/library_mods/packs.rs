@@ -181,7 +181,10 @@ fn push_packs(ui: &AppWindow) {
         };
         // filter: 0 all, 1 active only, 2 inactive only, 3 packs with issues
         let shown = |p: &ResourcePackEntry| {
-            matches(p) && (filter != 3 || has_issue(p.compat)) && (filter != 1 || p.enabled) && (filter != 2 || !p.enabled)
+            matches(p)
+                && (filter != 3 || has_issue(p.compat))
+                && (filter != 1 || p.enabled)
+                && (filter != 2 || !p.enabled)
         };
         let row = |p: &ResourcePackEntry| rp_row(p, &s.last_target, s.rp_updates.get(&p.filename));
         let active: Vec<RpRow> = s.packs.iter().filter(|p| p.enabled).filter(|p| shown(p)).map(row).collect();
@@ -300,10 +303,10 @@ fn load_packs() {
         move |e| async move {
             let packs = e.list_resource_packs(&t_call).await?;
             // A failed cache probe only hides the pill; the list still matters.
-            let cache = e.server_pack_cache_info(&t_call).await.unwrap_or(ServerPackCacheInfo {
-                file_count: 0,
-                total_bytes: 0,
-            });
+            let cache = e
+                .server_pack_cache_info(&t_call)
+                .await
+                .unwrap_or(ServerPackCacheInfo { file_count: 0, total_bytes: 0 });
             Ok((packs, cache))
         },
         move |ui, (packs, cache)| {
@@ -728,9 +731,9 @@ fn sh_select(filename: String) {
 fn sh_set_enabled(on: bool) {
     let Some(c) = super::ctx() else { return };
     let pick = with(|s| {
-        s.shaders.as_ref().and_then(|st| {
-            st.active_pack.clone().or_else(|| st.packs.first().map(|p| p.filename.clone()))
-        })
+        s.shaders
+            .as_ref()
+            .and_then(|st| st.active_pack.clone().or_else(|| st.packs.first().map(|p| p.filename.clone())))
     });
     if on && pick.is_none() {
         // Nothing to switch to: resync the toggle with the engine state.
@@ -889,9 +892,7 @@ pub fn on_tab(ui: &AppWindow, tab: i32) {
         }
         2 => {
             let target = target();
-            let stale = with(|s| {
-                s.last_target != target || (s.shaders.is_none() && !s.sh_loading)
-            });
+            let stale = with(|s| s.last_target != target || (s.shaders.is_none() && !s.sh_loading));
             if stale {
                 load_shaders();
             } else {

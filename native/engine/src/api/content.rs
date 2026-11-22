@@ -112,6 +112,9 @@ impl Default for ContentSettings {
     }
 }
 
+/// `GET /v2/tag/category` snapshot: when it was fetched, and (project type, category) pairs.
+pub(crate) type CategoryTags = (Instant, Vec<(String, ModrinthCategory)>);
+
 /// content in-memory state (caches that the JS kept at module level).
 #[derive(Debug, Default)]
 pub struct ContentState {
@@ -139,7 +142,7 @@ pub struct ContentState {
     /// The instance's installed flags are applied after the cache, so they are never stale.
     pub(crate) search_cache: Mutex<Vec<(String, Instant, Value)>>,
     /// `GET /v2/tag/category` as (project type, category), refetched after 24 h.
-    pub(crate) category_tags: Mutex<Option<(Instant, Vec<(String, ModrinthCategory)>)>>,
+    pub(crate) category_tags: Mutex<Option<CategoryTags>>,
     /// servers.mjs cache: host -> (fetched_at ms, status).
     pub(crate) server_status: Mutex<HashMap<String, (i64, ServerStatus)>>,
     /// reqwest client that never follows redirects (mrpack pack-file host checks).
@@ -467,9 +470,8 @@ impl Engine {
                 format!("instance '{name}' is running; stop it before deleting mods"),
             ));
         }
-        let deleted = crate::mods::delete_mod(self, name, filename)
-            .await
-            .map_err(|e| send_error(e, 500, "mod_delete_failed"))?;
+        let deleted =
+            crate::mods::delete_mod(self, name, filename).await.map_err(|e| send_error(e, 500, "mod_delete_failed"))?;
         Ok(DeletedReply { deleted, trash: None })
     }
 
@@ -532,12 +534,7 @@ impl Engine {
     }
 
     /// Pin or unpin a mod against "Update all" (project id or base filename).
-    pub async fn set_mod_pinned(
-        &self,
-        name: &str,
-        filename_or_pid: &str,
-        pinned: bool,
-    ) -> EngineResult<ModPinReply> {
+    pub async fn set_mod_pinned(&self, name: &str, filename_or_pid: &str, pinned: bool) -> EngineResult<ModPinReply> {
         crate::mod_updates::set_mod_pinned(self, name, filename_or_pid, pinned)
             .await
             .map_err(|e| send_error(e, 500, "mod_pin_failed"))
@@ -591,11 +588,7 @@ impl Engine {
     }
 
     /// Libraries the deleted mod was the last dependent of (orphan cleanup).
-    pub async fn orphaned_libraries_after_delete(
-        &self,
-        name: &str,
-        filename: &str,
-    ) -> EngineResult<Vec<OrphanLib>> {
+    pub async fn orphaned_libraries_after_delete(&self, name: &str, filename: &str) -> EngineResult<Vec<OrphanLib>> {
         crate::mods::orphaned_libraries_after_delete(self, name, filename)
             .await
             .map_err(|e| send_error(e, 500, "mod_orphans_failed"))
@@ -670,9 +663,7 @@ impl Engine {
                 format!("instance '{name}' is running; stop it before fixing mods"),
             ));
         }
-        crate::mods::apply_safe_compat_fixes(self, name)
-            .await
-            .map_err(|e| send_error(e, 500, "mod_compat_fix_failed"))
+        crate::mods::apply_safe_compat_fixes(self, name).await.map_err(|e| send_error(e, 500, "mod_compat_fix_failed"))
     }
 
     /// Resolve a Fabric mod id (e.g. `fabric-api`, `cloth-config`) to a Modrinth project.
@@ -882,7 +873,9 @@ impl Engine {
 
     /// GET .../resource-packs -> ResourcePackEntry[] (enabled packs first, by priority).
     pub async fn list_resource_packs(&self, name: &str) -> EngineResult<Vec<ResourcePackEntry>> {
-        crate::packs::list_resource_packs(self, name).await.map_err(|e| send_error(e, 500, "resource_packs_list_failed"))
+        crate::packs::list_resource_packs(self, name)
+            .await
+            .map_err(|e| send_error(e, 500, "resource_packs_list_failed"))
     }
 
     /// GET .../shaders -> ShadersState (Iris state plus the shader packs).

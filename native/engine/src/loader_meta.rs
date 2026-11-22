@@ -172,12 +172,7 @@ impl JarScan {
     pub fn loader_label(&self) -> String {
         const ORDER: [JarLoaderKind; 4] =
             [JarLoaderKind::Fabric, JarLoaderKind::Neoforge, JarLoaderKind::Forge, JarLoaderKind::LegacyForge];
-        ORDER
-            .iter()
-            .filter(|k| self.kinds.contains(*k))
-            .map(|k| k.label())
-            .collect::<Vec<&str>>()
-            .join(" + ")
+        ORDER.iter().filter(|k| self.kinds.contains(*k)).map(|k| k.label()).collect::<Vec<&str>>().join(" + ")
     }
 }
 
@@ -430,13 +425,7 @@ pub fn parse_mcmod_info(raw: &str) -> Vec<LegacyModInfo> {
                     );
                 }
             }
-            Some(LegacyModInfo {
-                mod_id,
-                name,
-                version: str_of("version"),
-                mc_version: str_of("mcversion"),
-                deps,
-            })
+            Some(LegacyModInfo { mod_id, name, version: str_of("version"), mc_version: str_of("mcversion"), deps })
         })
         .collect()
 }
@@ -578,10 +567,7 @@ fn parse_maven_range(raw: &str) -> Option<MavenRange> {
             Some((l, h)) => {
                 let l = l.trim();
                 let h = h.trim();
-                (
-                    (!l.is_empty()).then(|| l.to_string()),
-                    (!h.is_empty()).then(|| h.to_string()),
-                )
+                ((!l.is_empty()).then(|| l.to_string()), (!h.is_empty()).then(|| h.to_string()))
             }
             None => {
                 let v = inner.trim();
@@ -900,11 +886,8 @@ fn check_forge_dep(
                     ));
                 }
                 DepType::Required | DepType::Optional => {
-                    let severity = if d.dep_type == DepType::Required {
-                        CompatSeverity::Error
-                    } else {
-                        CompatSeverity::Warning
-                    };
+                    let severity =
+                        if d.dep_type == DepType::Required { CompatSeverity::Error } else { CompatSeverity::Warning };
                     if let Some(p) = prov {
                         if !maven_range_satisfies(&d.version_range, &p.version) {
                             issues.push(issue(
@@ -971,8 +954,8 @@ fn check_legacy_mod(
     j: &JarScan,
     m: &LegacyModInfo,
 ) {
-    let issue = |kind, target_id: &str, target_name: String, target_filename, required: String, actual, fix| {
-        ModCompatIssue {
+    let issue =
+        |kind, target_id: &str, target_name: String, target_filename, required: String, actual, fix| ModCompatIssue {
             filename: j.filename.clone(),
             mod_id: m.mod_id.clone(),
             mod_name: m.name.clone(),
@@ -985,8 +968,7 @@ fn check_legacy_mod(
             actual,
             fix,
             reason: None,
-        }
-    };
+        };
 
     if !m.mc_version.is_empty() && !mc_version_matches(&m.mc_version, &env.mc_version) {
         issues.push(issue(
@@ -1256,10 +1238,7 @@ license = "MIT"
         assert_eq!(wrong[0].filename, "fabriconly-1.0.jar");
         assert_eq!(wrong[0].mod_id, "fabriconly");
         assert_eq!(wrong[0].severity, CompatSeverity::Error);
-        assert!(report
-            .issues
-            .iter()
-            .all(|i| i.filename != "neomod-2.0.jar" || i.kind != CompatIssueKind::WrongLoader));
+        assert!(report.issues.iter().all(|i| i.filename != "neomod-2.0.jar" || i.kind != CompatIssueKind::WrongLoader));
         drop(dir);
     }
 }

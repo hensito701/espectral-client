@@ -97,7 +97,7 @@ pub fn request_with(ctx: &Ctx, url: &str, ready: fn(&AppWindow, &str), failed: f
                     ready(ui, &url);
                 }
                 None => {
-                    FAILED.with(|f| f.borrow_mut().insert(url));
+                    FAILED.with(|f| f.borrow_mut().insert(url.clone()));
                     failed(ui, &url);
                 }
             }

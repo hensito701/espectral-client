@@ -385,7 +385,7 @@ fn match_mixin(input: &CrashInput<'_>, all: &[&str]) -> Option<Verdict> {
         }
     }
     for (config, line) in captures(&lines, &MIXIN_CONFIG) {
-        if let Some(m) = input.mods.iter().find(|m| m.mixin_configs.iter().any(|c| *c == config)) {
+        if let Some(m) = input.mods.iter().find(|m| m.mixin_configs.contains(&config)) {
             push_suspect(&mut suspects, suspect(m, SuspectConfidence::High, line));
         }
     }
@@ -629,9 +629,7 @@ fn read_mod_meta(jar: &Path, c: &mut ModCandidate) {
             .map(|items| {
                 items
                     .iter()
-                    .filter_map(|m| {
-                        m.as_str().or_else(|| m.get("config").and_then(Value::as_str)).map(str::to_string)
-                    })
+                    .filter_map(|m| m.as_str().or_else(|| m.get("config").and_then(Value::as_str)).map(str::to_string))
                     .collect()
             })
             .unwrap_or_default();
@@ -675,11 +673,8 @@ fn entrypoint_classes(v: &Value) -> Vec<String> {
 /// Every enabled `.jar` in `mods_dir`, read for its id, mixins, entrypoints and packages.
 fn scan_mod_candidates(mods_dir: &Path, flagged: &HashSet<String>) -> Vec<ModCandidate> {
     let Ok(read) = std::fs::read_dir(mods_dir) else { return Vec::new() };
-    let mut names: Vec<String> = read
-        .flatten()
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with(".jar"))
-        .collect();
+    let mut names: Vec<String> =
+        read.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".jar")).collect();
     names.sort();
     names
         .into_iter()
@@ -823,23 +818,22 @@ impl Engine {
             effective_memory_mb(i64::from(current_mb) + MEMORY_STEP_MB, crate::platform::total_memory_bytes());
         let memory_ceiling_mb = u32::try_from(ceiling).unwrap_or(current_mb);
 
-        let flagged: HashSet<String> =
-            match crate::fabric_compat::check_instance_mods_compat(self, &src.instance).await {
-                Ok(report) => report
-                    .issues
-                    .iter()
-                    .filter(|i| i.severity == CompatSeverity::Error)
-                    .map(|i| i.filename.clone())
-                    .collect(),
-                Err(_) => HashSet::new(),
-            };
+        let flagged: HashSet<String> = match crate::fabric_compat::check_instance_mods_compat(self, &src.instance).await
+        {
+            Ok(report) => report
+                .issues
+                .iter()
+                .filter(|i| i.severity == CompatSeverity::Error)
+                .map(|i| i.filename.clone())
+                .collect(),
+            Err(_) => HashSet::new(),
+        };
         let mods = scan_mod_candidates(&game_dir.join("mods"), &flagged);
 
         let report = find_crash_report(game_dir, src.started_at);
         let hs_err = newest_since(game_dir, "hs_err_pid", ".log", src.started_at)
             .and_then(|p| read_capped(&p).map(|text| (p, text)));
-        let report_path =
-            report.as_ref().or(hs_err.as_ref()).map(|(p, _)| p.to_string_lossy().into_owned());
+        let report_path = report.as_ref().or(hs_err.as_ref()).map(|(p, _)| p.to_string_lossy().into_owned());
         let lines: Vec<String> = src.lines.iter().rev().take(ANALYZED_LINES).rev().cloned().collect();
 
         let input = CrashInput {
@@ -997,9 +991,7 @@ mod tests {
         .await;
         let (_dir, engine) = temp_engine();
         let text = "user C:\\Users\\aitor\\x --accessToken SECRETTOKEN123 ip 10.0.0.7";
-        let up = upload_to(engine.http().client(), &server.url("/1/log"), &redact_log(text))
-            .await
-            .expect("upload");
+        let up = upload_to(engine.http().client(), &server.url("/1/log"), &redact_log(text)).await.expect("upload");
         assert_eq!(up.url, "https://mclo.gs/abc");
         let requests = server.requests();
         assert_eq!(requests.len(), 1);

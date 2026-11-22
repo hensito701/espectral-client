@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use slint::{ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use crate::bridge::Ctx;
-use crate::{AppWindow, Backdrop, BackdropItem, dialogs, i18n, prefs, util};
+use crate::{dialogs, i18n, prefs, util, AppWindow, Backdrop, BackdropItem};
 
 /// Shipped pictures: `launcher-bg-1.jpg` is the default (`builtin:1`).
 const BUILTIN: [&[u8]; 5] = [
@@ -93,15 +93,13 @@ fn decode(source: Source, edge: u32) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
 
 /// Decode any supported format, shrunk to fit `edge`×`edge` (never upscaled).
 fn decode_bytes(bytes: &[u8], edge: u32) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
-    let (w, h) = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?.into_dimensions().ok()?;
+    let (w, h) =
+        image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?.into_dimensions().ok()?;
     if w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE || u64::from(w) * u64::from(h) > MAX_PIXELS {
         return None;
     }
     let rgba = image::load_from_memory(bytes).ok()?.to_rgba8();
-    Some(util::fit(
-        SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(rgba.as_raw(), rgba.width(), rgba.height()),
-        edge,
-    ))
+    Some(util::fit(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(rgba.as_raw(), rgba.width(), rgba.height()), edge))
 }
 
 /// Item keys (no thumbs): the shipped pictures first, then the player's own
@@ -132,30 +130,29 @@ fn refresh_items(ctx: &Ctx, then: impl FnOnce(&AppWindow) + Send + 'static) {
             0 => THUMB_FALLBACK,
             e => e,
         };
-        let rows: Vec<(String, Option<SharedPixelBuffer<Rgba8Pixel>>, bool)> =
-            tokio::task::spawn_blocking(move || {
-                item_keys(&dir)
-                    .into_iter()
-                    .map(|key| {
-                        let custom = key.starts_with(CUSTOM_PREFIX);
-                        // Thumbs decode by key; built-ins are embedded, custom
-                        // files resolve in `dir`. `source` needs the ctx for
-                        // the data dir — recompute it here instead.
-                        let src = if custom {
-                            Some(Source::File(dir.join(&key[CUSTOM_PREFIX.len()..])))
-                        } else {
-                            key.strip_prefix("builtin:")
-                                .and_then(|n| n.parse::<usize>().ok())
-                                .and_then(|i| BUILTIN.get(i - 1))
-                                .map(|b| Source::Bytes(b))
-                        };
-                        let thumb = src.and_then(|s| decode(s, edge));
-                        (key, thumb, custom)
-                    })
-                    .collect()
-            })
-            .await
-            .unwrap_or_default();
+        let rows: Vec<(String, Option<SharedPixelBuffer<Rgba8Pixel>>, bool)> = tokio::task::spawn_blocking(move || {
+            item_keys(&dir)
+                .into_iter()
+                .map(|key| {
+                    let custom = key.starts_with(CUSTOM_PREFIX);
+                    // Thumbs decode by key; built-ins are embedded, custom
+                    // files resolve in `dir`. `source` needs the ctx for
+                    // the data dir — recompute it here instead.
+                    let src = if custom {
+                        Some(Source::File(dir.join(&key[CUSTOM_PREFIX.len()..])))
+                    } else {
+                        key.strip_prefix("builtin:")
+                            .and_then(|n| n.parse::<usize>().ok())
+                            .and_then(|i| BUILTIN.get(i - 1))
+                            .map(|b| Source::Bytes(b))
+                    };
+                    let thumb = src.and_then(|s| decode(s, edge));
+                    (key, thumb, custom)
+                })
+                .collect()
+        })
+        .await
+        .unwrap_or_default();
         c.on_ui(move |ui| {
             let items = rows
                 .into_iter()

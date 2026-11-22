@@ -422,8 +422,7 @@ async fn align_batch_companions(
                 if dep.get("dependency_type").and_then(Value::as_str) != Some("required") {
                     continue;
                 }
-                let (Some(pid), Some(vid)) =
-                    (crate::mods::s(&dep, "project_id"), crate::mods::s(&dep, "version_id"))
+                let (Some(pid), Some(vid)) = (crate::mods::s(&dep, "project_id"), crate::mods::s(&dep, "version_id"))
                 else {
                     continue;
                 };
@@ -505,8 +504,7 @@ pub async fn apply_mod_updates(
     let mods_dir = effective_mods_dir(engine, &instance);
     std::fs::create_dir_all(&mods_dir)?;
     let report = check_mod_updates(engine, instance_name, ReleaseChannel::Release).await?;
-    let wanted: Option<HashSet<String>> =
-        filenames.map(|list| list.iter().map(|f| normalize_pin_name(f)).collect());
+    let wanted: Option<HashSet<String>> = filenames.map(|list| list.iter().map(|f| normalize_pin_name(f)).collect());
     let mut entries: Vec<ModUpdateEntry> = Vec::new();
     let mut skipped_pinned: Vec<String> = Vec::new();
     for update in report.updates {
@@ -902,11 +900,7 @@ fn forge_logo_entry(path: &Path) -> EngineResult<Option<String>> {
 /// Icon bytes declared by the jar itself (`fabric.mod.json` `icon`, else
 /// `mods.toml` `logoFile`), capped at 2 MiB. Zero network, so local-only
 /// mods without a Modrinth project still get a tile.
-pub async fn mod_embedded_icon(
-    engine: &Engine,
-    instance_name: &str,
-    filename: &str,
-) -> EngineResult<Option<Vec<u8>>> {
+pub async fn mod_embedded_icon(engine: &Engine, instance_name: &str, filename: &str) -> EngineResult<Option<Vec<u8>>> {
     let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
     let base = crate::mods::assert_safe_filename(filename)?;
     let mods_dir = effective_mods_dir(engine, &instance);
@@ -1212,12 +1206,7 @@ mod updates_tests {
             "0.10.0",
             "release",
             json!([]),
-            file_json(
-                "sodium-fabric-0.10.0.jar",
-                &sodium_hash,
-                &format!("{cdn}/sold"),
-                sodium_old.len() as u64,
-            ),
+            file_json("sodium-fabric-0.10.0.jar", &sodium_hash, &format!("{cdn}/sold"), sodium_old.len() as u64),
         );
         let iris_old_meta = version_json(
             crate::mods::IRIS_PROJECT_ID,
@@ -1237,12 +1226,7 @@ mod updates_tests {
             "0.10.1",
             "release",
             json!([]),
-            file_json(
-                "sodium-fabric-0.10.1.jar",
-                &sodium_sha,
-                &format!("{cdn}/snew"),
-                sodium_new.len() as u64,
-            ),
+            file_json("sodium-fabric-0.10.1.jar", &sodium_sha, &format!("{cdn}/snew"), sodium_new.len() as u64),
         );
         let iris_beta_meta = version_json(
             crate::mods::IRIS_PROJECT_ID,
@@ -1250,12 +1234,7 @@ mod updates_tests {
             "1.12.0-beta.1",
             "beta",
             json!([{ "project_id": crate::mods::SODIUM_PROJECT_ID, "dependency_type": "required" }]),
-            file_json(
-                "iris-fabric-1.12.0-beta.1.jar",
-                &iris_beta_sha,
-                &format!("{cdn}/ibeta"),
-                iris_beta.len() as u64,
-            ),
+            file_json("iris-fabric-1.12.0-beta.1.jar", &iris_beta_sha, &format!("{cdn}/ibeta"), iris_beta.len() as u64),
         );
         let iris_match_meta = version_json(
             crate::mods::IRIS_PROJECT_ID,
@@ -1267,12 +1246,7 @@ mod updates_tests {
                 "version_id": "SODNEW",
                 "dependency_type": "required"
             }]),
-            file_json(
-                "iris-fabric-1.12.0.jar",
-                &iris_match_sha,
-                &format!("{cdn}/imatch"),
-                iris_match.len() as u64,
-            ),
+            file_json("iris-fabric-1.12.0.jar", &iris_match_sha, &format!("{cdn}/imatch"), iris_match.len() as u64),
         );
         // Newest release for the instance: it does not pin the new Sodium, so
         // the companion logic must move Iris to IRMATCH instead.
@@ -1348,10 +1322,7 @@ mod updates_tests {
         assert_eq!(sodium_row["prev_filename"], "sodium-fabric-0.10.0.jar");
         assert_eq!(sodium_row["prev_version_id"], "SODOLD");
         assert_eq!(sodium_row["new_filename"], "sodium-fabric-0.10.1.jar");
-        assert_eq!(
-            std::fs::read(backups.join("last-mod-update/sodium-fabric-0.10.0.disabled")).unwrap(),
-            sodium_old
-        );
+        assert_eq!(std::fs::read(backups.join("last-mod-update/sodium-fabric-0.10.0.disabled")).unwrap(), sodium_old);
         assert_eq!(std::fs::read(backups.join("last-mod-update/iris-fabric-1.11.7")).unwrap(), iris_old);
 
         let undo = e.undo_last_mod_update("upd2").await.unwrap();
@@ -1427,10 +1398,7 @@ mod updates_tests {
 
         // Only a 256 px entry: nothing to pick <= 128.
         let huge = json!({ "schemaVersion": 1, "id": "huge", "version": "1", "icon": { "256": "big.png" } });
-        write_jar(
-            &mods_dir.join("huge.jar"),
-            &[("fabric.mod.json", huge.to_string().as_bytes()), ("big.png", b"big")],
-        );
+        write_jar(&mods_dir.join("huge.jar"), &[("fabric.mod.json", huge.to_string().as_bytes()), ("big.png", b"big")]);
         assert_eq!(e.mod_embedded_icon("icons", "huge.jar").await.unwrap(), None);
 
         // Forge fallback: mods.toml logoFile.
@@ -1440,10 +1408,7 @@ mod updates_tests {
             "logoFile=\"logo.png\"\n\n",
             "[[mods]]\nmodId=\"forgemod\"\nversion=\"1\"\n"
         );
-        write_jar(
-            &mods_dir.join("forge-mod.jar"),
-            &[("META-INF/mods.toml", toml.as_bytes()), ("logo.png", b"logo")],
-        );
+        write_jar(&mods_dir.join("forge-mod.jar"), &[("META-INF/mods.toml", toml.as_bytes()), ("logo.png", b"logo")]);
         assert_eq!(e.mod_embedded_icon("icons", "forge-mod.jar").await.unwrap().as_deref(), Some(&b"logo"[..]));
     }
 }

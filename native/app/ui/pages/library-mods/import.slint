@@ -6,7 +6,7 @@
 // tracking). Lane B: launcher profile migrator (engine import_sources /
 // import_profile). Bottom: session-local history. State: LibraryBridge.i-*.
 
-import { Theme, T, AppState, GlassCard, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Spinner, Emoji, ProgressBar, ProgressTone, Field, Select, SelectableText } from "../../widgets.slint";
+import { Theme, T, AppState, GlassCard, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Spinner, Emoji, ProgressBar, ProgressTone, Field, Select, SelectableText, Checkbox } from "../../widgets.slint";
 import { LibraryBridge, ImportSourceRow, RecentImportRow } from "api.slint";
 import { LibScroll, VText, Chip, CenterText, SectionLabel } from "parts.slint";
 import { MrpackModal } from "mrpack-modal.slint";
@@ -757,6 +757,10 @@ component ProfileForm inherits VerticalLayout {
             title: T.tr("import.profile.policyIfOlder");
             desc: T.tr("import.profile.policyIfOlderDesc");
             picked => { LibraryBridge.i-overwrite-if-older = true; }
+        }
+        Checkbox {
+            text: T.tr("import.profile.includePacks");
+            checked <=> LibraryBridge.i-include-packs;
         }
     }
     if LibraryBridge.i-profile-error != "": Rectangle {

@@ -758,11 +758,7 @@ pub async fn list_mods(engine: &Engine, instance_name: &str) -> EngineResult<Vec
                         .unwrap_or_else(|| p.version_number.clone())
                 })
                 .or_else(|| {
-                    jar_scan
-                        .as_ref()
-                        .and_then(|j| j.primary_version())
-                        .map(str::to_string)
-                        .filter(|v| !v.is_empty())
+                    jar_scan.as_ref().and_then(|j| j.primary_version()).map(str::to_string).filter(|v| !v.is_empty())
                 }),
             version_id,
             sha1,
@@ -1891,10 +1887,8 @@ fn search_facets(
                 groups.push(json!(["client_side!=unsupported"]));
             }
         }
-        "shader" => {
-            if loader.is_some_and(|l| IRIS_LOADERS.contains(&l)) {
-                groups.push(json!(["categories:iris"]));
-            }
+        "shader" if loader.is_some_and(|l| IRIS_LOADERS.contains(&l)) => {
+            groups.push(json!(["categories:iris"]));
         }
         _ => {}
     }
@@ -1982,7 +1976,8 @@ pub async fn search_modrinth(engine: &Engine, query: &ModrinthSearchQuery) -> En
         query.categories.iter().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()).collect();
     categories.sort();
     categories.dedup();
-    let facets = search_facets(project_type, loader, version, query.any_version, query.include_server_only, &categories);
+    let facets =
+        search_facets(project_type, loader, version, query.any_version, query.include_server_only, &categories);
     let index = match query.sort.as_deref().filter(|s| SEARCH_SORTS.contains(s)) {
         Some(s) => s,
         None if text.is_empty() => "downloads",
@@ -2334,7 +2329,6 @@ async fn installed_project_ids(engine: &Engine, mods_dir: &Path, files: &[String
     let docs = installed_version_docs(engine, mods_dir, files).await?;
     Some(docs.iter().filter_map(|v| s(v, "project_id")).collect())
 }
-
 
 /// sha1 of a mod jar, memoized on `ContentState::jar_sha1` by
 /// (path, mtime, len) so repeated searches skip re-hashing unchanged jars.
@@ -2874,11 +2868,7 @@ pub(crate) async fn resolve_installed_mod(
 
 /// List all Modrinth versions (release / beta / alpha) of an installed mod for
 /// this instance's Minecraft version + loader.
-pub async fn list_mod_versions(
-    engine: &Engine,
-    instance_name: &str,
-    filename: &str,
-) -> EngineResult<ModVersionsReply> {
+pub async fn list_mod_versions(engine: &Engine, instance_name: &str, filename: &str) -> EngineResult<ModVersionsReply> {
     let instance = crate::resolver::load_instance_meta(engine, instance_name)?;
     let mods_dir = effective_mods_dir(engine, &instance);
     let info = resolve_installed_mod(engine, &instance, &mods_dir, filename).await?;
@@ -2891,11 +2881,7 @@ pub async fn list_mod_versions(
     let loader = instance.loader.content_loader();
     let raw_versions = list_project_versions(engine, &project_id, &instance.version, loader).await?;
     let titles = project_titles(engine, std::slice::from_ref(&project_id)).await;
-    let title = titles
-        .get(&project_id)
-        .cloned()
-        .or(info.display_name)
-        .unwrap_or_else(|| info.base_filename.clone());
+    let title = titles.get(&project_id).cloned().or(info.display_name).unwrap_or_else(|| info.base_filename.clone());
 
     let versions: Vec<ModVersionItem> = raw_versions
         .into_iter()
@@ -2963,14 +2949,12 @@ fn version_tier_rank(version_type: &str) -> u8 {
 
 /// True if a Modrinth version JSON's `dependencies` array lists `version_id`.
 fn modrinth_version_pins(meta: &Value, target_version_id: &str) -> bool {
-    meta.get("dependencies")
-        .and_then(Value::as_array)
-        .is_some_and(|deps| {
-            deps.iter().any(|d| {
-                d.get("dependency_type").and_then(Value::as_str) == Some("required")
-                    && d.get("version_id").and_then(Value::as_str) == Some(target_version_id)
-            })
+    meta.get("dependencies").and_then(Value::as_array).is_some_and(|deps| {
+        deps.iter().any(|d| {
+            d.get("dependency_type").and_then(Value::as_str) == Some("required")
+                && d.get("version_id").and_then(Value::as_str) == Some(target_version_id)
         })
+    })
 }
 
 /// Plan switching an installed mod to `target_version_id`, bringing along
@@ -2986,7 +2970,11 @@ pub async fn plan_mod_version_switch(
     let mods_dir = effective_mods_dir(engine, &instance);
     let primary = resolve_installed_mod(engine, &instance, &mods_dir, filename).await?;
     let Some(primary_pid) = primary.project_id.clone() else {
-        return Err(code_err(404, "mod_not_on_modrinth", format!("{} is not tracked on Modrinth", primary.base_filename)));
+        return Err(code_err(
+            404,
+            "mod_not_on_modrinth",
+            format!("{} is not tracked on Modrinth", primary.base_filename),
+        ));
     };
     let target_meta = version_meta(engine, target_version_id).await?;
     let target_file = primary_file(&target_meta).ok_or_else(|| no_file_error(&target_meta))?;
@@ -3027,14 +3015,11 @@ pub async fn plan_mod_version_switch(
     for (base, enabled, h) in disk_files {
         let meta = h.as_deref().and_then(|hs| by_hash.get(hs)).and_then(|o| o.clone());
         let scanned_idx = scanned.iter().position(|j| j.filename == base);
-        let pid = meta
-            .as_ref()
-            .and_then(|m| s(m, "project_id"))
-            .or_else(|| {
-                scanned_idx
-                    .and_then(|i| crate::fabric_compat::known_modrinth_for_id(&scanned[i].root.id))
-                    .map(|(p, _)| p.to_string())
-            });
+        let pid = meta.as_ref().and_then(|m| s(m, "project_id")).or_else(|| {
+            scanned_idx
+                .and_then(|i| crate::fabric_compat::known_modrinth_for_id(&scanned[i].root.id))
+                .map(|(p, _)| p.to_string())
+        });
         let Some(pid) = pid else { continue };
         let vid = meta.as_ref().and_then(|m| s(m, "id"));
         let vnum = meta
@@ -3120,17 +3105,15 @@ pub async fn plan_mod_version_switch(
             let j = &scanned[idx];
             primary_ids.iter().find_map(|pid| j.root.depends.get(pid).cloned())
         });
-        let modrinth_depends_on_primary = other
-            .modrinth_meta
-            .as_ref()
-            .and_then(|m| m.get("dependencies"))
-            .and_then(Value::as_array)
-            .is_some_and(|deps| {
-                deps.iter().any(|d| {
-                    d.get("dependency_type").and_then(Value::as_str) == Some("required")
-                        && d.get("project_id").and_then(Value::as_str) == Some(primary_pid.as_str())
-                })
-            });
+        let modrinth_depends_on_primary =
+            other.modrinth_meta.as_ref().and_then(|m| m.get("dependencies")).and_then(Value::as_array).is_some_and(
+                |deps| {
+                    deps.iter().any(|d| {
+                        d.get("dependency_type").and_then(Value::as_str) == Some("required")
+                            && d.get("project_id").and_then(Value::as_str) == Some(primary_pid.as_str())
+                    })
+                },
+            );
 
         if !is_iris_for_sodium && fabric_dep_clauses.is_none() && !modrinth_depends_on_primary {
             continue;
@@ -3141,14 +3124,11 @@ pub async fn plan_mod_version_switch(
             _ => true,
         };
 
-        let other_name = other
-            .scanned_idx
-            .map(|i| scanned[i].root.name.clone())
-            .unwrap_or_else(|| other.filename.clone());
+        let other_name =
+            other.scanned_idx.map(|i| scanned[i].root.name.clone()).unwrap_or_else(|| other.filename.clone());
 
-        let other_versions = list_project_versions(engine, &other.project_id, &instance.version, loader)
-            .await
-            .unwrap_or_default();
+        let other_versions =
+            list_project_versions(engine, &other.project_id, &instance.version, loader).await.unwrap_or_default();
 
         // First preference: a build of `other` that explicitly pins `target_version_id`
         // in Modrinth dependencies (exact Iris <-> Sodium pairing!).
@@ -3187,18 +3167,15 @@ pub async fn plan_mod_version_switch(
             let fallback = other_versions
                 .iter()
                 .filter(|v| {
-                    let pins_other = v
-                        .get("dependencies")
-                        .and_then(Value::as_array)
-                        .is_some_and(|deps| {
-                            deps.iter().any(|d| {
-                                d.get("dependency_type").and_then(Value::as_str) == Some("required")
-                                    && d.get("project_id").and_then(Value::as_str) == Some(primary_pid.as_str())
-                                    && d.get("version_id")
-                                        .and_then(Value::as_str)
-                                        .is_some_and(|vid| vid != target_version_id)
-                            })
-                        });
+                    let pins_other = v.get("dependencies").and_then(Value::as_array).is_some_and(|deps| {
+                        deps.iter().any(|d| {
+                            d.get("dependency_type").and_then(Value::as_str) == Some("required")
+                                && d.get("project_id").and_then(Value::as_str) == Some(primary_pid.as_str())
+                                && d.get("version_id")
+                                    .and_then(Value::as_str)
+                                    .is_some_and(|vid| vid != target_version_id)
+                        })
+                    });
                     !pins_other && s(v, "id").as_deref() != other.version_id.as_deref()
                 })
                 .min_by_key(|v| version_tier_rank(s(v, "version_type").as_deref().unwrap_or("release")));
@@ -3235,9 +3212,7 @@ pub async fn plan_mod_version_switch(
                 .is_some_and(|deps| {
                     deps.iter().any(|d| {
                         d.get("project_id").and_then(Value::as_str) == Some(SODIUM_PROJECT_ID)
-                            && d.get("version_id")
-                                .and_then(Value::as_str)
-                                .is_some_and(|vid| vid != target_version_id)
+                            && d.get("version_id").and_then(Value::as_str).is_some_and(|vid| vid != target_version_id)
                     })
                 });
             if pins_different {
@@ -3250,11 +3225,8 @@ pub async fn plan_mod_version_switch(
     let mut title_ids = vec![primary_pid.clone()];
     title_ids.extend(companions.iter().map(|c| c.project_id.clone()));
     let titles = project_titles(engine, &title_ids).await;
-    let primary_title = titles
-        .get(&primary_pid)
-        .cloned()
-        .or(primary.display_name)
-        .unwrap_or_else(|| primary.base_filename.clone());
+    let primary_title =
+        titles.get(&primary_pid).cloned().or(primary.display_name).unwrap_or_else(|| primary.base_filename.clone());
     for c in &mut companions {
         if let Some(t) = titles.get(&c.project_id) {
             c.title = t.clone();
@@ -3328,9 +3300,9 @@ pub async fn apply_mod_version_switch(
         let dest = mods_dir.join(&fname);
         let expected_sha1 = file_sha1(file);
         let already_valid = dest.exists()
-            && expected_sha1
-                .as_deref()
-                .is_some_and(|exp| std::fs::read(&dest).ok().map(|b| crate::download::sha1_hex(&b)).as_deref() == Some(exp));
+            && expected_sha1.as_deref().is_some_and(|exp| {
+                std::fs::read(&dest).ok().map(|b| crate::download::sha1_hex(&b)).as_deref() == Some(exp)
+            });
         if !already_valid {
             downloads.push(
                 DownloadItem::new(s(file, "url").unwrap_or_default(), dest)
@@ -3338,10 +3310,7 @@ pub async fn apply_mod_version_switch(
                     .size(file.get("size").and_then(Value::as_u64))
                     .event(
                         ProgressChannel::Mod,
-                        ProgressEvent::for_instance(instance_name)
-                            .filename(&fname)
-                            .index(i as u64)
-                            .total(total),
+                        ProgressEvent::for_instance(instance_name).filename(&fname).index(i as u64).total(total),
                     ),
             );
         }
@@ -3526,9 +3495,7 @@ async fn preview_modrinth_install_uncached(
                         // Skip if plan.dependencies is already going to install this mod!
                         let covered = crate::fabric_compat::known_modrinth_for_id(&issue.target_id)
                             .is_some_and(|(pid, _)| planned_dep_pids.contains(pid))
-                            || planned_dep_files
-                                .iter()
-                                .any(|f| is_filename_for_slug(f, &issue.target_id));
+                            || planned_dep_files.iter().any(|f| is_filename_for_slug(f, &issue.target_id));
                         if !covered {
                             compat_issues.push(issue);
                         }
@@ -3564,11 +3531,8 @@ async fn preview_modrinth_install_uncached(
                         }
                     }
                     crate::fabric_compat::CompatIssueKind::IncompatibleDep => {
-                        if let Some(crate::fabric_compat::CompatFix::UpdateMod {
-                            ref filename,
-                            ref required,
-                            ..
-                        }) = issue.fix
+                        if let Some(crate::fabric_compat::CompatFix::UpdateMod { ref filename, ref required, .. }) =
+                            issue.fix
                         {
                             if !try_plan_upgrade(
                                 engine,
@@ -3592,9 +3556,10 @@ async fn preview_modrinth_install_uncached(
 
             if !upgrades.is_empty() {
                 // An upgrade that cannot be staged (too large or unreachable) keeps its old jar.
-                let staged_up =
-                    futures_util::future::join_all(upgrades.iter().map(|u| stage_version_jar(engine, &u.to_version_id)))
-                        .await;
+                let staged_up = futures_util::future::join_all(
+                    upgrades.iter().map(|u| stage_version_jar(engine, &u.to_version_id)),
+                )
+                .await;
                 let upgraded: Vec<(String, crate::fabric_compat::ScannedJar)> = upgrades
                     .iter()
                     .zip(staged_up)
@@ -3628,8 +3593,7 @@ async fn preview_modrinth_install_uncached(
         }
     }
 
-    let has_blocking_compat =
-        compat_issues.iter().any(|i| i.severity == crate::fabric_compat::CompatSeverity::Error);
+    let has_blocking_compat = compat_issues.iter().any(|i| i.severity == crate::fabric_compat::CompatSeverity::Error);
     let needs_confirmation = !upgrades.is_empty()
         || !enable_disabled.is_empty()
         || !plan.conflicts.is_empty()
@@ -3767,11 +3731,9 @@ pub async fn commit_modrinth_install(
         let key = install_preview_key(instance_name, project_id, &root_vid, include_optional);
         let preview = match take_cached_install_preview(engine, &key) {
             Some(cached) => Some(cached),
-            None => {
-                preview_modrinth_install_uncached(engine, instance_name, project_id, version_id, include_optional)
-                    .await
-                    .ok()
-            }
+            None => preview_modrinth_install_uncached(engine, instance_name, project_id, version_id, include_optional)
+                .await
+                .ok(),
         };
         if let Some(preview) = preview {
             for fname in &preview.enable_disabled {
@@ -4524,8 +4486,7 @@ mod tests {
             "x\n.jar",
             "con.jar",
             "COM1.jar",
-        ]
-        {
+        ] {
             assert!(safe_download_name(&json!({ "filename": bad })).is_err(), "{bad:?}");
         }
         assert_eq!(
@@ -4589,7 +4550,8 @@ mod tests {
         let pinned = json!({
             missing.version_id.clone(): modrinth_version("lithium", &missing.version_id, json!([]), &format!("{cdn}/lithium.jar")),
         });
-        let server = MockServer::start(fake_modrinth(json!({}), pinned, json!({ old_hash: old.project_id.clone() }))).await;
+        let server =
+            MockServer::start(fake_modrinth(json!({}), pinned, json!({ old_hash: old.project_id.clone() }))).await;
         let (_d, e) = engine_with(Some(&server));
         let mods = write_instance(&e, "superseded", "1.21.11", "fabric");
         std::fs::copy(scratch.path().join("old.jar"), mods.join("sodium-fabric-0.0.1.jar")).unwrap();
@@ -5086,10 +5048,7 @@ mod tests {
         assert!(vers.versions.iter().any(|v| v.version_id == "vS93" && v.version_type == "beta" && !v.installed));
 
         // 2. Switching Sodium -> 0.9.3 automatically plans Iris -> 1.11.8 as companion!
-        let plan = e
-            .plan_mod_version_switch("guaka", "sodium-fabric-0.9.2+mc26.3.jar", "vS93")
-            .await
-            .unwrap();
+        let plan = e.plan_mod_version_switch("guaka", "sodium-fabric-0.9.2+mc26.3.jar", "vS93").await.unwrap();
         assert_eq!(plan.companions.len(), 1);
         assert_eq!(plan.companions[0].project_id, IRIS_PROJECT_ID);
         assert_eq!(plan.companions[0].to_version_id, "vI18");
@@ -5104,10 +5063,8 @@ mod tests {
         assert!(preview.compat_issues.is_empty(), "all issues resolved by upgrades: {:?}", preview.compat_issues);
 
         // 4. Applying Sodium switch (+ Iris companion) swaps both jars atomically!
-        let applied = e
-            .apply_mod_version_switch("guaka", "sodium-fabric-0.9.2+mc26.3.jar", "vS93", true)
-            .await
-            .unwrap();
+        let applied =
+            e.apply_mod_version_switch("guaka", "sodium-fabric-0.9.2+mc26.3.jar", "vS93", true).await.unwrap();
         assert_eq!(applied.changed.len(), 2);
         assert!(mods.join("sodium-fabric-0.9.3+mc26.3.jar").exists());
         assert!(!mods.join("sodium-fabric-0.9.2+mc26.3.jar").exists());
@@ -5141,15 +5098,11 @@ mod tests {
         assert_eq!(s(&best, "id").as_deref(), Some("r1"));
         let best = best_version_for(&e, "PBETA", "26.3", "fabric").await.unwrap().unwrap();
         assert_eq!(s(&best, "id").as_deref(), Some("b9"), "beta fallback when no release");
-        let beta = best_version_for_channel(&e, "PCHAN", "26.3", "fabric", ReleaseChannel::Beta)
-            .await
-            .unwrap()
-            .unwrap();
+        let beta =
+            best_version_for_channel(&e, "PCHAN", "26.3", "fabric", ReleaseChannel::Beta).await.unwrap().unwrap();
         assert_eq!(s(&beta, "id").as_deref(), Some("b2"), "beta channel prefers the newest beta");
-        let alpha = best_version_for_channel(&e, "PCHAN", "26.3", "fabric", ReleaseChannel::Alpha)
-            .await
-            .unwrap()
-            .unwrap();
+        let alpha =
+            best_version_for_channel(&e, "PCHAN", "26.3", "fabric", ReleaseChannel::Alpha).await.unwrap().unwrap();
         assert_eq!(s(&alpha, "id").as_deref(), Some("a3"), "alpha channel prefers the newest alpha");
     }
 
@@ -5252,13 +5205,11 @@ mod tests {
             serde_json::from_str::<Value>(&raw).unwrap()
         };
         assert_eq!(facets_of(0), json!([["project_type:mod"], ["client_side!=unsupported"]]));
-        e.search_modrinth(
-            crate::api::content::ModrinthSearchQuery {
-                q: "x".into(),
-                include_server_only: true,
-                ..Default::default()
-            },
-        )
+        e.search_modrinth(crate::api::content::ModrinthSearchQuery {
+            q: "x".into(),
+            include_server_only: true,
+            ..Default::default()
+        })
         .await
         .unwrap();
         assert_eq!(facets_of(1), json!([["project_type:mod"]]));
@@ -5372,7 +5323,8 @@ mod compat_preview_tests {
             "depends": { "minecraft": "26.3.x", "sodium": ">=0.9.3" }
         }));
         let old_addon = b"not a fabric jar".to_vec();
-        let (s92_sha, s93_sha, add_sha, old_sha) = (sha(&sodium_092), sha(&sodium_093), sha(&cool_addon), sha(&old_addon));
+        let (s92_sha, s93_sha, add_sha, old_sha) =
+            (sha(&sodium_092), sha(&sodium_093), sha(&cool_addon), sha(&old_addon));
         let (s93_len, add_len) = (sodium_093.len(), cool_addon.len());
 
         let cdn = MockServer::start({
@@ -5447,7 +5399,11 @@ mod compat_preview_tests {
             "issues: {:?}",
             preview.compat_issues
         );
-        assert!(!preview.compat_issues.iter().any(|i| i.kind == CompatIssueKind::MissingDep), "{:?}", preview.compat_issues);
+        assert!(
+            !preview.compat_issues.iter().any(|i| i.kind == CompatIssueKind::MissingDep),
+            "{:?}",
+            preview.compat_issues
+        );
         assert!(preview.needs_confirmation);
         // The preview is cached for the commit that follows, keyed by the root version.
         assert!(take_cached_install_preview(&e, &install_preview_key("post-upgrade", ADDON, "vADD", &[])).is_some());
@@ -5574,7 +5530,10 @@ mod compat_preview_tests {
             after.issues
         );
         assert!(!after.issues.iter().any(|i| {
-            matches!(i.kind, CompatIssueKind::IncompatibleDep | CompatIssueKind::DisabledDep | CompatIssueKind::ServerOnly)
+            matches!(
+                i.kind,
+                CompatIssueKind::IncompatibleDep | CompatIssueKind::DisabledDep | CompatIssueKind::ServerOnly
+            )
         }));
     }
 }
@@ -5671,10 +5630,7 @@ mod search_v2_tests {
             ..Default::default()
         };
         e.search_modrinth(modpacks).await.unwrap();
-        assert_eq!(
-            facets_at(&server, 4),
-            json!([["project_type:modpack"], ["categories:forge"], ["versions:1.21.1"]])
-        );
+        assert_eq!(facets_at(&server, 4), json!([["project_type:modpack"], ["categories:forge"], ["versions:1.21.1"]]));
 
         // include_server_only drops the client_side facet from mod searches.
         let all_sides =
@@ -5745,7 +5701,10 @@ mod search_v2_tests {
             parse_modrinth_url("https://modrinth.com/shader/complementary-reimagined/"),
             found("shader", "complementary-reimagined")
         );
-        assert_eq!(parse_modrinth_url("http://modrinth.com/modpack/all-the_mods.9"), found("modpack", "all-the_mods.9"));
+        assert_eq!(
+            parse_modrinth_url("http://modrinth.com/modpack/all-the_mods.9"),
+            found("modpack", "all-the_mods.9")
+        );
         assert_eq!(parse_modrinth_url("https://modrinth.com/datapack/x"), found("datapack", "x"));
         assert_eq!(parse_modrinth_url("https://modrinth.com/plugin/y"), found("plugin", "y"));
         for bad in [

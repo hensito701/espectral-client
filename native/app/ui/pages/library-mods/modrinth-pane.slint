@@ -81,11 +81,11 @@ component SearchHeader inherits GlassCard {
                 min-width: 176px;
                 placeholder: T.tr("browse.sort.label");
                 options: [
-                    SelectOption { value: "relevance", label: T.tr("browse.sort.relevance") },
-                    SelectOption { value: "downloads", label: T.tr("browse.sort.downloads") },
-                    SelectOption { value: "follows", label: T.tr("browse.sort.follows") },
-                    SelectOption { value: "updated", label: T.tr("browse.sort.updated") },
-                    SelectOption { value: "newest", label: T.tr("browse.sort.newest") }
+                    { value: "relevance", label: T.tr("browse.sort.relevance") },
+                    { value: "downloads", label: T.tr("browse.sort.downloads") },
+                    { value: "follows", label: T.tr("browse.sort.follows") },
+                    { value: "updated", label: T.tr("browse.sort.updated") },
+                    { value: "newest", label: T.tr("browse.sort.newest") }
                 ];
                 current-index <=> LibraryBridge.m-search-sort;
                 selected(i, value) => { LibraryBridge.m-set-sort(i); }

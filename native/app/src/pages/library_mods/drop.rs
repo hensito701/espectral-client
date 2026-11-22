@@ -117,7 +117,7 @@ fn flush(ctx: &Ctx) {
     }
     ctx.call_with(
         move |e| async move { Ok::<_, espectral_engine::EngineError>(install_batch(&e, &instance, &paths).await) },
-        |ui, out| report(ui, out),
+        report,
         |_ui, e| toast::engine_error(&e),
     );
 }
@@ -214,16 +214,11 @@ fn report(ui: &AppWindow, out: DropOutcome) {
     match out.mods.as_slice() {
         [] => {}
         [one] => parts.push(i18n::tf("mods.drop.modInstalled", &[("instance", instance), ("name", one)])),
-        many => parts.push(i18n::tf(
-            "mods.drop.modsInstalled",
-            &[("instance", instance), ("count", &many.len().to_string())],
-        )),
+        many => parts
+            .push(i18n::tf("mods.drop.modsInstalled", &[("instance", instance), ("count", &many.len().to_string())])),
     }
     if out.packs > 0 {
-        parts.push(i18n::tf(
-            "mods.drop.packsInstalled",
-            &[("instance", instance), ("count", &out.packs.to_string())],
-        ));
+        parts.push(i18n::tf("mods.drop.packsInstalled", &[("instance", instance), ("count", &out.packs.to_string())]));
     }
     if out.needs_iris {
         parts.push(i18n::tf("mods.drop.needsIris", &[("instance", instance)]));

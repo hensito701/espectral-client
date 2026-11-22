@@ -458,6 +458,7 @@ fn import_profile() {
     let source = with(|s| s.sources.iter().find(|x| x.id == source_id).cloned());
     let (Some(source), false) = (source, target.is_empty()) else { return };
     let policy = if b.get_i_overwrite_if_older() { OverwritePolicy::IfOlder } else { OverwritePolicy::Never };
+    let include_packs = b.get_i_include_packs();
     b.set_i_profile_importing(true);
     b.set_i_profile_error(ss(""));
     with(|s| s.result = None);
@@ -465,7 +466,9 @@ fn import_profile() {
     let t2 = target.clone();
     c.call_with(
         move |e| async move {
-            e.import_profile(&target, ImportProfileRequest { source_id, overwrite_policy: policy }).await
+            let req =
+                ImportProfileRequest { source_id, overwrite_policy: policy, include_resourcepacks: include_packs };
+            e.import_profile(&target, req).await
         },
         move |ui, res| {
             let label = if source.label.is_empty() { source.id.clone() } else { source.label.clone() };

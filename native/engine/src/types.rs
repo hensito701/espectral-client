@@ -914,7 +914,7 @@ pub struct ModrinthProjectDetail {
     /// Versions for the instance's Minecraft version and loader when an instance is given.
     pub versions: Vec<ModVersionItem>,
     pub installed: bool,
- }
+}
 
 /// GET /api/modrinth/search.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

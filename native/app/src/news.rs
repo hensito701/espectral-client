@@ -17,7 +17,9 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use serde_json::Value;
-use slint::{ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel};
+use slint::{
+    ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel,
+};
 
 use espectral_engine::news::{self as eng, NewsFeed};
 use espectral_engine::Engine;
@@ -329,7 +331,6 @@ fn opened() {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // expand -> image loading
 // ---------------------------------------------------------------------------
@@ -437,14 +438,14 @@ fn changelog_section(version: &str) -> Option<String> {
 /// - stored version ≠ running → an update: card unread until `opened()`
 ///   (`news.launcher_seen`), `news.launcher_update_at` = first sight.
 /// - same version → keep showing the card while `update_at` is < 7 days old.
+///
 /// The running version is always written back to `news.launcher_version`.
 fn prepare_launcher_card() {
     let now = Utc::now();
     let prev = prefs::get_str(PREF_LAUNCHER_VERSION);
     let seen = prefs::get_str(PREF_LAUNCHER_SEEN);
-    let stored_at = prefs::get_str(PREF_LAUNCHER_AT).and_then(|a| {
-        DateTime::parse_from_rfc3339(&a).ok().map(|t| (a, t.with_timezone(&Utc)))
-    });
+    let stored_at = prefs::get_str(PREF_LAUNCHER_AT)
+        .and_then(|a| DateTime::parse_from_rfc3339(&a).ok().map(|t| (a, t.with_timezone(&Utc))));
 
     let card_at: Option<String> = match prev.as_deref() {
         None => None, // first install: record, no card

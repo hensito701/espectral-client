@@ -20,7 +20,7 @@ use espectral_engine::types::{
 };
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
-use super::{gallery, icons, mods, model, ss};
+use super::{gallery, icons, model, mods, ss};
 use crate::bridge::Ctx;
 use crate::i18n::{self, Lang};
 use crate::{
@@ -338,11 +338,7 @@ fn load_categories(ui: &AppWindow, keep: bool) {
 /// Selected category slugs, in chip order.
 fn selected_list() -> Vec<String> {
     CATS.with(|m| {
-        (0..m.row_count())
-            .filter_map(|i| m.row_data(i))
-            .filter(|c| c.selected)
-            .map(|c| c.slug.to_string())
-            .collect()
+        (0..m.row_count()).filter_map(|i| m.row_data(i)).filter(|c| c.selected).map(|c| c.slug.to_string()).collect()
     })
 }
 
@@ -519,9 +515,8 @@ pub(super) fn push_search(ui: &AppWindow) {
 /// Rebuild every card (keeps the model object so the grid stays bound).
 fn rebuild_cards(ui: &AppWindow) {
     let prefix = prefix();
-    let cards: Vec<ModrinthCard> = with(|s| {
-        s.results.as_ref().map(|r| r.iter().map(|p| card(s, p, &prefix)).collect()).unwrap_or_default()
-    });
+    let cards: Vec<ModrinthCard> =
+        with(|s| s.results.as_ref().map(|r| r.iter().map(|p| card(s, p, &prefix)).collect()).unwrap_or_default());
     request_icons(&cards);
     CARDS.with(|m| m.set_vec(cards));
     push_search(ui);
@@ -561,7 +556,7 @@ fn card(s: &State, p: &ModrinthProject, prefix: &str) -> ModrinthCard {
         author: ss(&p.author),
         downloads: ss(group_digits(p.downloads, i18n::lang())),
         updated: ss(updated_ago(&p.date_modified)),
-        categories: model(tags(&p.categories, 3).iter().map(|c| ss(c)).collect()),
+        categories: model(tags(&p.categories, 3).iter().map(ss).collect()),
         side: ss(side_of(p.client_side.as_deref(), p.server_side.as_deref())),
         icon_url: ss(&url),
         has_icon: icon.is_some(),
@@ -679,8 +674,9 @@ fn begin_install(project_id: &str) -> Option<String> {
 }
 
 fn install_card(project_id: String, title: String, force: bool) {
-    let kind = with(|s| s.results.iter().flatten().find(|p| p.project_id == project_id).map(|p| p.project_type.clone()))
-        .unwrap_or_default();
+    let kind =
+        with(|s| s.results.iter().flatten().find(|p| p.project_id == project_id).map(|p| p.project_type.clone()))
+            .unwrap_or_default();
     install_project(project_id, title, &kind, force, None);
 }
 
@@ -908,7 +904,7 @@ fn preview_select_version(version_id: String) {
     let Some(ui) = win() else { return };
     let (target, project_id, current) = with(|s| {
         let Some(p) = s.preview.as_ref() else { return (String::new(), String::new(), String::new()) };
-        (s.target.clone(), p.project_id.clone(), p.version_id.clone())
+        (super::mods::target(), p.project_id.clone(), p.version_id.clone())
     });
     if target.is_empty() || project_id.is_empty() || version_id == current {
         return;
@@ -1050,8 +1046,7 @@ fn commit_install(
     let (pid, pid_err, inst) = (project_id.clone(), project_id.clone(), target.clone());
     c.call_with(
         move |e| async move {
-            e.commit_modrinth_install(&target, &project_id, apply_upgrades, force, version_id, include_optional)
-                .await
+            e.commit_modrinth_install(&target, &project_id, apply_upgrades, force, version_id, include_optional).await
         },
         move |ui, plan| {
             let b = ui.global::<LibraryBridge>();
@@ -1198,7 +1193,7 @@ fn show_detail(ui: &AppWindow, d: ModrinthProjectDetail) {
     b.set_md_updated(ss(updated_ago(&d.updated)));
     b.set_md_license(ss(&d.license_id));
     b.set_md_side(ss(side_of(Some(d.client_side.as_str()), Some(d.server_side.as_str()))));
-    b.set_md_categories(model(tags(&d.categories, usize::MAX).iter().map(|c| ss(c)).collect()));
+    b.set_md_categories(model(tags(&d.categories, usize::MAX).iter().map(ss).collect()));
     let source = if d.body.trim().is_empty() { &d.description } else { &d.body };
     b.set_md_body(ss(plain_text(source)));
     b.set_md_project_url(ss(&d.project_url));
@@ -1265,9 +1260,7 @@ fn show_gallery(ui: &AppWindow, index: usize) {
 }
 
 fn gallery_ready(ui: &AppWindow, url: &str) {
-    let shown = with(|s| {
-        s.detail.as_ref().and_then(|d| d.gallery.get(s.gallery_index)).is_some_and(|g| g.url == url)
-    });
+    let shown = with(|s| s.detail.as_ref().and_then(|d| d.gallery.get(s.gallery_index)).is_some_and(|g| g.url == url));
     if !shown {
         return;
     }
@@ -1356,7 +1349,8 @@ fn plain_text(md: &str) -> String {
             continue;
         }
         let line = if line.starts_with('#') { line.trim_start_matches('#').trim_start() } else { line };
-        let text = match line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")).or_else(|| line.strip_prefix("+ ")) {
+        let text = match line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")).or_else(|| line.strip_prefix("+ "))
+        {
             Some(rest) => format!("• {}", inline_plain(rest)),
             None => inline_plain(line),
         };
@@ -1450,7 +1444,20 @@ fn strip_html(s: &str) -> String {
                     .to_ascii_lowercase();
                 if matches!(
                     name.as_str(),
-                    "br" | "p" | "div" | "li" | "tr" | "ul" | "ol" | "table" | "hr" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+                    "br" | "p"
+                        | "div"
+                        | "li"
+                        | "tr"
+                        | "ul"
+                        | "ol"
+                        | "table"
+                        | "hr"
+                        | "h1"
+                        | "h2"
+                        | "h3"
+                        | "h4"
+                        | "h5"
+                        | "h6"
                 ) {
                     out.push('\n');
                 }

@@ -261,8 +261,9 @@ pub(crate) fn is_portable_segment(s: &str) -> bool {
             matches!((chars.next(), chars.next()), (Some('1'..='9' | '¹' | '²' | '³'), None))
         })
     };
-    let device =
-        matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$") || numbered("COM") || numbered("LPT");
+    let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
+        || numbered("COM")
+        || numbered("LPT");
     !device
 }
 
@@ -558,13 +559,8 @@ pub async fn install_mrpack_files(
         if items.is_empty() {
             break;
         }
-        let (eng, name, ok, errs, di) = (
-            engine.clone(),
-            instance_name.to_string(),
-            succeeded_dests.clone(),
-            last_err.clone(),
-            dest_index.clone(),
-        );
+        let (eng, name, ok, errs, di) =
+            (engine.clone(), instance_name.to_string(), succeeded_dests.clone(), last_err.clone(), dest_index.clone());
         let failed_this = Arc::new(Mutex::new(Vec::<usize>::new()));
         let ft = failed_this.clone();
         let on_item = Arc::new(move |o: &ItemOutcome| {
@@ -667,8 +663,7 @@ pub fn extract_overrides(engine: &Engine, zip_path: &Path, instance_name: &str) 
         listed += entries.len();
         written += write_override_files(engine, instance_name, &entries, |rel, dest| {
             let max = MAX_OVERRIDE_BYTES.min(budget);
-            let Some(n) = crate::ziputil::extract_zip_entry_from(&buf, &format!("{prefix}{rel}"), dest, max)?
-            else {
+            let Some(n) = crate::ziputil::extract_zip_entry_from(&buf, &format!("{prefix}{rel}"), dest, max)? else {
                 return Ok(false);
             };
             budget -= n;
@@ -947,7 +942,15 @@ mod tests {
         ] {
             assert!(safe_join(base, bad).unwrap_err().has_code("BAD_PATH"), "should reject '{bad}'");
         }
-        for ok in ["mods/com10.txt", "mods/COM0.txt", "mods/console.txt", "config/CONFIG.toml", "./mods/x.jar", "mods//y.jar", "a.b/c.d"] {
+        for ok in [
+            "mods/com10.txt",
+            "mods/COM0.txt",
+            "mods/console.txt",
+            "config/CONFIG.toml",
+            "./mods/x.jar",
+            "mods//y.jar",
+            "a.b/c.d",
+        ] {
             assert!(safe_join(base, ok).unwrap().starts_with(base), "{ok}");
         }
     }

@@ -1030,7 +1030,6 @@ pub fn library_stats(libraries: &[Value]) -> LibraryStats {
     s
 }
 
-
 /// Run-dir decision: a custom `game_dir` wins (mkdir -p unless dry run; no
 /// per-account split); otherwise a non-active account gets
 /// `<instanceDir>/profiles/<uuid>/` (Contract C). Natives always stay at the

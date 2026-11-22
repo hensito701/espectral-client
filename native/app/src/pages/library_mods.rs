@@ -31,8 +31,8 @@ mod icons;
 mod import;
 mod mods;
 pub(crate) use mods::fix_summary;
-mod packs;
 mod mrpack;
+mod packs;
 mod versions;
 
 pub fn init(ctx: &Ctx, ui: &AppWindow) {

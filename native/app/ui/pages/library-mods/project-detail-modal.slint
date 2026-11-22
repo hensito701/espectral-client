@@ -151,8 +151,12 @@ export component ModrinthProjectDetailModal inherits Modal {
         }
         Tabs {
             items: [
-                TabItem { label: T.tr("browse.overview"), icon: "", badge: "" },
-                TabItem { label: T.tr("browse.versions"), icon: "", badge: LibraryBridge.md-versions.length > 0 ? "" + LibraryBridge.md-versions.length : "" }
+                { label: T.tr("browse.overview"), icon: "", badge: "" },
+                {
+                    label: T.tr("browse.versions"),
+                    icon: "",
+                    badge: LibraryBridge.md-versions.length > 0 ? "" + LibraryBridge.md-versions.length : "",
+                }
             ];
             current <=> LibraryBridge.md-tab;
         }

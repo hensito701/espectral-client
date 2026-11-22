@@ -453,6 +453,8 @@ export global LibraryBridge {
     in property <[SelectOption]> i-target-options;
     in-out property <int> i-target-index;
     in-out property <bool> i-overwrite-if-older;
+    // Also copy the resource packs the source profile has active (ImportProfileRequest.include_resourcepacks).
+    in-out property <bool> i-include-packs: true;
     in property <bool> i-profile-importing;
     in property <string> i-profile-error;
     in property <bool> i-has-result;

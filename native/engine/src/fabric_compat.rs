@@ -220,7 +220,10 @@ enum Term {
     Lt(FabricVersion),
     Lte(FabricVersion),
     /// Inclusive lower bound, exclusive upper bound (used by `~`, `^`, `.x`).
-    Range { min: FabricVersion, max_excl: FabricVersion },
+    Range {
+        min: FabricVersion,
+        max_excl: FabricVersion,
+    },
 }
 
 impl Term {
@@ -411,9 +414,7 @@ impl VersionPredicate {
     /// updating the target mod can resolve the break!
     pub fn is_upper_bound_only(&self) -> bool {
         !self.is_any()
-            && self.groups.iter().all(|g| {
-                !g.is_empty() && g.iter().all(|t| matches!(t, Term::Lt(_) | Term::Lte(_)))
-            })
+            && self.groups.iter().all(|g| !g.is_empty() && g.iter().all(|t| matches!(t, Term::Lt(_) | Term::Lte(_))))
     }
 
     pub fn raw_string(&self) -> String {
@@ -452,8 +453,7 @@ pub fn format_predicate_human(raw: &str, es: bool) -> String {
         return if es { "cualquier versión".into() } else { "any version".into() };
     }
     if trimmed.contains(" || ") {
-        let parts: Vec<String> =
-            trimmed.split(" || ").map(|p| format_single_clause(p.trim(), es)).collect();
+        let parts: Vec<String> = trimmed.split(" || ").map(|p| format_single_clause(p.trim(), es)).collect();
         let sep = if es { " o " } else { " or " };
         return parts.join(sep);
     }
@@ -500,11 +500,7 @@ fn format_single_clause(clause: &str, es: bool) -> String {
         ) {
             let lo = clean_pred_ver(lo);
             let hi = clean_pred_ver(hi);
-            return if tokens[1].starts_with("<=") {
-                format!("{lo}–{hi}")
-            } else {
-                format!("{lo}–<{hi}")
-            };
+            return if tokens[1].starts_with("<=") { format!("{lo}–{hi}") } else { format!("{lo}–<{hi}") };
         }
     }
     clause.to_string()
@@ -567,8 +563,7 @@ fn parse_fabric_mod_json(raw: &str) -> Option<FabricModMeta> {
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| id.clone());
-    let environment =
-        v.get("environment").and_then(Value::as_str).map(str::trim).unwrap_or("*").to_ascii_lowercase();
+    let environment = v.get("environment").and_then(Value::as_str).map(str::trim).unwrap_or("*").to_ascii_lowercase();
     let provides = v
         .get("provides")
         .and_then(Value::as_array)
@@ -577,17 +572,10 @@ fn parse_fabric_mod_json(raw: &str) -> Option<FabricModMeta> {
     let jars = v
         .get("jars")
         .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.get("file").and_then(Value::as_str).map(str::to_string))
-                .collect()
-        })
+        .map(|a| a.iter().filter_map(|x| x.get("file").and_then(Value::as_str).map(str::to_string)).collect())
         .unwrap_or_default();
-    let is_generated = v
-        .get("custom")
-        .and_then(|c| c.get("fabric-loom:generated"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let is_generated =
+        v.get("custom").and_then(|c| c.get("fabric-loom:generated")).and_then(Value::as_bool).unwrap_or(false);
     Some(FabricModMeta {
         id,
         name,
@@ -695,14 +683,31 @@ pub enum CompatIssueKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CompatFix {
-    Disable { filename: String },
-    Enable { filename: String, name: String },
-    UpdateMod { filename: String, target_id: String, target_name: String, required: String },
-    ChangeVersion { filename: String },
-    InstallMod { mod_id: String, name: String },
+    Disable {
+        filename: String,
+    },
+    Enable {
+        filename: String,
+        name: String,
+    },
+    UpdateMod {
+        filename: String,
+        target_id: String,
+        target_name: String,
+        required: String,
+    },
+    ChangeVersion {
+        filename: String,
+    },
+    InstallMod {
+        mod_id: String,
+        name: String,
+    },
     /// Fabric Loader is outside the mod's `fabricloader` range: re-pin the instance to a
     /// loader version that satisfies `required` (refreshing the cached loader list first).
-    UpdateFabricLoader { required: String },
+    UpdateFabricLoader {
+        required: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -938,7 +943,8 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
         if group.len() <= 1 {
             continue;
         }
-        let all_semver = group.iter().all(|j| matches!(FabricVersion::parse(&j.root.version), FabricVersion::Semantic { .. }));
+        let all_semver =
+            group.iter().all(|j| matches!(FabricVersion::parse(&j.root.version), FabricVersion::Semantic { .. }));
         group.sort_by(|a, b| {
             let va = FabricVersion::parse(&a.root.version);
             let vb = FabricVersion::parse(&b.root.version);
@@ -972,9 +978,8 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
     let loader_ver = env.loader_version.as_deref().map(FabricVersion::parse);
     let java_ver = FabricVersion::parse(&env.java_major.to_string());
     let mixinextras_ver = env.mixinextras_version.as_deref().map(FabricVersion::parse);
-    let loader_bundles_mixinextras = loader_ver
-        .as_ref()
-        .is_none_or(|lv| VersionPredicate::parse_str(">=0.15.0").matches(lv));
+    let loader_bundles_mixinextras =
+        loader_ver.as_ref().is_none_or(|lv| VersionPredicate::parse_str(">=0.15.0").matches(lv));
 
     // Track already-emitted symmetric break/conflict pairs so we don't spam duplicates.
     let mut seen_pairs: HashSet<(String, String, bool)> = HashSet::new();
@@ -1233,11 +1238,7 @@ pub fn evaluate_fabric_compat(env: &FabricEnv, jars: &[ScannedJar]) -> ModCompat
             if !j.enabled || duplicate_older.contains(&j.filename) {
                 continue;
             }
-            let ids = j
-                .nested
-                .iter()
-                .map(|n| n.id.as_str())
-                .chain(std::iter::once(j.root.id.as_str()));
+            let ids = j.nested.iter().map(|n| n.id.as_str()).chain(std::iter::once(j.root.id.as_str()));
             for id in ids {
                 let Some((_, reason)) = ESPECTRAL_KNOWN_CONFLICTS.iter().find(|(mid, _)| *mid == id) else {
                     continue;
@@ -1304,12 +1305,7 @@ fn register_provided(
     }
 }
 
-fn incompatible_dep_issue(
-    j: &ScannedJar,
-    dep_id: &str,
-    prov: &ProvidedMod,
-    pred: &VersionPredicate,
-) -> ModCompatIssue {
+fn incompatible_dep_issue(j: &ScannedJar, dep_id: &str, prov: &ProvidedMod, pred: &VersionPredicate) -> ModCompatIssue {
     ModCompatIssue {
         filename: j.filename.clone(),
         mod_id: j.root.id.clone(),
@@ -1544,10 +1540,7 @@ mod tests {
 
     fn mk_jar(filename: &str, enabled: bool, meta_json: Value, nested: Vec<Value>) -> ScannedJar {
         let root = parse_fabric_mod_json(&meta_json.to_string()).expect("valid root");
-        let nested = nested
-            .into_iter()
-            .map(|n| parse_fabric_mod_json(&n.to_string()).expect("valid nested"))
-            .collect();
+        let nested = nested.into_iter().map(|n| parse_fabric_mod_json(&n.to_string()).expect("valid nested")).collect();
         ScannedJar { filename: filename.into(), enabled, root, nested }
     }
 

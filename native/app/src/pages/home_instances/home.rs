@@ -7,16 +7,16 @@ use std::collections::HashSet;
 
 use espectral_engine::api::game_launch::{LaunchOutcome, LaunchRequest};
 use espectral_engine::events::EngineEvent;
-use espectral_engine::types::{AotStatus, CreateInstanceRequest, Loader, VersionManifest};
 use espectral_engine::fabric_compat::{CompatFix, CompatIssueKind, CompatSeverity, ModCompatIssue, ModCompatReport};
+use espectral_engine::types::{AotStatus, CreateInstanceRequest, Loader, VersionManifest};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use super::launchlog;
 use crate::bridge::Ctx;
+use crate::pages::library_mods::fix_summary;
 use crate::router::{self, Route};
 use crate::{dialogs, i18n, store, toast, util};
 use crate::{AppState, AppWindow, HiVersion, HomeBridge, Page, SelectOption, ServerRow, Shell};
-use crate::pages::library_mods::fix_summary;
 
 thread_local! {
     static MANIFEST: RefCell<Option<VersionManifest>> = const { RefCell::new(None) };
@@ -642,9 +642,7 @@ fn format_compat_issue_short(i: &espectral_engine::fabric_compat::ModCompatIssue
             let key = format!("mods.espectralConflict.{}", i.reason.as_deref().unwrap_or("unknown"));
             i18n::tf(&key, &[("mod", &i.mod_name)])
         }
-        CompatIssueKind::WrongLoader => {
-            i18n::tf("mods.compatWrongLoader", &[("req", &i.required), ("actual", actual)])
-        }
+        CompatIssueKind::WrongLoader => i18n::tf("mods.compatWrongLoader", &[("req", &i.required), ("actual", actual)]),
     }
 }
 

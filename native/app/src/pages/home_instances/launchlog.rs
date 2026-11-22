@@ -16,10 +16,10 @@ use espectral_engine::events::EngineEvent;
 use espectral_engine::types::InstancePatch;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
+use super::home;
 use crate::bridge::Ctx;
 use crate::util;
 use crate::{i18n, prefs, store, toast, AppWindow, HiLogLine, HiLogTab, HomeBridge, Shell};
-use super::home;
 
 const MAX_LINES: usize = 2000;
 const MAX_BUFFERS: usize = 8;
@@ -563,7 +563,7 @@ struct Shown {
 }
 
 thread_local! {
-    static SHOWN: RefCell<Option<Shown>> = RefCell::new(None);
+    static SHOWN: RefCell<Option<Shown>> = const { RefCell::new(None) };
 }
 
 /// After a game exits non-zero, ask the engine for a diagnosis and open the crash

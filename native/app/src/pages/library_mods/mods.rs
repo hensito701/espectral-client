@@ -465,9 +465,7 @@ pub(crate) fn format_issue_text(i: &ModCompatIssue) -> String {
             let key = format!("mods.espectralConflict.{}", i.reason.as_deref().unwrap_or("unknown"));
             i18n::tf(&key, &[("mod", &i.mod_name)])
         }
-        CompatIssueKind::WrongLoader => {
-            i18n::tf("mods.compatWrongLoader", &[("req", &i.required), ("actual", actual)])
-        }
+        CompatIssueKind::WrongLoader => i18n::tf("mods.compatWrongLoader", &[("req", &i.required), ("actual", actual)]),
     }
 }
 
@@ -478,18 +476,12 @@ fn format_compat_note(i: &ModCompatIssue, can_switch_self: bool, iris_enabled: b
         CompatSeverity::Warning => "warn",
     };
     let (fix_label, fix_kind, fix_target, fix_arg) = match &i.fix {
-        Some(CompatFix::Disable { filename }) => (
-            i18n::t("mods.fixDisable"),
-            "disable".to_string(),
-            filename.clone(),
-            String::new(),
-        ),
-        Some(CompatFix::Enable { filename, name }) => (
-            i18n::tf("mods.fixEnable", &[("mod", name)]),
-            "enable".to_string(),
-            filename.clone(),
-            String::new(),
-        ),
+        Some(CompatFix::Disable { filename }) => {
+            (i18n::t("mods.fixDisable"), "disable".to_string(), filename.clone(), String::new())
+        }
+        Some(CompatFix::Enable { filename, name }) => {
+            (i18n::tf("mods.fixEnable", &[("mod", name)]), "enable".to_string(), filename.clone(), String::new())
+        }
         Some(CompatFix::UpdateMod { filename, target_id, target_name, required }) => {
             let label = if target_id == "sodium" && iris_enabled {
                 format!("{} (+ Iris)", i18n::tf("mods.fixUpdate", &[("mod", target_name)]))
@@ -505,12 +497,9 @@ fn format_compat_note(i: &ModCompatIssue, can_switch_self: bool, iris_enabled: b
                 (i18n::t("mods.fixDisable"), "disable".to_string(), filename.clone(), String::new())
             }
         }
-        Some(CompatFix::InstallMod { mod_id, name }) => (
-            i18n::tf("mods.fixInstall", &[("mod", name)]),
-            "install".to_string(),
-            mod_id.clone(),
-            name.clone(),
-        ),
+        Some(CompatFix::InstallMod { mod_id, name }) => {
+            (i18n::tf("mods.fixInstall", &[("mod", name)]), "install".to_string(), mod_id.clone(), name.clone())
+        }
         Some(CompatFix::UpdateFabricLoader { required }) => (
             i18n::tf("mods.fixLoader", &[("req", &format_predicate_human(required, i18n::lang() == Lang::Es))]),
             "loader".to_string(),
@@ -664,8 +653,7 @@ fn mod_row(
     let can_delete = m.installed && !branding;
     let can_switch_version = m.installed
         && !branding
-        && (m.project_id.is_some()
-            || m.mod_id.as_deref().and_then(known_modrinth_for_id).is_some());
+        && (m.project_id.is_some() || m.mod_id.as_deref().and_then(known_modrinth_for_id).is_some());
     let has_error = raw_issues.iter().any(|i| i.severity == CompatSeverity::Error);
     let has_warn = !has_error && raw_issues.iter().any(|i| i.severity == CompatSeverity::Warning);
     let issues: Vec<ModCompatNote> =
@@ -1166,8 +1154,7 @@ fn undo_updates() {
 fn set_pinned(pin_key: String, pinned: bool) {
     let Some(c) = super::ctx() else { return };
     let (target, name, filename) = with(|s| {
-        let found =
-            s.mods.iter().find(|m| m.filename == pin_key || m.project_id.as_deref() == Some(pin_key.as_str()));
+        let found = s.mods.iter().find(|m| m.filename == pin_key || m.project_id.as_deref() == Some(pin_key.as_str()));
         let filename = found.map(|m| m.filename.clone()).unwrap_or_else(|| pin_key.clone());
         let name = found
             .map(|m| display_name(&m.filename, m.project_slug.as_deref()))
@@ -1436,12 +1423,8 @@ fn confirm_delete() {
             .find(|m| m.filename == f)
             .and_then(|m| m.display_name.clone())
             .unwrap_or_else(|| display_name(&f, None));
-        let orphans: Vec<String> = s
-            .orphans
-            .iter()
-            .filter(|o| s.orphans_checked.contains(&o.filename))
-            .map(|o| o.filename.clone())
-            .collect();
+        let orphans: Vec<String> =
+            s.orphans.iter().filter(|o| s.orphans_checked.contains(&o.filename)).map(|o| o.filename.clone()).collect();
         (s.target.clone(), f, name, orphans)
     });
     if target.is_empty() || filename.is_empty() {
@@ -1642,11 +1625,8 @@ fn select_version(version_id: String) {
                     to_ver: ss(&c.to_version_number),
                 })
                 .collect();
-            let warnings: Vec<SharedString> = plan
-                .warnings
-                .iter()
-                .map(|w| ss(i18n::tf("mods.versionWarnCompanion", &[("mods", w)])))
-                .collect();
+            let warnings: Vec<SharedString> =
+                plan.warnings.iter().map(|w| ss(i18n::tf("mods.versionWarnCompanion", &[("mods", w)]))).collect();
             let b = ui.global::<LibraryBridge>();
             b.set_m_ver_planning(false);
             b.set_m_ver_companions(model(companions));
