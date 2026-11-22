@@ -20,7 +20,8 @@ members = ["engine", "app", "ui", "skin3d"]
 version = "1.9.5"
 edition = "2021"
 license = "GPL-3.0-only"
-rust-version = "1.80"
+# rand 0.10 needs Rust 1.85 (edition 2024 support).
+rust-version = "1.85"
 repository = "https://github.com/espectral/espectral-client"
 
 [workspace.dependencies]
@@ -147,10 +148,11 @@ codegen-units = 16
 strip = "symbols"
 
 # The UI crate is one very large generated module (~2/3 of the binary's
-# machine code). With 4 codegen units rustc's peak memory exceeds 14 GB at
-# opt-level 3; 16 units keep the build under that. opt-level "s" roughly
-# halves the generated code (property bindings / layout glue are not hot; the
-# skin rasterizer is its own crate and stays at opt-level 3).
+# machine code). At opt-level 3 with 4 codegen units rustc's peak memory
+# exceeded 14 GB; it keeps 16 units explicitly so a later change to the
+# release default cannot raise that peak. opt-level "s" roughly halves the
+# generated code (property bindings / layout glue are not hot; the skin
+# rasterizer is its own crate and stays at opt-level 3).
 # panic = "abort" is NOT an option: the engine relies on unwinding
 # (catch_unwind in launch / aot / game_launch, tokio JoinError on panics).
 [profile.release.package.espectral-client-ui]
