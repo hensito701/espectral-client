@@ -41,7 +41,6 @@ struct Hub {
     vc_ids: Vec<String>,
     draft: Vec<(String, String)>,
     preset_fallback: Option<slint::Timer>,
-
 }
 
 thread_local! {
@@ -149,7 +148,6 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
 
     router::on_route(|ui, route: &Route| {
-
         if route.page == Page::Instance {
             let tab = match route.param("tab").as_deref() {
                 Some("servers") => 1,
@@ -714,7 +712,11 @@ fn load(ui: &AppWindow, name: &str) {
             let (detail, jvm, client) = tokio::join!(e.get_instance_detail(&n), e.jvm_info(), e.get_client_info(&n));
             let detail = detail?;
             let icon = if detail.summary.has_icon {
-                e.instance_icon(&n).await.ok().and_then(|b| util::decode_png(&b)).map(|b| util::fit(b, crate::theme::phys(48.0)))
+                e.instance_icon(&n)
+                    .await
+                    .ok()
+                    .and_then(|b| util::decode_png(&b))
+                    .map(|b| util::fit(b, crate::theme::phys(48.0)))
             } else {
                 None
             };
@@ -1284,7 +1286,12 @@ fn upload_icon() {
                 .ok_or_else(|| EngineError::bad_request("BAD_IMAGE", "PNG encode failed".to_string()))?;
             e.upload_instance_icon(&name, &url).await?;
             let d = e.get_instance_detail(&name).await?;
-            let icon = e.instance_icon(&name).await.ok().and_then(|b| util::decode_png(&b)).map(|b| util::fit(b, crate::theme::phys(48.0)));
+            let icon = e
+                .instance_icon(&name)
+                .await
+                .ok()
+                .and_then(|b| util::decode_png(&b))
+                .map(|b| util::fit(b, crate::theme::phys(48.0)));
             Ok(Some((d, icon)))
         },
         |ui, r| {
@@ -1316,12 +1323,8 @@ fn refresh_bg_packs() {
             let reply = e.list_backgrounds().await?;
             let mut out = Vec::with_capacity(reply.packs.len());
             for p in reply.packs {
-                let thumb = e
-                    .background_image(&p.id)
-                    .await
-                    .ok()
-                    .and_then(|b| util::decode_png(&b))
-                    .map(|b| util::fit(b, 240)); // thumbnails only: keep RAM low
+                let thumb =
+                    e.background_image(&p.id).await.ok().and_then(|b| util::decode_png(&b)).map(|b| util::fit(b, 240)); // thumbnails only: keep RAM low
                 out.push((p, thumb));
             }
             Ok(out)
