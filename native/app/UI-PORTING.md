@@ -114,8 +114,8 @@ describe it in your report (it will be applied at merge).
 
 | Group / agent | Svelte sources | Slint files (own) | Rust (own) | i18n files (own) |
 |---|---|---|---|---|
-| **home-instances** | pages/Home, pages/InstanceHub, components/HorizonRail, HorizonTile, TelemetryCapsule, InstanceWizardModal, MrpackModal, DryRunModal, PipLogDrawer, lib/stores.ts launchLog | `ui/pages/home-instances/*` (`home.slint`→`HomePage`, `instance-hub.slint`→`InstanceHubPage`, `pip-log.slint`→`PipLogDrawer`, `api.slint`→`HomeBridge`) | `src/pages/home_instances.rs` (+ `src/pages/home_instances/*.rs`) | `home.json`, `instance.json`, `piplog.json`, `personalization.json` |
-| **library-mods** | pages/VersionArmory, ImportCenter, ModCatalog, DonationsPavilion | `ui/pages/library-mods/*` (`versions.slint`→`VersionsPage`, `import.slint`→`ImportPage`, `mods.slint`→`ModsPage`, `donations.slint`→`DonationsPage`, `api.slint`→`LibraryBridge`) | `src/pages/library_mods.rs` (+ children) | `versions.json`, `import.json`, `mods.json`, `donations.json` |
+| **home-instances** | pages/Home, pages/InstanceHub, components/HorizonRail, HorizonTile, TelemetryCapsule, InstanceWizardModal, MrpackModal, DryRunModal, PipLogDrawer, lib/stores.ts launchLog | `ui/pages/home-instances/*` (`home.slint`→`HomePage`, `instance-hub.slint`→`InstanceHubPage`, `pip-log.slint`→`PipLogDrawer`, `crash-modal.slint`→`CrashDiagnosisModal`, the mod-compat launch modal in `modals.slint`, `api.slint`→`HomeBridge`) | `src/pages/home_instances.rs` (+ `src/pages/home_instances/*.rs`, `launchlog.rs` runs the crash modal) | `home.json`, `instance.json`, `piplog.json`, `personalization.json`, `crash.json` |
+| **library-mods** | pages/VersionArmory, ImportCenter, ModCatalog, DonationsPavilion | `ui/pages/library-mods/*` (`versions.slint`→`VersionsPage`, `import.slint`→`ImportPage`, `mods.slint`→`ModsPage`, `packs.slint`→Resource Packs/Shaders panes, `modrinth-pane.slint`→Explore Modrinth tab, `project-detail-modal.slint`→Modrinth project detail, `donations.slint`→`DonationsPage`, `parts.slint`→shared lib pieces (`ModIcons`, `LoadingPanel`, `ErrorBanner`, `EmptyPanel`, `GlassPanel`, `Chip`, `StatePanel`), `api.slint`→`LibraryBridge`) | `src/pages/library_mods.rs` (+ children: `mods.rs`, `browse.rs` (Modrinth tab, installs), `gallery.rs` (detail-modal screenshots), `packs.rs` (Resource Packs/Shaders), `icons.rs`, `drop.rs`, `mrpack.rs`, `versions.rs`, `import.rs`, `donations.rs`, `debug.rs`) | `versions.json`, `import.json`, `mods.json`, `donations.json`, `modrinth.json`, `packs.json` |
 | **account-wardrobe** | pages/AccountVault, Wardrobe, components/AccountPopover | `ui/pages/account-wardrobe/*` (`account-vault.slint`→`AccountPage`, the wardrobe sections fold into it, `account-popover.slint`→`AccountPopover`, `api.slint`→`AccountBridge`) | `src/pages/account_wardrobe.rs` (+ children) | `account.json`, `wardrobe.json` |
 | **settings-suite-servers** | pages/SettingsDashboard, components/ServerRadarCard | `ui/pages/settings-suite-servers/*` (`settings.slint`→`SettingsPage`, `server-radar-card.slint`→`ServerRadarCard` (**shared**: Home imports it), `api.slint`→`SettingsBridge`) | `src/pages/settings_suite_servers.rs` (+ children) | `settings.json`, `servers.json`, `agent.json` |
 | **skin-renderer** | components/SkinViewer (skinview3d/three.js) | `ui/skin3d/*` (`SkinView`, `SkinBridge`, `SkinFrameRequest`) | `src/skin.rs`, the whole `native/skin3d/` crate | `skin.json` (create if needed) |
@@ -293,7 +293,8 @@ same font the website serves; see `LICENSE-MinecraftEspectral.txt`).
 
 | Widget | Svelte | Notes |
 |---|---|---|
-| `Btn { text; variant: BtnVariant.primary\|secondary\|ghost\|danger; size: BtnSize.sm\|md\|lg; icon: Icons.x; emoji: "📦"; loading; enabled; block; clicked }` | Btn.svelte | primary = solid accent (the one main action); secondary = dark glass with an accent hairline; ghost = bare label; danger = red hairline; spinner |
+| `Btn { text; variant: BtnVariant.primary\|secondary\|ghost\|danger; size: BtnSize.sm\|md\|lg; icon: Icons.x; loading; enabled; block; clicked }` | Btn.svelte | primary = solid accent (the one main action); secondary = dark glass with an accent hairline; ghost = bare label; danger = red hairline; spinner |
+| `EmojiBtn { text; emoji; variant: BtnVariant.*; size: BtnSize.*; enabled; loading; clicked }` | Btn.svelte (`emoji` prop) | same paint as `Btn`; leading color emoji (`Emoji`, Twemoji) instead of an SVG icon |
 | `IconBtn { icon; size; icon-size; flat; active; clicked }` | square icon buttons | |
 | `Spinner { size; tint }` | btn spinner | animates only while visible |
 | `GlassCard { title; subtitle; footer; elevation: Elevation.*; interactive; clickable; featured; flat; padding-size; spacing; clicked; <children> }`, `GlassSheen { radius }` | GlassCard.svelte | translucent glass panel: 1px hairline, top sheen (`GlassSheen`), accent edge on hover/featured; soft shadow only for `Elevation.lg`/featured; `flat` = opaque |
@@ -308,13 +309,14 @@ same font the website serves; see `LICENSE-MinecraftEspectral.txt`).
 | `LoaderBadge { loader; version; size: LoaderBadgeSize.*; show-icon }` | LoaderBadge.svelte | |
 | `MonogramTile { name; hue; avatar; has-avatar; size; shape: MonogramShape.tile\|rounded\|circle }` | MonogramTile.svelte | |
 | `TextField { text <=>; placeholder; icon; password; mono; clearable; has-error; field-height; pad-y; fill; focus-color; edited(t); accepted(t) }`, `TextArea` | `<input>` / `<textarea>` | focus ring; sets only `height` (never `min-height`), so it works inside layouts. `HiTextField` / `SsTextField` are thin aliases |
+| `SelectableText { text; color; font-family; font-size; font-weight; wrap; horizontal-alignment; vertical-alignment; letter-spacing }` | selectable `<p>` | read-only `TextInput` styled as `Text`. Policy: only for copyable content (logs, versions, paths, Modrinth descriptions/body, report excerpts); plain `Text` for static chrome (labels, buttons, headings, badges). No `overflow` (cannot elide) and it takes the press, so never above a `TouchArea` that must receive the click |
 | `Field { label; hint; error; required; <TextField/Select/...> }` | Field.svelte | |
 | `ProgressBar { value; max; indeterminate; tone: ProgressTone.*; thickness: ProgressThickness.*; label; show-value }` | ProgressBar.svelte | no shimmer |
 | `Toggle { checked <=>; toggled(v) }`, `Checkbox { checked; text }` | switches | |
 | `Slider { value <=>; minimum; maximum; step; changed(v); released(v) }` | range inputs | commit on `released` |
 | `Segmented { items: ["ES","EN"]; current; selected(i) }` | segmented pills | |
-| `Tabs { items: [TabItem{label, icon, badge}]; current <=>; selected(i) }` | InstanceHub tabs | ←/→ keys |
-| `Select { options: [SelectOption{value,label}]; current-index <=>; placeholder; selected(i, value) }` | `<select>` | PopupWindow |
+| `Tabs { items: [{ label, icon, badge }]; current <=>; selected(i) }` | InstanceHub tabs | ←/→ keys |
+| `Select { options: [{ value, label }]; current-index <=>; placeholder; selected(i, value) }` | `<select>` | PopupWindow; options are anonymous struct literals |
 | `Modal { open <=>; title; subtitle; dialog-width; dialog-height; dismissable; close; <body>; ModalFooter { Btn… } }`, `ConfirmDialog { message; confirm-text; cancel-text; danger; confirmed; close }` | modal scaffold | put it as the LAST child of the page root Rectangle (fills it), outside layouts |
 | `ScrollArea { <one layout> }` | scrolling + themed scrollbar | use instead of std ScrollView |
 | `PageScaffold { content-padding; max-content-width; spacing; <children> }`, `PageHeader { title; subtitle; gradient; divider; <eyebrow children> }`, `SectionTitle { title; description }` | page wrappers | PageScaffold = ScrollArea + centered column |
@@ -378,7 +380,9 @@ navigation pill, account chip; `ThemeToggle`), `AmbientBackdrop` (the glows),
 Routes (`router::parse`): `#/` → `Page.home`; `#/instances` → `Page.instances`
 (every instance); `#/instances/:name` → `Page.instance` (+ `Router.instance-name`);
 `#/library/versions` (legacy `#/versions`); `#/library/import`
-(legacy `#/import`); `#/mods`; `#/account` (`?section=skin`, the wardrobe lives
+(legacy `#/import`); `#/mods` (tabs: 0 Mods, 1 Resource Packs, 2 Shaders,
+3 Presets, 4 Explore Modrinth; `#/mods?tab=packs|shaders|presets|modrinth`);
+`#/account` (`?section=skin`, the wardrobe lives
 here too); `#/settings`; `#/donaciones` → `Page.donations`; anything else →
 home. The retired `#/servers`, `#/client` and `#/armario` hashes are unknown
 routes: they land on home, like any other unknown hash. The page component is instantiated on entry and
@@ -464,6 +468,9 @@ now uses the poster look (§5), so compare layout and content, not colours.
   `Image` on the UI thread. Skins/avatars are pixel art: `image-rendering: pixelated`.
 - Only literal `T.tr*("key"` are lint-checked; dynamic keys are fine but
   unchecked.
+- **Struct values are anonymous literals**: `Select { options: [{ value: "a", label: "A" }] }` — never `SelectOption { … }`; the struct name is a type, not a constructor.
+- `SelectableText` inherits `TextInput`, which has no `overflow` property: it cannot elide. Keep plain `Text` for labels that must elide or clip.
+- **Responsive layouts: one instance, not two branches.** `if narrow: …` / `if !narrow: …` compiles a full component tree per branch (both live at once). Bind the geometry on one instance and switch it on the `narrow` property — `settings.slint` `AboutCard` (`x` / `y` / `width` and the card height all read `root.narrow`) and the data-folder chips above it.
 
 ---
 

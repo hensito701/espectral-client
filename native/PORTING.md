@@ -100,6 +100,8 @@ native/
     error.rs events.rs paths.rs platform.rs config.rs download.rs util.rs rules.rs
     stats.rs ziputil.rs nbt.rs fingerprint.rs onboarding.rs test_support.rs
     <domain>.rs       one file per domain (historically one per JS module)
+    loader_meta.rs packs.rs crash_diag.rs mod_updates.rs
+                      native-only domains, no JS original (1.9.6; see Ownership)
   engine/data/        suite-registry.json + cosmetics-catalog.json (include_str!)
   engine/tests/       integration tests (facade.rs is a template)
   app/                the native Slint UI binary (see app/UI-PORTING.md)
@@ -158,6 +160,10 @@ your own module (`src/resolver.rs` + `src/resolver/fabric.rs` with
 | ffmpeg.mjs (upstream c22767f) | `ffmpeg.rs` | agent | **ported** |
 | mcp.mjs (MCP shim) | `mcp.rs` + `mcp/tools.json` (`include_str!`, dumped verbatim from the JS `toolList()`) | agent | **ported** (stdio server run as `espectral-client --mcp`; no Node needed) |
 | accounts.mjs, config.mjs, error.mjs | `accounts.rs`, `config.rs`, `error.rs` | foundation | **ported** — the JS files themselves are kept for `scripts/import-lunar-account.mjs` only |
+| — (native-only) | `loader_meta.rs` | content | **native-only** (no JS original) — Forge/NeoForge/legacy-Forge jar descriptors, Maven version ranges, wrong-loader detection |
+| — (native-only) | `packs.rs` | content | **native-only** (no JS original) — resource + shader packs: 3-era `pack.mcmeta`, nested-zip unwrap, `options.txt` order, texture overlap, Modrinth pack installs, Iris properties |
+| — (native-only) | `mod_updates.rs` | content | **native-only** (no JS original) — batched update checks, update-all with rollback, pins, orphan libraries, embedded icons |
+| — (native-only) | `crash_diag.rs` | game-launch | **native-only** (no JS original) — post-crash analyzer over log/crash-report/`hs_err` + user-triggered redacted mclo.gs upload |
 
 Facade files: `api/game_resolve.rs`, `api/game_launch.rs`, `api/content.rs`,
 `api/accounts_skins.rs`, `api/identity_discord.rs` — each owned by the
@@ -262,6 +268,19 @@ Binary routes (PNG) return `Vec<u8>`. Methods return the JS JSON shapes
 
 (`PATCH /api/accounts/:username` is called by the UI but never existed in the
 engine — the UI falls back to avatar-color; not a route.)
+
+Native-only facade methods (1.9.6; no HTTP route in the JS, the Slint UI calls
+them directly):
+
+| Area | Method(s) | Cluster |
+|---|---|---|
+| compat | `apply_safe_compat_fixes(name)` → `CompatBatchFixResult` | content |
+| mod updates | `set_mod_pinned(name, filename_or_pid, bool)` → `ModPinReply`, `check_mod_updates(name, ReleaseChannel)` → `ModUpdatesReport`, `apply_mod_updates(name, Option<Vec<String>>)` → `ModBatchUpdateResult`, `undo_last_mod_update(name)` → `ModUndoResult`, `dependents_of_mod(name, filename)`, `orphaned_libraries_after_delete(name, filename)` → `Vec<OrphanLib>`, `mod_embedded_icon(name, filename)` | content |
+| Modrinth browse | `modrinth_categories(project_type)` → `Vec<ModrinthCategory>`, `modrinth_project_detail(id_or_slug, Option<&str>)` → `ModrinthProjectDetail`, `parse_modrinth_url(text)` → `Option<(String, String)>`, `install_modrinth_modpack(project_id, Option<&str>, Option<u32>)` → `ImportMrpackReply` | content |
+| resource packs | `list_resource_packs(name)` → `Vec<ResourcePackEntry>`, `resource_pack_icon(name, filename)`, `set_resource_packs_order(name, &[String])` (top priority first), `unwrap_nested_resource_pack(name, filename)` → `PackUnwrapResult`, `install_modrinth_pack(name, project_id, Option<String>, PackKind, auto_activate)` → `PackInstallResult`, `delete_resource_pack(name, filename)`, `check_pack_updates(name, PackKind)` → `Vec<PackUpdate>`, `copy_resource_packs_from_instance(target, source, filenames, preserve_order)` → `PackCopyResult`, `server_pack_cache_info(name)` / `clear_server_pack_cache(name)` → `ServerPackCacheInfo` | content |
+| shaders | `shaders_state(name)` → `ShadersState`, `set_active_shader(name, Option<String>)` → `ShadersState`, `delete_shader_pack(name, filename)` | content |
+| local files (drag & drop) | `classify_zip_pack(path)` → `ZipPackKind`, `install_local_pack(name, path)` → `PackInstallResult`, `install_local_mod(name, path)` → stored filename | content |
+| crash | `diagnose_crash(launch_key)` → `Option<CrashDiagnosis>`, `upload_crash_log(launch_key)` → `UploadedLog`, `disable_shaders_for_launch(launch_key)`, `disable_resource_pack_for_launch(launch_key, pack)` (the four live in `crash_diag.rs`) | game-launch |
 
 ## Missing and partial
 
@@ -422,6 +441,17 @@ SkinLibraryEntry IdentityAccount IdentityState CosmeticsCatalog
 CosmeticsState CosmeticsAccountState CosmeticsPatch BackgroundPack
 PublicAccount MsDeviceFlow HealthInfo OkReply CreateInstanceRequest InstancePatch`.
 
+1.9.6 additions: `ReleaseChannel` (`release` / `beta` / `alpha`); the
+mod-update / pin set (`ModUpdateEntry ModUpdatesReport ModBatchUpdateResult
+ModUndoResult ModPinReply OrphanLib`); the Modrinth browser set
+(`ModrinthProjectDetail ModrinthGalleryItem ModrinthCategory`); and two fields
+carved out of existing documents: `InstanceMeta.pinned_mods` (project ids /
+basenames "Update all" must skip, persisted in `instance.json`) and
+`VersionChangePlan.resource_packs` (active packs the target version cannot
+load, with a replacing Modrinth build when one exists). Pack types
+(`ResourcePackEntry ShadersState PackUpdate PackInstallResult PackKind` …) live
+in `packs.rs`, crash types (`CrashDiagnosis`, `UploadedLog`) in `crash_diag.rs`.
+
 Domain shapes crossing clusters: `InstanceMeta` (instance.json), `Account` /
 `MicrosoftAuth` (config.accounts), `JavaRuntime` (config.jvm / runtime
 info.json), `JavaProbe`, `LibraryDownload`, `FabricProfile`, `VersionJson`
@@ -467,6 +497,15 @@ use `instances::effective_game_dir`. Atomic JSON writes:
 `paths::write_json_atomic` (`.tmp` + rename, 2-space indent like the JS).
 Data dir: `ESPECTRAL_DATA_DIR` → `%LOCALAPPDATA%\espectral-client` (Windows)
 → `$XDG_DATA_HOME|~/.local/share/espectral-client` → `<exe dir>/data`.
+
+**Running instances** — mods/packs mutations refuse a running instance with
+`409 ALREADY_RUNNING`: enable/disable, delete, pin, update/undo, compat fixes,
+`options.txt` pack order, nested-zip unwrap, shader switch, cache clear, local
+mod install (`packs::ensure_not_running`; `mods.rs` has the same inline
+checks). The Modrinth pack install is the exception: it copies the file but
+skips activation (`note: "running"`). Live configs (`options.txt`,
+`iris.properties`) and jars are written to a sibling `.tmp` and renamed over
+the target.
 
 **Config** — `engine.config()` keeps config.json as an ordered JSON map
 (unknown keys survive). Typed accessors replicate JS coercions
