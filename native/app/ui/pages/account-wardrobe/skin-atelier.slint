@@ -3,7 +3,7 @@
 // the named skin gallery (vanilla-launcher workflow).
 // The 3D viewer is the skin-renderer agent's SkinView (ui/skin3d).
 
-import { Theme, T, Btn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, GlassCard, Elevation, Icons, McTitle, SelectableText } from "../../widgets.slint";
+import { Theme, T, Btn, EmojiBtn, BtnVariant, BtnSize, Badge, BadgeVariant, Field, GlassCard, Elevation, Icons, McTitle, SelectableText } from "../../widgets.slint";
 import { SkinView } from "../../skin3d/skin-view.slint";
 import { AccountBridge, VaultSkinEntry } from "api.slint";
 import { LoadingRow, PlainInput } from "parts.slint";
@@ -228,7 +228,7 @@ component Controls inherits VerticalLayout {
         spacing: Theme.space-1;
         HorizontalLayout {
             alignment: start;
-            Btn {
+            EmojiBtn {
                 variant: BtnVariant.ghost;
                 size: BtnSize.sm;
                 emoji: "🎨";

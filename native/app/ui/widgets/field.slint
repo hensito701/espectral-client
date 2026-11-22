@@ -173,8 +173,9 @@ export component Field inherits VerticalLayout {
     if root.label != "": HorizontalLayout {
         spacing: Theme.space-1;
         alignment: start;
-        SelectableText {
+        Text {
             text: root.label;
+            font-family: Theme.font-body;
             color: Theme.text;
             font-size: Theme.text-xs;
             font-weight: 600;
@@ -203,8 +204,9 @@ export component Field inherits VerticalLayout {
             horizontal-stretch: 1;
         }
     }
-    if root.error == "" && root.hint != "": SelectableText {
+    if root.error == "" && root.hint != "": Text {
         text: root.hint;
+        font-family: Theme.font-body;
         color: Theme.muted;
         font-size: Theme.text-xs;
         font-weight: 500;

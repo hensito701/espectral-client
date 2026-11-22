@@ -7,7 +7,7 @@
 //
 //     Btn { text: T.tr("actions.save"); clicked => { ... } }
 //     Btn { variant: BtnVariant.secondary; size: BtnSize.sm; icon: Icons.refresh; text: "..."; }
-//     Btn { emoji: "📦"; text: T.tr("home.importModpack"); variant: BtnVariant.secondary; }
+//     EmojiBtn { emoji: "📦"; text: T.tr("home.importModpack"); variant: BtnVariant.secondary; }
 //     Btn { variant: BtnVariant.primary; loading: true; }        // spinner, not clickable
 
 import { Theme } from "../theme.slint";
@@ -48,6 +48,25 @@ export component Spinner inherits Rectangle {
     }
 }
 
+/// Pressed-state paint of Btn and EmojiBtn. It folds the old 12% black child Rectangle
+/// (drawn over the whole button, border included) into the colours, so a pressed button
+/// needs no extra layer. Over-compositing black at alpha 0.12 onto a straight colour (rgb, a):
+///   fill: alpha' = 0.12 + 0.88 a and rgb' = rgb * 0.88 a / alpha' (opaque fill: rgb * 0.88;
+///         transparent fill: black at 12%, as before).
+///   edge: the border is painted under the overlay, so it only scales rgb by 0.88 and keeps its alpha.
+export global BtnPaint {
+    public pure function fill(c: color) -> color {
+        let a = c.to-hsv().alpha;
+        let out-a = 0.12 + 0.88 * a;
+        let k = 0.88 * a / out-a;
+        return rgba(round(c.red * k), round(c.green * k), round(c.blue * k), out-a);
+    }
+    public pure function edge(c: color) -> color {
+        let n = round(c.to-hsv().alpha * 255);
+        return rgba(round(c.red * 0.88), round(c.green * 0.88), round(c.blue * 0.88), (n + 0.5) / 255);
+    }
+}
+
 export component Btn inherits Rectangle {
     in property <string> text;
     in property <BtnVariant> variant: BtnVariant.primary;
@@ -58,8 +77,6 @@ export component Btn inherits Rectangle {
     in property <bool> block: false;
     /// Leading icon path (Icons.*). Ignored when empty.
     in property <string> icon;
-    /// Leading color emoji (e.g. "📦"). Ignored when empty.
-    in property <string> emoji;
     /// Font size override (0 = size default).
     in property <length> font-size-override: 0px;
     in property <string> tooltip;
@@ -84,19 +101,17 @@ export component Btn inherits Rectangle {
     border-radius: Theme.radius-md;
     opacity: enabled ? 1 : 0.45;
     clip: true;
-    background: root.variant == BtnVariant.primary ? (root.hovered ? Theme.btn-fill-hover : Theme.btn-fill)
+    property <color> base-fill: root.variant == BtnVariant.primary ? (root.hovered ? Theme.btn-fill-hover : Theme.btn-fill)
         : root.variant == BtnVariant.danger ? (root.hovered ? Theme.accent-red.with-alpha(0.16) : transparent)
         : root.variant == BtnVariant.secondary ? (root.hovered ? Theme.surface-up : Theme.surface)
         : (root.hovered ? Theme.card-bg-soft : transparent);
+    // pressed: the old 12% black overlay is folded into the fill and the edge (see BtnPaint)
+    background: root.pressed ? BtnPaint.fill(root.base-fill) : root.base-fill;
     border-width: root.variant == BtnVariant.secondary || root.variant == BtnVariant.danger ? Theme.hairline : 0px;
-    border-color: root.variant == BtnVariant.danger ? Theme.accent-red.with-alpha(root.hovered ? 0.8 : 0.5)
+    property <color> base-edge: root.variant == BtnVariant.danger ? Theme.accent-red.with-alpha(root.hovered ? 0.8 : 0.5)
         : root.hovered ? Theme.accent.with-alpha(0.7) : Theme.edge-strong;
+    border-color: root.pressed ? BtnPaint.edge(root.base-edge) : root.base-edge;
     animate background, border-color { duration: Theme.dur-fast; }
-
-    // pressed: a touch darker
-    if root.pressed: Rectangle {
-        background: rgba(0, 0, 0, 0.12);
-    }
 
     row := HorizontalLayout {
         padding-left: root.pad;
@@ -110,6 +125,75 @@ export component Btn inherits Rectangle {
         if !root.loading && root.icon != "": VerticalLayout {
             alignment: center;
             Icon { data: root.icon; size: root.fs + 2px; color: root.fg; }
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: root.fg;
+            font-size: root.fs;
+            font-weight: root.solid ? 700 : 600;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.interactive;
+        mouse-cursor: root.interactive ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Button with a leading colour emoji. The emoji slot lives here rather than in Btn, so plain
+/// Btn instances carry no emoji subtree. Same geometry and paint as Btn; the spinner replaces
+/// the emoji while loading.
+export component EmojiBtn inherits Rectangle {
+    in property <string> text;
+    in property <BtnVariant> variant: BtnVariant.primary;
+    in property <BtnSize> size: BtnSize.md;
+    in property <bool> enabled: true;
+    in property <bool> loading: false;
+    /// Leading color emoji (e.g. "📦"). Ignored when empty.
+    in property <string> emoji;
+    out property <bool> hovered: touch.has-hover && interactive;
+    out property <bool> pressed: touch.pressed && interactive;
+    callback clicked();
+
+    property <bool> interactive: enabled && !loading;
+    property <length> h: size == BtnSize.sm ? 28px : size == BtnSize.lg ? 48px : 38px;
+    property <length> pad: size == BtnSize.sm ? Theme.space-3 : size == BtnSize.lg ? Theme.space-6 : Theme.space-4;
+    property <length> fs: size == BtnSize.sm ? Theme.text-xs : size == BtnSize.lg ? Theme.text-base : Theme.text-sm;
+    property <bool> solid: variant == BtnVariant.primary;
+    property <color> fg: variant == BtnVariant.primary ? Theme.btn-ink
+        : variant == BtnVariant.danger ? Theme.accent-red
+        : variant == BtnVariant.secondary ? (hovered ? Theme.accent-bright : Theme.text)
+        : hovered ? Theme.text : Theme.muted-strong;
+    property <color> base-fill: variant == BtnVariant.primary ? (hovered ? Theme.btn-fill-hover : Theme.btn-fill)
+        : variant == BtnVariant.danger ? (hovered ? Theme.accent-red.with-alpha(0.16) : transparent)
+        : variant == BtnVariant.secondary ? (hovered ? Theme.surface-up : Theme.surface)
+        : (hovered ? Theme.card-bg-soft : transparent);
+    property <color> base-edge: variant == BtnVariant.danger ? Theme.accent-red.with-alpha(hovered ? 0.8 : 0.5)
+        : hovered ? Theme.accent.with-alpha(0.7) : Theme.edge-strong;
+
+    height: h;
+    min-width: row.preferred-width;
+    preferred-width: row.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-md;
+    opacity: enabled ? 1 : 0.45;
+    clip: true;
+    background: root.pressed ? BtnPaint.fill(root.base-fill) : root.base-fill;
+    border-width: variant == BtnVariant.secondary || variant == BtnVariant.danger ? Theme.hairline : 0px;
+    border-color: root.pressed ? BtnPaint.edge(root.base-edge) : root.base-edge;
+    animate background, border-color { duration: Theme.dur-fast; }
+
+    row := HorizontalLayout {
+        padding-left: root.pad;
+        padding-right: root.pad;
+        spacing: Theme.space-2;
+        alignment: center;
+        if root.loading: VerticalLayout {
+            alignment: center;
+            Spinner { size: root.fs; tint: root.fg; }
         }
         if !root.loading && root.emoji != "": VerticalLayout {
             alignment: center;
