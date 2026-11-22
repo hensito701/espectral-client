@@ -2,6 +2,65 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.9.6] - 2026-11-22
+
+### Added
+- **Resource Packs and Shaders tabs.** The Mods page now has five tabs: Mods, Resource Packs, Shaders, Presets and
+  Explore Modrinth (`#/mods?tab=packs|shaders|presets|modrinth`).
+  - Resource Packs: the active stack in priority order (move up/down, toggle, delete) with each pack's picture,
+    version, a compatibility pill for the instance's Minecraft version (old `pack_format`, `supported_formats` and the
+    26.x `min_format`/`max_format` styles), what it changes (items, blocks, GUI, sky, font…) and how many textures it
+    overrides or loses to a higher pack. Zips wrapped in an extra folder get a one-click *Corregir ZIP anidado*. Copy packs
+    from another instance, check for updates and clear a bloated server-pack cache.
+  - Shaders: a master switch, pick the active shader, one-click *Instalar Iris + Sodium* on Fabric, check for updates
+    and jump to shader search.
+- **Explore Modrinth v2.** Pick what to browse (Mods, Resource Packs, Shaders, Modpacks), sort (Relevance, Downloads,
+  Followers, Updated, Newest), filter by categories, search all Minecraft versions and include server-only mods.
+  Cards show the author, tags, a Client / Client+Server / Server badge and when the project was updated. Clicking a card
+  opens a project window with its gallery, description and versions (install a specific version). Pasting a
+  modrinth.com link opens that project; modpacks install as a new instance.
+- **Mod updates.** *Buscar actualizaciones* checks every mod in one request; *Actualizar todo* updates them (keeping
+  Sodium and Iris in step) and *Deshacer última actualización* puts the previous jars back. Update a single mod from
+  its row, pin mods so they keep their version, and see each mod's icon.
+- **Safer installs.** The install preview lets you choose the version and opt into optional companions, checks the new
+  mod together with its dependencies and with any upgrades it needs, and warns when an installed mod declares the new
+  one incompatible.
+- **Fix it for me.** *Arreglar todo* on the Mods page and *Arreglar y jugar* in the pre-launch warning apply only safe
+  fixes (enable or install a missing dependency, update an incompatible one, refresh Fabric Loader, disable server-only
+  mods and older duplicates) and launch when nothing blocking is left.
+- **Forge, NeoForge and 1.8.9 Forge checks.** The compatibility check now reads `mods.toml`, `neoforge.mods.toml` and
+  `mcmod.info`: missing or disabled dependencies, Minecraft and loader version ranges, incompatible mods, duplicates and
+  server-only mods. A jar for the wrong loader is flagged with a one-click switch or disable.
+- **Crash diagnosis.** When the game crashes, the launcher explains the likely cause (mod conflict, Mixin failure,
+  missing class, out of memory, graphics driver, resource pack, wrong Java), names the suspected mods and offers a fix
+  and relaunch (disable the mod, more RAM, shaders off, pack off). *Copiar enlace mclo.gs* uploads the log only when
+  you click it, with your user name, tokens and IP addresses removed.
+- **Drag and drop.** Drop `.jar` mods, `.zip` resource packs or shaders (detected automatically) and `.mrpack` modpacks
+  anywhere on the window.
+- Turning off a mod that other mods need asks first; deleting a mod offers to remove libraries nothing uses any more.
+- Importing a profile can copy its active resource packs too.
+- Changing an instance's version warns which active resource packs will not fit the new version.
+
+### Changed
+- Modrinth search puts exact matches first when you type a query, prefers stable releases over betas and alphas,
+  recognises installed mods by project instead of by file name, and hides server-only mods unless you ask for them.
+- Warnings for mods that clash with Espectral features: BadOptimizations (fullbright), EntityCulling (cosmetics) and
+  Dynamic FPS (capture).
+- `.mrpack` imports follow the Modrinth spec: server-only files are skipped, `client-overrides/` is applied and mirror
+  URLs are tried when the first download fails.
+- The mod download cache stays under 128 MiB.
+
+### Fixed
+- Settings → Opciones avanzadas: the *Acceso para agentes* cards were blank in windows wider than 1100 px.
+- Donaciones: in narrower windows the Discord card ran into the *Catálogo de Rangos y Servicios* heading.
+- The delete dialog's "other mods depend on this" warning never appeared.
+
+### Developer
+- Faster builds: mold/lld linking, two-stage release scripts, `espectral-client-ui` no longer rebuilds on a version bump,
+  `cargo test --profile dev` reuses build artifacts, leaner Slint codegen (no duplicated responsive subtrees, `EmojiBtn`,
+  plain `Text` for static chrome), parallel Gradle branding builds (`deploy:mod --fast/--serial/--only`), opt-in fast
+  NSIS dev installers. CI: prebuilt cargo-audit, mold, clippy skips the generated UI crate.
+
 ## [1.9.5] - 2026-11-22
 
 ### Added

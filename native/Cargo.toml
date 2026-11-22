@@ -17,7 +17,7 @@ members = ["engine", "app", "ui", "skin3d"]
 
 [workspace.package]
 # Mirrors package.json "version"; the in-app updater compares it with latest.json.
-version = "1.9.5"
+version = "1.9.6"
 edition = "2021"
 license = "GPL-3.0-only"
 # rand 0.10 needs Rust 1.85 (edition 2024 support).
