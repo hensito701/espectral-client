@@ -9,6 +9,7 @@
 import { Theme, T, AppState, Router, GlassCard, Elevation, Btn, IconBtn, BtnVariant, BtnSize, Badge, BadgeVariant, McTitle, Icon, Icons, Spinner, Emoji, ProgressBar, ProgressThickness, MonogramTile, MonogramShape, LoaderBadge, LoaderBadgeSize, Toggle, SelectableText, Modal, ModalFooter, ConfirmDialog, ScrollArea } from "../../widgets.slint";
 import { LibraryBridge, ModRow, ModCompatNote, ModVersionOption, ModChangeSummary, PinnedPill } from "api.slint";
 import { LibScroll, GlassPanel, GlowDot, VText, StatePanel, CenterText, ModIcons, LoadingPanel, ErrorBanner, EmptyPanel } from "parts.slint";
+import { ResourcePacksPane, ShadersPane, CopyFromModal, RpDeleteDialog, ShDeleteDialog } from "packs.slint";
 import { ModrinthPane } from "modrinth-pane.slint";
 import { ModrinthProjectDetailModal } from "project-detail-modal.slint";
 
@@ -268,19 +269,31 @@ component CatalogTabs inherits Rectangle {
             clicked => { LibraryBridge.m-set-tab(0); }
         }
         CatalogTab {
+            text: T.tr("packs.packsTab");
+            icon: Icons.image;
+            active: LibraryBridge.m-tab == 1;
+            clicked => { LibraryBridge.m-set-tab(1); }
+        }
+        CatalogTab {
+            text: T.tr("packs.shadersTab");
+            icon: Icons.sun;
+            active: LibraryBridge.m-tab == 2;
+            clicked => { LibraryBridge.m-set-tab(2); }
+        }
+        CatalogTab {
             text: T.tr("mods.presetsTab");
             icon: ModIcons.star;
-            active: LibraryBridge.m-tab == 1;
+            active: LibraryBridge.m-tab == 3;
             badge: LibraryBridge.m-perf-missing > 0 ? "" + LibraryBridge.m-perf-missing : "";
             badge-warn: true;
-            clicked => { LibraryBridge.m-set-tab(1); }
+            clicked => { LibraryBridge.m-set-tab(3); }
         }
         CatalogTab {
             text: T.tr("mods.modrinthTab");
             icon: ModIcons.modrinth-tab;
             icon-filled: true;
-            active: LibraryBridge.m-tab == 2;
-            clicked => { LibraryBridge.m-set-tab(2); }
+            active: LibraryBridge.m-tab == 4;
+            clicked => { LibraryBridge.m-set-tab(4); }
         }
     }
 }
@@ -1198,7 +1211,7 @@ export component ModsPage inherits Rectangle {
     // the page may be instantiated after the list arrived (route entered first)
     init => { LibraryBridge.instances-changed(); }
     // infinite scroll on the Modrinth tab (the "show more" button stays for parity)
-    property <bool> want-more: scroll.near-bottom && LibraryBridge.m-tab == 2 && LibraryBridge.m-has-more && !LibraryBridge.m-loading-more && !LibraryBridge.m-searching;
+    property <bool> want-more: scroll.near-bottom && LibraryBridge.m-tab == 4 && LibraryBridge.m-has-more && !LibraryBridge.m-loading-more && !LibraryBridge.m-searching;
     changed want-more => {
         if self.want-more { LibraryBridge.m-load-more(); }
     }
@@ -1211,12 +1224,17 @@ export component ModsPage inherits Rectangle {
         if LibraryBridge.m-progress-active: ProgressDeck { }
         CatalogTabs { }
         if LibraryBridge.m-tab == 0: InstalledPane { }
-        if LibraryBridge.m-tab == 1: PresetsPane { }
-        if LibraryBridge.m-tab == 2: ModrinthPane { }
+        if LibraryBridge.m-tab == 1: ResourcePacksPane { }
+        if LibraryBridge.m-tab == 2: ShadersPane { }
+        if LibraryBridge.m-tab == 3: PresetsPane { }
+        if LibraryBridge.m-tab == 4: ModrinthPane { }
     }
 
     DeleteModModal { }
     ModVersionModal { }
     InstallPreviewModal { }
     ModrinthProjectDetailModal { }
+    CopyFromModal { }
+    RpDeleteDialog { }
+    ShDeleteDialog { }
 }

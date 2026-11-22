@@ -4,7 +4,7 @@
 //!
 //! | token          | effect |
 //! |----------------|--------|
-//! | `mods-tab:N`   | ModCatalog tab N (0 installed, 1 presets, 2 Modrinth) |
+//! | `mods-tab:N`   | ModCatalog tab N (0 installed, 1 resource packs, 2 shaders, 3 presets, 4 Modrinth) |
 //! | `mods-fake`    | sample installed mods + Modrinth results (no network) |
 //! | `versions-fake`| sample manifest |
 //! | `mrpack`       | open the MrpackModal (ImportCenter hosts it) |

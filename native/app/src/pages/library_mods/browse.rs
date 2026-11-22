@@ -150,7 +150,7 @@ pub(super) fn instance_switched(ui: &AppWindow) {
         s.optional.clear();
     });
     rebuild_cards(ui);
-    if ui.global::<LibraryBridge>().get_m_tab() == 2 {
+    if ui.global::<LibraryBridge>().get_m_tab() == super::mods::MODRINTH_TAB {
         enter(ui);
     }
 }
@@ -159,7 +159,7 @@ pub(super) fn instance_switched(ui: &AppWindow) {
 pub(super) fn open_search(ui: &AppWindow, query: String) {
     let b = ui.global::<LibraryBridge>();
     b.set_m_search_query(ss(query));
-    b.set_m_tab(2);
+    b.set_m_tab(super::mods::MODRINTH_TAB);
     load_categories(ui, true);
     run_search(false);
 }

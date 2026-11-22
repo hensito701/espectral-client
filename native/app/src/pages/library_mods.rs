@@ -31,6 +31,7 @@ mod icons;
 mod import;
 mod mods;
 pub(crate) use mods::fix_summary;
+mod packs;
 mod mrpack;
 mod versions;
 
@@ -38,6 +39,7 @@ pub fn init(ctx: &Ctx, ui: &AppWindow) {
     versions::init(ctx, ui);
     mods::init(ctx, ui);
     browse::init(ui);
+    packs::init(ui);
     import::init(ctx, ui);
     mrpack::init(ctx, ui);
     drop::init(ctx, ui);
