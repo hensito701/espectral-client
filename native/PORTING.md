@@ -37,7 +37,7 @@ rustup target add x86_64-pc-windows-gnu   # + gcc-mingw-w64-x86-64, binutils-min
 
 cd native
 cargo build
-cargo test --workspace
+cargo test --workspace --profile dev   # --profile dev reuses `cargo build`'s artifacts
 cargo check -p espectral-client --target x86_64-pc-windows-gnu  # gnu target: mingw-w64 required (linker + icon resource)
 # The generated UI crate is machine-written and allows every lint; linting its
 # 55 MB only burns clippy time (also with --target x86_64-pc-windows-gnu).
@@ -71,6 +71,10 @@ safe beside it.
   compression and `--profile release-fast` skips LTO; both refuse to run
   without `--unsigned` and are never signed (releases stay `release` +
   `/SOLID lzma` + signature).
+- **Tests share the build's artifacts:** plain `cargo test` uses the `test`
+  profile, which inherits `dev` but is hashed separately, so it compiles every
+  dependency and the 55 MB UI crate a second time. `cargo test --profile dev`
+  reuses what `cargo build` already compiled.
 - **Stale UI rlibs:** every version/feature-hash drift leaves another
   `libespectral_client_ui-*.rlib` (hundreds of MB) in `<target-dir>/*/deps`.
   Keep only the newest one per deps dir:
