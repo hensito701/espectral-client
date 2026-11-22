@@ -1085,18 +1085,43 @@ component DataDirCard inherits SettingCard {
                 }
             }
         }
-        if !root.narrow: HorizontalLayout {
-            spacing: 12px;
-            padding-top: 0px;
-            SubfolderChip { icon: SetIcons.briefcase; text: T.tr("dash.data.openInstances"); clicked => { SettingsBridge.open-data-folder("instances"); } }
-            SubfolderChip { icon: SetIcons.file-text; text: T.tr("dash.data.openLogs"); clicked => { SettingsBridge.open-data-folder("logs"); } }
-            SubfolderChip { icon: Icons.package; text: T.tr("dash.data.openMods"); clicked => { SettingsBridge.open-data-folder("mods"); } }
-        }
-        if root.narrow: VerticalLayout {
-            spacing: 12px;
-            SubfolderChip { icon: SetIcons.briefcase; text: T.tr("dash.data.openInstances"); clicked => { SettingsBridge.open-data-folder("instances"); } }
-            SubfolderChip { icon: SetIcons.file-text; text: T.tr("dash.data.openLogs"); clicked => { SettingsBridge.open-data-folder("logs"); } }
-            SubfolderChip { icon: Icons.package; text: T.tr("dash.data.openMods"); clicked => { SettingsBridge.open-data-folder("mods"); } }
+        // One instance of each chip, positioned by `root.narrow`: a responsive
+        // `if` pair would compile a second copy of all three chips for the
+        // other branch.
+        chips := Rectangle {
+            property <length> gap: 12px;
+            property <length> col-w: (self.width - 2 * self.gap) / 3;
+            property <length> row-h: max(chip-instances.preferred-height, max(chip-logs.preferred-height, chip-mods.preferred-height));
+            height: root.narrow
+                ? chip-instances.preferred-height + self.gap + chip-logs.preferred-height + self.gap + chip-mods.preferred-height
+                : self.row-h;
+            chip-instances := SubfolderChip {
+                icon: SetIcons.briefcase;
+                text: T.tr("dash.data.openInstances");
+                clicked => { SettingsBridge.open-data-folder("instances"); }
+                x: 0px;
+                y: 0px;
+                width: root.narrow ? chips.width : chips.col-w;
+                height: root.narrow ? self.preferred-height : chips.row-h;
+            }
+            chip-logs := SubfolderChip {
+                icon: SetIcons.file-text;
+                text: T.tr("dash.data.openLogs");
+                clicked => { SettingsBridge.open-data-folder("logs"); }
+                x: root.narrow ? 0px : chips.col-w + chips.gap;
+                y: root.narrow ? chip-instances.preferred-height + chips.gap : 0px;
+                width: root.narrow ? chips.width : chips.col-w;
+                height: root.narrow ? self.preferred-height : chips.row-h;
+            }
+            chip-mods := SubfolderChip {
+                icon: Icons.package;
+                text: T.tr("dash.data.openMods");
+                clicked => { SettingsBridge.open-data-folder("mods"); }
+                x: root.narrow ? 0px : 2 * (chips.col-w + chips.gap);
+                y: root.narrow ? chip-instances.preferred-height + chips.gap + chip-logs.preferred-height + chips.gap : 0px;
+                width: root.narrow ? chips.width : chips.col-w;
+                height: root.narrow ? self.preferred-height : chips.row-h;
+            }
         }
     }
 }
@@ -1761,37 +1786,36 @@ component AgentSection inherits VerticalLayout {
     in property <bool> narrow;
     spacing: 16px;
     AgentHeader { }
-    // `.agent-grid`: 3 columns at >= 1100px, `align-items: start` (cards keep
-    // their natural height, so each sits in a top-aligned wrapper).
-    if !root.narrow: HorizontalLayout {
-        spacing: 20px;
-        VerticalLayout {
-            alignment: start;
-            horizontal-stretch: 1;
-            preferred-width: 1px;
-            min-width: 0px;
-            AgentToggleCard { checked <=> SettingsBridge.agent-enabled; }
+    // `.agent-grid`: 3 columns at >= 1100px, `align-items: start`. One
+    // instance of each card, positioned by `root.narrow` (a responsive `if`
+    // pair would compile a second component tree): wide cards keep their
+    // natural height and their row is as tall as the tallest card.
+    agent-grid := Rectangle {
+        property <length> gap: 20px;
+        property <length> col-w: (self.width - 2 * self.gap) / 3;
+        property <length> row-h: max(agent-toggle-card.preferred-height, max(agent-config-card.preferred-height, agent-allow-card.preferred-height));
+        height: root.narrow
+            ? agent-toggle-card.preferred-height + self.gap + agent-config-card.preferred-height + self.gap + agent-allow-card.preferred-height
+            : self.row-h;
+        agent-toggle-card := AgentToggleCard {
+            checked <=> SettingsBridge.agent-enabled;
+            x: 0px;
+            y: 0px;
+            width: root.narrow ? agent-grid.width : agent-grid.col-w;
+            height: self.preferred-height;
         }
-        VerticalLayout {
-            alignment: start;
-            horizontal-stretch: 1;
-            preferred-width: 1px;
-            min-width: 0px;
-            AgentConfigCard { }
+        agent-config-card := AgentConfigCard {
+            x: root.narrow ? 0px : agent-grid.col-w + agent-grid.gap;
+            y: root.narrow ? agent-toggle-card.preferred-height + agent-grid.gap : 0px;
+            width: root.narrow ? agent-grid.width : agent-grid.col-w;
+            height: self.preferred-height;
         }
-        VerticalLayout {
-            alignment: start;
-            horizontal-stretch: 1;
-            preferred-width: 1px;
-            min-width: 0px;
-            AgentAllowCard { }
+        agent-allow-card := AgentAllowCard {
+            x: root.narrow ? 0px : 2 * (agent-grid.col-w + agent-grid.gap);
+            y: root.narrow ? agent-toggle-card.preferred-height + agent-grid.gap + agent-config-card.preferred-height + agent-grid.gap : 0px;
+            width: root.narrow ? agent-grid.width : agent-grid.col-w;
+            height: self.preferred-height;
         }
-    }
-    if root.narrow: VerticalLayout {
-        spacing: 20px;
-        AgentToggleCard { checked <=> SettingsBridge.agent-enabled; }
-        AgentConfigCard { }
-        AgentAllowCard { }
     }
 }
 
@@ -1862,25 +1886,41 @@ export component SettingsPage inherits Rectangle {
             VerticalLayout {
                 spacing: 16px;
                 SectionHeader { title: T.tr("dash.appearance.title"); desc: T.tr("dash.appearance.subtitle"); }
-                if !root.narrow: VerticalLayout {
-                    spacing: 20px;
-                    HorizontalLayout {
-                        spacing: 20px;
-                        ThemeCard { }
-                        LanguageCard { }
+                // One instance of each card, positioned by `root.narrow`: two
+                // cards per row wide, one column narrow. An `if` pair would
+                // compile four extra component trees.
+                appearance-grid := Rectangle {
+                    property <length> gap: 20px;
+                    property <length> col-w: (self.width - self.gap) / 2;
+                    property <length> row1-h: max(theme-card.preferred-height, language-card.preferred-height);
+                    property <length> row2-h: max(accent-card.preferred-height, backdrop-card.preferred-height);
+                    height: root.narrow
+                        ? theme-card.preferred-height + self.gap + language-card.preferred-height + self.gap + accent-card.preferred-height + self.gap + backdrop-card.preferred-height
+                        : self.row1-h + self.gap + self.row2-h;
+                    theme-card := ThemeCard {
+                        x: 0px;
+                        y: 0px;
+                        width: root.narrow ? appearance-grid.width : appearance-grid.col-w;
+                        height: root.narrow ? self.preferred-height : appearance-grid.row1-h;
                     }
-                    HorizontalLayout {
-                        spacing: 20px;
-                        AccentCard { }
-                        BackdropCard { }
+                    language-card := LanguageCard {
+                        x: root.narrow ? 0px : appearance-grid.col-w + appearance-grid.gap;
+                        y: root.narrow ? theme-card.preferred-height + appearance-grid.gap : 0px;
+                        width: root.narrow ? appearance-grid.width : appearance-grid.width - appearance-grid.col-w - appearance-grid.gap;
+                        height: root.narrow ? self.preferred-height : appearance-grid.row1-h;
                     }
-                }
-                if root.narrow: VerticalLayout {
-                    spacing: 20px;
-                    ThemeCard { }
-                    LanguageCard { }
-                    AccentCard { }
-                    BackdropCard { }
+                    accent-card := AccentCard {
+                        x: 0px;
+                        y: root.narrow ? theme-card.preferred-height + appearance-grid.gap + language-card.preferred-height + appearance-grid.gap : appearance-grid.row1-h + appearance-grid.gap;
+                        width: root.narrow ? appearance-grid.width : appearance-grid.col-w;
+                        height: root.narrow ? self.preferred-height : appearance-grid.row2-h;
+                    }
+                    backdrop-card := BackdropCard {
+                        x: root.narrow ? 0px : appearance-grid.col-w + appearance-grid.gap;
+                        y: root.narrow ? theme-card.preferred-height + appearance-grid.gap + language-card.preferred-height + appearance-grid.gap + accent-card.preferred-height + appearance-grid.gap : appearance-grid.row1-h + appearance-grid.gap;
+                        width: root.narrow ? appearance-grid.width : appearance-grid.width - appearance-grid.col-w - appearance-grid.gap;
+                        height: root.narrow ? self.preferred-height : appearance-grid.row2-h;
+                    }
                 }
             }
 
@@ -1900,15 +1940,26 @@ export component SettingsPage inherits Rectangle {
                         }
                     }
                 }
-                if !root.narrow: HorizontalLayout {
-                    spacing: 20px;
-                    CloseOnStartCard { }
-                    DiscordCard { }
-                }
-                if root.narrow: VerticalLayout {
-                    spacing: 20px;
-                    CloseOnStartCard { }
-                    DiscordCard { }
+                // One instance of each toggle, positioned by `root.narrow`.
+                game-toggles := Rectangle {
+                    property <length> gap: 20px;
+                    property <length> col-w: (self.width - self.gap) / 2;
+                    property <length> row-h: max(close-on-start-card.preferred-height, discord-card.preferred-height);
+                    height: root.narrow
+                        ? close-on-start-card.preferred-height + self.gap + discord-card.preferred-height
+                        : self.row-h;
+                    close-on-start-card := CloseOnStartCard {
+                        x: 0px;
+                        y: 0px;
+                        width: root.narrow ? game-toggles.width : game-toggles.col-w;
+                        height: root.narrow ? self.preferred-height : game-toggles.row-h;
+                    }
+                    discord-card := DiscordCard {
+                        x: root.narrow ? 0px : game-toggles.col-w + game-toggles.gap;
+                        y: root.narrow ? close-on-start-card.preferred-height + game-toggles.gap : 0px;
+                        width: root.narrow ? game-toggles.width : game-toggles.width - game-toggles.col-w - game-toggles.gap;
+                        height: root.narrow ? self.preferred-height : game-toggles.row-h;
+                    }
                 }
             }
 
@@ -1925,16 +1976,33 @@ export component SettingsPage inherits Rectangle {
                         SectionHeader { title: T.tr("dash.engine.title"); desc: T.tr("dash.engine.subtitle"); }
                         DownloadsCard { dirty: root.concurrency-dirty; }
                         JdkCard { dirty: root.jdk-dirty; }
-                        if !root.narrow: HorizontalLayout {
-                            spacing: 20px;
-                            AotCard { }
-                            FastBootCard { }
-                            Rectangle { horizontal-stretch: 1; preferred-width: 1px; }
-                        }
-                        if root.narrow: VerticalLayout {
-                            spacing: 20px;
-                            AotCard { }
-                            FastBootCard { }
+                        // One instance of each toggle plus the trailing spacer:
+                        // the wide row keeps a third, empty column.
+                        startup-toggles := Rectangle {
+                            property <length> gap: 20px;
+                            property <length> col-w: (self.width - 2 * self.gap) / 3;
+                            property <length> row-h: max(aot-card.preferred-height, fastboot-card.preferred-height);
+                            height: root.narrow
+                                ? aot-card.preferred-height + self.gap + fastboot-card.preferred-height
+                                : self.row-h;
+                            aot-card := AotCard {
+                                x: 0px;
+                                y: 0px;
+                                width: root.narrow ? startup-toggles.width : startup-toggles.col-w;
+                                height: root.narrow ? self.preferred-height : startup-toggles.row-h;
+                            }
+                            fastboot-card := FastBootCard {
+                                x: root.narrow ? 0px : startup-toggles.col-w + startup-toggles.gap;
+                                y: root.narrow ? aot-card.preferred-height + startup-toggles.gap : 0px;
+                                width: root.narrow ? startup-toggles.width : startup-toggles.col-w;
+                                height: root.narrow ? self.preferred-height : startup-toggles.row-h;
+                            }
+                            Rectangle {
+                                x: root.narrow ? 0px : 2 * (startup-toggles.col-w + startup-toggles.gap);
+                                y: 0px;
+                                width: root.narrow ? 0px : startup-toggles.col-w;
+                                height: root.narrow ? 0px : startup-toggles.row-h;
+                            }
                         }
                     }
 
@@ -1945,15 +2013,27 @@ export component SettingsPage inherits Rectangle {
                     VerticalLayout {
                         spacing: 16px;
                         SectionHeader { title: T.tr("dash.data.title"); desc: T.tr("dash.data.subtitle"); }
-                        if !root.narrow: HorizontalLayout {
-                            spacing: 20px;
-                            DataDirCard { narrow: root.width < 768px; }
-                            HealthCard { }
-                        }
-                        if root.narrow: VerticalLayout {
-                            spacing: 20px;
-                            DataDirCard { narrow: root.width < 768px; }
-                            HealthCard { }
+                        // One instance of each card, positioned by `root.narrow`.
+                        diagnostics-grid := Rectangle {
+                            property <length> gap: 20px;
+                            property <length> col-w: (self.width - self.gap) / 2;
+                            property <length> row-h: max(data-dir-card.preferred-height, health-card.preferred-height);
+                            height: root.narrow
+                                ? data-dir-card.preferred-height + self.gap + health-card.preferred-height
+                                : self.row-h;
+                            data-dir-card := DataDirCard {
+                                narrow: root.width < 768px;
+                                x: 0px;
+                                y: 0px;
+                                width: root.narrow ? diagnostics-grid.width : diagnostics-grid.col-w;
+                                height: root.narrow ? self.preferred-height : diagnostics-grid.row-h;
+                            }
+                            health-card := HealthCard {
+                                x: root.narrow ? 0px : diagnostics-grid.col-w + diagnostics-grid.gap;
+                                y: root.narrow ? data-dir-card.preferred-height + diagnostics-grid.gap : 0px;
+                                width: root.narrow ? diagnostics-grid.width : diagnostics-grid.width - diagnostics-grid.col-w - diagnostics-grid.gap;
+                                height: root.narrow ? self.preferred-height : diagnostics-grid.row-h;
+                            }
                         }
                     }
                 }
