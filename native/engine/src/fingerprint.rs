@@ -2,12 +2,14 @@
 //!
 //! `<data>/instances/<name>/resolved.json` records what a verified launch
 //! resolved (`expected`: version, loader, asset index, client sha1, library
-//! set, natives count, fabric libs) plus cheap sentinel stats of the client
+//! and natives sets, fabric libs) plus cheap sentinel stats of the client
 //! jar, the asset index and the natives dir (`files`). A later launch whose
 //! expected block is byte-identical (JSON string comparison, like the JS) and
 //! whose sentinels are fresh skips the full library/asset verification.
 //!
-//! The document format is unchanged so JS-written fingerprints stay valid.
+//! Natives are listed by name and sha1, not counted: a swapped natives jar
+//! (the patched FreeType, `resolver::freetype`) must miss the fingerprint so
+//! the launch extracts it over the old library.
 
 use std::path::Path;
 
@@ -48,32 +50,30 @@ pub fn read_fingerprint(paths: &Paths, instance_name: &str) -> Option<Value> {
     serde_json::from_str(&s).ok()
 }
 
-/// The `expected` block (key order identical to the JS so string comparison
-/// against JS-written documents works).
+/// The `expected` block. It is compared as a JSON string, so its key order
+/// is part of the format.
 pub fn build_expected(instance: &InstanceMeta, version_json: &Value, fabric: Option<&FabricProfile>) -> Value {
     let mut libraries = Vec::new();
-    let mut natives_count = 0u64;
+    let mut natives = Vec::new();
     if let Some(Value::Array(libs)) = version_json.get("libraries") {
         for lib in libs {
-            let name = match lib.get("name") {
-                Some(Value::String(s)) => s.clone(),
-                Some(other) => other.to_string(),
-                None => "undefined".to_string(),
-            };
-            let parts: Vec<&str> = name.split(':').collect();
-            let is_natives = parts.get(3).map(|c| c.starts_with("natives")).unwrap_or(false);
             if !rules::rules_allow(lib) {
                 continue;
             }
+            let is_natives = lib
+                .get("name")
+                .and_then(Value::as_str)
+                .and_then(|n| n.split(':').nth(3))
+                .is_some_and(|c| c.starts_with("natives"));
+            let mut row = Map::new();
+            if let Some(n) = lib.get("name") {
+                row.insert("name".into(), n.clone());
+            }
+            let sha1 = lib.pointer("/downloads/artifact/sha1").cloned().unwrap_or(Value::Null);
+            row.insert("sha1".into(), sha1);
             if is_natives {
-                natives_count += 1;
+                natives.push(Value::Object(row));
             } else {
-                let mut row = Map::new();
-                if let Some(n) = lib.get("name") {
-                    row.insert("name".into(), n.clone());
-                }
-                let sha1 = lib.pointer("/downloads/artifact/sha1").cloned().unwrap_or(Value::Null);
-                row.insert("sha1".into(), sha1);
                 libraries.push(Value::Object(row));
             }
         }
@@ -105,7 +105,7 @@ pub fn build_expected(instance: &InstanceMeta, version_json: &Value, fabric: Opt
         "asset_index": asset_index,
         "client": client,
         "libraries": libraries,
-        "natives_count": natives_count,
+        "natives": natives,
         "fabric_libs": fabric_libs,
     })
 }
@@ -328,12 +328,12 @@ mod tests {
     }
 
     #[test]
-    fn expected_block_has_js_key_order_and_counts() {
+    fn expected_block_key_order_and_rows() {
         let e = build_expected(&instance(), &version_json(), Some(&fabric()));
         let s = serde_json::to_string(&e).unwrap();
         assert_eq!(
             s,
-            r#"{"version":"1.21.1","loader":"fabric","fabric_loader_version":"0.16.5","asset_index":{"id":"17","sha1":"aa"},"client":{"sha1":"cc"},"libraries":[{"name":"a:b:1","sha1":"s1"}],"natives_count":2,"fabric_libs":[{"relPath":"x/y.jar","sha1":null}]}"#
+            r#"{"version":"1.21.1","loader":"fabric","fabric_loader_version":"0.16.5","asset_index":{"id":"17","sha1":"aa"},"client":{"sha1":"cc"},"libraries":[{"name":"a:b:1","sha1":"s1"}],"natives":[{"name":"org.lwjgl:lwjgl:3:natives-linux","sha1":null},{"name":"org.lwjgl:lwjgl:3:natives-windows","sha1":null}],"fabric_libs":[{"relPath":"x/y.jar","sha1":null}]}"#
         );
     }
 
@@ -369,6 +369,10 @@ mod tests {
         assert!(check_fingerprint(&p, &inst, &vj, None).hit);
         // a different fabric profile changes the manifest
         assert_eq!(check_fingerprint(&p, &inst, &vj, Some(&fabric())).reason, Some("manifest changed"));
+        // so does a natives jar swapped for another build (same natives count)
+        let mut swapped = vj.clone();
+        swapped["libraries"][1]["name"] = json!("org.lwjgl:lwjgl:4:natives-linux");
+        assert_eq!(check_fingerprint(&p, &inst, &swapped, None).reason, Some("manifest changed"));
         // a changed client jar is a stale sentinel
         std::fs::write(p.client_jar("1.21.1"), b"jar-but-longer").unwrap();
         assert_eq!(check_fingerprint(&p, &inst, &vj, None).reason, Some("sentinel changed"));

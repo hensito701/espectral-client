@@ -2,6 +2,14 @@
 
 All notable changes to Espectral Client. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.9.7] - 2026-11-24
+
+### Security
+- **Resource-pack font exploit (minecraft2shell) blocked.** Minecraft 1.20.5 and newer draw resource-pack fonts with
+  FreeType, and a crafted font in a server resource pack could run code on your PC once you accepted the pack. Every
+  version now launches with Mojang's patched FreeType 2.15.0, including 1.20.5–1.21.11 and 26.1–26.2, which Mojang has
+  not republished. The first launch of each instance after the update checks its files again.
+
 ## [1.9.6] - 2026-11-22
 
 ### Added

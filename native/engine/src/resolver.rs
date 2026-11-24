@@ -27,6 +27,7 @@
 //! CONTRACT: the `pub` functions below are called by other clusters
 //! (game-launch, content). Keep their signatures; add more freely.
 
+mod freetype;
 mod natives;
 
 use std::collections::{HashMap, HashSet};
@@ -367,26 +368,37 @@ fn version_not_found(id: &str) -> EngineError {
     EngineError::api(404, "version_not_found", format!("version not found in manifest: {id}"))
 }
 
+/// The disk cache stays byte-identical to Mojang's file (it is re-verified
+/// against the manifest sha1); the FreeType fix is applied to the parsed copy.
 async fn fetch_version_json(engine: &Engine, id: &str, entry: &ManifestEntry) -> EngineResult<VersionJson> {
     let Some(url) = entry.url.as_deref().filter(|u| !u.is_empty()) else { return Err(version_not_found(id)) };
     let sha1 = entry.sha1.as_deref().filter(|s| !s.is_empty());
     let file = engine.paths().versions_dir().join(format!("{id}.json"));
-    if let Ok(buf) = tokio::fs::read(&file).await {
-        if sha1.is_none() || sha1 == Some(sha1_hex(&buf).as_str()) {
-            if let Ok(v) = serde_json::from_slice::<Value>(&buf) {
-                return Ok(v);
+    let cached = tokio::fs::read(&file)
+        .await
+        .ok()
+        .filter(|buf| sha1.is_none() || sha1 == Some(sha1_hex(buf).as_str()))
+        .and_then(|buf| serde_json::from_slice::<Value>(&buf).ok());
+    let mut json = match cached {
+        Some(v) => v,
+        None => {
+            let bytes = engine.http().fetch_bytes(url, &FetchOptions::default()).await?;
+            if let Some(s) = sha1 {
+                if sha1_hex(&bytes) != s {
+                    return Err(EngineError::api(
+                        502,
+                        "sha1_mismatch",
+                        format!("sha1 mismatch for version {id} ({url})"),
+                    ));
+                }
             }
+            tokio::fs::create_dir_all(engine.paths().versions_dir()).await?;
+            tokio::fs::write(&file, &bytes).await?;
+            serde_json::from_slice(&bytes)?
         }
-    }
-    let bytes = engine.http().fetch_bytes(url, &FetchOptions::default()).await?;
-    if let Some(s) = sha1 {
-        if sha1_hex(&bytes) != s {
-            return Err(EngineError::api(502, "sha1_mismatch", format!("sha1 mismatch for version {id} ({url})")));
-        }
-    }
-    tokio::fs::create_dir_all(engine.paths().versions_dir()).await?;
-    tokio::fs::write(&file, &bytes).await?;
-    Ok(serde_json::from_slice(&bytes)?)
+    };
+    freetype::patch(&mut json);
+    Ok(json)
 }
 
 /// Mojang version JSON for `id` (cached flat as `versions/<id>.json`,
@@ -549,6 +561,8 @@ where
         );
         merged = Value::Object(out);
     }
+    // A loader profile may list its own LWJGL natives next to vanilla's.
+    freetype::patch(&mut merged);
     Ok(merged)
 }
 
